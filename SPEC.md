@@ -93,7 +93,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
 | `join` | Join datasets | `JOIN` | `join owners on owner_id == owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
-| `sort` | Sort rows | `ORDER BY` | `sort -users` (descending) |
+| `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -month(updated_at)` (descending function) |
 | `take` | Limit rows | `LIMIT` | `take 10` |
 | `set` / `let` | Define variable/fragment | `WITH ... AS` | `set active = from users \| where is_active` |
 
@@ -679,9 +679,54 @@ from opportunities
 
 ---
 
-## 10. Variables & CTEs
+## 10. Sorting
 
-### 10.1 Simple Variables & CTEs
+### 10.1 Basic Sorting
+
+The `sort` clause orders rows by one or more columns:
+
+```asql
+from users sort name
+from users sort -total_users
+```
+
+**Descending order**: Use the `-` prefix to sort in descending order:
+- `sort name` → ascending (A-Z)
+- `sort -name` → descending (Z-A)
+
+### 10.2 Sorting by Function Calls
+
+You can sort by function calls using the `-` prefix for descending order:
+
+```asql
+from users sort month(created_at)
+from users sort -month(updated_at)
+from events sort -year(created_at), name
+```
+
+**Examples:**
+- `sort month(updated_at)` → Sort by month ascending
+- `sort -month(updated_at)` → Sort by month descending (newest first)
+- `sort -year(created_at), name` → Sort by year descending, then name ascending
+
+This syntax makes it easy to sort by computed values like date functions without needing to derive columns first.
+
+### 10.3 Multiple Sort Columns
+
+Multiple sort columns are separated by commas:
+
+```asql
+from users sort -total_users, name
+from sales sort -revenue, region, -date
+```
+
+The `-` prefix applies only to the column immediately following it.
+
+---
+
+## 11. Variables & CTEs
+
+### 11.1 Simple Variables & CTEs
 
 Variables in ASQL create CTEs (Common Table Expressions). The syntax is designed to make CTEs easier and less necessary:
 
@@ -720,7 +765,7 @@ from users
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally. CTEs are still available when you need to reuse a subquery multiple times.
 
-### 10.2 Column Variables & `derive`
+### 11.2 Column Variables & `derive`
 
 The `derive` operator adds new columns or transforms existing ones (equivalent to SQL's `SELECT ... AS`):
 
@@ -739,7 +784,7 @@ from users
 
 `derive` is the recommended syntax as it's already established in PRQL and clearly indicates "derive a new column from existing data."
 
-### 10.3 Nested Variables
+### 11.3 Nested Variables
 
 ```asql
 set base = from users
@@ -1353,7 +1398,7 @@ join_op := 'join' table_name ('on' expression)?
 
 select_op := 'select' column_list
 
-sort_op := 'sort' ('-'? column_name)+
+sort_op := 'sort' ('-'? (column_name | function_call))+
 
 take_op := 'take' number
 
