@@ -133,9 +133,11 @@ class ASQLParser:
         self._skip_whitespace()
         
         # Parse grouping columns (comma-separated)
+        # Can be simple columns or function calls like month(created_at)
         grouping_columns = []
         while True:
-            col = self._parse_column()
+            # Parse grouping expression (column or function call)
+            col = self._parse_grouping_expression()
             if col:
                 grouping_columns.append(col)
             
@@ -309,6 +311,68 @@ class ASQLParser:
             raise ASQLSyntaxError("Expected at least one sort expression")
         
         return exp.Order(expressions=order_expressions)
+    
+    def _parse_grouping_expression(self) -> Optional[exp.Expression]:
+        """
+        Parse a grouping expression (column reference or function call).
+        
+        Similar to _parse_sort_expression() but needs to distinguish between
+        function calls like month(created_at) and the aggregation block ( # ... ).
+        """
+        self._skip_whitespace()
+        
+        # Parse identifier (function name or column name)
+        identifier = self._parse_identifier()
+        if not identifier:
+            return None
+        
+        # Check if it's a function call
+        # We need to peek ahead to see if ( is followed by a column or by #/aggregation
+        self._skip_whitespace()
+        if self._peek() == "(":
+            # Peek ahead to see if this is a function call or aggregation block
+            # Save position
+            saved_pos = self.pos
+            self._consume("(")
+            self._skip_whitespace()
+            
+            # Check if next token is # (aggregation block) or an aggregation keyword
+            peek_char = self._peek()
+            if peek_char == "#":
+                # This is the aggregation block, not a function call
+                # Restore position and return simple column
+                self.pos = saved_pos
+                return exp.Column(this=exp.Identifier(this=identifier))
+            
+            # Check if it's an aggregation keyword (sum, avg, etc.)
+            # by trying to parse an identifier
+            test_pos = self.pos
+            test_id = self._parse_identifier()
+            if test_id and test_id.lower() in ("sum", "avg", "average", "count", "min", "max"):
+                # This is the aggregation block
+                self.pos = saved_pos
+                return exp.Column(this=exp.Identifier(this=identifier))
+            
+            # Restore to after ( and parse as function call
+            self.pos = saved_pos
+            self._consume("(")
+            self._skip_whitespace()
+            
+            # Parse function argument (column reference)
+            arg = self._parse_column()
+            if not arg:
+                raise ASQLSyntaxError(f"Expected column argument in function call {identifier}()")
+            
+            self._skip_whitespace()
+            if self._peek() != ")":
+                raise ASQLSyntaxError(f"Expected ')' after function argument in {identifier}()")
+            self._consume(")")
+            
+            # Create function call expression
+            return exp.Anonymous(this=identifier, expressions=[arg])
+        else:
+            # It's a simple column reference
+            return exp.Column(this=exp.Identifier(this=identifier))
     
     def _parse_sort_expression(self) -> Optional[exp.Expression]:
         """Parse a sort expression (column reference or function call)."""
