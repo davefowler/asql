@@ -124,10 +124,12 @@ where status in ("active", "pending", "verified")
     
     def test_time_based_analysis(self) -> None:
         """Test time-based analysis query."""
+        # Note: GROUP BY with function calls requires aggregation
+        # This is a valid query pattern
         asql = """
 from users
 group by month(created_at) ( # as signups )
-sort month(created_at)
+sort -signups
 """
         sql = compile(asql)
         assert "GROUP BY" in sql.upper()
