@@ -201,7 +201,7 @@ class ASQLDialect(Dialect):
 **Example**:
 ```asql
 from users
-  derive tags as sql("ARRAY_AGG(tag) OVER (PARTITION BY user_id)")
+  select tags as sql("ARRAY_AGG(tag) OVER (PARTITION BY user_id)")
   group by country (
     revenue as sum(amount),
     top_tags as sql("ARRAY_AGG(tag ORDER BY count DESC LIMIT 5)")
@@ -336,7 +336,6 @@ WHERE status = 'active'
 1. Implement `GROUP BY` with basic aggregations (`count`, `sum`, `avg`)
 2. Implement `SORT` / `ORDER BY`
 3. Implement `TAKE` / `LIMIT`
-4. Implement `DERIVE` for computed columns
 5. Implement pipeline CTE generation (each step becomes a CTE)
 6. Write comprehensive tests
 
@@ -502,13 +501,13 @@ from accounts
 1. Implement `sql("...")` syntax for raw SQL blocks
 2. Implement unrecognized function passthrough (fallback to SQL if not ASQL function)
 3. Use SQLGlot to parse and validate SQL passthrough blocks
-4. Handle SQL passthrough in expressions, aggregates, and derives
+4. Handle SQL passthrough in expressions and aggregates
 5. Write tests for SQL passthrough
 
 **Example**:
 ```asql
 from users
-  derive tags as sql("ARRAY_AGG(tag) OVER (PARTITION BY user_id)")
+  select tags as sql("ARRAY_AGG(tag) OVER (PARTITION BY user_id)")
   group by country (
     revenue as sum(amount),
     top_tags as sql("ARRAY_AGG(tag ORDER BY count DESC LIMIT 5)")

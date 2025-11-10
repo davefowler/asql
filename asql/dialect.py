@@ -24,7 +24,6 @@ class ASQLDialect(Dialect):
             "PROJECT": TokenType.SELECT,  # PROJECT is alias for SELECT
             "SORT": TokenType.ORDER_BY,  # SORT maps to ORDER BY
             "TAKE": TokenType.LIMIT,
-            "DERIVE": TokenType.ALIAS,  # Temporary, will need custom handling
             "SET": TokenType.WITH,
             "LET": TokenType.WITH,  # LET is alias for SET
         }

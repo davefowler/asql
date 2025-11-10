@@ -106,12 +106,7 @@ curl -X POST http://localhost:5000/api/compile \
 - TAKE/LIMIT
 - Complete pipelines
 
-### 4. Derived Columns (3+ examples)
-- Simple DERIVE
-- DERIVE with WHERE
-- Multiple DERIVE
-
-### 5. Complex Queries (4+ examples)
+### 4. Complex Queries (4+ examples)
 - Analytics queries
 - User analytics
 - Sales reports

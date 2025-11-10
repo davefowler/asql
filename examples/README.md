@@ -61,12 +61,6 @@ print(f"SQL: {sql}")
 - Complete pipelines
 - Top N queries
 
-### Derived Columns (`derived_columns.py`)
-
-- Simple DERIVE
-- DERIVE with WHERE
-- Multiple DERIVE clauses
-
 ### Complex Queries (`complex_queries.py`)
 
 - Complex analytics queries

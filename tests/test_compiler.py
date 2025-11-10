@@ -231,27 +231,6 @@ def test_compile_group_by_sort_take() -> None:
     assert "10" in sql
 
 
-def test_compile_derive_simple() -> None:
-    """Test compiling DERIVE with simple column reference."""
-    asql = "from users derive age as age"
-    sql = compile(asql)
-    sql_upper = sql.upper()
-    assert "SELECT" in sql_upper
-    assert "age" in sql.lower()
-    # Should include both the derived column and other columns (or *)
-    assert "FROM" in sql_upper
-
-
-def test_compile_derive_with_where() -> None:
-    """Test compiling DERIVE with WHERE clause."""
-    asql = 'from users where status == "active" derive age as age'
-    sql = compile(asql)
-    sql_upper = sql.upper()
-    assert "SELECT" in sql_upper
-    assert "WHERE" in sql_upper
-    assert "age" in sql.lower()
-
-
 def test_compile_where_not_equal() -> None:
     """Test compiling WHERE with != operator."""
     asql = 'from users where status != "inactive"'

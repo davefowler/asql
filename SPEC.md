@@ -89,7 +89,6 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | Operator | Meaning | SQL Equivalent | Example |
 |----------|---------|----------------|---------|
 | `where` | Filter rows | `WHERE` | `where status == "active"` |
-| `derive` | Add/transform columns | `SELECT ... AS` | `derive age as years_between(now(), dob)` |
 | `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
 | `join` | Join datasets | `JOIN` | `join owners on owner_id == owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
@@ -131,7 +130,7 @@ ASQL supports SQL's `CASE` statement with natural language alternatives:
 
 **Standard CASE syntax:**
 ```asql
-derive status_label as case
+select status_label as case
   when status == "active" then "Active User"
   when status == "inactive" then "Inactive User"
   else "Unknown"
@@ -140,7 +139,7 @@ end
 
 **Natural language alternative:**
 ```asql
-derive status_label as 
+select status_label as 
   if status == "active" then "Active User"
   else if status == "inactive" then "Inactive User"
   else "Unknown"
@@ -148,8 +147,8 @@ derive status_label as
 
 **Simple if-then-else:**
 ```asql
-derive is_premium as if plan == "premium" then true else false
-derive discount as if amount > 100 then amount * 0.1 else 0
+select is_premium as if plan == "premium" then true else false
+select discount as if amount > 100 then amount * 0.1 else 0
 ```
 
 All three syntaxes compile to standard SQL `CASE` statements. Choose based on readability preference.
@@ -709,7 +708,7 @@ from events sort -year(created_at), name
 - `sort -month(updated_at)` → Sort by month descending (newest first)
 - `sort -year(created_at), name` → Sort by year descending, then name ascending
 
-This syntax makes it easy to sort by computed values like date functions without needing to derive columns first.
+This syntax makes it easy to sort by computed values like date functions.
 
 ### 10.3 Multiple Sort Columns
 
@@ -765,26 +764,7 @@ from users
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally. CTEs are still available when you need to reuse a subquery multiple times.
 
-### 11.2 Column Variables & `derive`
-
-The `derive` operator adds new columns or transforms existing ones (equivalent to SQL's `SELECT ... AS`):
-
-```asql
-from users
-  derive all_ages as age
-  derive avg_all_ages as avg(all_ages)
-  derive full_name as first_name + " " + last_name
-```
-
-**Alternatives**: `derive` comes from PRQL. Alternatives could include:
-- `add` - simple but less descriptive
-- `compute` - emphasizes calculation
-- `calculate` - similar to compute
-- `select` - but this conflicts with final column selection
-
-`derive` is the recommended syntax as it's already established in PRQL and clearly indicates "derive a new column from existing data."
-
-### 11.3 Nested Variables
+### 11.2 Nested Variables
 
 ```asql
 set base = from users
@@ -810,7 +790,7 @@ Functions in ASQL are similar to dbt macros or PostgreSQL functions, but simpler
 func age(user) = years(now() - user.birthday)
 
 from users
-  derive user_age as age(user)
+  select age(user) as user_age
   group by country ( avg_age as average of user_age )
 ```
 
@@ -820,10 +800,10 @@ func age(table) = years(now() - table.birthday)
 
 # Works on any table with a 'birthday' column
 from users
-  derive user_age as age(users)
+  select age(users) as user_age
 
 from employees
-  derive employee_age as age(employees)
+  select age(employees) as employee_age
 ```
 
 **Another example - days since created:**
@@ -832,7 +812,7 @@ func days_since_created(table) = days(now() - table.created_at)
 
 # Works on any table with created_at
 from users
-  derive days_active as days_since_created(users)
+  select days_since_created(users) as days_active
 ```
 
 **Typing**: Functions are not typed - ASQL infers types from usage. This keeps the syntax simple and natural.
@@ -853,6 +833,13 @@ func age(user) = years(now() - user.birthday)
 # Natural language usage
 avg age of user by country
 # Reads like: "average age of user, grouped by country"
+```
+
+**Note**: Functions can be used in SELECT expressions to compute values:
+```asql
+from users
+  select age(user) as user_age
+  group by country ( avg(user_age) as avg_age )
 ```
 
 ### 11.2 User-Defined Table Functions
@@ -1155,7 +1142,7 @@ from users
 func age(user) = years(now() - user.birthday)
 
 from users
-  derive user_age as age(user)
+  select age(user) as user_age
   group by country ( avg_age as average of user_age )
 ```
 
@@ -1379,7 +1366,6 @@ from_clause := 'from' table_name
 pipeline := operator  -- indentation-based, or '|' operator (optional)
 
 operator := filter_op
-          | derive_op
           | group_by_op
           | join_op
           | select_op
@@ -1389,8 +1375,6 @@ operator := filter_op
 
 filter_op := 'where' expression
            | 'if' expression
-
-derive_op := 'derive' assignment+
 
 group_by_op := 'group' 'by' expression_list '(' aggregate_list ')'
 
@@ -1428,7 +1412,7 @@ aggregate_func := 'count' | 'sum' | 'avg' | 'min' | 'max'
 
 ## References & Inspiration
 
-- **PRQL**: Pipeline structure, derive, group by blocks, let & func
+- **PRQL**: Pipeline structure, group by blocks, let & func
 - **KQL**: Verb syntax (filter, project, summarize), pipeline operators
 - **Malloy**: Model layer, measures/dimensions, time bucketing concept (ASQL uses simpler `month()`, `year()` functions rather than Malloy's `time_bucket()` function), default_time concept
 - **EdgeQL**: Dot traversal for relationships, nested result shapes
