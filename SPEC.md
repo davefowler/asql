@@ -94,7 +94,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
 | `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -updated_at` (descending column) |
 | `take` | Limit rows | `LIMIT` | `take 10` |
-| `set` / `let` | Define variable/fragment | `WITH ... AS` | `set active = from users \| where is_active` |
+| `set` | Define variable/fragment (CTE) | `WITH ... AS` | `set active = from users \| where is_active` |
 
 ---
 
@@ -811,7 +811,7 @@ The `-` prefix applies only to the column immediately following it.
 
 Variables in ASQL create CTEs (Common Table Expressions). The syntax is designed to make CTEs easier and less necessary:
 
-**Using `set` (SQL-like):**
+**Using `set` (creates CTE):**
 ```asql
 set active_users = from users
   where is_active
@@ -820,19 +820,18 @@ from active_users
   group by country ( # as total_users )
 ```
 
-**Using `let` (alternative):**
-```asql
-let active_users = from users
-  where is_active
+**Why `set`?**
+- **SQL familiarity**: SQL uses `SET` in various contexts (SET variables, SET operations)
+- **Clear intent**: "Set this variable to this query" is intuitive
+- **CTE mapping**: Maps naturally to SQL's `WITH ... AS` (Common Table Expression)
+- **Not `let`**: `let` comes from functional programming (Lisp, ML, Haskell) and doesn't fit SQL's imperative style
 
-from active_users
-  group by country ( # as total_users )
-```
-
-**Alternatives considered**: `let`, `const`, `var`, `define`, `set`
-- `set` feels most SQL-like and familiar
-- `let` is more functional/programming language style
-- Both are supported, `set` is recommended for SQL familiarity
+**Alternatives considered**: `let`, `const`, `var`, `define`, `with`
+- `let` - Too functional programming style, not SQL-like
+- `const`/`var` - JavaScript-specific, not SQL
+- `define` - Too generic
+- `with` - Conflicts with SQL's `WITH` keyword usage
+- `set` ✅ - Most SQL-like and clear
 
 **Major benefit: Less need for CTEs**: Because ASQL uses pipelines, you often don't need CTEs at all. Instead of breaking into a CTE, you can just add a comment marking a logical stopping point:
 
@@ -1453,7 +1452,7 @@ operator := filter_op
           | select_op
           | sort_op
           | take_op
-          | let_op
+          | set_op
 
 filter_op := 'where' expression
            | 'if' expression
@@ -1468,7 +1467,7 @@ sort_op := 'sort' ('-'? (column_name | function_call))+
 
 take_op := 'take' number
 
-let_op := 'let' var_name '=' query
+set_op := 'set' var_name '=' query
 
 aggregate := var_name 'as' aggregate_func '(' expression ')'
            | natural_language_aggregate
@@ -1494,7 +1493,7 @@ aggregate_func := 'count' | 'sum' | 'avg' | 'min' | 'max'
 
 ## References & Inspiration
 
-- **PRQL**: Pipeline structure, group by blocks, let & func
+- **PRQL**: Pipeline structure, group by blocks, func (note: PRQL uses `let` but ASQL uses `set` for SQL familiarity)
 - **KQL**: Verb syntax (filter, project, summarize), pipeline operators
 - **Malloy**: Model layer, measures/dimensions, time bucketing concept (ASQL uses simpler `month()`, `year()` functions rather than Malloy's `time_bucket()` function), default_time concept
 - **EdgeQL**: Dot traversal for relationships, nested result shapes

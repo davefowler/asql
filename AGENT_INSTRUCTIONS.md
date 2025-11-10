@@ -102,10 +102,11 @@ ASQL Text → Custom Parser (asql/parser.py) → SQLGlot AST → SQLGlot Generat
    - Explicit: `join owners on owner_id == owners.id`
    - Automatic joins (later, requires schema resolver)
 
-2. **SET/LET for CTEs** (Priority: MEDIUM)
+2. **SET for CTEs** (Priority: MEDIUM)
    - Parse `set active_users = from users where is_active`
    - Generate SQL WITH clauses
    - Variable resolution
+   - Note: Use `set` (not `let`) for SQL familiarity - maps to `WITH ... AS`
 
 3. **Indentation-based syntax** (Priority: LOW)
    - Currently only handles single-line queries
