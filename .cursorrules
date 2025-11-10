@@ -1,0 +1,27 @@
+# ASQL Development Rules
+
+## Testing
+- Always use `pytest` command for running tests, NOT `python -m pytest` or `python test_*.py`
+- Use `pytest` directly: `pytest tests/test_*.py`
+- Use `pytest -v` for verbose output
+- Use `pytest --cov=asql` for coverage
+- Write tests first (TDD approach)
+
+## Code Style
+- Follow TypeScript-style strict linting rules (as per user preferences)
+- Always specify return types for functions
+- Don't reuse variables
+- Prefer function expressions over function declarations
+- Use Styled Components exclusively for styling (if applicable)
+
+## Development Workflow
+- Use TDD: Write tests first, then implement
+- Use SQLGlot's dialect system where possible
+- Follow the architecture in ARCHITECTURE.md
+- Reference SPEC.md for language specification
+
+## Commands
+- Use `pytest` for testing (not `python` command)
+- Use `pytest tests/` to run all tests
+- Use `pytest tests/test_parser.py` to run specific test file
+
