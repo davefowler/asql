@@ -124,7 +124,89 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 - Dates: `@2025-01-10`, `@2025-11-10`
 - Numbers: `42`, `3.14`
 
-### 4.5 Conditional Expressions (CASE)
+### 4.5 String Matching (Planned)
+
+ASQL will provide intuitive string matching operators that are more readable than SQL's `LIKE` syntax. The design is inspired by the best practices from modern query languages and libraries:
+
+**Research & Inspiration:**
+- **KQL (Kusto)**: `contains`, `startswith`, `endswith`, `matches regex` - very intuitive
+- **Python pandas**: `.str.contains()`, `.str.startswith()`, `.str.endswith()` - clear and explicit
+- **JavaScript**: `.includes()`, `.startsWith()`, `.endsWith()` - simple and readable
+- **dplyr (R)**: `str_detect()`, `str_starts()`, `str_ends()` - functional but verbose
+- **SQL**: `LIKE '%pattern%'` - cryptic, requires wildcards, not intuitive
+
+**Proposed ASQL Syntax:**
+
+```asql
+# Contains (substring match)
+from users where email contains "@gmail.com"
+from users where name contains "John"
+
+# Starts with
+from users where email starts with "admin"
+from users where domain starts with "https://"
+
+# Ends with
+from users where email ends with ".com"
+from users where filename ends with ".pdf"
+
+# Case-insensitive variants (optional)
+from users where email contains "GMAIL" ignore case
+from users where name starts with "john" ignore case
+
+# Regex matching (advanced)
+from users where email matches "^[a-z]+@[a-z]+\\.com$"
+from users where phone matches "^\d{3}-\d{3}-\d{4}$"
+```
+
+**Design Principles:**
+1. **Natural language**: Reads like English - "email contains gmail" is clearer than "email LIKE '%gmail%'"
+2. **No wildcards required**: `contains` is more intuitive than `LIKE '%pattern%'`
+3. **Explicit operations**: `starts with` and `ends with` are clearer than `LIKE 'pattern%'` and `LIKE '%pattern'`
+4. **Case handling**: Default behavior TBD (case-sensitive or case-insensitive), with explicit `ignore case` option
+5. **Regex support**: Available but secondary - most users don't need regex for common string matching
+
+**Comparison with SQL:**
+
+| ASQL | SQL Equivalent | Notes |
+|------|----------------|-------|
+| `contains "pattern"` | `LIKE '%pattern%'` | More intuitive, no wildcards |
+| `starts with "pattern"` | `LIKE 'pattern%'` | Clearer intent |
+| `ends with "pattern"` | `LIKE '%pattern'` | Clearer intent |
+| `matches "regex"` | `~ 'regex'` or `REGEXP` | Explicit regex matching |
+| `contains "PATTERN" ignore case` | `ILIKE '%pattern%'` (PostgreSQL) | Explicit case handling |
+
+**Alternative Syntax Considerations:**
+
+1. **Method-style** (like Python/JS):
+   ```asql
+   from users where email.contains("@gmail.com")
+   from users where name.starts_with("John")
+   ```
+   - Pros: Familiar to programmers, explicit
+   - Cons: Less natural language feel, requires dots
+
+2. **Function-style**:
+   ```asql
+   from users where contains(email, "@gmail.com")
+   from users where starts_with(name, "John")
+   ```
+   - Pros: Functional, clear
+   - Cons: Less readable, more verbose
+
+3. **Natural language** (recommended):
+   ```asql
+   from users where email contains "@gmail.com"
+   from users where name starts with "John"
+   ```
+   - Pros: Most readable, natural language feel
+   - Cons: Requires keyword parsing
+
+**Recommendation**: Use natural language syntax (`contains`, `starts with`, `ends with`) as it aligns with ASQL's philosophy of reading like natural language. This makes queries accessible to non-technical users while remaining precise.
+
+**Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim. Should be implemented after arithmetic operators and before advanced features.
+
+### 4.6 Conditional Expressions (CASE)
 
 ASQL supports SQL's `CASE` statement with natural language alternatives:
 
@@ -153,7 +235,7 @@ select discount as if amount > 100 then amount * 0.1 else 0
 
 All three syntaxes compile to standard SQL `CASE` statements. Choose based on readability preference.
 
-### 4.6 Comments
+### 4.7 Comments
 
 ASQL uses SQL-standard comment syntax:
 

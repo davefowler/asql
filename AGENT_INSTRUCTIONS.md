@@ -90,6 +90,12 @@ ASQL Text → Custom Parser (asql/parser.py) → SQLGlot AST → SQLGlot Generat
    - `+`, `-`, `*`, `/`, `%`
    - Function calls in expressions
 
+4. **String matching** (Priority: MEDIUM)
+   - `contains`, `starts with`, `ends with` - natural language syntax
+   - `matches` for regex
+   - Case-insensitive option: `ignore case`
+   - See SPEC.md Section 4.5 for detailed design rationale
+
 ### Phase 3: Advanced Features (Priority: MEDIUM)
 
 1. **JOIN** (Priority: MEDIUM)
