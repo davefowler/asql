@@ -1,17 +1,39 @@
 # ASQL Implementation Status
 
 **Last Updated**: Current session  
-**Current Phase**: Phase 1 - Core Pipeline Operators  
-**Test Status**: ✅ 12 tests passing
+**Current Phase**: Phase 1 Complete, Phase 2 In Progress  
+**Test Status**: ✅ 33 tests passing
 
 ## What's Working
 
 ### Basic Parser ✅
 - FROM clause parsing
-- WHERE clause with `==` operator
+- WHERE clause with all comparison operators
 - SELECT clause
-- String literals
+- String and numeric literals
 - Basic expressions
+
+### Phase 1: Core Pipeline Operators ✅
+- **GROUP BY** with aggregations
+  - `group by country ( # as total_users )` - # syntax for COUNT(*)
+  - Standard aggregations: `sum()`, `avg()`, `count()`, `min()`, `max()`
+  - Multiple grouping columns
+  - Multiple aggregations
+- **SORT/ORDER BY**
+  - `sort -total_users` (descending)
+  - `sort total_users` (ascending)
+  - Multiple sort columns
+- **TAKE/LIMIT**
+  - `take 10` → SQL LIMIT
+- **DERIVE**
+  - `derive age as age` - computed columns
+
+### Phase 2: Expressions & Operators ✅ (Partial)
+- **Comparison operators**: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- **Null checks**: `is null`, `is not null`
+- ⏳ Logical operators: `and`, `or`, `not` (not yet implemented)
+- ⏳ Membership: `in`, `not in` (not yet implemented)
+- ⏳ Arithmetic operators (not yet implemented)
 
 ### Compiler ✅
 - ASQL → SQL transformation
@@ -27,37 +49,28 @@ from asql import compile
 compile("from users")
 # → "SELECT * FROM users"
 
-# FROM + WHERE
+# FROM + WHERE with comparisons
 compile('from users where status == "active"')
-# → "SELECT * FROM users WHERE status = 'active'"
+compile("from users where age < 18")
+compile("from users where email is not null")
 
-# FROM + SELECT
-compile("from users select name, email")
-# → "SELECT name, email FROM users"
+# GROUP BY with aggregations
+compile("from users group by country ( # as total_users )")
+compile("from sales group by region ( sum(amount) as revenue, # as orders )")
 
-# FROM + WHERE + SELECT
-compile('from users where status == "active" select name')
-# → "SELECT name FROM users WHERE status = 'active'"
+# SORT
+compile("from users sort -total_users")
+compile("from users sort name, -age")
+
+# TAKE/LIMIT
+compile("from users take 10")
+
+# DERIVE
+compile("from users derive age as age")
+
+# Complex pipeline
+compile("from users group by country ( # as total_users ) sort -total_users take 10")
 ```
-
-## What's Next
-
-### Immediate Next Steps (Phase 1)
-
-1. **GROUP BY** - Highest priority
-   - Parse `group by country ( # as total_users )`
-   - Handle `#` syntax for COUNT(*)
-   - Support standard aggregations
-
-2. **SORT** - High priority
-   - Parse `sort -total_users` (descending)
-   - Parse `sort total_users` (ascending)
-
-3. **TAKE/LIMIT** - Medium priority
-   - Parse `take 10`
-
-4. **DERIVE** - Medium priority
-   - Parse `derive age as expression`
 
 ## Architecture Decisions
 
@@ -84,23 +97,30 @@ tests/
 ## Known Limitations
 
 1. **Single-line queries only** - No indentation/multi-line support yet
-2. **Limited expressions** - Only `==` operator, no other comparisons
-3. **No aggregations** - GROUP BY not implemented
-4. **No CTEs** - Pipeline steps don't become CTEs yet
-5. **No schema resolution** - No FK inference, plural/singular handling
+2. **Limited expressions** - Missing logical operators (`and`, `or`, `not`), `in`/`not in`, arithmetic operators
+3. **No CTEs** - Pipeline steps don't become CTEs yet (each step should become a CTE)
+4. **No schema resolution** - No FK inference, plural/singular handling
+5. **No JOIN** - Explicit joins not yet implemented
+6. **DERIVE expressions** - Currently only supports simple column references, not full expressions
 
 ## Test Coverage
 
 - ✅ FROM clause
-- ✅ WHERE clause
+- ✅ WHERE clause with all comparison operators
 - ✅ SELECT clause
-- ✅ String literals
+- ✅ String and numeric literals
 - ✅ Error handling
 - ✅ Dialect support
-- ❌ GROUP BY (not implemented)
-- ❌ SORT (not implemented)
-- ❌ TAKE (not implemented)
-- ❌ Expressions (limited)
+- ✅ GROUP BY with aggregations (#, sum, avg, count, min, max)
+- ✅ SORT/ORDER BY (ascending/descending)
+- ✅ TAKE/LIMIT
+- ✅ DERIVE (basic)
+- ✅ IS NULL / IS NOT NULL
+- ⏳ Logical operators (and, or, not)
+- ⏳ IN / NOT IN
+- ⏳ Arithmetic operators
+- ⏳ JOIN
+- ⏳ SET/LET (CTEs)
 
 ## Next Agent Instructions
 
