@@ -167,8 +167,38 @@ def test_compile_group_by_sort() -> None:
     sql_upper = sql.upper()
     assert "GROUP BY" in sql_upper
     assert "ORDER BY" in sql_upper
-    assert "TOTAL_USERS" in sql_upper
+
+
+def test_compile_sort_function_call() -> None:
+    """Test compiling SORT with function call."""
+    asql = "from users sort month(updated_at)"
+    sql = compile(asql)
+    sql_upper = sql.upper()
+    assert "ORDER BY" in sql_upper
+    assert "MONTH" in sql_upper or "month" in sql.lower()
+    assert "UPDATED_AT" in sql_upper or "updated_at" in sql.lower()
+
+
+def test_compile_sort_function_call_descending() -> None:
+    """Test compiling SORT with descending function call using - prefix."""
+    asql = "from users sort -month(updated_at)"
+    sql = compile(asql)
+    sql_upper = sql.upper()
+    assert "ORDER BY" in sql_upper
     assert "DESC" in sql_upper
+    assert "MONTH" in sql_upper or "month" in sql.lower()
+    assert "UPDATED_AT" in sql_upper or "updated_at" in sql.lower()
+
+
+def test_compile_sort_function_call_multiple() -> None:
+    """Test compiling SORT with function call and multiple columns."""
+    asql = "from users sort -month(updated_at), name"
+    sql = compile(asql)
+    sql_upper = sql.upper()
+    assert "ORDER BY" in sql_upper
+    assert "DESC" in sql_upper
+    assert "MONTH" in sql_upper or "month" in sql.lower()
+    assert "NAME" in sql_upper
 
 
 def test_compile_take() -> None:

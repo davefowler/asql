@@ -281,7 +281,7 @@ class ASQLParser:
         
         self._skip_whitespace()
         
-        # Parse sort columns
+        # Parse sort expressions (columns or function calls)
         order_expressions = []
         
         while True:
@@ -292,18 +292,18 @@ class ASQLParser:
                 descending = True
                 self._skip_whitespace()
             
-            # Parse column name
-            col = self._parse_column()
-            if not col:
+            # Parse sort expression (column or function call)
+            sort_expr = self._parse_sort_expression()
+            if not sort_expr:
                 if not order_expressions:
-                    raise ASQLSyntaxError("Expected at least one sort column")
+                    raise ASQLSyntaxError("Expected at least one sort expression")
                 break
             
             # Create Order expression
             if descending:
-                order_expr = exp.Ordered(this=col, desc=True)
+                order_expr = exp.Ordered(this=sort_expr, desc=True)
             else:
-                order_expr = exp.Ordered(this=col, desc=False)
+                order_expr = exp.Ordered(this=sort_expr, desc=False)
             
             order_expressions.append(order_expr)
             
@@ -315,9 +315,41 @@ class ASQLParser:
                 break
         
         if not order_expressions:
-            raise ASQLSyntaxError("Expected at least one sort column")
+            raise ASQLSyntaxError("Expected at least one sort expression")
         
         return exp.Order(expressions=order_expressions)
+    
+    def _parse_sort_expression(self) -> Optional[exp.Expression]:
+        """Parse a sort expression (column reference or function call)."""
+        self._skip_whitespace()
+        
+        # Parse identifier (function name or column name)
+        identifier = self._parse_identifier()
+        if not identifier:
+            return None
+        
+        # Check if it's a function call
+        self._skip_whitespace()
+        if self._peek() == "(":
+            # It's a function call: month(updated_at)
+            self._consume("(")
+            self._skip_whitespace()
+            
+            # Parse function argument (column reference)
+            arg = self._parse_column()
+            if not arg:
+                raise ASQLSyntaxError(f"Expected column argument in function call {identifier}()")
+            
+            self._skip_whitespace()
+            if self._peek() != ")":
+                raise ASQLSyntaxError(f"Expected ')' after function argument in {identifier}()")
+            self._consume(")")
+            
+            # Create function call expression
+            return exp.Anonymous(this=identifier, expressions=[arg])
+        else:
+            # It's a simple column reference
+            return exp.Column(this=exp.Identifier(this=identifier))
     
     def _parse_take(self) -> exp.Limit:
         """Parse TAKE/LIMIT clause."""
