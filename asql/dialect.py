@@ -25,7 +25,6 @@ class ASQLDialect(Dialect):
             "SORT": TokenType.ORDER_BY,  # SORT maps to ORDER BY
             "TAKE": TokenType.LIMIT,
             "SET": TokenType.WITH,
-            "LET": TokenType.WITH,  # LET is alias for SET
         }
         
         # Add # token for ASQL count syntax

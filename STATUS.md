@@ -115,7 +115,7 @@ tests/
 - ✅ IN / NOT IN
 - ⏳ Arithmetic operators
 - ⏳ JOIN
-- ⏳ SET/LET (CTEs)
+- ⏳ SET (CTEs)
 
 ## Next Agent Instructions
 
