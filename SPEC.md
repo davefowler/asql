@@ -37,20 +37,34 @@ Every ASQL query starts with a data source. Transformations can be chained using
 **Indentation-based (preferred, cleaner):**
 ```asql
 from users
-  filter status == "active"
-  group by country ( count as count() )
-  sort -count
+  where status == "active"
+  group by country ( # as total_users )
+  sort -total_users
 ```
 
 **Pipeline operator (optional, explicit):**
 ```asql
 from users
-| filter status == "active"
-| group by country ( count as count() )
-| sort -count
+| where status == "active"
+| group by country ( # as total_users )
+| sort -total_users
 ```
 
-Both styles are equivalent. Indentation-based syntax is cleaner and more natural, while the pipe operator makes the flow explicit. Choose based on preference or context.
+Both styles are equivalent. Choose based on preference or context.
+
+**Pros of indentation-based:**
+- ✅ Cleaner, more natural reading flow
+- ✅ Less visual clutter
+- ✅ Feels more like natural language
+- ✅ Easier to write (no need to type `|`)
+
+**Pros of pipeline operator (`|`):**
+- ✅ Makes data flow explicit and visible
+- ✅ Familiar to users of PRQL, PowerShell, Unix pipes
+- ✅ Easier to parse visually in complex queries
+- ✅ Can help with debugging (see exactly where each transformation happens)
+
+**Recommendation**: Support both. Indentation-based is the default and recommended style, but the pipe operator is available for those who prefer explicit flow markers or are coming from other pipeline-based languages.
 
 ### 2.2 Entry Point: `from`
 
@@ -74,14 +88,14 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 
 | Operator | Meaning | SQL Equivalent | Example |
 |----------|---------|----------------|---------|
-| `filter` | Filter rows | `WHERE` | `filter status == "active"` |
-| `derive` | Add/transform columns | `SELECT ... AS` | `derive age = years_between(now(), dob)` |
-| `group by` | Group and aggregate | `GROUP BY` | `group by country ( count = count() )` |
+| `where` | Filter rows | `WHERE` | `where status == "active"` |
+| `derive` | Add/transform columns | `SELECT ... AS` | `derive age as years_between(now(), dob)` |
+| `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
 | `join` | Join datasets | `JOIN` | `join owners on owner_id == owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
 | `sort` | Sort rows | `ORDER BY` | `sort -users` (descending) |
 | `take` | Limit rows | `LIMIT` | `take 10` |
-| `let` | Define variable/fragment | `WITH ... AS` | `let active = from users \| filter is_active` |
+| `set` / `let` | Define variable/fragment | `WITH ... AS` | `set active = from users \| where is_active` |
 
 ---
 
@@ -163,11 +177,11 @@ Aggregates are used within `group by` blocks. ASQL uses `as` syntax (like SQL) f
 ```asql
 from sales
   group by region (
-    revenue as sum(amount),
-    customers as count(distinct customer_id),
-    avg_order as avg(amount),
-    max_order as max(amount),
-    min_order as min(amount)
+    sum(amount) as revenue,
+    count(distinct customer_id) as customers,
+    avg(amount) as avg_order,
+    max(amount) as max_order,
+    min(amount) as min_order
   )
 ```
 
@@ -223,8 +237,8 @@ Total amount as revenue
 # In group by
 from sales
   group by region (
-    revenue as total amount
-    -- or: revenue as sum of amount
+    total amount as revenue
+    -- or: sum of amount as revenue
   )
 ```
 
@@ -272,8 +286,8 @@ When grouping, aggregates are computed per group:
 ```asql
 from users
   group by country (
-    total_users as count(),
-    avg_age as avg(age)
+    count() as total_users,
+    avg(age) as avg_age
   )
 ```
 
@@ -285,18 +299,25 @@ from users
 
 ```asql
 from users
-  group by country ( count as count() )
+  group by country ( # as total_users )
 ```
 
 **Note**: The parentheses syntax for grouping aggregates is inspired by PRQL, which uses a similar block structure for clarity and readability.
+
+**Alternative names**: While `group by` is standard SQL and recommended, alternatives that may be more intuitive to newcomers include:
+- `rollup by` - emphasizes aggregation
+- `bucket by` - emphasizes grouping into buckets
+- `aggregate by` - explicit about aggregation
+
+These are syntactic alternatives - all compile to SQL `GROUP BY`. `group by` remains the primary syntax for familiarity and SQL compatibility.
 
 ### 6.2 Multiple Grouping Columns
 
 ```asql
 from sales
   group by region, month (
-    revenue as sum(amount),
-    orders as count()
+    sum(amount) as revenue,
+    count() as orders
   )
 ```
 
@@ -323,7 +344,7 @@ Traditional explicit join syntax:
 ```asql
 from opportunities
   join owners on owner_id == owners.id
-  group by owners.name ( total_pipeline as sum(amount) )
+  group by owners.name ( sum(amount) as total_pipeline )
 ```
 
 ### 7.2 Automatic Joins (Preferred)
@@ -334,30 +355,30 @@ If a foreign key relationship exists between tables, ASQL can automatically infe
 ```asql
 # If opportunities.owner_id → owners.id is the only FK
 from opportunities, owners
-  group by owners.name ( total_pipeline as sum(amount) )
+  group by owners.name ( sum(amount) as total_pipeline )
 ```
 
 **Arrow syntax (explicit relationship):**
 ```asql
 # Explicitly specify the relationship direction
 from opportunities->owners
-  group by owners.name ( total_pipeline as sum(amount) )
+  group by owners.name ( sum(amount) as total_pipeline )
 
 # Or reverse direction
 from owners<-opportunities
-  group by owners.name ( total_pipeline as sum(amount) )
+  group by owners.name ( sum(amount) as total_pipeline )
 ```
 
 **Multiple FKs - specify which one:**
 ```asql
 # If accounts has both owner_id and creator_id pointing to users
 from accounts.owner->users
-  group by users.name ( total as sum(amount) )
+  group by users.name ( sum(amount) as total )
 
 # Or using the FK name directly
 from accounts
   join users on accounts.owner_id == users.id
-  group by users.name ( total as sum(amount) )
+  group by users.name ( sum(amount) as total )
 ```
 
 ### 7.3 Smart Joins via Dot Notation (Model Metadata)
@@ -379,7 +400,7 @@ Then you can use dot notation without explicit joins:
 
 ```asql
 from opportunities
-  group by owner.name ( total_pipeline as sum(amount) )
+  group by owner.name ( sum(amount) as total_pipeline )
 ```
 
 **dbt Compatibility**: ASQL model files are compatible with dbt's `relationships` syntax. If you're using dbt, ASQL can read your existing `schema.yml` files to infer relationships automatically.
@@ -412,7 +433,7 @@ ASQL uses a convention-based approach to infer joins:
 # ASQL infers: Accounts.user_id → Users.id
 
 from accounts
-  group by user.name ( total as sum(amount) )
+  group by user.name ( sum(amount) as total )
 # Automatically joins: accounts JOIN users ON accounts.user_id = users.id
 ```
 
@@ -426,7 +447,7 @@ from accounts
 # Automatically uses owner_user_id
 
 from accounts
-  group by manager.name ( total as sum(amount) )
+  group by manager.name ( sum(amount) as total )
 # Automatically uses manager_user_id
 ```
 
@@ -437,7 +458,7 @@ from accounts
 
 from accounts
   join users on accounts.ownerId == users.id
-  group by users.name ( total as sum(amount) )
+  group by users.name ( sum(amount) as total )
 ```
 
 **Philosophy**: Follow standard naming conventions (especially ending multiple FKs with `{table}_id`), and joins happen automatically. Use non-standard names, and you'll need to be explicit (which encourages standardization).
@@ -507,7 +528,7 @@ Time bucketing is simply grouping by a time function:
 
 ```asql
 from users
-  group by month(created_at) ( signups as # )
+  group by month(created_at) ( # as signups )
 ```
 
 **As opposed to SQL:**
@@ -551,7 +572,7 @@ Then `group by month` implicitly uses `created_at`:
 
 ```asql
 from users
-  group by month ( signups as # )
+  group by month ( # as signups )
 ```
 
 **Note**: Ideally, ASQL doesn't create its own model format. It should use dbt's existing `schema.yml` files when available, or infer from database schema metadata and conventions.
@@ -586,6 +607,7 @@ from users
 2. **Explicit overrides**: While conventions are helpful, explicit configuration is always clearer. Use `group by month(created_at)` when clarity is important.
 3. **Migration path**: If you're migrating to ASQL, consider standardizing your schema first (e.g., renaming `dateCreated` → `created_at`) to unlock automatic inference.
 4. **Best practice**: Follow dbt-style modeling standards, and ASQL will "just work." Deviate from standards, and you'll need explicit configuration (which is fine, but more verbose).
+5. **dbt integration**: Ideally, ASQL will be built into dbt out of the gate. You'll be able to use ASQL even in raw cleaning stages. In those stages, you may need to be more explicit (or start with a `select` to rename columns to standards), but ASQL's pipelining and cleaner syntax will still be quite useful. A common pattern: start cleanup with a `select` command renaming things to standards, then continue with pipeline operations.
 
 **Philosophy**: We assume you're doing good modeling. If you follow standards, ASQL is magical. If you don't, you can still use ASQL, but you'll need to be more explicit. This encourages good practices while remaining flexible.
 
@@ -595,20 +617,54 @@ from users
 
 ### 9.1 Basic Filters
 
+ASQL uses `where` instead of `filter` because it's more intuitive - "where" clearly means "filter in" (keep rows that match), whereas "filter" is ambiguous (filter in or filter out?).
+
 ```asql
 from users
-  filter status == "active"
-  filter age >= 18
+  where status == "active"
+  where age >= 18
 ```
 
 ### 9.2 Multiple Conditions
 
+Multiple conditions can be written in several ways:
+
+**Separate where clauses:**
 ```asql
 from opportunities
-  filter status == "open"
-  filter owner.is_active
-  filter org_type != "Non Profit"
+  where status == "open"
+  where owner.is_active
+  where org_type != "Non Profit"
 ```
+
+**Using `and` on same line:**
+```asql
+from opportunities
+  where status == "open" and owner.is_active and org_type != "Non Profit"
+```
+
+**Using `&` operator:**
+```asql
+from opportunities
+  where status == "open" & owner.is_active & org_type != "Non Profit"
+```
+
+**Tabbed indentation (multi-line):**
+```asql
+from opportunities
+  where status == "open"
+    and owner.is_active
+    and org_type != "Non Profit"
+```
+
+**Using `or` (with parentheses for grouping):**
+```asql
+from opportunities
+  where (status == "open" or status == "pending")
+    and owner.is_active
+```
+
+All of these compile to SQL `WHERE` clauses. The pipeline approach makes complex conditions easier to read than nested SQL.
 
 ### 9.3 Alternative Syntax: `if`
 
@@ -619,41 +675,81 @@ from opportunities
   if owner.is_active
 ```
 
-**Note**: `if` is syntactic sugar for `filter` and can be used interchangeably. It makes queries read more naturally: "total pipeline by owner name if status is open".
+**Note**: `if` is syntactic sugar for `where` and can be used interchangeably. It makes queries read more naturally: "total pipeline by owner name if status is open".
 
 ---
 
 ## 10. Variables & CTEs
 
-### 10.1 Simple Variables
+### 10.1 Simple Variables & CTEs
 
+Variables in ASQL create CTEs (Common Table Expressions). The syntax is designed to make CTEs easier and less necessary:
+
+**Using `set` (SQL-like):**
 ```asql
-let active_users = from users
-  filter is_active
+set active_users = from users
+  where is_active
 
 from active_users
-  group by country ( total as count() )
+  group by country ( # as total_users )
 ```
 
-### 10.2 Column Variables
+**Using `let` (alternative):**
+```asql
+let active_users = from users
+  where is_active
+
+from active_users
+  group by country ( # as total_users )
+```
+
+**Alternatives considered**: `let`, `const`, `var`, `define`, `set`
+- `set` feels most SQL-like and familiar
+- `let` is more functional/programming language style
+- Both are supported, `set` is recommended for SQL familiarity
+
+**Major benefit: Less need for CTEs**: Because ASQL uses pipelines, you often don't need CTEs at all. Instead of breaking into a CTE, you can just add a comment marking a logical stopping point:
+
+```asql
+from users
+  where is_active
+  -- cleaned users by country
+  group by country ( # as total_users )
+  sort -total_users
+```
+
+The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally. CTEs are still available when you need to reuse a subquery multiple times.
+
+### 10.2 Column Variables & `derive`
+
+The `derive` operator adds new columns or transforms existing ones (equivalent to SQL's `SELECT ... AS`):
 
 ```asql
 from users
   derive all_ages as age
   derive avg_all_ages as avg(all_ages)
+  derive full_name as first_name + " " + last_name
 ```
+
+**Alternatives**: `derive` comes from PRQL. Alternatives could include:
+- `add` - simple but less descriptive
+- `compute` - emphasizes calculation
+- `calculate` - similar to compute
+- `select` - but this conflicts with final column selection
+
+`derive` is the recommended syntax as it's already established in PRQL and clearly indicates "derive a new column from existing data."
 
 ### 10.3 Nested Variables
 
 ```asql
-let base = from users
-  filter plan == "premium"
+set base = from users
+  where plan == "premium"
 
-let by_country = from base
-  group by country ( count as count() )
+set by_country = from base
+  group by country ( # as total_users )
 
 from by_country
-  sort -count
+  sort -total_users
 ```
 
 ---
@@ -662,14 +758,61 @@ from by_country
 
 ### 11.1 User-Defined Scalar Functions
 
+Functions in ASQL are similar to dbt macros or PostgreSQL functions, but simpler and more integrated:
+
+**Basic function:**
 ```asql
-func lifespan(age) = age / 73.0
+func age(user) = years(now() - user.birthday)
 
 from users
-  derive expectancy as lifespan(age)
+  derive user_age as age(user)
+  group by country ( avg_age as average of user_age )
+```
+
+**Function taking table name (works on any table with matching column):**
+```asql
+func age(table) = years(now() - table.birthday)
+
+# Works on any table with a 'birthday' column
+from users
+  derive user_age as age(users)
+
+from employees
+  derive employee_age as age(employees)
+```
+
+**Another example - days since created:**
+```asql
+func days_since_created(table) = days(now() - table.created_at)
+
+# Works on any table with created_at
+from users
+  derive days_active as days_since_created(users)
+```
+
+**Typing**: Functions are not typed - ASQL infers types from usage. This keeps the syntax simple and natural.
+
+**dbt comparison**:
+- **dbt macros**: More powerful but require Jinja templating, harder to read
+- **dbt semantic models**: More structured but require YAML configuration
+- **ASQL functions**: Simple, readable, drop-in replacements that feel like built-in functions
+
+**PostgreSQL comparison**:
+- PostgreSQL functions require `CREATE FUNCTION` statements, separate from queries
+- ASQL functions are defined inline and feel like part of the query language
+
+**Example with natural language:**
+```asql
+func age(user) = years(now() - user.birthday)
+
+# Natural language usage
+avg age of user by country
+# Reads like: "average age of user, grouped by country"
 ```
 
 ### 11.2 User-Defined Table Functions
+
+Table functions transform entire tables. These are implemented as drop-in replacements (macros) that expand inline:
 
 ```asql
 func top_n(table, n, key) =
@@ -681,13 +824,15 @@ from sales
   top_n(10, amount)
 ```
 
+**Implementation**: Table functions are expanded inline during compilation - they don't create actual database functions. The function body is substituted where the function is called, then the whole query is compiled to SQL.
+
 ### 11.3 Built-in Functions
 
 Standard SQL functions are available:
 
 - `count()`, `sum()`, `avg()`, `min()`, `max()`
 - `distinct()`
-- `coalesce()` or `||` operator
+- `coalesce()` or `||` operator (JavaScript-style, also used in some SQL dialects like PostgreSQL for string concatenation, but ASQL uses it for COALESCE to match common usage)
 - `date_format()`, `year()`, `month()`, etc.
 - `years_between()`, `days_between()`, etc.
 
@@ -704,16 +849,34 @@ from users
 
 ## 12. Models (Optional Metadata)
 
-Models define schema metadata, relationships, measures, and dimensions:
+**Philosophy**: Ideally, ASQL doesn't create its own model format. It should:
+1. Use dbt's existing `schema.yml` files when available
+2. Infer from database schema metadata and conventions
+3. Only create custom models when neither of the above are available
+
+If relationships are defined in dbt's `schema.yml`:
 
 ```yaml
+models:
+  - name: opportunities
+    columns:
+      - name: owner_id
+        tests:
+          - relationships:
+              to: ref('owners')
+              field: id
+```
+
+Then ASQL can use those relationships automatically:
+
+```asql
+from opportunities
+  group by owner.name ( sum(amount) as total_pipeline )
+```
+
+**Custom model format** (only if dbt/schema metadata unavailable):
+```yaml
 model users:
-  dimensions:
-    country: string
-    age: number
-  measures:
-    count: count()
-    avg_age: avg(age)
   default_time: created_at
   links:
     orders: orders.user_id
@@ -728,7 +891,7 @@ Usage:
 
 ```asql
 from users
-| group by country ( count, avg_age )
+  group by country ( # as total_users, average of age as avg_age )
 ```
 
 ---
@@ -759,7 +922,7 @@ Every line must return a new table. For multi-line operations, indent:
 from users
   filter status == "active"
   filter age >= 18
-  group by country ( count as count() )
+  group by country ( count() as count )
 ```
 
 ### 14.2 Nested Selects
@@ -770,7 +933,7 @@ from users
     name,
     orders = from orders
       filter orders.user_id == users.id
-      select total as sum(amount)
+      select sum(amount) as total
   }
 ```
 
@@ -780,20 +943,24 @@ from users
 
 ### 15.1 Case-Safe Design
 
-**ASQL is case-safe by design.** This means you can use any naming convention without worrying about case sensitivity issues:
+**ASQL is case-safe by design.** This means you can use capital letters in column and table names without wrapping them in quotes obsessively. However, table/column names must still match the actual database names (case-insensitively).
 
 ```asql
-# All of these work the same way
+# You can write queries using any case style
 from Users
-from users
-from USERS
+  select firstName, createdAt, user_id
+  where status == "active"
 
-# Column names too
-select firstName
-select first_name
-select FirstName
-select FIRST_NAME
+# ASQL resolves case-insensitively to actual database names
+# If database has: users table, first_name column, created_at column
+# ASQL matches them correctly without requiring exact case
 ```
+
+**Important clarification**: 
+- `from Users` will query the `users` table (case-insensitive match)
+- `from USERS` will NOT query a different table - it matches `users` case-insensitively
+- You can use `firstName` in your query even if the database column is `first_name`
+- Aliases can be in any case: `select firstName as UserName` works fine
 
 **Why this matters**: 
 - **Database best practices** often recommend snake_case (`created_at`, `user_id`)
@@ -801,7 +968,7 @@ select FIRST_NAME
 - **APIs** might return PascalCase (`CreatedAt`, `UserId`)
 - **Legacy databases** might have inconsistent casing
 
-ASQL eliminates this friction by treating all these as equivalent, allowing you to write queries using whatever naming style feels natural.
+ASQL eliminates the friction of matching exact case, allowing you to write queries using whatever naming style feels natural while still matching the correct database objects.
 
 ### 15.2 Case Handling Strategy
 
@@ -829,13 +996,16 @@ SELECT first_name, created_at FROM users
 
 ### 15.3 Automatic Conflict Resolution
 
-When column names conflict, the compiler automatically qualifies:
+**⚠️ Warning**: When column names conflict, automatically qualifying them (e.g., `users.id` and `orders.id`) might not be implemented in the initial version. This could be confusing and error-prone. Better to require explicit qualification:
 
 ```asql
 from users
   join orders
--- If both have 'id', automatically becomes users.id and orders.id
+-- If both have 'id', you should explicitly qualify:
+select users.id as user_id, orders.id as order_id
 ```
+
+**Recommendation**: In v1.0, require explicit qualification for ambiguous columns. Auto-qualification could be added later if there's clear demand, but explicit is safer and clearer.
 
 ### 15.4 Why Case-Safe is Good
 
@@ -859,8 +1029,8 @@ from users
 
 ```asql
 from sales
-  filter year(date) == 2025
-  group by region ( revenue as sum(amount) )
+  where year(date) == 2025
+  group by region ( sum(amount) as revenue )
   sort -revenue
 ```
 
@@ -880,8 +1050,8 @@ ORDER BY revenue DESC;
 ```asql
 from opportunities
   join owners
-  filter owners.is_active
-  group by owners.name ( total_pipeline as sum(amount) )
+  where owners.is_active
+  group by owners.name ( sum(amount) as total_pipeline )
   sort -total_pipeline
 ```
 
@@ -890,7 +1060,7 @@ from opportunities
 ```asql
 from sessions
   group by week(start_time) (
-    active_users as count(distinct user_id)
+    # of distinct user_id as active_users
   )
   select week, active_users
 ```
@@ -906,22 +1076,22 @@ Avg Users.age by country
 ### Example 5: Variables and Reuse
 
 ```asql
-let base = from users
-  filter plan == "premium"
+set base = from users
+  where plan == "premium"
 
 from base
-  group by country ( count as count() )
+  group by country ( # as total_users )
 ```
 
 ### Example 6: Complex Pipeline
 
 ```asql
 from opportunities
-  filter status == "open"
+  where status == "open"
   join owners
-  filter owners.is_active
-  filter org_type != "Non Profit"
-  group by owner.name ( total_pipeline as sum(amount) )
+  where owners.is_active
+  where org_type != "Non Profit"
+  group by owner.name ( sum(amount) as total_pipeline )
   sort -total_pipeline
   take 10
 ```
@@ -930,18 +1100,18 @@ from opportunities
 
 ```asql
 from users
-  group by month(created_at) ( signups as count() )
+  group by month(created_at) ( # as signups )
   select month, signups
 ```
 
 ### Example 8: User-Defined Function
 
 ```asql
-func lifespan(age) = age / 73.0
+func age(user) = years(now() - user.birthday)
 
 from users
-  derive expectancy as lifespan(age)
-  group by country ( avg_expectancy as avg(expectancy) )
+  derive user_age as age(user)
+  group by country ( avg_age as average of user_age )
 ```
 
 ### Example 9: Case-Safe Naming
@@ -950,7 +1120,7 @@ from users
 -- Works regardless of database naming convention
 from Users
   select firstName, createdAt, user_id
-  filter status == "active"
+  where status == "active"
 ```
 
 ### Example 10: Natural Language with "of"
@@ -958,11 +1128,34 @@ from Users
 ```asql
 from sales
   group by region (
-    revenue as total of amount
-    customers as # of distinct customer_id
-    avg_order as average of amount
+    total amount as revenue
+    # of distinct customer_id as customers
+    average amount as avg_order
   )
 ```
+
+**Note on "as" order**: Keep SQL's order - `expression as alias`. So `total amount as revenue` reads correctly: "total amount, aliased as revenue". The natural language function names like `total amount` make it sound like they're already aliases, but they're expressions that need aliasing. In group by blocks, always use `expression as alias` format: `sum(amount) as revenue`, `# as total_users`, etc.
+
+**Example with function:**
+```asql
+func age(user) = years(now() - user.birthday)
+
+# Natural language usage
+avg age of user by country
+# Reads beautifully: "average age of user, grouped by country"
+```
+
+### Example 11: Shorthand Natural Language (50/50 on implementation)
+
+For very simple exploratory queries, you can omit the `from` clause and infer it from the aggregation:
+
+```asql
+# of Users by country
+Sum of revenue by region
+Avg Users.age by country
+```
+
+**Note**: This shorthand is nice for a big percentage of exploratory queries, but it's different from other queries that start with `from`. In these examples, the `from` table is inferred from its use in `# of Users`. It's really nice shorthand, but also potentially confusing. This feature is marked as 50/50 on implementation - may or may not make it into v1.0.
 
 ---
 
@@ -982,7 +1175,7 @@ Each pipeline step becomes a CTE:
 ```asql
 from users
   filter status == "active"
-  group by country ( count as count() )
+  group by country ( count() as count )
 ```
 
 Becomes:
@@ -1054,17 +1247,80 @@ ASQL follows a "convention over configuration" philosophy (inspired by framework
 
 ### 19.6 Why Not Replace SQL?
 
-ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, and knowledge. It's an evolution, not a revolution.
+ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, and knowledge. It's an evolution, not a revolution. Maybe one day different databases will adopt ASQL or move toward it, just as JavaScript moved toward CoffeeScript's ideas (async/await, arrow functions, etc.).
 
 ---
 
 ## 20. Future Considerations
 
-- **Visual SQL Editor**: ASQL's structure could enable a great visual query builder who's base could also be a text editor/IDE.  Get the best of visual and text based exploration.
+- **Visual SQL Editor**: ASQL's structure could enable a great visual query builder whose base could also be a text editor/IDE. Get the best of visual and text-based exploration.
+- **dbt Integration**: Building ASQL into dbt out of the gate would make it immediately useful for the dbt community
 - **Common Schema Format**: A shared schema/statistics library for cross-database compatibility
 - **Query Optimization**: ASQL-specific optimizations before SQL generation
 - **IDE Integration**: Full-featured editor with autocomplete, error checking, SQL preview
 - **Testing Framework**: Query testing and validation tools
+
+---
+
+## 21. Major Benefits of ASQL
+
+### 21.1 Reduced Need for CTEs and Nested Queries
+
+Traditional SQL often requires CTEs or nested subqueries to break down complex logic. ASQL's pipeline approach eliminates most of this need:
+
+**SQL (requires CTE):**
+```sql
+WITH filtered_users AS (
+  SELECT * FROM users WHERE is_active
+),
+grouped AS (
+  SELECT country, COUNT(*) as total
+  FROM filtered_users
+  GROUP BY country
+)
+SELECT * FROM grouped ORDER BY total DESC;
+```
+
+**ASQL (no CTE needed):**
+```asql
+from users
+  where is_active
+  -- cleaned users by country
+  group by country ( # as total_users )
+  sort -total_users
+```
+
+The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally.
+
+### 21.2 More Readable Column Names
+
+Natural language syntax makes column names more readable without needing explicit aliases:
+
+**SQL:**
+```sql
+SELECT country, COUNT(*) as total_users, AVG(age) as avg_age
+```
+
+**ASQL:**
+```asql
+select country, # of Users as total_users, average of age
+```
+
+The natural language makes columns self-documenting - `# of Users` is clearer than `count` or even `total_users`.
+
+### 21.3 Less Boilerplate
+
+- No need to write `SELECT` at the start when you don't know what columns you need yet
+- No need for explicit joins when FKs follow conventions
+- No need for verbose date extraction functions
+- No need to quote identifiers obsessively
+
+### 21.4 Better for Analytics
+
+- Time functions that work consistently across databases
+- Natural language aggregations that read like questions
+- Pipeline flow that matches analytical thinking
+- Convention-based defaults that reduce configuration
 
 ---
 
@@ -1086,7 +1342,7 @@ operator := filter_op
           | take_op
           | let_op
 
-filter_op := 'filter' expression
+filter_op := 'where' expression
            | 'if' expression
 
 derive_op := 'derive' assignment+
