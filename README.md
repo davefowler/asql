@@ -23,6 +23,20 @@ Or with development dependencies:
 pip install -e ".[dev]"
 ```
 
+## VS Code Extension
+
+ASQL has VS Code extension support for syntax highlighting, snippets, and language features!
+
+📦 **Installation**: See [`vscode-extension/README.md`](vscode-extension/README.md) for installation instructions.
+
+✨ **Features**:
+- Syntax highlighting for ASQL keywords, operators, and functions
+- Code snippets for common query patterns
+- Smart indentation for pipeline syntax
+- File association for `.asql` files
+
+For more details, see [`vscode-extension/VSCODE_INTEGRATION.md`](vscode-extension/VSCODE_INTEGRATION.md).
+
 ## Quick Start
 
 ```python

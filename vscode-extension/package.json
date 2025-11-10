@@ -1,0 +1,54 @@
+{
+  "name": "asql-vscode",
+  "displayName": "ASQL Language Support",
+  "description": "Syntax highlighting and language support for ASQL (Analytic SQL)",
+  "version": "0.1.0",
+  "publisher": "asql-lang",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "asql",
+    "sql",
+    "analytics",
+    "query",
+    "language"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "asql",
+        "aliases": [
+          "ASQL",
+          "asql"
+        ],
+        "extensions": [
+          ".asql"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "asql",
+        "scopeName": "source.asql",
+        "path": "./syntaxes/asql.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "asql",
+        "path": "./snippets/asql.json"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asql-lang/asql"
+  },
+  "license": "MIT",
+  "icon": "icon.png"
+}
