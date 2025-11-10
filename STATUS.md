@@ -93,10 +93,11 @@ tests/
 ## Known Limitations
 
 1. **Single-line queries only** - No indentation/multi-line support yet
-2. **Limited expressions** - Missing logical operators (`and`, `or`, `not`), `in`/`not in`, arithmetic operators
+2. **Limited expressions** - Missing arithmetic operators, string matching (`contains`, `starts with`, etc.)
 3. **No CTEs** - Pipeline steps don't become CTEs yet (each step should become a CTE)
 4. **No schema resolution** - No FK inference, plural/singular handling
 5. **No JOIN** - Explicit joins not yet implemented
+6. **String matching** - Planned: `contains`, `starts with`, `ends with`, `matches` (see SPEC.md Section 4.5)
 
 ## Test Coverage
 
