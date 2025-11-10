@@ -65,7 +65,6 @@ examples/
 ├── basic_queries.py           # Basic query examples
 ├── aggregations.py            # Aggregation examples
 ├── sorting_and_limiting.py    # Sorting examples
-├── derived_columns.py         # DERIVE examples
 └── complex_queries.py         # Complex query examples
 ```
 

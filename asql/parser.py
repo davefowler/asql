@@ -69,21 +69,6 @@ class ASQLParser:
             elif self._peek_keyword("take"):
                 limit_expr = self._parse_take()
                 select_expr.set("limit", limit_expr)
-            # Check for DERIVE
-            elif self._peek_keyword("derive"):
-                derived_expr = self._parse_derive()
-                # Add derived column to SELECT expressions
-                if not hasattr(select_expr, "expressions") or not select_expr.expressions:
-                    # Start with SELECT *
-                    select_expr.set("expressions", [exp.Star(), derived_expr])
-                else:
-                    # Add to existing expressions
-                    expressions = list(select_expr.expressions)
-                    # Remove * if present and replace with derived column
-                    if any(isinstance(e, exp.Star) for e in expressions):
-                        expressions = [e for e in expressions if not isinstance(e, exp.Star)]
-                    expressions.append(derived_expr)
-                    select_expr.set("expressions", expressions)
             # Check for SELECT
             elif self._peek_keyword("select") or self._peek_keyword("project"):
                 select_list = self._parse_select_list()
@@ -373,33 +358,6 @@ class ASQLParser:
             raise ASQLSyntaxError(f"Invalid number: {number_str}")
         
         return exp.Limit(this=exp.Literal(this=limit_value, is_string=False))
-    
-    def _parse_derive(self) -> exp.Alias:
-        """Parse DERIVE clause (add computed column)."""
-        if not self._consume_keyword("derive"):
-            raise ASQLSyntaxError("Expected 'derive' keyword")
-        
-        self._skip_whitespace()
-        
-        # Parse column name (alias)
-        alias_name = self._parse_identifier()
-        if not alias_name:
-            raise ASQLSyntaxError("Expected column name after 'derive'")
-        
-        self._skip_whitespace()
-        
-        # Parse "as"
-        if not self._peek_keyword("as"):
-            raise ASQLSyntaxError("Expected 'as' after derived column name")
-        
-        self._consume_keyword("as")
-        self._skip_whitespace()
-        
-        # Parse expression (for now, just handle column reference)
-        # TODO: Implement full expression parsing
-        expr = self._parse_expression()
-        
-        return exp.Alias(this=expr, alias=exp.Identifier(this=alias_name))
     
     def _parse_select_list(self) -> List[exp.Expression]:
         """Parse SELECT column list."""

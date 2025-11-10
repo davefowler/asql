@@ -25,8 +25,6 @@
   - Multiple sort columns
 - **TAKE/LIMIT**
   - `take 10` → SQL LIMIT
-- **DERIVE**
-  - `derive age as age` - computed columns
 
 ### Phase 2: Expressions & Operators ✅ (Partial)
 - **Comparison operators**: `==`, `!=`, `<`, `>`, `<=`, `>=`
@@ -65,8 +63,6 @@ compile("from users sort name, -age")
 # TAKE/LIMIT
 compile("from users take 10")
 
-# DERIVE
-compile("from users derive age as age")
 
 # Complex pipeline
 compile("from users group by country ( # as total_users ) sort -total_users take 10")
@@ -101,7 +97,6 @@ tests/
 3. **No CTEs** - Pipeline steps don't become CTEs yet (each step should become a CTE)
 4. **No schema resolution** - No FK inference, plural/singular handling
 5. **No JOIN** - Explicit joins not yet implemented
-6. **DERIVE expressions** - Currently only supports simple column references, not full expressions
 
 ## Test Coverage
 
@@ -114,7 +109,6 @@ tests/
 - ✅ GROUP BY with aggregations (#, sum, avg, count, min, max)
 - ✅ SORT/ORDER BY (ascending/descending)
 - ✅ TAKE/LIMIT
-- ✅ DERIVE (basic)
 - ✅ IS NULL / IS NOT NULL
 - ⏳ Logical operators (and, or, not)
 - ⏳ IN / NOT IN

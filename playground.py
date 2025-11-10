@@ -319,11 +319,6 @@ take 10`
                 desc: "All comparison operators",
                 query: "from users where age >= 18 and age <= 65"
             },
-            {
-                title: "DERIVE",
-                desc: "Computed columns",
-                query: "from users derive age as age"
-            }
         ];
         
         // Render examples

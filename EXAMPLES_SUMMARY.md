@@ -42,15 +42,7 @@ This document provides a quick reference to all available ASQL examples and reso
 
 **Run**: `python examples/sorting_and_limiting.py`
 
-### 4. Derived Columns (`examples/derived_columns.py`)
-
-- Simple DERIVE
-- DERIVE with WHERE
-- Multiple DERIVE clauses
-
-**Run**: `python examples/derived_columns.py`
-
-### 5. Complex Queries (`examples/complex_queries.py`)
+### 4. Complex Queries (`examples/complex_queries.py`)
 
 - Complex analytics queries
 - User analytics
@@ -104,7 +96,6 @@ The [docs/EXAMPLES.md](docs/EXAMPLES.md) file contains:
 - **Basic Queries**: 8+ examples
 - **Aggregations**: 7+ examples
 - **Sorting & Limiting**: 7+ examples
-- **Derived Columns**: 3+ examples
 - **Complex Queries**: 4+ examples
 
 **Total**: 29+ comprehensive examples

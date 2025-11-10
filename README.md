@@ -9,7 +9,6 @@ A modern, pipeline-based query language that transpiles to SQL. ASQL uses a FROM
 - 📊 **Powerful Aggregations** - GROUP BY with multiple aggregations
 - 🎯 **Expressive Filtering** - Rich WHERE clause with logical operators
 - 📈 **Sorting & Limiting** - Easy SORT and TAKE operations
-- 🧮 **Derived Columns** - DERIVE for computed columns
 - 🎨 **Interactive Playground** - Try ASQL in your browser
 
 ## Installation

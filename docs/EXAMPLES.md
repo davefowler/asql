@@ -8,8 +8,7 @@ This document provides comprehensive examples of ASQL queries, showing how they 
 2. [Filtering](#filtering)
 3. [Aggregations](#aggregations)
 4. [Sorting and Limiting](#sorting-and-limiting)
-5. [Derived Columns](#derived-columns)
-6. [Complex Queries](#complex-queries)
+5. [Complex Queries](#complex-queries)
 
 ---
 
@@ -397,34 +396,6 @@ SELECT * FROM users ORDER BY MONTH(updated_at) DESC, name ASC
 ```
 
 The `-` prefix works with function calls too, making it easy to sort by computed values like date functions.
-
----
-
-## Derived Columns
-
-### Simple DERIVE
-
-**ASQL:**
-```asql
-from users derive age as age
-```
-
-**SQL (PostgreSQL):**
-```sql
-SELECT *, age AS age FROM users
-```
-
-### DERIVE with WHERE
-
-**ASQL:**
-```asql
-from users where status == "active" derive age as age
-```
-
-**SQL (PostgreSQL):**
-```sql
-SELECT *, age AS age FROM users WHERE status = 'active'
-```
 
 ---
 

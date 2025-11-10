@@ -6,7 +6,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from examples import basic_queries, aggregations, sorting_and_limiting, derived_columns, complex_queries
+from examples import basic_queries, aggregations, sorting_and_limiting, complex_queries
 
 def run_all_examples():
     """Run all example modules."""
@@ -18,7 +18,6 @@ def run_all_examples():
         ("Basic Queries", basic_queries),
         ("Aggregations", aggregations),
         ("Sorting and Limiting", sorting_and_limiting),
-        ("Derived Columns", derived_columns),
         ("Complex Queries", complex_queries),
     ]
     

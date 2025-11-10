@@ -72,8 +72,6 @@ ASQL Text → Custom Parser (asql/parser.py) → SQLGlot AST → SQLGlot Generat
    - Parse `take 10`
    - Generate SQL LIMIT
 
-4. **DERIVE** (Priority: MEDIUM)
-   - Parse `derive age as years_between(now(), dob)`
    - Generate SQL SELECT with computed columns
    - Handle in pipeline (becomes CTE step)
 
@@ -198,7 +196,6 @@ ASQL Text → Custom Parser (asql/parser.py) → SQLGlot AST → SQLGlot Generat
    - JOIN (explicit)
 
    **Nice to Have**:
-   - DERIVE
    - SET/LET
    - Natural language aggregations
    - Date functions
