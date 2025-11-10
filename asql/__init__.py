@@ -1,8 +1,8 @@
 """ASQL: Analytic SQL - A modern, pipeline-based query language."""
 
-__version__ = "0.1.0"
+from asql.compiler import compile
+from asql.dialect import ASQLDialect
 
-# TODO: Implement compile function
-# from asql.compiler import compile
-# __all__ = ["compile"]
+__version__ = "0.1.0"
+__all__ = ["compile", "ASQLDialect"]
 
