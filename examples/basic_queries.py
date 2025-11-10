@@ -86,6 +86,33 @@ def example_comparisons():
     
     return examples
 
+# Example 9: IN operator
+def example_in_operator():
+    """WHERE with IN operator."""
+    asql = 'from users where status in ("active", "pending", "verified")'
+    sql = compile(asql)
+    print("ASQL:", asql)
+    print("SQL:", sql)
+    return asql, sql
+
+# Example 10: NOT IN operator
+def example_not_in_operator():
+    """WHERE with NOT IN operator."""
+    asql = 'from users where status not in ("inactive", "deleted")'
+    sql = compile(asql)
+    print("ASQL:", asql)
+    print("SQL:", sql)
+    return asql, sql
+
+# Example 11: IN with numbers
+def example_in_numbers():
+    """WHERE with IN operator using numbers."""
+    asql = "from users where age in (18, 19, 20, 21)"
+    sql = compile(asql)
+    print("ASQL:", asql)
+    print("SQL:", sql)
+    return asql, sql
+
 if __name__ == "__main__":
     print("=== Basic ASQL Examples ===\n")
     example_simple_from()
@@ -103,3 +130,9 @@ if __name__ == "__main__":
     example_not_operator()
     print()
     example_comparisons()
+    print()
+    example_in_operator()
+    print()
+    example_not_in_operator()
+    print()
+    example_in_numbers()

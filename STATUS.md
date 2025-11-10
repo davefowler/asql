@@ -2,7 +2,7 @@
 
 **Last Updated**: Current session  
 **Current Phase**: Phase 1 Complete, Phase 2 In Progress  
-**Test Status**: ✅ 33 tests passing
+**Test Status**: ✅ 41 tests passing
 
 ## What's Working
 
@@ -29,8 +29,8 @@
 ### Phase 2: Expressions & Operators ✅ (Partial)
 - **Comparison operators**: `==`, `!=`, `<`, `>`, `<=`, `>=`
 - **Null checks**: `is null`, `is not null`
-- ⏳ Logical operators: `and`, `or`, `not` (not yet implemented)
-- ⏳ Membership: `in`, `not in` (not yet implemented)
+- **Logical operators**: `and`, `or`, `not` ✅
+- **Membership**: `in`, `not in` ✅
 - ⏳ Arithmetic operators (not yet implemented)
 
 ### Compiler ✅
@@ -110,8 +110,8 @@ tests/
 - ✅ SORT/ORDER BY (ascending/descending)
 - ✅ TAKE/LIMIT
 - ✅ IS NULL / IS NOT NULL
-- ⏳ Logical operators (and, or, not)
-- ⏳ IN / NOT IN
+- ✅ Logical operators (and, or, not)
+- ✅ IN / NOT IN
 - ⏳ Arithmetic operators
 - ⏳ JOIN
 - ⏳ SET/LET (CTEs)
