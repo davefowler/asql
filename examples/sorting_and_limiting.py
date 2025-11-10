@@ -69,19 +69,19 @@ def example_top_n():
     print("SQL:", sql)
     return asql, sql
 
-# Example 8: Sort by function call
-def example_sort_by_function():
-    """SORT by function call (e.g., date functions)."""
-    asql = "from users sort -month(updated_at)"
+# Example 8: Sort by column descending
+def example_sort_by_column_descending():
+    """SORT by column in descending order."""
+    asql = "from users sort -updated_at"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
 
-# Example 9: Sort by function with multiple columns
-def example_sort_function_multiple():
-    """SORT by function call with multiple columns."""
-    asql = "from users sort -month(updated_at), name"
+# Example 9: Sort by column with multiple columns
+def example_sort_column_multiple():
+    """SORT by column with multiple columns."""
+    asql = "from users sort -updated_at, name"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -103,6 +103,6 @@ if __name__ == "__main__":
     print()
     example_top_n()
     print()
-    example_sort_by_function()
+    example_sort_by_column_descending()
     print()
-    example_sort_function_multiple()
+    example_sort_column_multiple()
