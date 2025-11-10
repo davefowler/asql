@@ -174,6 +174,40 @@ from users where status == "active" and age >= 18 and email is not null
 SELECT * FROM users WHERE status = 'active' AND age >= 18 AND email IS NOT NULL
 ```
 
+### IN Operator
+
+**ASQL:**
+```asql
+from users where status in ("active", "pending", "verified")
+```
+
+**SQL (PostgreSQL):**
+```sql
+SELECT * FROM users WHERE status IN ('active', 'pending', 'verified')
+```
+
+**ASQL:**
+```asql
+from users where age in (18, 19, 20, 21)
+```
+
+**SQL (PostgreSQL):**
+```sql
+SELECT * FROM users WHERE age IN (18, 19, 20, 21)
+```
+
+### NOT IN Operator
+
+**ASQL:**
+```asql
+from users where status not in ("inactive", "deleted", "banned")
+```
+
+**SQL (PostgreSQL):**
+```sql
+SELECT * FROM users WHERE NOT status IN ('inactive', 'deleted', 'banned')
+```
+
 ---
 
 ## Aggregations

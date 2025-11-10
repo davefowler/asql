@@ -513,6 +513,88 @@ class ASQLParser:
                 return exp.Is(this=left_expr, expression=exp.Null())
             else:
                 raise ASQLSyntaxError("Expected 'null' or 'not null' after 'is'")
+        elif self._peek_keyword("in"):
+            # Parse IN (value1, value2, ...)
+            self._consume_keyword("in")
+            self._skip_whitespace()
+            if self._peek() != "(":
+                raise ASQLSyntaxError("Expected '(' after 'in'")
+            self._consume("(")
+            self._skip_whitespace()
+            
+            # Parse list of values
+            values = []
+            while True:
+                self._skip_whitespace()
+                value_expr = self._parse_primary_expression()
+                if not value_expr:
+                    break
+                values.append(value_expr)
+                
+                self._skip_whitespace()
+                if self._peek() == ",":
+                    self._consume(",")
+                    self._skip_whitespace()
+                elif self._peek() == ")":
+                    break
+                else:
+                    raise ASQLSyntaxError("Expected ',' or ')' in IN list")
+            
+            if self._peek() != ")":
+                raise ASQLSyntaxError("Expected ')' after IN list")
+            self._consume(")")
+            
+            if not values:
+                raise ASQLSyntaxError("IN list cannot be empty")
+            
+            # Create IN expression
+            return exp.In(this=left_expr, expressions=values)
+        elif self._peek_keyword("not"):
+            # Check if next keyword is "in"
+            saved_pos = self.pos
+            self._consume_keyword("not")
+            self._skip_whitespace()
+            is_in = self._peek_keyword("in")
+            self.pos = saved_pos  # Restore position
+            
+            if is_in:
+                # Parse NOT IN (value1, value2, ...)
+                self._consume_keyword("not")
+                self._skip_whitespace()
+                self._consume_keyword("in")
+                self._skip_whitespace()
+                if self._peek() != "(":
+                    raise ASQLSyntaxError("Expected '(' after 'not in'")
+                self._consume("(")
+                self._skip_whitespace()
+                
+                # Parse list of values
+                values = []
+                while True:
+                    self._skip_whitespace()
+                    value_expr = self._parse_primary_expression()
+                    if not value_expr:
+                        break
+                    values.append(value_expr)
+                    
+                    self._skip_whitespace()
+                    if self._peek() == ",":
+                        self._consume(",")
+                        self._skip_whitespace()
+                    elif self._peek() == ")":
+                        break
+                    else:
+                        raise ASQLSyntaxError("Expected ',' or ')' in NOT IN list")
+                
+                if self._peek() != ")":
+                    raise ASQLSyntaxError("Expected ')' after NOT IN list")
+                self._consume(")")
+                
+                if not values:
+                    raise ASQLSyntaxError("NOT IN list cannot be empty")
+                
+                # Create NOT IN expression
+                return exp.Not(this=exp.In(this=left_expr, expressions=values))
         
         # Fallback: just return the expression (column reference, etc.)
         return left_expr
