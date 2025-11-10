@@ -373,29 +373,29 @@ ORDER BY total_users DESC
 LIMIT 10
 ```
 
-### Sort by Function Call
+### Sort by Column (Descending)
 
 **ASQL:**
 ```asql
-from users sort -month(updated_at)
+from users sort -updated_at
 ```
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT * FROM users ORDER BY MONTH(updated_at) DESC
+SELECT * FROM users ORDER BY updated_at DESC
 ```
 
 **ASQL:**
 ```asql
-from users sort -month(updated_at), name
+from users sort -updated_at, name
 ```
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT * FROM users ORDER BY MONTH(updated_at) DESC, name ASC
+SELECT * FROM users ORDER BY updated_at DESC, name ASC
 ```
 
-The `-` prefix works with function calls too, making it easy to sort by computed values like date functions.
+The `-` prefix makes it easy to sort by columns in descending order. It also works with function calls like `sort -month(created_at)`.
 
 ---
 

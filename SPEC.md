@@ -92,7 +92,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
 | `join` | Join datasets | `JOIN` | `join owners on owner_id == owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
-| `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -month(updated_at)` (descending function) |
+| `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -updated_at` (descending column) |
 | `take` | Limit rows | `LIMIT` | `take 10` |
 | `set` / `let` | Define variable/fragment | `WITH ... AS` | `set active = from users \| where is_active` |
 
@@ -699,13 +699,13 @@ You can sort by function calls using the `-` prefix for descending order:
 
 ```asql
 from users sort month(created_at)
-from users sort -month(updated_at)
+from users sort -updated_at
 from events sort -year(created_at), name
 ```
 
 **Examples:**
-- `sort month(updated_at)` → Sort by month ascending
-- `sort -month(updated_at)` → Sort by month descending (newest first)
+- `sort updated_at` → Sort by updated_at ascending
+- `sort -updated_at` → Sort by updated_at descending (newest first)
 - `sort -year(created_at), name` → Sort by year descending, then name ascending
 
 This syntax makes it easy to sort by computed values like date functions.

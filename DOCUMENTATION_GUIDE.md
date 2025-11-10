@@ -17,9 +17,8 @@ This document provides an overview of all documentation, examples, and interacti
 1. **basic_queries.py** - Basic FROM, WHERE, SELECT examples
 2. **aggregations.py** - GROUP BY and aggregation examples
 3. **sorting_and_limiting.py** - SORT and TAKE examples
-4. **derived_columns.py** - DERIVE examples
-5. **complex_queries.py** - Complex multi-operation queries
-6. **run_all.py** - Script to run all examples
+4. **complex_queries.py** - Complex multi-operation queries
+5. **run_all.py** - Script to run all examples
 
 ### Root Documentation
 
@@ -139,7 +138,6 @@ python examples/run_all.py
 python examples/basic_queries.py
 python examples/aggregations.py
 python examples/sorting_and_limiting.py
-python examples/derived_columns.py
 python examples/complex_queries.py
 ```
 
