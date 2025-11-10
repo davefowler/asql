@@ -36,6 +36,12 @@ class ASQLParser:
         if not self.text:
             raise ASQLSyntaxError("Empty ASQL query")
         
+        # Check if this is a SET/CTE statement: "set variable = query"
+        self._skip_whitespace()
+        if self._peek_keyword("set"):
+            # Parse SET statement - this creates a CTE
+            return self._parse_set_statement()
+        
         # Parse FROM clause (required, must be first)
         from_expr = self._parse_from()
         
@@ -79,6 +85,15 @@ class ASQLParser:
             elif self._peek_keyword("select") or self._peek_keyword("project"):
                 select_list = self._parse_select_list()
                 select_expr.set("expressions", select_list)
+            # Check for JOIN
+            elif self._peek_keyword("join"):
+                join_expr = self._parse_join()
+                # Add join to the Select's joins list (SQLGlot stores joins on Select)
+                existing_joins = select_expr.args.get("joins", [])
+                if not existing_joins:
+                    existing_joins = []
+                existing_joins.append(join_expr)
+                select_expr.set("joins", existing_joins)
             else:
                 # Unknown operator, stop parsing
                 break
@@ -103,7 +118,9 @@ class ASQLParser:
             raise ASQLSyntaxError("Expected table name after 'from'")
         
         table = exp.Table(this=exp.Identifier(this=table_name))
-        return exp.From(this=table)
+        from_expr = exp.From(this=table)
+        from_expr.set("joins", [])  # Initialize joins list
+        return from_expr
     
     def _parse_where(self) -> exp.Where:
         """Parse WHERE clause."""
@@ -228,8 +245,8 @@ class ASQLParser:
             self._consume("(")
             self._skip_whitespace()
             
-            # Parse argument (column or expression)
-            arg = self._parse_column()
+            # Parse argument (column or expression with arithmetic)
+            arg = self._parse_additive_expression()
             if not arg:
                 raise ASQLSyntaxError(f"Expected argument for {func_name}()")
             
@@ -321,58 +338,69 @@ class ASQLParser:
         """
         self._skip_whitespace()
         
-        # Parse identifier (function name or column name)
+        # Parse identifier first (could be column name or function name)
+        saved_pos = self.pos
         identifier = self._parse_identifier()
         if not identifier:
             return None
         
-        # Check if it's a function call
-        # We need to peek ahead to see if ( is followed by a column or by #/aggregation
         self._skip_whitespace()
+        
+        # Check if next is ( - could be function call or aggregation block
         if self._peek() == "(":
-            # Peek ahead to see if this is a function call or aggregation block
-            # Save position
-            saved_pos = self.pos
+            # Peek ahead to see if it's aggregation block
+            peek_pos = self.pos
             self._consume("(")
             self._skip_whitespace()
-            
-            # Check if next token is # (aggregation block) or an aggregation keyword
             peek_char = self._peek()
+            
+            # Restore to before the (
+            self.pos = peek_pos
+            
             if peek_char == "#":
-                # This is the aggregation block, not a function call
-                # Restore position and return simple column
-                self.pos = saved_pos
+                # This is aggregation block - return simple column
                 return exp.Column(this=exp.Identifier(this=identifier))
             
-            # Check if it's an aggregation keyword (sum, avg, etc.)
-            # by trying to parse an identifier
+            # Check if it's an aggregation keyword
             test_pos = self.pos
+            self._consume("(")
+            self._skip_whitespace()
             test_id = self._parse_identifier()
             if test_id and test_id.lower() in ("sum", "avg", "average", "count", "min", "max"):
-                # This is the aggregation block
-                self.pos = saved_pos
+                # This is aggregation block
+                self.pos = peek_pos
                 return exp.Column(this=exp.Identifier(this=identifier))
             
-            # Restore to after ( and parse as function call
-            self.pos = saved_pos
+            # Not aggregation - it's a function call like month(created_at)
+            # Parse as function call
+            self.pos = peek_pos
             self._consume("(")
             self._skip_whitespace()
-            
-            # Parse function argument (column reference)
             arg = self._parse_column()
             if not arg:
                 raise ASQLSyntaxError(f"Expected column argument in function call {identifier}()")
-            
             self._skip_whitespace()
             if self._peek() != ")":
                 raise ASQLSyntaxError(f"Expected ')' after function argument in {identifier}()")
             self._consume(")")
-            
-            # Create function call expression
             return exp.Anonymous(this=identifier, expressions=[arg])
         else:
-            # It's a simple column reference
-            return exp.Column(this=exp.Identifier(this=identifier))
+            # No ( - could be simple column or qualified column (table.column)
+            # Try parsing as qualified column
+            if self._peek() == ".":
+                # Qualified column: table.column
+                self._consume(".")
+                self._skip_whitespace()
+                column_id = self._parse_identifier()
+                if not column_id:
+                    raise ASQLSyntaxError("Expected column name after '.'")
+                return exp.Column(
+                    this=exp.Identifier(this=column_id),
+                    table=exp.Identifier(this=identifier)
+                )
+            else:
+                # Simple column reference
+                return exp.Column(this=exp.Identifier(this=identifier))
     
     def _parse_sort_expression(self) -> Optional[exp.Expression]:
         """Parse a sort expression (column reference or function call)."""
@@ -429,8 +457,99 @@ class ASQLParser:
         
         return exp.Limit(this=exp.Literal(this=limit_value, is_string=False))
     
+    def _parse_set_statement(self) -> exp.Select:
+        """
+        Parse SET statement for CTEs.
+        
+        Syntax: set variable_name = from table ...
+        Example: set active_users = from users where status == "active"
+        
+        Returns a Select with CTE (WITH clause).
+        """
+        if not self._consume_keyword("set"):
+            raise ASQLSyntaxError("Expected 'set' keyword")
+        
+        self._skip_whitespace()
+        
+        # Parse variable name
+        var_name = self._parse_identifier()
+        if not var_name:
+            raise ASQLSyntaxError("Expected variable name after 'set'")
+        
+        self._skip_whitespace()
+        
+        # Parse = sign
+        if self._peek() != "=":
+            raise ASQLSyntaxError("Expected '=' after variable name in SET statement")
+        self._consume("=")
+        self._skip_whitespace()
+        
+        # Parse the query (starts with FROM)
+        # Save current position and parse the query
+        query_start = self.pos
+        query_text = self.text[query_start:].strip()
+        
+        # Create a sub-parser for the query part
+        sub_parser = ASQLParser(query_text)
+        query_select = sub_parser.parse()
+        
+        # Update our position to where sub-parser ended
+        self.pos = query_start + sub_parser.pos
+        
+        # Create CTE (WITH ... AS)
+        cte = exp.CTE(
+            this=query_select,
+            alias=exp.TableAlias(this=exp.Identifier(this=var_name))
+        )
+        
+        # Store CTE info in the query_select's meta dict (SQLGlot's way to store custom data)
+        # We'll check for this in the compiler
+        if not hasattr(query_select, "meta"):
+            query_select.meta = {}
+        query_select.meta["_cte_name"] = var_name
+        query_select.meta["_is_cte"] = True
+        
+        return query_select
+    
+    def _parse_join(self) -> exp.Join:
+        """
+        Parse JOIN clause.
+        
+        Syntax: join table_name on condition
+        Example: join owners on owner_id == owners.id
+        """
+        if not self._consume_keyword("join"):
+            raise ASQLSyntaxError("Expected 'join' keyword")
+        
+        self._skip_whitespace()
+        
+        # Parse table name
+        table_name = self._parse_identifier()
+        if not table_name:
+            raise ASQLSyntaxError("Expected table name after 'join'")
+        
+        self._skip_whitespace()
+        
+        # Parse ON condition
+        if not self._peek_keyword("on"):
+            raise ASQLSyntaxError("Expected 'on' after join table name")
+        
+        self._consume_keyword("on")
+        self._skip_whitespace()
+        
+        # Parse join condition (an expression)
+        condition = self._parse_expression()
+        if not condition:
+            raise ASQLSyntaxError("Expected join condition after 'on'")
+        
+        # Create JOIN expression
+        join_table = exp.Table(this=exp.Identifier(this=table_name))
+        join_expr = exp.Join(this=join_table, on=condition, kind="INNER")
+        
+        return join_expr
+    
     def _parse_select_list(self) -> List[exp.Expression]:
-        """Parse SELECT column list."""
+        """Parse SELECT column list (supports expressions with arithmetic)."""
         self._consume_keyword("select") or self._consume_keyword("project")
         self._skip_whitespace()
         
@@ -441,11 +560,12 @@ class ASQLParser:
             self._consume("*")
             return [exp.Star()]
         
-        # Parse column list
+        # Parse expression list (can include arithmetic)
         while True:
-            col = self._parse_column()
-            if col:
-                columns.append(col)
+            # Parse expression (may include arithmetic, aliases, etc.)
+            expr = self._parse_select_expression()
+            if expr:
+                columns.append(expr)
             
             self._skip_whitespace()
             if self._peek() == ",":
@@ -456,12 +576,59 @@ class ASQLParser:
         
         return columns
     
+    def _parse_select_expression(self) -> Optional[exp.Expression]:
+        """Parse a SELECT expression (column, arithmetic expression, or alias)."""
+        self._skip_whitespace()
+        
+        # Parse expression (supports arithmetic)
+        expr = self._parse_additive_expression()
+        if not expr:
+            return None
+        
+        self._skip_whitespace()
+        
+        # Check for alias: "as name" or just "name"
+        if self._peek_keyword("as"):
+            self._consume_keyword("as")
+            self._skip_whitespace()
+            alias = self._parse_identifier()
+            if alias:
+                return exp.Alias(this=expr, alias=exp.Identifier(this=alias))
+        elif self._peek() and self._peek().isalnum() or self._peek() == "_":
+            # Check if next token is a comma or end - if so, this might be an alias
+            # But we can't reliably detect this without lookahead, so we'll require "as"
+            # For now, just return the expression
+            pass
+        
+        return expr
+    
     def _parse_column(self) -> Optional[exp.Expression]:
-        """Parse a column reference."""
-        identifier = self._parse_identifier()
-        if identifier:
-            return exp.Column(this=exp.Identifier(this=identifier))
-        return None
+        """Parse a column reference (may be qualified: table.column)."""
+        # Parse first identifier (table or column name)
+        first_id = self._parse_identifier()
+        if not first_id:
+            return None
+        
+        self._skip_whitespace()
+        
+        # Check if there's a dot (qualified name: table.column)
+        if self._peek() == ".":
+            self._consume(".")
+            self._skip_whitespace()
+            
+            # Parse column name
+            column_id = self._parse_identifier()
+            if not column_id:
+                raise ASQLSyntaxError("Expected column name after '.'")
+            
+            # Create qualified column: table.column
+            return exp.Column(
+                this=exp.Identifier(this=column_id),
+                table=exp.Identifier(this=first_id)
+            )
+        else:
+            # Simple column reference
+            return exp.Column(this=exp.Identifier(this=first_id))
     
     def _parse_expression(self) -> exp.Expression:
         """Parse an expression (handles OR with lowest precedence)."""
@@ -506,7 +673,7 @@ class ASQLParser:
         return left_expr
     
     def _parse_comparison_expression(self) -> Optional[exp.Expression]:
-        """Parse comparison expressions (highest precedence)."""
+        """Parse comparison expressions."""
         self._skip_whitespace()
         
         # Check for NOT operator (unary)
@@ -518,8 +685,8 @@ class ASQLParser:
                 raise ASQLSyntaxError("Expected expression after 'not'")
             return exp.Not(this=expr)
         
-        # Parse left side
-        left_expr = self._parse_primary_expression()
+        # Parse left side (arithmetic expression)
+        left_expr = self._parse_additive_expression()
         if not left_expr:
             return None
         
@@ -529,42 +696,42 @@ class ASQLParser:
         if self._peek(2) == "==":
             self._consume("==")
             self._skip_whitespace()
-            right_expr = self._parse_primary_expression()
+            right_expr = self._parse_additive_expression()
             if not right_expr:
                 raise ASQLSyntaxError("Expected value after ==")
             return exp.EQ(this=left_expr, expression=right_expr)
         elif self._peek(2) == "!=":
             self._consume("!=")
             self._skip_whitespace()
-            right_expr = self._parse_primary_expression()
+            right_expr = self._parse_additive_expression()
             if not right_expr:
                 raise ASQLSyntaxError("Expected value after !=")
             return exp.NEQ(this=left_expr, expression=right_expr)
         elif self._peek(2) == "<=":
             self._consume("<=")
             self._skip_whitespace()
-            right_expr = self._parse_primary_expression()
+            right_expr = self._parse_additive_expression()
             if not right_expr:
                 raise ASQLSyntaxError("Expected value after <=")
             return exp.LTE(this=left_expr, expression=right_expr)
         elif self._peek(2) == ">=":
             self._consume(">=")
             self._skip_whitespace()
-            right_expr = self._parse_primary_expression()
+            right_expr = self._parse_additive_expression()
             if not right_expr:
                 raise ASQLSyntaxError("Expected value after >=")
             return exp.GTE(this=left_expr, expression=right_expr)
         elif self._peek() == "<":
             self._consume("<")
             self._skip_whitespace()
-            right_expr = self._parse_primary_expression()
+            right_expr = self._parse_additive_expression()
             if not right_expr:
                 raise ASQLSyntaxError("Expected value after <")
             return exp.LT(this=left_expr, expression=right_expr)
         elif self._peek() == ">":
             self._consume(">")
             self._skip_whitespace()
-            right_expr = self._parse_primary_expression()
+            right_expr = self._parse_additive_expression()
             if not right_expr:
                 raise ASQLSyntaxError("Expected value after >")
             return exp.GT(this=left_expr, expression=right_expr)
@@ -596,7 +763,7 @@ class ASQLParser:
             values = []
             while True:
                 self._skip_whitespace()
-                value_expr = self._parse_primary_expression()
+                value_expr = self._parse_additive_expression()
                 if not value_expr:
                     break
                 values.append(value_expr)
@@ -642,7 +809,7 @@ class ASQLParser:
                 values = []
                 while True:
                     self._skip_whitespace()
-                    value_expr = self._parse_primary_expression()
+                    value_expr = self._parse_additive_expression()
                     if not value_expr:
                         break
                     values.append(value_expr)
@@ -667,6 +834,89 @@ class ASQLParser:
                 return exp.Not(this=exp.In(this=left_expr, expressions=values))
         
         # Fallback: just return the expression (column reference, etc.)
+        return left_expr
+    
+    def _parse_additive_expression(self) -> Optional[exp.Expression]:
+        """
+        Parse additive expressions (+ and -).
+        
+        Precedence: Additive operators have lower precedence than multiplicative.
+        """
+        # Parse multiplicative expression (higher precedence)
+        left_expr = self._parse_multiplicative_expression()
+        if not left_expr:
+            return None
+        
+        self._skip_whitespace()
+        
+        # Check for additive operators
+        while True:
+            if self._peek() == "+":
+                self._consume("+")
+                self._skip_whitespace()
+                right_expr = self._parse_multiplicative_expression()
+                if not right_expr:
+                    raise ASQLSyntaxError("Expected expression after '+'")
+                left_expr = exp.Add(this=left_expr, expression=right_expr)
+                self._skip_whitespace()
+            elif self._peek() == "-":
+                # Check if this is a unary minus or binary minus
+                # If we're at the start of an expression, it's unary
+                # Otherwise, it's binary subtraction
+                self._consume("-")
+                self._skip_whitespace()
+                right_expr = self._parse_multiplicative_expression()
+                if not right_expr:
+                    raise ASQLSyntaxError("Expected expression after '-'")
+                left_expr = exp.Sub(this=left_expr, expression=right_expr)
+                self._skip_whitespace()
+            else:
+                break
+        
+        return left_expr
+    
+    def _parse_multiplicative_expression(self) -> Optional[exp.Expression]:
+        """
+        Parse multiplicative expressions (*, /, %).
+        
+        Precedence: Multiplicative operators have higher precedence than additive.
+        """
+        # Parse primary expression (highest precedence)
+        left_expr = self._parse_primary_expression()
+        if not left_expr:
+            return None
+        
+        self._skip_whitespace()
+        
+        # Check for multiplicative operators
+        while True:
+            if self._peek() == "*":
+                self._consume("*")
+                self._skip_whitespace()
+                right_expr = self._parse_primary_expression()
+                if not right_expr:
+                    raise ASQLSyntaxError("Expected expression after '*'")
+                left_expr = exp.Mul(this=left_expr, expression=right_expr)
+                self._skip_whitespace()
+            elif self._peek() == "/":
+                self._consume("/")
+                self._skip_whitespace()
+                right_expr = self._parse_primary_expression()
+                if not right_expr:
+                    raise ASQLSyntaxError("Expected expression after '/'")
+                left_expr = exp.Div(this=left_expr, expression=right_expr)
+                self._skip_whitespace()
+            elif self._peek() == "%":
+                self._consume("%")
+                self._skip_whitespace()
+                right_expr = self._parse_primary_expression()
+                if not right_expr:
+                    raise ASQLSyntaxError("Expected expression after '%'")
+                left_expr = exp.Mod(this=left_expr, expression=right_expr)
+                self._skip_whitespace()
+            else:
+                break
+        
         return left_expr
     
     def _parse_primary_expression(self) -> Optional[exp.Expression]:
@@ -697,13 +947,19 @@ class ASQLParser:
             # SQLGlot expects string values for Literal
             return exp.Literal(this=str(num_literal), is_string=False)
         
-        # Try to parse identifier/column
+        # Try to parse column (supports qualified names: table.column)
+        column = self._parse_column()
+        if column:
+            return column
+        
+        # Try to parse identifier (for keywords like null)
         identifier = self._parse_identifier()
         if identifier:
             # Check if it's a keyword that should be handled differently
             identifier_lower = identifier.lower()
             if identifier_lower == "null":
                 return exp.Null()
+            # Fallback to column if not a special keyword
             return exp.Column(this=exp.Identifier(this=identifier))
         
         return None
