@@ -12,6 +12,12 @@ class ASQLParser:
     """Parser for ASQL pipeline syntax."""
     
     def __init__(self, text: str):
+        """
+        Initialize ASQL parser.
+        
+        Args:
+            text: ASQL query string to parse
+        """
         self.text = text.strip()
         self.pos = 0
         self.lines = self.text.split('\n')
@@ -227,7 +233,7 @@ class ASQLParser:
             
             self._skip_whitespace()
             if self._peek() != ")":
-                raise ASQLSyntaxError(f"Expected ')' after {func_name} argument")
+                raise ASQLSyntaxError(f"Expected ')' after {func_name}() argument")
             
             self._consume(")")
             self._skip_whitespace()
@@ -600,8 +606,21 @@ class ASQLParser:
         return left_expr
     
     def _parse_primary_expression(self) -> Optional[exp.Expression]:
-        """Parse a primary expression (literal, identifier, or column)."""
+        """Parse a primary expression (literal, identifier, column, or parenthesized expression)."""
         self._skip_whitespace()
+        
+        # Check for parenthesized expression
+        if self._peek() == "(":
+            self._consume("(")
+            self._skip_whitespace()
+            expr = self._parse_expression()
+            if not expr:
+                raise ASQLSyntaxError("Expected expression inside parentheses")
+            self._skip_whitespace()
+            if self._peek() != ")":
+                raise ASQLSyntaxError("Expected ')' after expression")
+            self._consume(")")
+            return expr
         
         # Try to parse string literal first
         str_literal = self._parse_string_literal()
@@ -713,7 +732,7 @@ class ASQLParser:
                 end_pos += 1
             
             if end_pos >= len(self.text):
-                raise ASQLSyntaxError(f"Unclosed string literal")
+                raise ASQLSyntaxError("Unclosed string literal")
             
             value = self.text[self.pos:end_pos]
             self.pos = end_pos + 1
@@ -726,23 +745,47 @@ class ASQLParser:
         return value.startswith(('"', "'"))
     
     def _peek(self, length: int = 1) -> str:
-        """Peek at next character(s)."""
+        """
+        Peek at next character(s) without consuming.
+        
+        Args:
+            length: Number of characters to peek
+            
+        Returns:
+            Next character(s) or empty string if at end
+        """
         if self.pos + length > len(self.text):
             return ""
         return self.text[self.pos:self.pos + length]
     
     def _consume(self, expected: str) -> None:
-        """Consume expected string."""
+        """
+        Consume expected string, raising error if not found.
+        
+        Args:
+            expected: String to consume
+            
+        Raises:
+            ASQLSyntaxError: If expected string not found
+        """
         if not self.text[self.pos:].startswith(expected):
-            raise ASQLSyntaxError(f"Expected '{expected}'")
+            raise ASQLSyntaxError(f"Expected '{expected}' at position {self.pos}")
         self.pos += len(expected)
     
     def _peek_keyword(self, keyword: str) -> bool:
-        """Check if next token is a keyword."""
+        """
+        Check if next token is a keyword (without consuming).
+        
+        Args:
+            keyword: Keyword to check for
+            
+        Returns:
+            True if keyword is next, False otherwise
+        """
         saved_pos = self.pos
         self._skip_whitespace()
         result = self.text[self.pos:].lower().startswith(keyword.lower())
-        # Check that it's followed by whitespace or end
+        # Check that it's followed by whitespace or end (not part of identifier)
         if result:
             next_char_pos = self.pos + len(keyword)
             if next_char_pos < len(self.text):
@@ -753,7 +796,15 @@ class ASQLParser:
         return result
     
     def _consume_keyword(self, keyword: str) -> bool:
-        """Consume keyword if present."""
+        """
+        Consume keyword if present.
+        
+        Args:
+            keyword: Keyword to consume
+            
+        Returns:
+            True if keyword was consumed, False otherwise
+        """
         if self._peek_keyword(keyword):
             self._skip_whitespace()
             self.pos += len(keyword)
@@ -762,10 +813,15 @@ class ASQLParser:
         return False
     
     def _skip_whitespace(self) -> None:
-        """Skip whitespace."""
+        """Skip whitespace characters."""
         while self.pos < len(self.text) and self.text[self.pos].isspace():
             self.pos += 1
     
     def _has_more(self) -> bool:
-        """Check if there's more text to parse."""
+        """
+        Check if there's more text to parse.
+        
+        Returns:
+            True if more text remains, False otherwise
+        """
         return self.pos < len(self.text)
