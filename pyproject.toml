@@ -19,6 +19,9 @@ dev = [
     "black>=23.0.0",
     "mypy>=1.0.0",
 ]
+playground = [
+    "flask>=2.0.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
