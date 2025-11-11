@@ -89,13 +89,12 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | Operator | Meaning | SQL Equivalent | Example |
 |----------|---------|----------------|---------|
 | `where` | Filter rows | `WHERE` | `where status == "active"` |
-| `derive` | Add/transform columns | `SELECT ... AS` | `derive age as years_between(now(), dob)` |
 | `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
 | `join` | Join datasets | `JOIN` | `join owners on owner_id == owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
-| `sort` | Sort rows | `ORDER BY` | `sort -users` (descending) |
+| `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -updated_at` (descending column) |
 | `take` | Limit rows | `LIMIT` | `take 10` |
-| `set` / `let` | Define variable/fragment | `WITH ... AS` | `set active = from users \| where is_active` |
+| `set` | Define variable/fragment (CTE) | `WITH ... AS` | `set active = from users \| where is_active` |
 
 ---
 
@@ -125,13 +124,95 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 - Dates: `@2025-01-10`, `@2025-11-10`
 - Numbers: `42`, `3.14`
 
-### 4.5 Conditional Expressions (CASE)
+### 4.5 String Matching (Planned)
+
+ASQL will provide intuitive string matching operators that are more readable than SQL's `LIKE` syntax. The design is inspired by the best practices from modern query languages and libraries:
+
+**Research & Inspiration:**
+- **KQL (Kusto)**: `contains`, `startswith`, `endswith`, `matches regex` - very intuitive
+- **Python pandas**: `.str.contains()`, `.str.startswith()`, `.str.endswith()` - clear and explicit
+- **JavaScript**: `.includes()`, `.startsWith()`, `.endsWith()` - simple and readable
+- **dplyr (R)**: `str_detect()`, `str_starts()`, `str_ends()` - functional but verbose
+- **SQL**: `LIKE '%pattern%'` - cryptic, requires wildcards, not intuitive
+
+**Proposed ASQL Syntax:**
+
+```asql
+# Contains (substring match)
+from users where email contains "@gmail.com"
+from users where name contains "John"
+
+# Starts with
+from users where email starts with "admin"
+from users where domain starts with "https://"
+
+# Ends with
+from users where email ends with ".com"
+from users where filename ends with ".pdf"
+
+# Case-insensitive variants (optional)
+from users where email contains "GMAIL" ignore case
+from users where name starts with "john" ignore case
+
+# Regex matching (advanced)
+from users where email matches "^[a-z]+@[a-z]+\\.com$"
+from users where phone matches "^\d{3}-\d{3}-\d{4}$"
+```
+
+**Design Principles:**
+1. **Natural language**: Reads like English - "email contains gmail" is clearer than "email LIKE '%gmail%'"
+2. **No wildcards required**: `contains` is more intuitive than `LIKE '%pattern%'`
+3. **Explicit operations**: `starts with` and `ends with` are clearer than `LIKE 'pattern%'` and `LIKE '%pattern'`
+4. **Case handling**: Default behavior TBD (case-sensitive or case-insensitive), with explicit `ignore case` option
+5. **Regex support**: Available but secondary - most users don't need regex for common string matching
+
+**Comparison with SQL:**
+
+| ASQL | SQL Equivalent | Notes |
+|------|----------------|-------|
+| `contains "pattern"` | `LIKE '%pattern%'` | More intuitive, no wildcards |
+| `starts with "pattern"` | `LIKE 'pattern%'` | Clearer intent |
+| `ends with "pattern"` | `LIKE '%pattern'` | Clearer intent |
+| `matches "regex"` | `~ 'regex'` or `REGEXP` | Explicit regex matching |
+| `contains "PATTERN" ignore case` | `ILIKE '%pattern%'` (PostgreSQL) | Explicit case handling |
+
+**Alternative Syntax Considerations:**
+
+1. **Method-style** (like Python/JS):
+   ```asql
+   from users where email.contains("@gmail.com")
+   from users where name.starts_with("John")
+   ```
+   - Pros: Familiar to programmers, explicit
+   - Cons: Less natural language feel, requires dots
+
+2. **Function-style**:
+   ```asql
+   from users where contains(email, "@gmail.com")
+   from users where starts_with(name, "John")
+   ```
+   - Pros: Functional, clear
+   - Cons: Less readable, more verbose
+
+3. **Natural language** (recommended):
+   ```asql
+   from users where email contains "@gmail.com"
+   from users where name starts with "John"
+   ```
+   - Pros: Most readable, natural language feel
+   - Cons: Requires keyword parsing
+
+**Recommendation**: Use natural language syntax (`contains`, `starts with`, `ends with`) as it aligns with ASQL's philosophy of reading like natural language. This makes queries accessible to non-technical users while remaining precise.
+
+**Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim. Should be implemented after arithmetic operators and before advanced features.
+
+### 4.6 Conditional Expressions (CASE)
 
 ASQL supports SQL's `CASE` statement with natural language alternatives:
 
 **Standard CASE syntax:**
 ```asql
-derive status_label as case
+select status_label as case
   when status == "active" then "Active User"
   when status == "inactive" then "Inactive User"
   else "Unknown"
@@ -140,7 +221,7 @@ end
 
 **Natural language alternative:**
 ```asql
-derive status_label as 
+select status_label as 
   if status == "active" then "Active User"
   else if status == "inactive" then "Inactive User"
   else "Unknown"
@@ -148,13 +229,13 @@ derive status_label as
 
 **Simple if-then-else:**
 ```asql
-derive is_premium as if plan == "premium" then true else false
-derive discount as if amount > 100 then amount * 0.1 else 0
+select is_premium as if plan == "premium" then true else false
+select discount as if amount > 100 then amount * 0.1 else 0
 ```
 
 All three syntaxes compile to standard SQL `CASE` statements. Choose based on readability preference.
 
-### 4.6 Comments
+### 4.7 Comments
 
 ASQL uses SQL-standard comment syntax:
 
@@ -679,13 +760,58 @@ from opportunities
 
 ---
 
-## 10. Variables & CTEs
+## 10. Sorting
 
-### 10.1 Simple Variables & CTEs
+### 10.1 Basic Sorting
+
+The `sort` clause orders rows by one or more columns:
+
+```asql
+from users sort name
+from users sort -total_users
+```
+
+**Descending order**: Use the `-` prefix to sort in descending order:
+- `sort name` → ascending (A-Z)
+- `sort -name` → descending (Z-A)
+
+### 10.2 Sorting by Function Calls
+
+You can sort by function calls using the `-` prefix for descending order:
+
+```asql
+from users sort month(created_at)
+from users sort -updated_at
+from events sort -year(created_at), name
+```
+
+**Examples:**
+- `sort updated_at` → Sort by updated_at ascending
+- `sort -updated_at` → Sort by updated_at descending (newest first)
+- `sort -year(created_at), name` → Sort by year descending, then name ascending
+
+This syntax makes it easy to sort by computed values like date functions.
+
+### 10.3 Multiple Sort Columns
+
+Multiple sort columns are separated by commas:
+
+```asql
+from users sort -total_users, name
+from sales sort -revenue, region, -date
+```
+
+The `-` prefix applies only to the column immediately following it.
+
+---
+
+## 11. Variables & CTEs
+
+### 11.1 Simple Variables & CTEs
 
 Variables in ASQL create CTEs (Common Table Expressions). The syntax is designed to make CTEs easier and less necessary:
 
-**Using `set` (SQL-like):**
+**Using `set` (creates CTE):**
 ```asql
 set active_users = from users
   where is_active
@@ -694,19 +820,18 @@ from active_users
   group by country ( # as total_users )
 ```
 
-**Using `let` (alternative):**
-```asql
-let active_users = from users
-  where is_active
+**Why `set`?**
+- **SQL familiarity**: SQL uses `SET` in various contexts (SET variables, SET operations)
+- **Clear intent**: "Set this variable to this query" is intuitive
+- **CTE mapping**: Maps naturally to SQL's `WITH ... AS` (Common Table Expression)
+- **Not `let`**: `let` comes from functional programming (Lisp, ML, Haskell) and doesn't fit SQL's imperative style
 
-from active_users
-  group by country ( # as total_users )
-```
-
-**Alternatives considered**: `let`, `const`, `var`, `define`, `set`
-- `set` feels most SQL-like and familiar
-- `let` is more functional/programming language style
-- Both are supported, `set` is recommended for SQL familiarity
+**Alternatives considered**: `let`, `const`, `var`, `define`, `with`
+- `let` - Too functional programming style, not SQL-like
+- `const`/`var` - JavaScript-specific, not SQL
+- `define` - Too generic
+- `with` - Conflicts with SQL's `WITH` keyword usage
+- `set` ✅ - Most SQL-like and clear
 
 **Major benefit: Less need for CTEs**: Because ASQL uses pipelines, you often don't need CTEs at all. Instead of breaking into a CTE, you can just add a comment marking a logical stopping point:
 
@@ -720,26 +845,7 @@ from users
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally. CTEs are still available when you need to reuse a subquery multiple times.
 
-### 10.2 Column Variables & `derive`
-
-The `derive` operator adds new columns or transforms existing ones (equivalent to SQL's `SELECT ... AS`):
-
-```asql
-from users
-  derive all_ages as age
-  derive avg_all_ages as avg(all_ages)
-  derive full_name as first_name + " " + last_name
-```
-
-**Alternatives**: `derive` comes from PRQL. Alternatives could include:
-- `add` - simple but less descriptive
-- `compute` - emphasizes calculation
-- `calculate` - similar to compute
-- `select` - but this conflicts with final column selection
-
-`derive` is the recommended syntax as it's already established in PRQL and clearly indicates "derive a new column from existing data."
-
-### 10.3 Nested Variables
+### 11.2 Nested Variables
 
 ```asql
 set base = from users
@@ -765,7 +871,7 @@ Functions in ASQL are similar to dbt macros or PostgreSQL functions, but simpler
 func age(user) = years(now() - user.birthday)
 
 from users
-  derive user_age as age(user)
+  select age(user) as user_age
   group by country ( avg_age as average of user_age )
 ```
 
@@ -775,10 +881,10 @@ func age(table) = years(now() - table.birthday)
 
 # Works on any table with a 'birthday' column
 from users
-  derive user_age as age(users)
+  select age(users) as user_age
 
 from employees
-  derive employee_age as age(employees)
+  select age(employees) as employee_age
 ```
 
 **Another example - days since created:**
@@ -787,7 +893,7 @@ func days_since_created(table) = days(now() - table.created_at)
 
 # Works on any table with created_at
 from users
-  derive days_active as days_since_created(users)
+  select days_since_created(users) as days_active
 ```
 
 **Typing**: Functions are not typed - ASQL infers types from usage. This keeps the syntax simple and natural.
@@ -808,6 +914,13 @@ func age(user) = years(now() - user.birthday)
 # Natural language usage
 avg age of user by country
 # Reads like: "average age of user, grouped by country"
+```
+
+**Note**: Functions can be used in SELECT expressions to compute values:
+```asql
+from users
+  select age(user) as user_age
+  group by country ( avg(user_age) as avg_age )
 ```
 
 ### 11.2 User-Defined Table Functions
@@ -1110,7 +1223,7 @@ from users
 func age(user) = years(now() - user.birthday)
 
 from users
-  derive user_age as age(user)
+  select age(user) as user_age
   group by country ( avg_age as average of user_age )
 ```
 
@@ -1334,18 +1447,15 @@ from_clause := 'from' table_name
 pipeline := operator  -- indentation-based, or '|' operator (optional)
 
 operator := filter_op
-          | derive_op
           | group_by_op
           | join_op
           | select_op
           | sort_op
           | take_op
-          | let_op
+          | set_op
 
 filter_op := 'where' expression
            | 'if' expression
-
-derive_op := 'derive' assignment+
 
 group_by_op := 'group' 'by' expression_list '(' aggregate_list ')'
 
@@ -1353,11 +1463,11 @@ join_op := 'join' table_name ('on' expression)?
 
 select_op := 'select' column_list
 
-sort_op := 'sort' ('-'? column_name)+
+sort_op := 'sort' ('-'? (column_name | function_call))+
 
 take_op := 'take' number
 
-let_op := 'let' var_name '=' query
+set_op := 'set' var_name '=' query
 
 aggregate := var_name 'as' aggregate_func '(' expression ')'
            | natural_language_aggregate
@@ -1383,7 +1493,7 @@ aggregate_func := 'count' | 'sum' | 'avg' | 'min' | 'max'
 
 ## References & Inspiration
 
-- **PRQL**: Pipeline structure, derive, group by blocks, let & func
+- **PRQL**: Pipeline structure, group by blocks, func (note: PRQL uses `let` but ASQL uses `set` for SQL familiarity)
 - **KQL**: Verb syntax (filter, project, summarize), pipeline operators
 - **Malloy**: Model layer, measures/dimensions, time bucketing concept (ASQL uses simpler `month()`, `year()` functions rather than Malloy's `time_bucket()` function), default_time concept
 - **EdgeQL**: Dot traversal for relationships, nested result shapes

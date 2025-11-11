@@ -1,0 +1,88 @@
+{
+  "Basic FROM query": {
+    "prefix": "from",
+    "body": [
+      "from ${1:table_name}"
+    ],
+    "description": "Basic FROM clause"
+  },
+  "FROM with WHERE": {
+    "prefix": "fromwhere",
+    "body": [
+      "from ${1:table_name}",
+      "where ${2:condition}"
+    ],
+    "description": "FROM with WHERE filter"
+  },
+  "GROUP BY with aggregation": {
+    "prefix": "groupby",
+    "body": [
+      "group by ${1:column} ( # as ${2:count_name} )"
+    ],
+    "description": "GROUP BY with COUNT aggregation"
+  },
+  "GROUP BY with multiple aggregations": {
+    "prefix": "groupbyagg",
+    "body": [
+      "group by ${1:column} (",
+      "  sum(${2:amount}) as ${3:total},",
+      "  # as ${4:count}",
+      ")"
+    ],
+    "description": "GROUP BY with multiple aggregations"
+  },
+  "SORT descending": {
+    "prefix": "sort",
+    "body": [
+      "sort -${1:column}"
+    ],
+    "description": "Sort descending"
+  },
+  "SORT multiple columns": {
+    "prefix": "sortmulti",
+    "body": [
+      "sort -${1:column1}, ${2:column2}"
+    ],
+    "description": "Sort by multiple columns"
+  },
+  "Complete query pipeline": {
+    "prefix": "query",
+    "body": [
+      "from ${1:table_name}",
+      "where ${2:condition}",
+      "group by ${3:column} ( # as ${4:count} )",
+      "sort -${4:count}",
+      "take ${5:10}"
+    ],
+    "description": "Complete ASQL query pipeline"
+  },
+  "WHERE with IN": {
+    "prefix": "wherein",
+    "body": [
+      "where ${1:column} in (\"${2:value1}\", \"${3:value2}\")"
+    ],
+    "description": "WHERE clause with IN operator"
+  },
+  "WHERE with AND/OR": {
+    "prefix": "whereand",
+    "body": [
+      "where ${1:condition1} and ${2:condition2}"
+    ],
+    "description": "WHERE with multiple conditions"
+  },
+  "JOIN": {
+    "prefix": "join",
+    "body": [
+      "join ${1:table} on ${2:left_column} == ${1:table}.${3:right_column}"
+    ],
+    "description": "JOIN clause"
+  },
+  "SET variable": {
+    "prefix": "set",
+    "body": [
+      "set ${1:variable_name} = from ${2:table_name}",
+      "where ${3:condition}"
+    ],
+    "description": "SET variable (CTE)"
+  }
+}
