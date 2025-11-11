@@ -72,8 +72,6 @@ ASQL Text → Custom Parser (asql/parser.py) → SQLGlot AST → SQLGlot Generat
    - Parse `take 10`
    - Generate SQL LIMIT
 
-4. **DERIVE** (Priority: MEDIUM)
-   - Parse `derive age as years_between(now(), dob)`
    - Generate SQL SELECT with computed columns
    - Handle in pipeline (becomes CTE step)
 
@@ -92,16 +90,23 @@ ASQL Text → Custom Parser (asql/parser.py) → SQLGlot AST → SQLGlot Generat
    - `+`, `-`, `*`, `/`, `%`
    - Function calls in expressions
 
+4. **String matching** (Priority: MEDIUM)
+   - `contains`, `starts with`, `ends with` - natural language syntax
+   - `matches` for regex
+   - Case-insensitive option: `ignore case`
+   - See SPEC.md Section 4.5 for detailed design rationale
+
 ### Phase 3: Advanced Features (Priority: MEDIUM)
 
 1. **JOIN** (Priority: MEDIUM)
    - Explicit: `join owners on owner_id == owners.id`
    - Automatic joins (later, requires schema resolver)
 
-2. **SET/LET for CTEs** (Priority: MEDIUM)
+2. **SET for CTEs** (Priority: MEDIUM)
    - Parse `set active_users = from users where is_active`
    - Generate SQL WITH clauses
    - Variable resolution
+   - Note: Use `set` (not `let`) for SQL familiarity - maps to `WITH ... AS`
 
 3. **Indentation-based syntax** (Priority: LOW)
    - Currently only handles single-line queries
@@ -198,7 +203,6 @@ ASQL Text → Custom Parser (asql/parser.py) → SQLGlot AST → SQLGlot Generat
    - JOIN (explicit)
 
    **Nice to Have**:
-   - DERIVE
    - SET/LET
    - Natural language aggregations
    - Date functions

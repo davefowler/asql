@@ -1,0 +1,161 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "ASQL",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#literals"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#identifiers"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.asql",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.asql",
+          "match": "\\b(from|where|select|project|group by|sort|order by|take|limit|join|set|let)\\b",
+          "captures": {
+            "1": {
+              "name": "keyword.control.asql"
+            }
+          }
+        },
+        {
+          "name": "keyword.operator.logical.asql",
+          "match": "\\b(and|or|not|is|in)\\b"
+        },
+        {
+          "name": "keyword.operator.comparison.asql",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.membership.asql",
+          "match": "\\b(not in)\\b"
+        },
+        {
+          "name": "keyword.operator.null.asql",
+          "match": "\\b(is null|is not null)\\b"
+        },
+        {
+          "name": "keyword.other.asql",
+          "match": "\\b(as|by|on|desc|asc|descending|ascending)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.asql",
+          "match": "(\\+|\\-|\\*|/|%)"
+        },
+        {
+          "name": "keyword.operator.pipeline.asql",
+          "match": "\\|"
+        },
+        {
+          "name": "keyword.operator.descending.asql",
+          "match": "\\-\\s*[a-zA-Z_][a-zA-Z0-9_]*",
+          "captures": {
+            "0": {
+              "name": "entity.name.function.asql"
+            }
+          }
+        }
+      ]
+    },
+    "literals": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.asql",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.asql",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.asql",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.asql",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "constant.numeric.asql",
+          "match": "\\b\\d+(\\.\\d+)?\\b"
+        },
+        {
+          "name": "constant.language.boolean.asql",
+          "match": "\\b(true|false|null)\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.asql",
+          "match": "\\b(sum|avg|average|count|min|max|month|year|day|date|upper|lower|trim|concat)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.asql"
+            }
+          }
+        },
+        {
+          "name": "support.function.aggregation.asql",
+          "match": "\\b(sum|avg|average|count|min|max)\\s*\\("
+        },
+        {
+          "name": "support.function.date.asql",
+          "match": "\\b(month|year|day|date|date_trunc|date_format)\\s*\\("
+        },
+        {
+          "name": "support.function.string.asql",
+          "match": "\\b(upper|lower|trim|concat|substring|length)\\s*\\("
+        },
+        {
+          "name": "constant.numeric.count-shorthand.asql",
+          "match": "#"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.table.asql",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b",
+          "comment": "Table and column names"
+        }
+      ]
+    }
+  },
+  "scopeName": "source.asql"
+}
