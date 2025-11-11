@@ -13,6 +13,21 @@ A modern, pipeline-based query language that transpiles to SQL. ASQL uses a FROM
 
 ## Installation
 
+First, create and activate a virtual environment:
+
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+# On macOS/Linux:
+source venv/bin/activate
+# On Windows:
+# venv\Scripts\activate
+```
+
+Then install ASQL:
+
 ```bash
 pip install -e .
 ```
