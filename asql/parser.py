@@ -211,8 +211,41 @@ class ASQLParser:
         
         # Check for # (COUNT(*))
         if self._peek() == "#":
+            start_pos = self.pos  # Position before consuming '#'
             self._consume("#")
             self._skip_whitespace()
+            
+            # Check for natural language form: "# of users" or "# of distinct column"
+            natural_lang_text = None
+            
+            # Check if there's "of" keyword (natural language form)
+            if self._peek_keyword("of"):
+                self._consume_keyword("of")
+                self._skip_whitespace()
+                
+                # Parse what comes after "of" - could be "distinct column" or just "column"
+                if self._peek_keyword("distinct"):
+                    self._consume_keyword("distinct")
+                    self._skip_whitespace()
+                    column = self._parse_column()
+                    if column:
+                        # Build natural language text: "# of distinct column"
+                        end_pos = self.pos
+                        natural_lang_text = self.text[start_pos:end_pos].strip()
+                else:
+                    # Parse column or identifier
+                    column = self._parse_column()
+                    if not column:
+                        # Try parsing as identifier (for table names like "users")
+                        ident = self._parse_identifier()
+                        if ident:
+                            # Build natural language text: "# of users"
+                            end_pos = self.pos
+                            natural_lang_text = self.text[start_pos:end_pos].strip()
+                    else:
+                        # Build natural language text: "# of column"
+                        end_pos = self.pos
+                        natural_lang_text = self.text[start_pos:end_pos].strip()
             
             # Parse alias if present
             alias = None
@@ -223,8 +256,13 @@ class ASQLParser:
             
             # Create COUNT(*) expression
             count_expr = exp.Count(this=exp.Star())
+            
+            # Use natural language text as alias if no explicit alias provided
             if alias:
                 return exp.Alias(this=count_expr, alias=exp.Identifier(this=alias))
+            elif natural_lang_text:
+                # Use natural language text as column name (will be quoted in SQL)
+                return exp.Alias(this=count_expr, alias=exp.Identifier(this=natural_lang_text, quoted=True))
             return count_expr
         
         # Try to parse aggregation function (sum, avg, count, min, max)
@@ -235,30 +273,58 @@ class ASQLParser:
         func_name_lower = func_name.lower()
         
         # Check if it's an aggregation function
-        if func_name_lower in ("sum", "avg", "average", "count", "min", "max"):
+        if func_name_lower in ("sum", "avg", "average", "count", "min", "max", "total"):
+            # Capture start position before consuming function name
+            start_pos = self.pos - len(func_name)
             self._skip_whitespace()
             
-            # Parse function arguments
-            if self._peek() != "(":
-                raise ASQLSyntaxError(f"Expected '(' after {func_name}")
+            # Check for natural language form (without parentheses): "avg amount", "sum of amount"
+            natural_lang_text = None
             
-            self._consume("(")
-            self._skip_whitespace()
+            # Check if there's "of" keyword (natural language form)
+            if self._peek_keyword("of"):
+                self._consume_keyword("of")
+                self._skip_whitespace()
+                # Parse column after "of"
+                arg = self._parse_column()
+                if not arg:
+                    arg = self._parse_additive_expression()
+                if arg:
+                    end_pos = self.pos
+                    natural_lang_text = self.text[start_pos:end_pos].strip()
+            elif self._peek() != "(":
+                # Natural language form without "of": "avg amount", "sum amount"
+                # Parse column name directly
+                arg = self._parse_column()
+                if not arg:
+                    arg = self._parse_additive_expression()
+                if arg:
+                    end_pos = self.pos
+                    natural_lang_text = self.text[start_pos:end_pos].strip()
             
-            # Parse argument (column or expression with arithmetic)
-            arg = self._parse_additive_expression()
-            if not arg:
-                raise ASQLSyntaxError(f"Expected argument for {func_name}()")
-            
-            self._skip_whitespace()
-            if self._peek() != ")":
-                raise ASQLSyntaxError(f"Expected ')' after {func_name}() argument")
-            
-            self._consume(")")
-            self._skip_whitespace()
+            # If we didn't find natural language form, parse standard function syntax
+            if not natural_lang_text:
+                # Parse function arguments
+                if self._peek() != "(":
+                    raise ASQLSyntaxError(f"Expected '(' after {func_name}")
+                
+                self._consume("(")
+                self._skip_whitespace()
+                
+                # Parse argument (column or expression with arithmetic)
+                arg = self._parse_additive_expression()
+                if not arg:
+                    raise ASQLSyntaxError(f"Expected argument for {func_name}()")
+                
+                self._skip_whitespace()
+                if self._peek() != ")":
+                    raise ASQLSyntaxError(f"Expected ')' after {func_name}() argument")
+                
+                self._consume(")")
+                self._skip_whitespace()
             
             # Create aggregation function
-            if func_name_lower == "sum":
+            if func_name_lower in ("sum", "total"):
                 agg_expr = exp.Sum(this=arg)
             elif func_name_lower in ("avg", "average"):
                 agg_expr = exp.Avg(this=arg)
@@ -278,6 +344,10 @@ class ASQLParser:
                 alias = self._parse_identifier()
                 if alias:
                     return exp.Alias(this=agg_expr, alias=exp.Identifier(this=alias))
+            
+            # Use natural language text as alias if no explicit alias provided
+            if natural_lang_text:
+                return exp.Alias(this=agg_expr, alias=exp.Identifier(this=natural_lang_text, quoted=True))
             
             return agg_expr
         
@@ -405,6 +475,38 @@ class ASQLParser:
     def _parse_sort_expression(self) -> Optional[exp.Expression]:
         """Parse a sort expression (column reference or function call)."""
         self._skip_whitespace()
+        
+        # Check for quoted string (natural language column name)
+        if self._peek() in ('"', "'"):
+            quoted_name = self._parse_string_literal()
+            if quoted_name:
+                # Return column reference with quoted identifier
+                return exp.Column(this=exp.Identifier(this=quoted_name, quoted=True))
+        
+        # Check for numeric positional reference (1, 2, etc.) - SQL standard
+        # Positional references are numbers at the start of a sort expression
+        if self._peek().isdigit():
+            num_str = ""
+            start_pos = self.pos
+            while self._has_more() and self._peek().isdigit():
+                num_str += self._peek()
+                self._consume(self._peek())
+            # Check if this is followed by comma, end, whitespace, or minus (for descending)
+            # This indicates it's a positional reference, not part of a larger expression
+            self._skip_whitespace()
+            if not self._has_more() or self._peek() in (",", "-") or self._peek().isspace():
+                # This is a positional reference (SQL ORDER BY 1, 2, etc.)
+                # Store as numeric literal - SQLGlot will handle it as positional reference
+                return exp.Literal(this=int(num_str), is_string=False)
+            else:
+                # Not a positional reference, reset position
+                self.pos = start_pos
+        
+        # Check for # (COUNT(*)) - special case for sorting by count
+        if self._peek() == "#":
+            self._consume("#")
+            # Return COUNT(*) expression for sorting
+            return exp.Count(this=exp.Star())
         
         # Parse identifier (function name or column name)
         identifier = self._parse_identifier()
@@ -579,6 +681,48 @@ class ASQLParser:
     def _parse_select_expression(self) -> Optional[exp.Expression]:
         """Parse a SELECT expression (column, arithmetic expression, or alias)."""
         self._skip_whitespace()
+        
+        # Check for quoted string (natural language column name)
+        if self._peek() in ('"', "'"):
+            quoted_name = self._parse_string_literal()
+            if quoted_name:
+                # Return column reference with quoted identifier
+                expr = exp.Column(this=exp.Identifier(this=quoted_name, quoted=True))
+                self._skip_whitespace()
+                # Check for alias
+                if self._peek_keyword("as"):
+                    self._consume_keyword("as")
+                    self._skip_whitespace()
+                    alias = self._parse_identifier()
+                    if alias:
+                        return exp.Alias(this=expr, alias=exp.Identifier(this=alias))
+                return expr
+        
+        # Check for numeric positional reference (1, 2, etc.) - SQL standard
+        # In SELECT, positional references refer to column positions
+        if self._peek().isdigit():
+            num_str = ""
+            start_pos = self.pos
+            while self._has_more() and self._peek().isdigit():
+                num_str += self._peek()
+                self._consume(self._peek())
+            # Check if this is followed by comma, end, or whitespace (not part of larger expression)
+            self._skip_whitespace()
+            if not self._has_more() or self._peek() == "," or self._peek().isspace():
+                # This is a positional reference
+                expr = exp.Literal(this=int(num_str), is_string=False)
+                self._skip_whitespace()
+                # Check for alias
+                if self._peek_keyword("as"):
+                    self._consume_keyword("as")
+                    self._skip_whitespace()
+                    alias = self._parse_identifier()
+                    if alias:
+                        return exp.Alias(this=expr, alias=exp.Identifier(this=alias))
+                return expr
+            else:
+                # Not a positional reference, reset position
+                self.pos = start_pos
         
         # Parse expression (supports arithmetic)
         expr = self._parse_additive_expression()

@@ -151,6 +151,17 @@ def test_compile_group_by_sort() -> None:
     assert "ORDER BY" in sql_upper
 
 
+def test_compile_sort_by_count_hash() -> None:
+    """Test compiling SORT by # (COUNT) directly without alias."""
+    asql = "from users group by country ( # ) sort -#"
+    sql = compile(asql)
+    sql_upper = sql.upper()
+    assert "GROUP BY" in sql_upper
+    assert "ORDER BY" in sql_upper
+    assert "COUNT" in sql_upper
+    assert "DESC" in sql_upper
+
+
 def test_compile_sort_function_call() -> None:
     """Test compiling SORT with function call."""
     asql = "from users sort month(updated_at)"
