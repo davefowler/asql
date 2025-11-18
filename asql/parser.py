@@ -6,6 +6,7 @@ from sqlglot import exp
 from sqlglot.errors import ParseError
 
 from asql.errors import ASQLSyntaxError
+from asql.pipeline import PipelineStep, build_cte_pipeline
 
 
 class ASQLParser:
@@ -25,10 +26,10 @@ class ASQLParser:
     
     def parse(self) -> exp.Select:
         """
-        Parse ASQL query into SQLGlot AST.
+        Parse ASQL query into SQLGlot AST using pipeline CTE approach.
         
         Returns:
-            SQLGlot Select expression
+            SQLGlot Select expression with CTEs
             
         Raises:
             ASQLSyntaxError: If syntax is invalid
@@ -42,12 +43,43 @@ class ASQLParser:
             # Parse SET statement - this creates a CTE
             return self._parse_set_statement()
         
+        # Parse into pipeline steps
+        steps = self.parse_pipeline()
+        
+        # Build CTE-based pipeline
+        return build_cte_pipeline(steps)
+    
+    def parse_pipeline(self) -> List[PipelineStep]:
+        """
+        Parse ASQL query into pipeline steps.
+        
+        Returns:
+            List of PipelineStep objects representing the pipeline
+            
+        Raises:
+            ASQLSyntaxError: If syntax is invalid
+        """
+        if not self.text:
+            raise ASQLSyntaxError("Empty ASQL query")
+        
+        # Check if this is a SET/CTE statement - handle separately
+        saved_pos = self.pos
+        self._skip_whitespace()
+        if self._peek_keyword("set"):
+            # For SET statements, parse normally (they create their own CTEs)
+            self.pos = saved_pos
+            # This will be handled in parse() method
+            raise ValueError("SET statements should be handled in parse() method")
+        
+        self.pos = saved_pos
+        
         # Parse FROM clause (required, must be first)
         from_expr = self._parse_from()
         
-        # Build SELECT statement
-        select_expr = exp.Select()
-        select_expr.set("from", from_expr)
+        # Initialize first step
+        steps: List[PipelineStep] = []
+        current_step = PipelineStep()
+        current_step.from_clause = from_expr
         
         # Parse pipeline operators
         while self._has_more():
@@ -58,51 +90,51 @@ class ASQLParser:
             # Check for WHERE
             if self._peek_keyword("where") or self._peek_keyword("if"):
                 where_expr = self._parse_where()
-                select_expr.set("where", where_expr)
-            # Check for GROUP BY
+                current_step.add_where(where_expr)
+            # Check for GROUP BY - starts new step
             elif self._peek_keyword("group"):
+                # Save current step if it has content
+                if current_step.has_content():
+                    steps.append(current_step)
+                # Start new step for GROUP BY (will reference previous step)
+                current_step = PipelineStep()
                 group_expr, aggregations = self._parse_group_by()
-                select_expr.set("group", group_expr)
-                # Set aggregations as SELECT expressions if no SELECT was specified
-                if not hasattr(select_expr, "expressions") or not select_expr.expressions:
-                    # Include grouping columns + aggregations
-                    expressions = []
-                    # Add grouping columns
-                    if group_expr.expressions:
-                        expressions.extend(group_expr.expressions)
-                    # Add aggregations
-                    expressions.extend(aggregations)
-                    select_expr.set("expressions", expressions)
+                current_step.group_by = group_expr
+                current_step.aggregations = aggregations
+            # Check for JOIN - starts new step
+            elif self._peek_keyword("join"):
+                # Save current step if it has content
+                if current_step.has_content():
+                    steps.append(current_step)
+                # Start new step for JOIN (will reference previous step)
+                current_step = PipelineStep()
+                join_expr = self._parse_join()
+                current_step.add_join(join_expr)
             # Check for SORT
             elif self._peek_keyword("sort"):
                 order_expr = self._parse_sort()
-                select_expr.set("order", order_expr)
+                current_step.sort = order_expr
             # Check for TAKE
             elif self._peek_keyword("take"):
                 limit_expr = self._parse_take()
-                select_expr.set("limit", limit_expr)
+                current_step.limit = limit_expr
             # Check for SELECT
             elif self._peek_keyword("select") or self._peek_keyword("project"):
                 select_list = self._parse_select_list()
-                select_expr.set("expressions", select_list)
-            # Check for JOIN
-            elif self._peek_keyword("join"):
-                join_expr = self._parse_join()
-                # Add join to the Select's joins list (SQLGlot stores joins on Select)
-                existing_joins = select_expr.args.get("joins", [])
-                if not existing_joins:
-                    existing_joins = []
-                existing_joins.append(join_expr)
-                select_expr.set("joins", existing_joins)
+                current_step.select = select_list
             else:
                 # Unknown operator, stop parsing
                 break
         
-        # If no SELECT was specified, default to SELECT *
-        if not hasattr(select_expr, "expressions") or not select_expr.expressions:
-            select_expr.set("expressions", [exp.Star()])
+        # Add final step if it has content
+        if current_step.has_content():
+            steps.append(current_step)
         
-        return select_expr
+        # If no steps were created (just FROM), create a single step
+        if not steps:
+            steps.append(current_step)
+        
+        return steps
     
     def _parse_from(self) -> exp.From:
         """Parse FROM clause."""

@@ -1,82 +1,66 @@
-# ASQL Documentation Index
+# Welcome to ASQL
 
-Welcome to the ASQL documentation! This index will help you find what you need.
+**ASQL: Analytic SQL** - A modern, pipeline-based query language that transpiles to SQL.
 
-## Getting Started
+ASQL uses a FROM-first, pipeline-based syntax that makes complex analytics queries more readable and intuitive.
 
-- 📖 [Quick Start Guide](QUICK_START.md) - Get up and running in minutes
-- 🎮 [Interactive Playground](INTERACTIVE_PLAYGROUND.md) - Try ASQL in your browser
+## Quick Start
 
-## Reference Documentation
+```python
+from asql import compile
 
-- 📚 [Comprehensive Examples](EXAMPLES.md) - Extensive examples with SQL output
-- 📋 [Language Specification](../SPEC.md) - Complete ASQL syntax reference
-- 🏗️ [Architecture](../ARCHITECTURE.md) - System design and implementation
+asql = """
+from users
+where status == "active"
+group by country ( # as total_users )
+sort -total_users
+take 10
+"""
 
-## Examples Library
-
-- 📁 [Examples README](../examples/README.md) - Run examples programmatically
-- 🐍 [Python Examples](../examples/) - All example code
-
-## Project Information
-
-- 📊 [Status](../STATUS.md) - Current implementation status
-- 🔍 [Critical Review](../CRITICAL_REVIEW.md) - Design decisions and trade-offs
-
-## Quick Links
-
-### Common Tasks
-
-**I want to...**
-- **Learn ASQL quickly** → [Quick Start Guide](QUICK_START.md)
-- **See examples** → [Examples](EXAMPLES.md)
-- **Try it interactively** → [Playground](INTERACTIVE_PLAYGROUND.md)
-- **Understand the syntax** → [Language Specification](../SPEC.md)
-- **Run example code** → [Examples Library](../examples/README.md)
-
-### By Experience Level
-
-**Beginner:**
-1. Start with [Quick Start Guide](QUICK_START.md)
-2. Try the [Interactive Playground](INTERACTIVE_PLAYGROUND.md)
-3. Browse [Examples](EXAMPLES.md)
-
-**Intermediate:**
-1. Read the [Language Specification](../SPEC.md)
-2. Explore the [Examples Library](../examples/)
-3. Check [Architecture](../ARCHITECTURE.md) for implementation details
-
-**Advanced:**
-1. Review [Architecture](../ARCHITECTURE.md)
-2. Read [Critical Review](../CRITICAL_REVIEW.md)
-3. Check [Status](../STATUS.md) for current limitations
-
-## Documentation Structure
-
-```
-docs/
-├── INDEX.md                    # This file
-├── QUICK_START.md              # Getting started guide
-├── EXAMPLES.md                 # Comprehensive examples
-└── INTERACTIVE_PLAYGROUND.md   # Playground documentation
-
-examples/
-├── README.md                   # Examples library guide
-├── basic_queries.py           # Basic query examples
-├── aggregations.py            # Aggregation examples
-├── sorting_and_limiting.py    # Sorting examples
-└── complex_queries.py         # Complex query examples
+sql = compile(asql, dialect="postgres")
+print(sql)
 ```
 
-## Contributing to Documentation
+**Output:**
+```sql
+SELECT country, COUNT(*) AS total_users 
+FROM users 
+WHERE status = 'active' 
+GROUP BY country 
+ORDER BY total_users DESC 
+LIMIT 10
+```
 
-When adding documentation:
+## Features
 
-1. **Examples**: Add to `docs/EXAMPLES.md` and create corresponding code in `examples/`
-2. **Features**: Update relevant docs when adding new features
-3. **Playground**: Update `INTERACTIVE_PLAYGROUND.md` if changing playground features
-4. **Index**: Update this file if adding new documentation sections
+- 🚀 **Pipeline-based syntax** - Queries flow naturally from top to bottom
+- 🔄 **SQL Dialect Support** - Generate SQL for PostgreSQL, MySQL, BigQuery, Snowflake, and more
+- 📊 **Powerful Aggregations** - GROUP BY with multiple aggregations
+- 🎯 **Expressive Filtering** - Rich WHERE clause with logical operators
+- 📈 **Sorting & Limiting** - Easy SORT and TAKE operations
 
-## Feedback
+## Documentation
 
-Found an issue or have suggestions? Please open an issue or submit a pull request!
+- 📖 [Quick Start Guide](quick-start.md) - Get started in minutes
+- 📚 [Examples](examples.md) - Extensive examples with SQL output
+- 📋 [Language Specification](spec.md) - Complete ASQL syntax reference
+- 🏗️ [Architecture](architecture.md) - System design and implementation details
+
+## Installation
+
+```bash
+pip install -e .
+```
+
+Or with development dependencies:
+
+```bash
+pip install -e ".[dev]"
+```
+
+## Next Steps
+
+1. Read the [Getting Started Guide](getting-started.md)
+2. Browse [Examples](examples.md) to see what's possible
+3. Check the [Language Specification](spec.md) for complete syntax reference
+4. Review [Status](status.md) for current implementation status
