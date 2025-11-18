@@ -6,7 +6,12 @@ These are reference documents that may be useful for understanding implementatio
 
 ## Contents
 
+- **AGENT_INSTRUCTIONS.md** - Instructions for AI agents working on ASQL implementation
+- **CODE_QUALITY.md** - Code quality standards and cleanup tasks checklist
+- **CRITICAL_REVIEW.md** - Critical review of the ASQL specification with design concerns and recommendations
+- **FEATURE_STATUS.md** - Detailed feature status breakdown with test statistics
 - **IMPLEMENTATION_STATUS.md** - Comprehensive status report of what's implemented vs. what's missing
+- **PHASE_COMPLETION.md** - Summary of Phase 2 & Phase 3 completion
 - **PIPELINE_CTE_IMPLEMENTATION.md** - Detailed guide on implementing pipelined CTEs (the core missing feature)
 - **STRING_MATCHING_PLAN.md** - Implementation plan for string matching operators
 
