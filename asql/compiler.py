@@ -33,46 +33,40 @@ def compile(
         if not asql_query.strip():
             raise ASQLSyntaxError("Empty ASQL query")
         
-        # Check if this is a SET/CTE statement by checking the query text
+        # Check if this is a WITH/CTE statement by checking the query text
         query_stripped = asql_query.strip()
-        is_set_statement = query_stripped.lower().startswith("set ")
+        is_with_statement = query_stripped.lower().startswith("with ")
         
         # Parse ASQL to SQLGlot AST
         parser = ASQLParser(asql_query)
         select_expr = parser.parse()
         
-        # If this was a SET statement, extract the CTE name and create WITH clause
-        if is_set_statement:
-            # Extract variable name from "set var_name = ..."
-            parts = query_stripped.split("=", 1)
-            if len(parts) == 2:
-                var_part = parts[0].strip()
-                # Remove "set" keyword
-                if var_part.lower().startswith("set "):
-                    cte_name = var_part[4:].strip()
-                    
-                    if cte_name:
-                        # Create a clean copy of the SELECT (without CTE metadata)
-                        clean_select = exp.Select()
-                        for key, value in select_expr.args.items():
-                            if key not in ["_is_cte", "_cte_name"]:
-                                clean_select.set(key, value)
-                        
-                        # Create WITH clause
-                        cte = exp.CTE(
-                            this=clean_select,
-                            alias=exp.TableAlias(this=exp.Identifier(this=cte_name))
-                        )
-                        # Create a SELECT that uses the CTE
-                        select_from_cte = exp.Select()
-                        select_from_cte.set("expressions", [exp.Star()])
-                        select_from_cte.set("from_", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
-                        # Set WITH clause on the SELECT (SQLGlot uses 'with_' not 'with')
-                        select_from_cte.set("with_", exp.With(expressions=[cte]))
-                        
-                        sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
-                        sql = select_from_cte.sql(dialect=sql_dialect, pretty=pretty)
-                        return sql
+        # If this was a WITH statement, extract the CTE name from parser metadata
+        if is_with_statement and hasattr(select_expr, "meta") and select_expr.meta.get("_is_cte"):
+            cte_name = select_expr.meta.get("_cte_name")
+            
+            if cte_name:
+                # Create a clean copy of the SELECT (without CTE metadata)
+                clean_select = exp.Select()
+                for key, value in select_expr.args.items():
+                    if key not in ["_is_cte", "_cte_name"]:
+                        clean_select.set(key, value)
+                
+                # Create WITH clause
+                cte = exp.CTE(
+                    this=clean_select,
+                    alias=exp.TableAlias(this=exp.Identifier(this=cte_name))
+                )
+                # Create a SELECT that uses the CTE
+                select_from_cte = exp.Select()
+                select_from_cte.set("expressions", [exp.Star()])
+                select_from_cte.set("from_", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
+                # Set WITH clause on the SELECT (SQLGlot uses 'with_' not 'with')
+                select_from_cte.set("with_", exp.With(expressions=[cte]))
+                
+                sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
+                sql = select_from_cte.sql(dialect=sql_dialect, pretty=pretty)
+                return sql
         
         # Generate SQL
         sql_dialect = Dialect.get_or_raise(dialect) if dialect else None

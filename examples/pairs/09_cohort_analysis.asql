@@ -1,0 +1,22 @@
+-- Cohort analysis: User retention by signup month
+with user_cohorts = from users
+  select 
+    user_id,
+    month(signup_date) as cohort_month,
+    signup_date
+
+with monthly_activity = from user_activities
+  group by user_id, month(activity_date) (
+    month(activity_date) as activity_month
+  )
+
+from user_cohorts
+  left join monthly_activity on user_cohorts.user_id == monthly_activity.user_id 
+    and monthly_activity.activity_month == user_cohorts.cohort_month
+  group by user_cohorts.cohort_month (
+    count(distinct user_cohorts.user_id) as cohort_size,
+    count(distinct monthly_activity.user_id) as active_users,
+    round(count(distinct monthly_activity.user_id)::numeric / count(distinct user_cohorts.user_id) * 100, 2) as retention_rate
+  )
+  sort -user_cohorts.cohort_month
+
