@@ -94,7 +94,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
 | `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -updated_at` (descending column) |
 | `take` | Limit rows | `LIMIT` | `take 10` |
-| `set` | Define variable/fragment (CTE) | `WITH ... AS` | `set active = from users \| where is_active` |
+| `with` | Define variable/fragment (CTE) | `WITH ... AS` | `with active = from users \| where is_active` or `with active as from users \| where is_active` |
 
 ---
 
@@ -811,27 +811,32 @@ The `-` prefix applies only to the column immediately following it.
 
 Variables in ASQL create CTEs (Common Table Expressions). The syntax is designed to make CTEs easier and less necessary:
 
-**Using `set` (creates CTE):**
+**Using `with` (creates CTE):**
 ```asql
-set active_users = from users
+with active_users = from users
   where is_active
 
 from active_users
   group by country ( # as total_users )
 ```
 
-**Why `set`?**
-- **SQL familiarity**: SQL uses `SET` in various contexts (SET variables, SET operations)
-- **Clear intent**: "Set this variable to this query" is intuitive
-- **CTE mapping**: Maps naturally to SQL's `WITH ... AS` (Common Table Expression)
-- **Not `let`**: `let` comes from functional programming (Lisp, ML, Haskell) and doesn't fit SQL's imperative style
+**Alternative syntax using `as`:**
+```asql
+with active_users as from users
+  where is_active
 
-**Alternatives considered**: `let`, `const`, `var`, `define`, `with`
-- `let` - Too functional programming style, not SQL-like
-- `const`/`var` - JavaScript-specific, not SQL
-- `define` - Too generic
-- `with` - Conflicts with SQL's `WITH` keyword usage
-- `set` ✅ - Most SQL-like and clear
+from active_users
+  group by country ( # as total_users )
+```
+
+Both `=` and `as` are supported - use whichever feels more natural. The `as` syntax matches SQL's `WITH ... AS` pattern more closely, while `=` is more concise.
+
+**Why `with`?**
+- **SQL familiarity**: `WITH ... AS` is the standard SQL syntax for CTEs
+- **Direct mapping**: Maps directly to SQL's `WITH ... AS` (Common Table Expression)
+- **Clear intent**: "With this variable defined as this query" reads naturally
+- **Not `set`**: `SET` in SQL is used for variables (`SET @var = 1`) and session settings (`SET timezone = 'UTC'`), not CTEs
+- **Not `let`**: `let` comes from functional programming (Lisp, ML, Haskell) and doesn't fit SQL's imperative style
 
 **Major benefit: Less need for CTEs**: Because ASQL uses pipelines, you often don't need CTEs at all. Instead of breaking into a CTE, you can just add a comment marking a logical stopping point:
 
@@ -848,10 +853,22 @@ The comment marks where you might have created a CTE in SQL, but the pipeline co
 ### 11.2 Nested Variables
 
 ```asql
-set base = from users
+with base = from users
   where plan == "premium"
 
-set by_country = from base
+with by_country = from base
+  group by country ( # as total_users )
+
+from by_country
+  sort -total_users
+```
+
+Or using `as` syntax:
+```asql
+with base as from users
+  where plan == "premium"
+
+with by_country as from base
   group by country ( # as total_users )
 
 from by_country
@@ -1189,7 +1206,7 @@ Avg Users.age by country
 ### Example 5: Variables and Reuse
 
 ```asql
-set base = from users
+with base = from users
   where plan == "premium"
 
 from base
@@ -1467,7 +1484,7 @@ sort_op := 'sort' ('-'? (column_name | function_call))+
 
 take_op := 'take' number
 
-set_op := 'set' var_name '=' query
+with_op := 'with' var_name ('=' | 'as') query
 
 aggregate := var_name 'as' aggregate_func '(' expression ')'
            | natural_language_aggregate
@@ -1493,7 +1510,7 @@ aggregate_func := 'count' | 'sum' | 'avg' | 'min' | 'max'
 
 ## References & Inspiration
 
-- **PRQL**: Pipeline structure, group by blocks, func (note: PRQL uses `let` but ASQL uses `set` for SQL familiarity)
+- **PRQL**: Pipeline structure, group by blocks, func (note: PRQL uses `let` but ASQL uses `with` to match SQL's `WITH ... AS` syntax)
 - **KQL**: Verb syntax (filter, project, summarize), pipeline operators
 - **Malloy**: Model layer, measures/dimensions, time bucketing concept (ASQL uses simpler `month()`, `year()` functions rather than Malloy's `time_bucket()` function), default_time concept
 - **EdgeQL**: Dot traversal for relationships, nested result shapes

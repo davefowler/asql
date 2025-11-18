@@ -37,11 +37,11 @@ class ASQLParser:
         if not self.text:
             raise ASQLSyntaxError("Empty ASQL query")
         
-        # Check if this is a SET/CTE statement: "set variable = query"
+        # Check if this is a WITH/CTE statement: "with variable = query" or "with variable as query"
         self._skip_whitespace()
-        if self._peek_keyword("set"):
-            # Parse SET statement - this creates a CTE
-            return self._parse_set_statement()
+        if self._peek_keyword("with"):
+            # Parse WITH statement - this creates a CTE
+            return self._parse_with_statement()
         
         # Parse into pipeline steps
         steps = self.parse_pipeline()
@@ -62,14 +62,14 @@ class ASQLParser:
         if not self.text:
             raise ASQLSyntaxError("Empty ASQL query")
         
-        # Check if this is a SET/CTE statement - handle separately
+        # Check if this is a WITH/CTE statement - handle separately
         saved_pos = self.pos
         self._skip_whitespace()
-        if self._peek_keyword("set"):
-            # For SET statements, parse normally (they create their own CTEs)
+        if self._peek_keyword("with"):
+            # For WITH statements, parse normally (they create their own CTEs)
             self.pos = saved_pos
             # This will be handled in parse() method
-            raise ValueError("SET statements should be handled in parse() method")
+            raise ValueError("WITH statements should be handled in parse() method")
         
         self.pos = saved_pos
         
@@ -591,31 +591,37 @@ class ASQLParser:
         
         return exp.Limit(this=exp.Literal(this=limit_value, is_string=False))
     
-    def _parse_set_statement(self) -> exp.Select:
+    def _parse_with_statement(self) -> exp.Select:
         """
-        Parse SET statement for CTEs.
+        Parse WITH statement for CTEs.
         
-        Syntax: set variable_name = from table ...
-        Example: set active_users = from users where status == "active"
+        Syntax: with variable_name = from table ...
+               or with variable_name as from table ...
+        Example: with active_users = from users where status == "active"
+        Example: with active_users as from users where status == "active"
         
         Returns a Select with CTE (WITH clause).
         """
-        if not self._consume_keyword("set"):
-            raise ASQLSyntaxError("Expected 'set' keyword")
+        if not self._consume_keyword("with"):
+            raise ASQLSyntaxError("Expected 'with' keyword")
         
         self._skip_whitespace()
         
         # Parse variable name
         var_name = self._parse_identifier()
         if not var_name:
-            raise ASQLSyntaxError("Expected variable name after 'set'")
+            raise ASQLSyntaxError("Expected variable name after 'with'")
         
         self._skip_whitespace()
         
-        # Parse = sign
-        if self._peek() != "=":
-            raise ASQLSyntaxError("Expected '=' after variable name in SET statement")
-        self._consume("=")
+        # Parse = or as keyword
+        if self._peek() == "=":
+            self._consume("=")
+        elif self._peek_keyword("as"):
+            self._consume_keyword("as")
+        else:
+            raise ASQLSyntaxError("Expected '=' or 'as' after variable name in WITH statement")
+        
         self._skip_whitespace()
         
         # Parse the query (starts with FROM)

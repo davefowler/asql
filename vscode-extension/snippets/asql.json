@@ -77,12 +77,12 @@
     ],
     "description": "JOIN clause"
   },
-  "SET variable": {
-    "prefix": "set",
+  "WITH variable": {
+    "prefix": "with",
     "body": [
-      "set ${1:variable_name} = from ${2:table_name}",
+      "with ${1:variable_name} = from ${2:table_name}",
       "where ${3:condition}"
     ],
-    "description": "SET variable (CTE)"
+    "description": "WITH variable (CTE) - supports both '=' and 'as'"
   }
 }
