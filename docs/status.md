@@ -72,7 +72,7 @@ compile("from users group by country ( # as total_users ) sort -total_users take
 
 - **Custom Parser**: Using custom parser (not SQLGlot dialect) because ASQL syntax is fundamentally different
 - **SQLGlot AST**: Building SQLGlot AST nodes, then using SQLGlot's generator
-- **Pipeline → CTEs**: ✅ **IMPLEMENTED** - Each pipeline step becomes a descriptive CTE (e.g., `1_where_status`, `2_group_by_country`)
+- **Pipeline → CTEs**: Each pipeline step should become a CTE (not yet implemented)
 
 ## Files Structure
 
@@ -94,9 +94,9 @@ tests/
 
 1. **Single-line queries only** - No indentation/multi-line support yet
 2. **Limited expressions** - Missing arithmetic operators, string matching (`contains`, `starts with`, etc.)
-3. ✅ **CTEs** - Pipeline steps now become descriptive CTEs (e.g., `1_where_status`, `2_group_by_country`)
+3. **No CTEs** - Pipeline steps don't become CTEs yet (each step should become a CTE)
 4. **No schema resolution** - No FK inference, plural/singular handling
-5. ✅ **JOIN** - Explicit joins implemented (creates new pipeline step)
+5. **No JOIN** - Explicit joins not yet implemented
 6. **String matching** - Planned: `contains`, `starts with`, `ends with`, `matches` (see SPEC.md Section 4.5)
 
 ## Test Coverage

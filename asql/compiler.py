@@ -66,9 +66,9 @@ def compile(
                         # Create a SELECT that uses the CTE
                         select_from_cte = exp.Select()
                         select_from_cte.set("expressions", [exp.Star()])
-                        select_from_cte.set("from", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
-                        # Set WITH clause on the SELECT
-                        select_from_cte.set("with", exp.With(expressions=[cte]))
+                        select_from_cte.set("from_", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
+                        # Set WITH clause on the SELECT (SQLGlot uses 'with_' not 'with')
+                        select_from_cte.set("with_", exp.With(expressions=[cte]))
                         
                         sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
                         sql = select_from_cte.sql(dialect=sql_dialect, pretty=pretty)

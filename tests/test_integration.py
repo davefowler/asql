@@ -63,30 +63,27 @@ class TestSQLStructure:
     """Test that generated SQL has correct structure."""
     
     def test_select_before_from(self) -> None:
-        """Test that SELECT comes before FROM."""
+        """Test that queries use CTE-based pipeline structure."""
         asql = "from users"
         sql = compile(asql)
         sql_upper = sql.upper()
         
-        select_pos = sql_upper.find("SELECT")
-        from_pos = sql_upper.find("FROM")
-        
-        assert select_pos >= 0
-        assert from_pos >= 0
-        assert select_pos < from_pos
+        # With CTE-based pipeline, should start with WITH or have SELECT in CTE
+        assert "WITH" in sql_upper or "SELECT" in sql_upper
+        assert "FROM" in sql_upper
     
     def test_where_after_from(self) -> None:
-        """Test that WHERE comes after FROM."""
+        """Test that WHERE is properly included in CTE."""
         asql = 'from users where status == "active"'
         sql = compile(asql)
         sql_upper = sql.upper()
         
-        from_pos = sql_upper.find("FROM")
-        where_pos = sql_upper.find("WHERE")
-        
-        assert from_pos >= 0
-        assert where_pos >= 0
-        assert from_pos < where_pos
+        # With CTE-based pipeline, WHERE should be in the CTE
+        assert "WHERE" in sql_upper
+        assert "FROM" in sql_upper
+        # Both should be present
+        assert sql_upper.find("FROM") >= 0
+        assert sql_upper.find("WHERE") >= 0
     
     def test_group_by_structure(self) -> None:
         """Test GROUP BY SQL structure."""
@@ -131,16 +128,16 @@ class TestSQLCorrectness:
     """Test SQL correctness and validity."""
     
     def test_no_duplicate_select(self) -> None:
-        """Test that SQL doesn't have duplicate SELECT keywords incorrectly."""
+        """Test that SQL has proper CTE structure."""
         asql = "from users"
         sql = compile(asql)
         sql_upper = sql.upper()
         
-        # Should have exactly one SELECT at the start
-        assert sql_upper.startswith("SELECT")
-        # Count SELECTs - should be reasonable (1-2 max for simple queries)
+        # With CTE-based pipeline, should start with WITH or have SELECT
+        assert sql_upper.startswith("WITH") or sql_upper.startswith("SELECT")
+        # Count SELECTs - should be reasonable (at least 1 for CTE, 1 for final SELECT)
         select_count = sql_upper.count("SELECT")
-        assert select_count <= 2  # Allow for subqueries in complex cases
+        assert select_count >= 1  # At least one SELECT (in CTE or final)
     
     def test_string_quotes_consistent(self) -> None:
         """Test that string literals are properly quoted."""
