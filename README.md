@@ -95,6 +95,7 @@ Each pipeline step becomes a descriptive CTE, making the generated SQL self-docu
 - 📚 [Comprehensive Examples](docs/EXAMPLES.md) - Extensive examples with SQL output
 - 🏗️ [Architecture](ARCHITECTURE.md) - System design and implementation details
 - 📋 [Language Specification](SPEC.md) - Complete ASQL syntax reference
+- 🌟 [Real-World Examples](docs/FIVETRAN_EXAMPLES.md) - Complex queries from Fivetran dbt models, showing how ASQL simplifies production SQL
 
 ## Interactive Playground
 
