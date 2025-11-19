@@ -16,6 +16,7 @@ class PipelineStep:
         self.select: Optional[List[exp.Expression]] = None
         self.sort: Optional[exp.Order] = None
         self.limit: Optional[exp.Limit] = None
+        self.store_name: Optional[str] = None  # Name for stored CTE
     
     def has_content(self) -> bool:
         """Check if step has any content."""
@@ -149,7 +150,7 @@ def build_select_for_step(
         raise ValueError("Step has no FROM clause and no previous step to reference")
     
     if from_expr:
-        select.set("from", from_expr)
+        select.set("from_", from_expr)  # SQLGlot uses 'from_' not 'from'
     
     # Add WHERE clauses
     if step.where_clauses:
@@ -209,8 +210,11 @@ def build_cte_pipeline(steps: List[PipelineStep]) -> exp.Select:
     previous_step_name = None
     
     for i, step in enumerate(steps):
-        # Generate descriptive CTE name based on operation type
-        step_name = generate_step_name(i + 1, step)
+        # Use store_name if provided, otherwise generate descriptive CTE name
+        if step.store_name:
+            step_name = step.store_name
+        else:
+            step_name = generate_step_name(i + 1, step)
         
         # Create SELECT for this step
         step_select = build_select_for_step(step, previous_step_name)
@@ -226,12 +230,12 @@ def build_cte_pipeline(steps: List[PipelineStep]) -> exp.Select:
     # Create final SELECT that uses the last CTE
     final_select = exp.Select()
     final_select.set("expressions", [exp.Star()])  # Or specific columns
-    final_select.set("from", exp.From(
+    final_select.set("from_", exp.From(
         this=exp.Table(this=exp.Identifier(this=previous_step_name))
     ))
     
-    # Attach WITH clause with all CTEs
-    final_select.set("with", exp.With(expressions=ctes))
+    # Attach WITH clause with all CTEs (SQLGlot uses 'with_' not 'with' because 'with' is a Python keyword)
+    final_select.set("with_", exp.With(expressions=ctes))
     
     return final_select
 

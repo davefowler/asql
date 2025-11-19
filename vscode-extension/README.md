@@ -65,12 +65,12 @@ Type snippet prefixes and press `Tab`:
 - `sort` → Sort descending
 - `query` → Complete query pipeline
 - `join` → JOIN clause
-- `set` → SET variable (CTE)
+- `with` → WITH variable (CTE) - supports both `=` and `as`
 
 ### Syntax Highlighting
 
 The extension highlights:
-- **Keywords**: `from`, `where`, `select`, `group by`, `sort`, `take`
+- **Keywords**: `from`, `where`, `select`, `group by`, `sort`, `take`, `join`, `with`
 - **Operators**: `==`, `!=`, `in`, `not in`, `and`, `or`
 - **Functions**: `sum()`, `avg()`, `count()`, `month()`, etc.
 - **Literals**: Strings, numbers, booleans
