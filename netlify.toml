@@ -13,8 +13,6 @@
   function = "basic-auth"
   path = "/*"
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# Note: MkDocs generates static HTML files, so no SPA-style redirects are needed
+# If you need redirects for specific paths, add them here with appropriate paths
 
