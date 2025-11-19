@@ -16,6 +16,7 @@ class PipelineStep:
         self.select: Optional[List[exp.Expression]] = None
         self.sort: Optional[exp.Order] = None
         self.limit: Optional[exp.Limit] = None
+        self.store_name: Optional[str] = None  # Name for stored CTE
     
     def has_content(self) -> bool:
         """Check if step has any content."""
@@ -209,8 +210,11 @@ def build_cte_pipeline(steps: List[PipelineStep]) -> exp.Select:
     previous_step_name = None
     
     for i, step in enumerate(steps):
-        # Generate descriptive CTE name based on operation type
-        step_name = generate_step_name(i + 1, step)
+        # Use store_name if provided, otherwise generate descriptive CTE name
+        if step.store_name:
+            step_name = step.store_name
+        else:
+            step_name = generate_step_name(i + 1, step)
         
         # Create SELECT for this step
         step_select = build_select_for_step(step, previous_step_name)

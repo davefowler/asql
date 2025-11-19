@@ -122,6 +122,20 @@ class ASQLParser:
             elif self._peek_keyword("select") or self._peek_keyword("project"):
                 select_list = self._parse_select_list()
                 current_step.select = select_list
+            # Check for STORE AS (creates a named CTE)
+            elif self._peek_keyword("store"):
+                # Parse store as <name> first
+                store_name = self._parse_store_as()
+                # Save current step if it has content, marking it as stored
+                if current_step.has_content():
+                    current_step.store_name = store_name
+                    steps.append(current_step)
+                    # Start new step for any subsequent operations
+                    current_step = PipelineStep()
+                else:
+                    # No content yet, but we still want to mark the last step as stored
+                    if steps:
+                        steps[-1].store_name = store_name
             else:
                 # Unknown operator, stop parsing
                 break
@@ -144,10 +158,10 @@ class ASQLParser:
         self._consume_keyword("from")
         self._skip_whitespace()
         
-        # Parse table name
+        # Parse table name (could be a table or a stored CTE name)
         table_name = self._parse_identifier()
         if not table_name:
-            raise ASQLSyntaxError("Expected table name after 'from'")
+            raise ASQLSyntaxError("Expected table name or CTE name after 'from'")
         
         table = exp.Table(this=exp.Identifier(this=table_name))
         from_expr = exp.From(this=table)
@@ -590,6 +604,27 @@ class ASQLParser:
             raise ASQLSyntaxError(f"Invalid number: {number_str}")
         
         return exp.Limit(this=exp.Literal(this=limit_value, is_string=False))
+    
+    def _parse_store_as(self) -> str:
+        """Parse STORE AS <name> clause."""
+        if not self._consume_keyword("store"):
+            raise ASQLSyntaxError("Expected 'store' keyword")
+        
+        self._skip_whitespace()
+        
+        # Parse "as" keyword
+        if not self._peek_keyword("as"):
+            raise ASQLSyntaxError("Expected 'as' after 'store'")
+        
+        self._consume_keyword("as")
+        self._skip_whitespace()
+        
+        # Parse identifier (CTE name)
+        store_name = self._parse_identifier()
+        if not store_name:
+            raise ASQLSyntaxError("Expected CTE name after 'store as'")
+        
+        return store_name
     
     def _parse_with_statement(self) -> exp.Select:
         """
