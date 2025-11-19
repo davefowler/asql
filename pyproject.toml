@@ -25,6 +25,10 @@ dev = [
 playground = [
     "flask>=2.0.0",
 ]
+docs = [
+    "flask>=2.0.0",
+    "markdown>=3.4.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

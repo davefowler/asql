@@ -1,0 +1,70 @@
+-- Source: dbt_marketo
+-- Model: int_marketo__lead
+-- Dialect: snowflake
+-- Repository: https://github.com/fivetran/dbt_marketo
+-- File: models/intermediate/int_marketo__lead.sql
+
+{{ config(materialized='view') }}
+
+with leads as(
+    select * 
+    from {{ ref('stg_marketo__lead') }}
+
+), activity_merge_leads as (
+    select * 
+    from {{ ref('stg_marketo__activity_merge_leads') }}
+
+), unique_merges as (
+
+    select
+        source_relation,
+        cast(lead_id as {{ dbt.type_int() }}) as lead_id,
+        {{ fivetran_utils.string_agg('distinct merged_lead_id', "', '") }} as merged_into_lead_id
+
+    from activity_merge_leads
+    group by 1, 2 
+
+/*If you do not use the activity_delete_lead table, set var marketo__activity_delete_lead_enabled 
+to False. Default is True*/
+{% if var('marketo__activity_delete_lead_enabled', True) %}
+), deleted_leads as (
+
+    select distinct
+        source_relation,
+        lead_id
+    from {{ ref('stg_marketo__activity_delete_lead') }}
+    
+{% endif %}
+
+), joined as (
+
+    select 
+        leads.*,
+
+        /*If you do not use the activity_delete_lead table, set var marketo__activity_delete_lead_enabled 
+        to False. Default is True*/
+        {% if var('marketo__activity_delete_lead_enabled', True) %}
+        case when deleted_leads.lead_id is not null then True else False end as is_deleted,
+        {% else %}
+        null as is_deleted,
+        {% endif %}
+
+        unique_merges.merged_into_lead_id,
+        case when unique_merges.merged_into_lead_id is not null then True else False end as is_merged
+    from leads
+
+    /*If you do not use the activity_delete_lead table, set var marketo__activity_delete_lead_enabled
+    to False. Default is True*/
+    {% if var('marketo__activity_delete_lead_enabled', True) %}
+    left join deleted_leads 
+        on leads.source_relation = deleted_leads.source_relation 
+        and leads.lead_id = deleted_leads.lead_id
+    {% endif %}
+
+    left join unique_merges 
+        on leads.source_relation = unique_merges.source_relation 
+        and leads.lead_id = unique_merges.lead_id 
+)
+
+select *
+from joined

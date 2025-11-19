@@ -1,0 +1,14 @@
+-- Window functions: Running totals and rankings
+from orders
+  where status == "completed"
+  select 
+    order_id,
+    customer_id,
+    order_date,
+    amount,
+    sum(amount) over (partition by customer_id order by order_date) as running_total,
+    row_number() over (partition by customer_id order by order_date desc) as order_rank,
+    lag(amount) over (partition by customer_id order by order_date) as previous_order_amount,
+    avg(amount) over (partition by customer_id order by order_date rows between 2 preceding and current row) as moving_avg_3_orders
+  sort customer_id, order_date
+

@@ -1,0 +1,11 @@
+-- Date/time analysis: Monthly signups and retention
+from users
+  where signup_date >= @2024-01-01
+  group by month(signup_date) (
+    count(*) as signups,
+    count(case when last_login_date >= current_date - interval "7 days" then 1 end) as active_last_7_days,
+    count(case when last_login_date >= current_date - interval "30 days" then 1 end) as active_last_30_days,
+    avg(days(last_login_date - signup_date)) as avg_days_to_first_login
+  )
+  sort -month(signup_date)
+
