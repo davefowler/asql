@@ -1,0 +1,21 @@
+-- ASQL equivalent of dbt_shopify_int_shopify_gql__order_snowflake.sql
+-- Source: dbt_shopify
+-- Model: int_shopify_gql__order
+-- Dialect: snowflake
+-- Repository: https://github.com/fivetran/dbt_shopify
+
+-- Note: Simplified ASQL version - original has conditional Jinja logic
+
+with orders = from stg_shopify_gql__order
+
+with customer_visit = from stg_shopify_gql__customer_visit
+
+from orders
+  left join customer_visit 
+    on orders.order_id == customer_visit.order_id
+    and orders.source_relation == customer_visit.source_relation
+  select 
+    orders.*,
+    customer_visit.referring_site,
+    customer_visit.landing_page as landing_site_base_url
+
