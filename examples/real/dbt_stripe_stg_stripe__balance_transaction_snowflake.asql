@@ -1,0 +1,29 @@
+-- ASQL equivalent of dbt_stripe_stg_stripe__balance_transaction_snowflake.sql
+-- Source: dbt_stripe
+-- Model: stg_stripe__balance_transaction
+-- Dialect: snowflake
+-- Repository: https://github.com/fivetran/dbt_stripe
+
+-- Note: Simplified ASQL version - original has dbt macros for column filling
+
+with base = from stg_stripe__balance_transaction_tmp
+
+from base
+  select 
+    id as balance_transaction_id,
+    amount,
+    available_on,
+    created_at,
+    currency,
+    description,
+    exchange_rate,
+    fee,
+    fee_details,
+    net,
+    reporting_category,
+    source_id,
+    status,
+    type as transaction_type,
+    source_relation
+  where status is not null
+

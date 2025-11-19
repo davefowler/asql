@@ -1,0 +1,15 @@
+-- Revenue recognition: Deferred revenue by subscription
+from subscriptions
+  join payments on subscriptions.subscription_id == payments.subscription_id
+  where subscriptions.status == "active"
+  group by subscriptions.subscription_id, subscriptions.customer_id, subscriptions.plan_name, 
+           subscriptions.monthly_amount, subscriptions.start_date, subscriptions.end_date (
+    count(distinct month(payments.payment_date)) as months_paid,
+    sum(payments.amount) as total_paid,
+    sum(payments.amount) - sum(case 
+      when payments.payment_date <= current_date then payments.amount 
+      else 0 
+    end) as deferred_revenue
+  )
+  sort -deferred_revenue
+

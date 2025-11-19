@@ -1,0 +1,15 @@
+-- Complex aggregations: Sales by region and month
+from sales
+  where order_date >= @2024-01-01
+  group by region, month(order_date) (
+    count(distinct order_id) as order_count,
+    count(distinct customer_id) as customer_count,
+    sum(amount) as total_revenue,
+    avg(amount) as avg_order_value,
+    min(amount) as min_order_value,
+    max(amount) as max_order_value,
+    sum(case when status == "refunded" then amount else 0 end) as refunded_amount
+  )
+  where total_revenue > 10000
+  sort -month(order_date), -total_revenue
+

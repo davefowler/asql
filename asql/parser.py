@@ -6,6 +6,7 @@ from sqlglot import exp
 from sqlglot.errors import ParseError
 
 from asql.errors import ASQLSyntaxError
+from asql.pipeline import PipelineStep, build_cte_pipeline
 
 
 class ASQLParser:
@@ -25,10 +26,10 @@ class ASQLParser:
     
     def parse(self) -> exp.Select:
         """
-        Parse ASQL query into SQLGlot AST.
+        Parse ASQL query into SQLGlot AST using pipeline CTE approach.
         
         Returns:
-            SQLGlot Select expression
+            SQLGlot Select expression with CTEs
             
         Raises:
             ASQLSyntaxError: If syntax is invalid
@@ -36,18 +37,49 @@ class ASQLParser:
         if not self.text:
             raise ASQLSyntaxError("Empty ASQL query")
         
-        # Check if this is a SET/CTE statement: "set variable = query"
+        # Check if this is a WITH/CTE statement: "with variable = query" or "with variable as query"
         self._skip_whitespace()
-        if self._peek_keyword("set"):
-            # Parse SET statement - this creates a CTE
-            return self._parse_set_statement()
+        if self._peek_keyword("with"):
+            # Parse WITH statement - this creates a CTE
+            return self._parse_with_statement()
+        
+        # Parse into pipeline steps
+        steps = self.parse_pipeline()
+        
+        # Build CTE-based pipeline
+        return build_cte_pipeline(steps)
+    
+    def parse_pipeline(self) -> List[PipelineStep]:
+        """
+        Parse ASQL query into pipeline steps.
+        
+        Returns:
+            List of PipelineStep objects representing the pipeline
+            
+        Raises:
+            ASQLSyntaxError: If syntax is invalid
+        """
+        if not self.text:
+            raise ASQLSyntaxError("Empty ASQL query")
+        
+        # Check if this is a WITH/CTE statement - handle separately
+        saved_pos = self.pos
+        self._skip_whitespace()
+        if self._peek_keyword("with"):
+            # For WITH statements, parse normally (they create their own CTEs)
+            self.pos = saved_pos
+            # This will be handled in parse() method
+            raise ValueError("WITH statements should be handled in parse() method")
+        
+        self.pos = saved_pos
         
         # Parse FROM clause (required, must be first)
         from_expr = self._parse_from()
         
-        # Build SELECT statement
-        select_expr = exp.Select()
-        select_expr.set("from", from_expr)
+        # Initialize first step
+        steps: List[PipelineStep] = []
+        current_step = PipelineStep()
+        current_step.from_clause = from_expr
         
         # Parse pipeline operators
         while self._has_more():
@@ -58,51 +90,65 @@ class ASQLParser:
             # Check for WHERE
             if self._peek_keyword("where") or self._peek_keyword("if"):
                 where_expr = self._parse_where()
-                select_expr.set("where", where_expr)
-            # Check for GROUP BY
+                current_step.add_where(where_expr)
+            # Check for GROUP BY - starts new step
             elif self._peek_keyword("group"):
+                # Save current step if it has content
+                if current_step.has_content():
+                    steps.append(current_step)
+                # Start new step for GROUP BY (will reference previous step)
+                current_step = PipelineStep()
                 group_expr, aggregations = self._parse_group_by()
-                select_expr.set("group", group_expr)
-                # Set aggregations as SELECT expressions if no SELECT was specified
-                if not hasattr(select_expr, "expressions") or not select_expr.expressions:
-                    # Include grouping columns + aggregations
-                    expressions = []
-                    # Add grouping columns
-                    if group_expr.expressions:
-                        expressions.extend(group_expr.expressions)
-                    # Add aggregations
-                    expressions.extend(aggregations)
-                    select_expr.set("expressions", expressions)
+                current_step.group_by = group_expr
+                current_step.aggregations = aggregations
+            # Check for JOIN - starts new step
+            elif self._peek_keyword("join"):
+                # Save current step if it has content
+                if current_step.has_content():
+                    steps.append(current_step)
+                # Start new step for JOIN (will reference previous step)
+                current_step = PipelineStep()
+                join_expr = self._parse_join()
+                current_step.add_join(join_expr)
             # Check for SORT
             elif self._peek_keyword("sort"):
                 order_expr = self._parse_sort()
-                select_expr.set("order", order_expr)
+                current_step.sort = order_expr
             # Check for TAKE
             elif self._peek_keyword("take"):
                 limit_expr = self._parse_take()
-                select_expr.set("limit", limit_expr)
+                current_step.limit = limit_expr
             # Check for SELECT
             elif self._peek_keyword("select") or self._peek_keyword("project"):
                 select_list = self._parse_select_list()
-                select_expr.set("expressions", select_list)
-            # Check for JOIN
-            elif self._peek_keyword("join"):
-                join_expr = self._parse_join()
-                # Add join to the Select's joins list (SQLGlot stores joins on Select)
-                existing_joins = select_expr.args.get("joins", [])
-                if not existing_joins:
-                    existing_joins = []
-                existing_joins.append(join_expr)
-                select_expr.set("joins", existing_joins)
+                current_step.select = select_list
+            # Check for STORE AS (creates a named CTE)
+            elif self._peek_keyword("store"):
+                # Parse store as <name> first
+                store_name = self._parse_store_as()
+                # Save current step if it has content, marking it as stored
+                if current_step.has_content():
+                    current_step.store_name = store_name
+                    steps.append(current_step)
+                    # Start new step for any subsequent operations
+                    current_step = PipelineStep()
+                else:
+                    # No content yet, but we still want to mark the last step as stored
+                    if steps:
+                        steps[-1].store_name = store_name
             else:
                 # Unknown operator, stop parsing
                 break
         
-        # If no SELECT was specified, default to SELECT *
-        if not hasattr(select_expr, "expressions") or not select_expr.expressions:
-            select_expr.set("expressions", [exp.Star()])
+        # Add final step if it has content
+        if current_step.has_content():
+            steps.append(current_step)
         
-        return select_expr
+        # If no steps were created (just FROM), create a single step
+        if not steps:
+            steps.append(current_step)
+        
+        return steps
     
     def _parse_from(self) -> exp.From:
         """Parse FROM clause."""
@@ -112,10 +158,10 @@ class ASQLParser:
         self._consume_keyword("from")
         self._skip_whitespace()
         
-        # Parse table name
+        # Parse table name (could be a table or a stored CTE name)
         table_name = self._parse_identifier()
         if not table_name:
-            raise ASQLSyntaxError("Expected table name after 'from'")
+            raise ASQLSyntaxError("Expected table name or CTE name after 'from'")
         
         table = exp.Table(this=exp.Identifier(this=table_name))
         from_expr = exp.From(this=table)
@@ -559,31 +605,58 @@ class ASQLParser:
         
         return exp.Limit(this=exp.Literal(this=limit_value, is_string=False))
     
-    def _parse_set_statement(self) -> exp.Select:
-        """
-        Parse SET statement for CTEs.
+    def _parse_store_as(self) -> str:
+        """Parse STORE AS <name> clause."""
+        if not self._consume_keyword("store"):
+            raise ASQLSyntaxError("Expected 'store' keyword")
         
-        Syntax: set variable_name = from table ...
-        Example: set active_users = from users where status == "active"
+        self._skip_whitespace()
+        
+        # Parse "as" keyword
+        if not self._peek_keyword("as"):
+            raise ASQLSyntaxError("Expected 'as' after 'store'")
+        
+        self._consume_keyword("as")
+        self._skip_whitespace()
+        
+        # Parse identifier (CTE name)
+        store_name = self._parse_identifier()
+        if not store_name:
+            raise ASQLSyntaxError("Expected CTE name after 'store as'")
+        
+        return store_name
+    
+    def _parse_with_statement(self) -> exp.Select:
+        """
+        Parse WITH statement for CTEs.
+        
+        Syntax: with variable_name = from table ...
+               or with variable_name as from table ...
+        Example: with active_users = from users where status == "active"
+        Example: with active_users as from users where status == "active"
         
         Returns a Select with CTE (WITH clause).
         """
-        if not self._consume_keyword("set"):
-            raise ASQLSyntaxError("Expected 'set' keyword")
+        if not self._consume_keyword("with"):
+            raise ASQLSyntaxError("Expected 'with' keyword")
         
         self._skip_whitespace()
         
         # Parse variable name
         var_name = self._parse_identifier()
         if not var_name:
-            raise ASQLSyntaxError("Expected variable name after 'set'")
+            raise ASQLSyntaxError("Expected variable name after 'with'")
         
         self._skip_whitespace()
         
-        # Parse = sign
-        if self._peek() != "=":
-            raise ASQLSyntaxError("Expected '=' after variable name in SET statement")
-        self._consume("=")
+        # Parse = or as keyword
+        if self._peek() == "=":
+            self._consume("=")
+        elif self._peek_keyword("as"):
+            self._consume_keyword("as")
+        else:
+            raise ASQLSyntaxError("Expected '=' or 'as' after variable name in WITH statement")
+        
         self._skip_whitespace()
         
         # Parse the query (starts with FROM)

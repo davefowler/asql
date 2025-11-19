@@ -1,0 +1,15 @@
+-- Financial reporting: Monthly P&L summary
+from financial_transactions
+  where transaction_date >= @2024-01-01
+  group by month(transaction_date) (
+    sum(case when transaction_type == "revenue" then amount else 0 end) as total_revenue,
+    sum(case when transaction_type == "cost" then amount else 0 end) as total_costs,
+    sum(case when transaction_type == "expense" then amount else 0 end) as total_expenses,
+    sum(case when transaction_type == "revenue" then amount else 0 end) 
+      - sum(case when transaction_type == "cost" then amount else 0 end)
+      - sum(case when transaction_type == "expense" then amount else 0 end) as net_profit,
+    lag(sum(case when transaction_type == "revenue" then amount else 0 end)) 
+      over (order by month(transaction_date)) as prev_month_revenue
+  )
+  sort -month(transaction_date)
+
