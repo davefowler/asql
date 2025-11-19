@@ -34,7 +34,7 @@
       "patterns": [
         {
           "name": "keyword.control.asql",
-          "match": "\\b(from|where|select|project|group by|sort|order by|take|limit|join|set|let)\\b",
+          "match": "\\b(from|where|select|project|group by|sort|order by|take|limit|join|with|let)\\b",
           "captures": {
             "1": {
               "name": "keyword.control.asql"

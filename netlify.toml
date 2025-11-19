@@ -1,0 +1,18 @@
+[build]
+  command = "pip install -r requirements-docs.txt && mkdocs build"
+  publish = "site"
+
+[build.environment]
+  PYTHON_VERSION = "3.8"
+
+# Basic Auth Edge Function
+# To disable this and use Netlify's built-in password protection instead,
+# comment out the following two lines and configure password protection in
+# Netlify dashboard: Site settings → Access & security → Password Protection
+[[edge_functions]]
+  function = "basic-auth"
+  path = "/*"
+
+# Note: MkDocs generates static HTML files, so no SPA-style redirects are needed
+# If you need redirects for specific paths, add them here with appropriate paths
+

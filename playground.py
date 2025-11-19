@@ -427,6 +427,44 @@ take 10`
                 desc: "All comparison operators",
                 query: "from users where age >= 18 and age <= 65"
             },
+            {
+                title: "Fivetran: Shopify Line Items",
+                desc: "Complex joins from dbt_shopify",
+                query: `from stg_shopify_gql__order_line
+join stg_shopify_gql__order on order_line.order_id == order.order_id
+select order_line.order_id, order.created_timestamp as created_at, order_line.quantity`
+            },
+            {
+                title: "Fivetran: Stripe Customer Overview",
+                desc: "Complex aggregations from dbt_stripe",
+                query: `from stripe__balance_transactions
+where balance_transaction_type in ("payment", "charge")
+group by customer_id ( sum(balance_transaction_amount) as total_sales )`
+            },
+            {
+                title: "Fivetran: Zendesk Ticket Enriched",
+                desc: "Multiple user joins from dbt_zendesk",
+                query: `from int_zendesk__ticket_aggregates
+join int_zendesk__user_aggregates as requester on ticket.requester_id == requester.user_id
+join int_zendesk__user_aggregates as submitter on ticket.submitter_id == submitter.user_id
+select ticket.*, requester.email as requester_email, submitter.email as submitter_email`
+            },
+            {
+                title: "Fivetran: Stripe Balance Transactions",
+                desc: "Complex dispute logic from dbt_stripe",
+                query: `from stg_stripe__balance_transaction
+left join stg_stripe__charge on charge.balance_transaction_id == balance_transaction.balance_transaction_id
+select balance_transaction.balance_transaction_id, balance_transaction.amount, charge.charge_id`
+            },
+            {
+                title: "Fivetran: Shopify Customer Cohorts",
+                desc: "Cohort analysis from dbt_shopify",
+                query: `from orders
+group by customer_id, date_trunc("month", created_timestamp) (
+    count(distinct order_id) as order_count_in_month,
+    sum(order_adjusted_total) as total_price_in_month
+)`
+            },
         ];
         
         const sqlExamples = [];

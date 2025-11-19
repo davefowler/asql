@@ -4,12 +4,13 @@ A modern, pipeline-based query language that transpiles to SQL. ASQL uses a FROM
 
 ## Features
 
-- 🚀 **Pipeline-based syntax** - Queries flow naturally from top to bottom
+- 🚀 **Fully Pipeline-based** - Every query is a sequence of transformations, compiled to CTEs
 - 🔄 **SQL Dialect Support** - Generate SQL for PostgreSQL, MySQL, BigQuery, Snowflake, and more
 - 📊 **Powerful Aggregations** - GROUP BY with multiple aggregations
 - 🎯 **Expressive Filtering** - Rich WHERE clause with logical operators
 - 📈 **Sorting & Limiting** - Easy SORT and TAKE operations
 - 🎨 **Interactive Playground** - Try ASQL in your browser
+- 🔗 **CTE-based Compilation** - Each pipeline step becomes a descriptive CTE for readability and debugging
 
 ## Installation
 
@@ -72,13 +73,21 @@ print(sql)
 
 **Output:**
 ```sql
-SELECT country, COUNT(*) AS total_users 
-FROM users 
-WHERE status = 'active' 
-GROUP BY country 
-ORDER BY total_users DESC 
+WITH 1_where_status AS (
+  SELECT * FROM users WHERE status = 'active'
+),
+2_group_by_country AS (
+  SELECT country, COUNT(*) AS total_users
+  FROM 1_where_status
+  GROUP BY country
+)
+SELECT country, total_users
+FROM 2_group_by_country
+ORDER BY total_users DESC
 LIMIT 10
 ```
+
+Each pipeline step becomes a descriptive CTE, making the generated SQL self-documenting and easy to debug!
 
 ## Documentation
 
@@ -86,6 +95,7 @@ LIMIT 10
 - 📚 [Comprehensive Examples](docs/EXAMPLES.md) - Extensive examples with SQL output
 - 🏗️ [Architecture](ARCHITECTURE.md) - System design and implementation details
 - 📋 [Language Specification](SPEC.md) - Complete ASQL syntax reference
+- 🌟 [Real-World Examples](docs/FIVETRAN_EXAMPLES.md) - Complex queries from Fivetran dbt models, showing how ASQL simplifies production SQL
 
 ## Interactive Playground
 

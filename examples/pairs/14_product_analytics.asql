@@ -1,0 +1,16 @@
+-- Product analytics: Best performing products by category
+from products
+  join order_items on products.product_id == order_items.product_id
+  join orders on order_items.order_id == orders.order_id
+  where orders.status == "completed" 
+    and orders.order_date >= current_date - interval "90 days"
+  group by products.category, products.product_name (
+    count(distinct orders.order_id) as order_count,
+    sum(order_items.quantity) as total_quantity_sold,
+    sum(order_items.quantity * order_items.price) as total_revenue,
+    avg(order_items.price) as avg_price,
+    count(distinct orders.customer_id) as unique_customers
+  )
+  where order_count >= 5
+  sort products.category, -total_revenue
+

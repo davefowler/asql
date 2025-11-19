@@ -1,0 +1,22 @@
+-- Ranking: Top N products by revenue
+with product_revenue = from products
+  join order_items on products.product_id == order_items.product_id
+  join orders on order_items.order_id == orders.order_id
+  where orders.status == "completed" and orders.order_date >= @2024-01-01
+  group by products.product_id, products.product_name, products.category (
+    sum(order_items.quantity * order_items.price) as total_revenue,
+    count(distinct orders.order_id) as order_count
+  )
+
+from product_revenue
+  select 
+    product_id,
+    product_name,
+    category,
+    total_revenue,
+    order_count,
+    rank() over (order by total_revenue desc) as revenue_rank,
+    rank() over (partition by category order by total_revenue desc) as category_rank
+  sort -total_revenue
+  take 50
+
