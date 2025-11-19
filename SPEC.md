@@ -95,6 +95,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -updated_at` (descending column) |
 | `take` | Limit rows | `LIMIT` | `take 10` |
 | `with` | Define variable/fragment (CTE) | `WITH ... AS` | `with active = from users \| where is_active` or `with active as from users \| where is_active` |
+| `store as` | Store pipeline result as named CTE | `WITH ... AS` | `from users \| where is_active \| store as active_users` |
 
 ---
 
@@ -874,6 +875,47 @@ with by_country as from base
 from by_country
   sort -total_users
 ```
+
+### 11.3 Storing CTEs in Pipelines (`store as`)
+
+Instead of defining CTEs at the top level with `with`, you can store intermediate pipeline results directly within a pipeline using `store as`. This keeps CTEs close to where they're used and makes chaining clearer:
+
+**Basic usage:**
+```asql
+from users
+  where status == "active"
+  group by country ( # as total_users )
+  select country, total_users
+  store as revenue
+
+from revenue
+  sort -total_users
+```
+
+**Multiple queries reusing a stored CTE:**
+```asql
+from sales
+  where year(date) == 2025
+  group by region ( sum(amount) as revenue )
+  store as use_this_later
+  sort -revenue
+  take 10;
+
+from use_this_later
+  where revenue > 1000
+  select region, revenue
+```
+
+**Benefits of `store as`:**
+- ✅ **Proximity**: CTEs are defined where they're used, often right before they're referenced
+- ✅ **Clear chaining**: You can see the data flow clearly at the end of pipelines
+- ✅ **Reusability**: Multiple queries can reference the same stored CTE
+- ✅ **Natural flow**: Fits naturally into the pipeline syntax
+
+**When to use `store as` vs `with`:**
+- Use `store as` when you want to store an intermediate result within a pipeline
+- Use `with` when you want to define a CTE at the top level before any queries
+- Both compile to SQL `WITH ... AS` CTEs
 
 ---
 
