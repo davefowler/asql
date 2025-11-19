@@ -16,51 +16,111 @@ This document provides comprehensive examples of ASQL queries, showing how they 
 
 ### Simple FROM
 
-**ASQL:**
-```asql
-from users
-```
+=== "ASQL"
+    ```asql
+    from users
+    ```
 
-**SQL (PostgreSQL):**
-```sql
-SELECT * FROM users
-```
+=== "PostgreSQL"
+    ```sql
+    SELECT * FROM users
+    ```
+
+=== "MySQL"
+    ```sql
+    SELECT * FROM users
+    ```
+
+=== "BigQuery"
+    ```sql
+    SELECT * FROM users
+    ```
+
+=== "Snowflake"
+    ```sql
+    SELECT * FROM users
+    ```
 
 ### FROM with WHERE
 
-**ASQL:**
-```asql
-from users where status == "active"
-```
+=== "ASQL"
+    ```asql
+    from users where status == "active"
+    ```
 
-**SQL (PostgreSQL):**
-```sql
-SELECT * FROM users WHERE status = 'active'
-```
+=== "PostgreSQL"
+    ```sql
+    SELECT * FROM users WHERE status = 'active'
+    ```
+
+=== "MySQL"
+    ```sql
+    SELECT * FROM users WHERE status = 'active'
+    ```
+
+=== "BigQuery"
+    ```sql
+    SELECT * FROM users WHERE status = 'active'
+    ```
+
+=== "Snowflake"
+    ```sql
+    SELECT * FROM users WHERE status = 'active'
+    ```
 
 ### FROM with SELECT
 
-**ASQL:**
-```asql
-from users select name, email
-```
+=== "ASQL"
+    ```asql
+    from users select name, email
+    ```
 
-**SQL (PostgreSQL):**
-```sql
-SELECT name, email FROM users
-```
+=== "PostgreSQL"
+    ```sql
+    SELECT name, email FROM users
+    ```
+
+=== "MySQL"
+    ```sql
+    SELECT name, email FROM users
+    ```
+
+=== "BigQuery"
+    ```sql
+    SELECT name, email FROM users
+    ```
+
+=== "Snowflake"
+    ```sql
+    SELECT name, email FROM users
+    ```
 
 ### FROM WHERE SELECT
 
-**ASQL:**
-```asql
-from users where status == "active" select name, email
-```
+=== "ASQL"
+    ```asql
+    from users where status == "active" select name, email
+    ```
 
-**SQL (PostgreSQL):**
-```sql
-SELECT name, email FROM users WHERE status = 'active'
-```
+=== "PostgreSQL"
+    ```sql
+    SELECT name, email FROM users WHERE status = 'active'
+    ```
+
+=== "MySQL"
+    ```sql
+    SELECT name, email FROM users WHERE status = 'active'
+    ```
+
+=== "BigQuery"
+    ```sql
+    SELECT name, email FROM users WHERE status = 'active'
+    ```
+
+=== "Snowflake"
+    ```sql
+    SELECT name, email FROM users WHERE status = 'active'
+    ```
 
 ---
 
