@@ -544,38 +544,38 @@ PLAYGROUND_HTML = """
         }
         
         /* SQL and ASQL syntax highlighting colors */
-        .cm-keyword {
+        .CodeMirror .cm-keyword {
             color: #ea4335;
             font-weight: 600;
         }
         
-        .cm-string {
+        .CodeMirror .cm-string {
             color: #137333;
         }
         
-        .cm-number {
+        .CodeMirror .cm-number {
             color: #1967d2;
         }
         
-        .cm-comment {
+        .CodeMirror .cm-comment {
             color: #999;
             font-style: italic;
         }
         
-        .cm-operator {
+        .CodeMirror .cm-operator {
             color: #ea4335;
         }
         
-        .cm-variable {
+        .CodeMirror .cm-variable {
             color: #333;
         }
         
-        .cm-def {
+        .CodeMirror .cm-def {
             color: #ea4335;
             font-weight: 500;
         }
         
-        .cm-atom {
+        .CodeMirror .cm-atom {
             color: #1967d2;
         }
         
@@ -710,33 +710,43 @@ PLAYGROUND_HTML = """
         }
     </script>
     <script>
-        // Initialize CodeMirror editors
-        const inputEditor = CodeMirror(document.getElementById('input-editor'), {
-            value: `from users
+        // Initialize CodeMirror editors (make them global so functions can access them)
+        let inputEditor, outputEditor;
+        
+        // Wait for DOM and ensure ASQL mode is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Verify ASQL mode is available
+            if (!CodeMirror.modes['asql']) {
+                console.error('ASQL mode not loaded! Check that /static/syntax/codemirror/asql-mode.js is accessible.');
+            }
+            
+            // Initialize CodeMirror editors
+            inputEditor = CodeMirror(document.getElementById('input-editor'), {
+                value: `from users
 where status == "active"
 group by country ( # as total_users )
 sort -total_users
 take 10`,
-            mode: 'text/x-asql',
-            lineNumbers: true,
-            matchBrackets: true,
-            autoCloseBrackets: true,
-            theme: 'default',
-            lineWrapping: true,
-            placeholder: 'Enter your query here...'
-        });
+                mode: 'text/x-asql',
+                lineNumbers: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                theme: 'default',
+                lineWrapping: true,
+                placeholder: 'Enter your query here...'
+            });
         
-        const outputEditor = CodeMirror(document.getElementById('output-editor'), {
-            value: '',
-            mode: 'text/x-sql',
-            lineNumbers: true,
-            matchBrackets: true,
-            autoCloseBrackets: true,
-            theme: 'default',
-            readOnly: true,
-            lineWrapping: true,
-            placeholder: 'Translation will appear here...'
-        });
+            outputEditor = CodeMirror(document.getElementById('output-editor'), {
+                value: '',
+                mode: 'text/x-sql',
+                lineNumbers: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                theme: 'default',
+                readOnly: true,
+                lineWrapping: true,
+                placeholder: 'Translation will appear here...'
+            });
         
         function getCurrentMode() {
             const fromDialect = document.getElementById('from-dialect').value;
@@ -1024,17 +1034,19 @@ take 25`
         
         const sqlExamples = [];
         
-        // Update UI when dialects change
-        document.getElementById('from-dialect').addEventListener('change', () => {
-            ensureFromNotPostgresWhenToEmpty();
-            updateUITitles();
-            translateQuery();
-        });
-        
-        document.getElementById('to-dialect').addEventListener('change', () => {
-            ensureFromNotPostgresWhenToEmpty();
-            updateUITitles();
-            translateQuery();
+        // Update UI when dialects change (set up after DOM is ready)
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('from-dialect').addEventListener('change', () => {
+                ensureFromNotPostgresWhenToEmpty();
+                updateUITitles();
+                translateQuery();
+            });
+            
+            document.getElementById('to-dialect').addEventListener('change', () => {
+                ensureFromNotPostgresWhenToEmpty();
+                updateUITitles();
+                translateQuery();
+            });
         });
         
         function loadExamples() {
@@ -1373,27 +1385,28 @@ take 25`
             });
         }
         
-        // Auto-translate on change (debounced)
-        let translateTimeout;
-        inputEditor.on('change', () => {
-            clearTimeout(translateTimeout);
-            translateTimeout = setTimeout(translateQuery, 500);
+            // Auto-translate on change (debounced)
+            let translateTimeout;
+            inputEditor.on('change', () => {
+                clearTimeout(translateTimeout);
+                translateTimeout = setTimeout(translateQuery, 500);
+            });
+            
+            // Auto-detect dialect when SQL is pasted
+            inputEditor.on('paste', () => {
+                setTimeout(() => {
+                    const fromDialect = document.getElementById('from-dialect').value;
+                    if (fromDialect !== 'asql' && !fromDialect) {
+                        translateQuery();
+                    }
+                }, 100);
+            });
+            
+            // Initial load (after editors are initialized)
+            updateUITitles();
+            loadExamples();
+            translateQuery();
         });
-        
-        // Auto-detect dialect when SQL is pasted
-        inputEditor.on('paste', () => {
-            setTimeout(() => {
-                const fromDialect = document.getElementById('from-dialect').value;
-                if (fromDialect !== 'asql' && !fromDialect) {
-                    translateQuery();
-                }
-            }, 100);
-        });
-        
-        // Initial load
-        updateUITitles();
-        loadExamples();
-        translateQuery();
     </script>
 </body>
 </html>
