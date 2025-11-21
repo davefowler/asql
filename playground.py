@@ -1059,7 +1059,7 @@ take 25`
                 // Basic ASQL Examples section
                 const section = document.createElement('div');
                 section.className = 'example-section';
-                section.innerHTML = '<h3>ASQL Examples</h3><div class="example-list" id="asql-examples"></div>';
+                section.innerHTML = '<h3>ASQL Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Basic ASQL queries that showcase the language syntax. These examples shouldn\'t look too different from regular SQL - ASQL is designed to be familiar and intuitive.</p><div class="example-list" id="asql-examples"></div>';
                 container.appendChild(section);
                 
                 const examplesDiv = document.getElementById('asql-examples');
