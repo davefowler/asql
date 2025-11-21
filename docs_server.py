@@ -11,6 +11,7 @@ from typing import Dict, List, Optional
 from flask import Flask, render_template_string, send_from_directory, jsonify, request
 from asql import compile
 import markdown
+import requests
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
@@ -483,7 +484,7 @@ def serve_embedded_playground():
 
 
 @app.route('/playground')
-@app.route('/playground/<path:path>')
+@app.route('/playground/<path:path>', methods=['GET', 'POST'])
 def playground(path=''):
     """Serve the playground page or proxy API requests."""
     # If no path, serve the playground embedded in docs layout (with sidebar)
@@ -509,7 +510,6 @@ def playground(path=''):
     # Handle API requests (for the embedded playground)
     if path.startswith('api/'):
         # Proxy API requests to the playground server
-        import requests
         try:
             api_path = path.replace('api/', '')
             if request.method == 'POST':
