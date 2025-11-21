@@ -1,5 +1,6 @@
 """ASQL reverse compiler - transforms SQL to ASQL."""
 
+import re
 from typing import Optional, List
 import sqlglot
 from sqlglot import exp
@@ -19,6 +20,10 @@ def detect_dialect(sql_query: str) -> Optional[str]:
         Detected dialect name (e.g., 'bigquery', 'redshift', 'postgres') or None
     """
     if not sql_query.strip():
+        return None
+    
+    # Skip detection if Jinja templates are present (they'll cause parse errors)
+    if "{{" in sql_query or "{%" in sql_query:
         return None
     
     try:
@@ -78,6 +83,15 @@ def reverse_compile(
         if not sql_query.strip():
             raise ASQLCompilationError("Empty SQL query")
         
+        # Check for dbt/Jinja templating syntax
+        if "{{" in sql_query or "{%" in sql_query:
+            raise ASQLCompilationError(
+                "SQL contains dbt/Jinja templating syntax ({{ ... }} or {% ... %}). "
+                "Please remove Jinja templates before parsing. "
+                "Replace {{ ref('table') }} with the actual table name, "
+                "and remove {% if %} / {% endif %} blocks."
+            )
+        
         # Auto-detect dialect if not provided
         if not source_dialect:
             source_dialect = detect_dialect(sql_query)
@@ -108,7 +122,20 @@ def reverse_compile(
         return "\n".join(asql_parts)
         
     except sqlglot.errors.ParseError as e:
-        raise ASQLCompilationError(f"SQL parse error: {e}") from e
+        error_msg = str(e)
+        # Clean up error message - remove ANSI escape codes and file paths
+        # Remove ANSI escape codes (e.g., [4m, [0m)
+        error_msg = re.sub(r'\x1b\[[0-9;]*m', '', error_msg)
+        # Remove file paths if present (common in error messages)
+        error_msg = re.sub(r'[^\s]+\.sql\s+', '', error_msg)
+        # Check if error mentions braces (likely Jinja template issue)
+        if '{' in error_msg or 'L_BRACE' in error_msg:
+            raise ASQLCompilationError(
+                "SQL parse error: This query appears to contain dbt/Jinja templating syntax. "
+                "Please remove Jinja templates ({{ ... }} or {% ... %}) before parsing. "
+                f"Original error: {error_msg}"
+            ) from e
+        raise ASQLCompilationError(f"SQL parse error: {error_msg}") from e
     except Exception as e:
         raise ASQLCompilationError(f"Reverse compilation error: {e}") from e
 
