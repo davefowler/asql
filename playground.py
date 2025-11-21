@@ -20,6 +20,9 @@ def strip_jinja_templates(sql_content: str) -> str:
     - {{ ref('table') }} - replaces with table name
     - {{ dbt.type_*() }} - replaces with SQL type
     - {{ fivetran_utils.*() }} - replaces with SQL function
+    - {{ dbt_utils.*() }} - replaces with SQL (e.g., group_by)
+    - {{ var(...) }} - removes or replaces with default
+    - {{ macro_name(...) }} - removes complex macros
     - {% if ... %} / {% endif %} - removes conditionals, keeps True branch
     - {% else %} - removes
     
@@ -62,15 +65,27 @@ def strip_jinja_templates(sql_content: str) -> str:
     result_lines = []
     
     for line in lines:
-        # Skip lines that are entirely config blocks
+        # Skip lines that are entirely config blocks or 404 errors
         if re.search(r'^\s*\{\{\s*config\s*\(', line, re.IGNORECASE):
             continue
+        if '404: Not Found' in line:
+            continue
         
-        # Replace {{ ref('table_name') }} with table_name
+        # Replace {{ ref('table_name') }} or {{ ref("table_name") }} with table_name
+        # Handle both single and double quotes, and nested quotes
+        def replace_ref(match):
+            ref_content = match.group(1)
+            # Extract table name from ref('table') or ref("table")
+            table_match = re.search(r'[\'"]?([^\'"]+)[\'"]?', ref_content)
+            if table_match:
+                return table_match.group(1)
+            return ref_content.strip()
+        
         line = re.sub(
-            r'\{\{\s*ref\s*\(\s*[\'"]?([^\'"]+)[\'"]?\s*\)\s*\}\}',
-            r'\1',
-            line
+            r'\{\{\s*ref\s*\(\s*([^)]+)\s*\)\s*\}\}',
+            replace_ref,
+            line,
+            flags=re.IGNORECASE
         )
         
         # Replace {{ dbt.type_int() }} with INT
@@ -80,6 +95,9 @@ def strip_jinja_templates(sql_content: str) -> str:
         line = re.sub(r'\{\{\s*dbt\.type_float\s*\(\)\s*\}\}', 'FLOAT', line, flags=re.IGNORECASE)
         line = re.sub(r'\{\{\s*dbt\.type_numeric\s*\(\)\s*\}\}', 'NUMERIC', line, flags=re.IGNORECASE)
         line = re.sub(r'\{\{\s*dbt\.type_boolean\s*\(\)\s*\}\}', 'BOOLEAN', line, flags=re.IGNORECASE)
+        
+        # Replace {{ dbt_utils.group_by(N) }} with empty string (GROUP BY already present)
+        line = re.sub(r'\{\{\s*dbt_utils\.group_by\s*\([^)]+\)\s*\}\}', '', line, flags=re.IGNORECASE)
         
         # Replace {{ fivetran_utils.string_agg(...) }} with STRING_AGG(...)
         def replace_fivetran_string_agg(match):
@@ -128,21 +146,59 @@ def strip_jinja_templates(sql_content: str) -> str:
             flags=re.IGNORECASE
         )
         
-        # Replace other common dbt macros - remove them
-        line = re.sub(r'\{\{\s*var\s*\([^)]+\)\s*\}\}', '', line, flags=re.IGNORECASE)
+        # Remove complex macros like {{ google_ads_persist_pass_through_columns(...) }}
+        # These are typically entire lines that should be removed
+        if re.search(r'\{\{\s*\w+_persist_pass_through_columns\s*\(', line, re.IGNORECASE):
+            continue
         
-        # Remove any remaining {{ ... }} blocks (catch-all)
+        # Replace {{ var('name', default) }} with default value or remove
+        def replace_var(match):
+            var_content = match.group(1)
+            # Try to extract default value if present: var('name', default)
+            default_match = re.search(r',\s*([^,)]+)\s*\)', var_content)
+            if default_match:
+                return default_match.group(1).strip("'\"")
+            # No default, remove it
+            return ''
+        
+        line = re.sub(
+            r'\{\{\s*var\s*\(\s*([^)]+)\s*\)\s*\}\}',
+            replace_var,
+            line,
+            flags=re.IGNORECASE
+        )
+        
+        # Remove any remaining complex macros (entire lines that are just macros)
+        if re.match(r'^\s*\{%\s*set\s+.*%\}\s*$', line):
+            continue
+        
+        # Check if line is entirely a macro before processing
+        line_before = line
+        # Replace remaining {{ ... }} blocks inline (preserve the line)
         line = re.sub(r'\{\{[^}]*\}\}', '', line)
         
         # Remove any remaining {% ... %} blocks (catch-all)
         line = re.sub(r'\{%[^%]*%\}', '', line)
         
-        result_lines.append(line)
+        # If the line was entirely a macro and is now empty/whitespace, skip it
+        if not line.strip() and re.search(r'\{\{|%\}', line_before):
+            continue
+        
+        # Clean up trailing commas that might be left after macro removal
+        line = re.sub(r',\s*$', '', line)
+        
+        # Only add non-empty lines
+        if line.strip():
+            result_lines.append(line)
     
     result = '\n'.join(result_lines)
     
     # Clean up: remove multiple blank lines
     result = re.sub(r'\n\s*\n\s*\n+', '\n\n', result)
+    
+    # Remove leading/trailing whitespace from each line
+    result_lines = [line.rstrip() for line in result.split('\n')]
+    result = '\n'.join(result_lines)
     
     return result.strip()
 
@@ -755,61 +811,214 @@ take 10`,
             {
                 title: "Simple FROM",
                 desc: "Basic table selection",
-                query: "from users"
+                query: `from users`
             },
             {
                 title: "WHERE Filter",
                 desc: "Filter with conditions",
-                query: 'from users where status == "active"'
+                query: `from users
+where status == "active"`
             },
             {
                 title: "GROUP BY",
                 desc: "Aggregate with COUNT",
-                query: "from users group by country ( # as total_users )"
+                query: `from users
+group by country ( # as total_users )`
             },
             {
                 title: "Multiple Aggregations",
                 desc: "SUM, COUNT, AVG together",
-                query: "from sales group by region ( sum(amount) as revenue, # as orders, avg(amount) as avg_order )"
+                query: `from sales
+group by region ( 
+    sum(amount) as revenue, 
+    # as orders, 
+    avg(amount) as avg_order 
+)`
             },
             {
                 title: "SORT Descending",
                 desc: "Order by descending",
-                query: "from users group by country ( # as total_users ) sort -total_users"
+                query: `from users
+group by country ( # as total_users )
+sort -total_users`
             },
             {
                 title: "TAKE/LIMIT",
                 desc: "Limit results",
-                query: "from users take 10"
+                query: `from users
+take 10`
             },
             {
                 title: "Complex Query",
                 desc: "Full pipeline example",
                 query: `from sales
 where status == "completed" and amount > 100
-group by region ( sum(amount) as revenue, # as orders )
+group by region ( 
+    sum(amount) as revenue, 
+    # as orders 
+)
 sort -revenue
 take 10`
             },
             {
                 title: "Multiple Conditions",
                 desc: "AND/OR operators",
-                query: 'from users where status == "active" and age >= 18 and email is not null'
+                query: `from users
+where status == "active" 
+    and age >= 18 
+    and email is not null`
             },
             {
                 title: "OR Conditions",
                 desc: "Multiple OR conditions",
-                query: 'from users where status == "active" or status == "pending"'
+                query: `from users
+where status == "active" 
+    or status == "pending"`
             },
             {
                 title: "NULL Checks",
                 desc: "IS NULL / IS NOT NULL",
-                query: "from users where email is not null"
+                query: `from users
+where email is not null`
             },
             {
                 title: "Comparisons",
                 desc: "All comparison operators",
-                query: "from users where age >= 18 and age <= 65"
+                query: `from users
+where age >= 18 and age <= 65`
+            },
+        ];
+        
+        const asqlPipelineExamples = [
+            {
+                title: "Multi-Step Pipeline",
+                desc: "Filter → Group → Sort → Limit (creates multiple CTEs)",
+                query: `from orders
+where status == "completed" 
+    and created_at >= "2024-01-01"
+group by customer_id ( 
+    sum(total) as total_spent, 
+    # as order_count,
+    avg(total) as avg_order_value 
+)
+sort -total_spent
+take 10`
+            },
+            {
+                title: "Customer Analytics Pipeline",
+                desc: "Complex multi-step customer analysis",
+                query: `from customers
+where signup_date >= "2023-01-01"
+    and is_active == true
+join orders on customers.id == orders.customer_id
+group by customers.id, customers.country ( 
+    sum(orders.total) as lifetime_value,
+    # as total_orders,
+    max(orders.created_at) as last_order_date 
+)
+sort -lifetime_value
+take 50`
+            },
+            {
+                title: "Sales Funnel Analysis",
+                desc: "Multi-stage sales pipeline with joins",
+                query: `from leads
+where source == "website"
+    and created_at >= "2024-01-01"
+join opportunities on leads.id == opportunities.lead_id
+where opportunities.stage != "lost"
+join deals on opportunities.id == deals.opportunity_id
+where deals.status == "closed"
+group by leads.source, deals.region ( 
+    sum(deals.amount) as revenue,
+    # as closed_deals,
+    avg(deals.amount) as avg_deal_size 
+)
+sort -revenue`
+            },
+            {
+                title: "Product Performance Pipeline",
+                desc: "Product analysis with multiple filters and aggregations",
+                query: `from products
+where category == "electronics"
+    and in_stock == true
+join order_items on products.id == order_items.product_id
+join orders on order_items.order_id == orders.id
+where orders.status == "completed"
+    and orders.created_at >= "2024-01-01"
+group by products.id, products.name ( 
+    sum(order_items.quantity) as units_sold,
+    sum(order_items.price * order_items.quantity) as revenue,
+    # as order_count 
+)
+sort -revenue
+take 20`
+            },
+            {
+                title: "User Engagement Pipeline",
+                desc: "User activity analysis with multiple CTEs",
+                query: `from users
+where created_at >= "2023-01-01"
+join events on users.id == events.user_id
+where events.event_type == "purchase"
+    and events.timestamp >= "2024-01-01"
+group by users.id, users.country ( 
+    # as purchase_count,
+    sum(events.value) as total_spent,
+    max(events.timestamp) as last_purchase_date 
+)
+where total_spent > 100
+sort -total_spent
+take 100`
+            },
+            {
+                title: "Time-Series Aggregation Pipeline",
+                desc: "Date-based grouping with multiple aggregations",
+                query: `from transactions
+where status == "completed"
+    and transaction_date >= "2024-01-01"
+group by date_trunc(transaction_date, "month"), region ( 
+    sum(amount) as monthly_revenue,
+    # as transaction_count,
+    avg(amount) as avg_transaction,
+    min(amount) as min_transaction,
+    max(amount) as max_transaction 
+)
+sort transaction_date desc, -monthly_revenue`
+            },
+            {
+                title: "Cohort Analysis Pipeline",
+                desc: "User cohort analysis with complex joins",
+                query: `from users
+where signup_date >= "2023-01-01"
+join orders on users.id == orders.user_id
+where orders.status == "completed"
+group by 
+    date_trunc(users.signup_date, "month") as cohort_month,
+    users.country ( 
+    # as users_in_cohort,
+    sum(orders.total) as cohort_revenue,
+    avg(orders.total) as avg_order_value 
+)
+sort cohort_month desc, -cohort_revenue`
+            },
+            {
+                title: "Multi-Table Join Pipeline",
+                desc: "Complex joins across multiple tables",
+                query: `from customers
+join orders on customers.id == orders.customer_id
+join order_items on orders.id == order_items.order_id
+join products on order_items.product_id == products.id
+where orders.status == "completed"
+    and orders.created_at >= "2024-01-01"
+group by customers.id, customers.name ( 
+    sum(order_items.quantity * order_items.price) as total_spent,
+    # as products_purchased,
+    count(distinct products.category) as categories_bought 
+)
+where total_spent > 500
+sort -total_spent
+take 25`
             },
         ];
         
@@ -835,6 +1044,7 @@ take 10`
             const currentMode = getCurrentMode();
             
             if (currentMode === 'asql-to-sql' || currentMode === 'asql-to-asql') {
+                // Basic ASQL Examples section
                 const section = document.createElement('div');
                 section.className = 'example-section';
                 section.innerHTML = '<h3>ASQL Examples</h3><div class="example-list" id="asql-examples"></div>';
@@ -859,6 +1069,33 @@ take 10`
                         translateQuery();
                     };
                     examplesDiv.appendChild(btn);
+                });
+                
+                // ASQL Pipeline Examples section
+                const pipelineSection = document.createElement('div');
+                pipelineSection.className = 'example-section';
+                pipelineSection.innerHTML = '<h3>ASQL Pipeline Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Complex queries that showcase pipeline features and generate multiple CTEs.</p><div class="example-list" id="asql-pipeline-examples"></div>';
+                container.appendChild(pipelineSection);
+                
+                const pipelineExamplesDiv = document.getElementById('asql-pipeline-examples');
+                asqlPipelineExamples.forEach(example => {
+                    const btn = document.createElement('button');
+                    btn.className = 'example-btn';
+                    btn.innerHTML = `
+                        <div class="example-title">${example.title}</div>
+                        <div class="example-desc">${example.desc}</div>
+                    `;
+                    btn.onclick = () => {
+                        // Set "from" to ASQL if not already set
+                        const fromDialect = document.getElementById('from-dialect').value;
+                        if (fromDialect !== 'asql') {
+                            document.getElementById('from-dialect').value = 'asql';
+                            updateUITitles();
+                        }
+                        inputEditor.setValue(example.query);
+                        translateQuery();
+                    };
+                    pipelineExamplesDiv.appendChild(btn);
                 });
             } else {
                 const section = document.createElement('div');
@@ -970,20 +1207,15 @@ take 10`
             const fromDialect = document.getElementById('from-dialect').value;
             const toDialect = document.getElementById('to-dialect').value;
             
-            console.log('Translation request:', { currentMode, fromDialect, toDialect, input: input.substring(0, 100) });
-            
             try {
                 if (currentMode === 'asql-to-sql') {
                     // ASQL to SQL
-                    const requestBody = { asql: input, dialect: toDialect || '' };
-                    console.log('Sending compile request:', requestBody);
-                    
                     const response = await fetch('/api/compile', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify(requestBody)
+                        body: JSON.stringify({ asql: input, dialect: toDialect || '' })
                     });
                     
                     if (!response.ok) {
