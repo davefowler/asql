@@ -91,11 +91,66 @@ Each pipeline step becomes a descriptive CTE, making the generated SQL self-docu
 
 ## Documentation
 
+The ASQL documentation is served via a web server that includes:
+- 📖 Interactive documentation with dialect tabs
+- 🎮 Embedded playground for trying ASQL
+- 📚 Examples with live SQL compilation
+- 📋 Complete language specification
+
+### Serving the Documentation
+
+#### Option 1: Start Both Docs and Playground (Recommended)
+
+```bash
+# Install dependencies (includes Flask, markdown, and requests)
+pip install -e ".[docs,playground]"
+
+# Start both servers at once
+python start_servers.py
+```
+
+This starts:
+- **Documentation Server**: http://localhost:5000
+- **Playground**: http://localhost:5001
+
+The playground is embedded in the docs at http://localhost:5000/playground and accessible standalone at http://localhost:5001.
+
+#### Option 2: Start Servers Separately
+
+```bash
+# Terminal 1: Start documentation server
+python docs_server.py
+# Opens at http://localhost:5000
+
+# Terminal 2: Start playground (required for embedded playground)
+python playground.py
+# Opens at http://localhost:5001
+```
+
+#### Option 3: Using Docker
+
+```bash
+# Start both services with Docker Compose
+docker-compose up
+
+# Access at http://localhost:5000 (docs) and http://localhost:5001 (playground)
+```
+
+### Documentation Features
+
+- **Dialect Tabs**: Every ASQL code example automatically shows tabs for different SQL dialects (PostgreSQL, BigQuery, Snowflake, Redshift, etc.)
+- **Embedded Playground**: Try ASQL directly in the documentation
+- **Live Compilation**: See SQL output for any ASQL query
+- **Navigation**: Easy navigation between docs pages with persistent sidebar
+
+### Documentation Pages
+
 - 📖 [Quick Start Guide](docs/QUICK_START.md) - Get started in minutes
 - 📚 [Comprehensive Examples](docs/EXAMPLES.md) - Extensive examples with SQL output
+- 🎮 [Interactive Playground](docs/INTERACTIVE_PLAYGROUND.md) - Try ASQL in your browser
 - 🏗️ [Architecture](ARCHITECTURE.md) - System design and implementation details
 - 📋 [Language Specification](SPEC.md) - Complete ASQL syntax reference
-- 🌟 [Real-World Examples](docs/FIVETRAN_EXAMPLES.md) - Complex queries from Fivetran dbt models, showing how ASQL simplifies production SQL
+- 🌟 [Real-World Examples](docs/FIVETRAN_EXAMPLES.md) - Complex queries from Fivetran dbt models
 
 ## Interactive Playground
 

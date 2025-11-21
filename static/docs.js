@@ -51,11 +51,23 @@ function showDialect(blockId, dialect) {
     // Update code content
     const codeElement = document.getElementById(`code-${blockId}`);
     if (codeElement && compiled[dialect]) {
-        codeElement.textContent = compiled[dialect];
-        
-        // Highlight syntax
+        // Highlight syntax - ensure highlight.js is available
         if (window.hljs) {
-            hljs.highlightElement(codeElement);
+            try {
+                // Use highlight() directly for more control
+                const result = hljs.highlight(compiled[dialect], { language: 'sql' });
+                codeElement.innerHTML = result.value;
+                codeElement.className = 'hljs language-sql';
+            } catch (e) {
+                console.warn('Highlight.js error:', e);
+                // Fallback: just set text content
+                codeElement.textContent = compiled[dialect];
+                codeElement.className = 'language-sql';
+            }
+        } else {
+            // Fallback if highlight.js isn't loaded
+            codeElement.textContent = compiled[dialect];
+            codeElement.className = 'language-sql';
         }
     }
     
@@ -160,24 +172,54 @@ function reorderTabs(blockId) {
 
 // Initialize all code blocks on page load
 document.addEventListener('DOMContentLoaded', () => {
-    const blocks = document.querySelectorAll('.asql-code-block');
+    // Wait a bit for highlight.js to be fully loaded
+    const initHighlighting = () => {
+        if (!window.hljs) {
+            // Retry if highlight.js isn't loaded yet
+            setTimeout(initHighlighting, 100);
+            return;
+        }
+        
+        // First, highlight any existing code blocks (from server-side HTML)
+        document.querySelectorAll('pre code.language-sql').forEach((block) => {
+            if (block.textContent && block.textContent.trim()) {
+                try {
+                    const code = block.textContent;
+                    const result = hljs.highlight(code, { language: 'sql' });
+                    block.innerHTML = result.value;
+                    block.className = 'hljs language-sql';
+                } catch (e) {
+                    console.warn('Highlight.js error on initial block:', e);
+                }
+            }
+        });
+        
+        const blocks = document.querySelectorAll('.asql-code-block');
+        
+        blocks.forEach(block => {
+            const blockId = block.getAttribute('data-block-id');
+            const { preferredDialect } = initDialectTracking();
+            
+            // Reorder tabs based on view counts
+            reorderTabsOnLoad(blockId);
+            
+            // Check if we're on the examples page - always default to asql there
+            const isExamplesPage = window.location.pathname.includes('/docs/examples');
+            
+            // Show preferred dialect or default to asql
+            // On examples page, always default to asql
+            const initialDialect = !isExamplesPage && preferredDialect && 
+                block.getAttribute('data-compiled') && 
+                JSON.parse(atob(block.getAttribute('data-compiled')))[preferredDialect]
+                ? preferredDialect 
+                : 'asql';
+            
+            showDialect(blockId, initialDialect);
+        });
+    };
     
-    blocks.forEach(block => {
-        const blockId = block.getAttribute('data-block-id');
-        const { preferredDialect } = initDialectTracking();
-        
-        // Reorder tabs based on view counts
-        reorderTabsOnLoad(blockId);
-        
-        // Show preferred dialect or default to asql
-        const initialDialect = preferredDialect && 
-            block.getAttribute('data-compiled') && 
-            JSON.parse(atob(block.getAttribute('data-compiled')))[preferredDialect]
-            ? preferredDialect 
-            : 'asql';
-        
-        showDialect(blockId, initialDialect);
-    });
+    // Start initialization
+    initHighlighting();
     
     // Close more dialects menu when clicking outside
     document.addEventListener('click', (e) => {
@@ -216,8 +258,10 @@ function reorderTabsOnLoad(blockId) {
     if (!tabsContainer) return;
     
     // Get current active dialect before rebuilding
+    // On examples page, always default to asql
+    const isExamplesPage = window.location.pathname.includes('/docs/examples');
     const activeTab = tabsContainer.querySelector('.tab-btn.active');
-    const activeDialect = activeTab ? activeTab.getAttribute('data-dialect') : 'asql';
+    const activeDialect = isExamplesPage ? 'asql' : (activeTab ? activeTab.getAttribute('data-dialect') : 'asql');
     
     // Clear and rebuild
     tabsContainer.innerHTML = '';
