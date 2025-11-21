@@ -83,7 +83,7 @@ def compile(
                 select_expr = parser.parse()
                 
                 # Extract CTEs from this query if it has a WITH clause
-                with_clause = select_expr.args.get("with_")
+                with_clause = select_expr.args.get("with")
                 if with_clause and isinstance(with_clause, exp.With):
                     for cte_expr in with_clause.expressions:
                         if isinstance(cte_expr, exp.CTE):
@@ -107,7 +107,7 @@ def compile(
             
             # Merge all CTEs
             existing_ctes = []
-            with_clause = final_select.args.get("with_")
+            with_clause = final_select.args.get("with")
             if with_clause and isinstance(with_clause, exp.With):
                 existing_ctes = list(with_clause.expressions)
             

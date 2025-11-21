@@ -355,48 +355,63 @@ def build_cte_pipeline(steps: List[PipelineStep]) -> exp.Select:
         
         # Decide if we need to create a CTE for this step
         # We need a CTE if:
-        # 1. Step requires it (GROUP BY, STORE AS)
+        # 1. Step has STORE AS (explicit CTE name)
         # 2. Next step will reference this one AND this isn't a simple FROM (can be inlined)
+        # Note: GROUP BY doesn't automatically require a CTE - only if it will be referenced
         is_simple_from = is_simple_from_step(step)
         will_be_referenced = i < len(merged_steps) - 1  # Not the last step
+        is_last_step = i == len(merged_steps) - 1
         
-        if needs_cte or (will_be_referenced and not is_simple_from):
-            # Create CTE for this step
-            if step.store_name:
-                step_name = step.store_name
-            else:
-                step_name = generate_step_name(len(ctes) + 1, step)
-            
+        # STORE AS always requires a CTE
+        if step.store_name:
+            step_name = step.store_name
             cte = exp.CTE(
                 this=step_select,
                 alias=exp.TableAlias(this=exp.Identifier(this=step_name))
             )
             ctes.append(cte)
             previous_step_name = step_name
-            previous_step = None  # Clear since we're using CTE now
+            previous_step = None
+        elif will_be_referenced and not is_simple_from:
+            # Next step will reference this one, and it's not a simple FROM (can't be inlined)
+            # Create CTE for this step
+            step_name = generate_step_name(len(ctes) + 1, step)
+            cte = exp.CTE(
+                this=step_select,
+                alias=exp.TableAlias(this=exp.Identifier(this=step_name))
+            )
+            ctes.append(cte)
+            previous_step_name = step_name
+            previous_step = None
+        elif is_last_step:
+            # This is the last step - return it directly without CTE wrapper
+            # (unless we have existing CTEs that need to be referenced)
+            if ctes:
+                # We have previous CTEs - need to wrap this in a CTE and select from it
+                step_name = generate_step_name(len(ctes) + 1, step)
+                cte = exp.CTE(
+                    this=step_select,
+                    alias=exp.TableAlias(this=exp.Identifier(this=step_name))
+                )
+                ctes.append(cte)
+                # Create final SELECT that references the last CTE
+                final_select = exp.Select()
+                final_select.set("expressions", [exp.Star()])
+                final_select.args["from"] = exp.From(
+                    this=exp.Table(this=exp.Identifier(this=step_name))
+                )
+                final_select.args["with"] = exp.With(expressions=ctes)
+                return final_select
+            else:
+                # No CTEs, last step - return it directly
+                return step_select
         else:
             # No CTE needed - this step will be inlined into the next one
             previous_step = step
             # Keep previous_step_name as is (might be None if this is first step)
     
-    # Create final SELECT
-    # If there are CTEs, the final SELECT references the last CTE
-    # If the last step wasn't CTE'd (simple FROM), we need to build it directly
-    if ctes:
-        # We have CTEs - final SELECT references the last CTE
-        final_select = exp.Select()
-        final_select.set("expressions", [exp.Star()])
-        # SQLGlot uses 'from' as the key, but it's a Python keyword, so we use args dict directly
-        final_select.args["from"] = exp.From(
-            this=exp.Table(this=exp.Identifier(this=previous_step_name))
-        )
-        # Attach WITH clause with all CTEs
-        final_select.args["with"] = exp.With(expressions=ctes)
-        return final_select
-    else:
-        # No CTEs were created - this shouldn't happen if we got here
-        # (should have returned early for single simple step)
-        # But handle it gracefully by returning the last step's SELECT
-        last_step = merged_steps[-1]
-        return build_select_for_step(last_step, previous_step_name, previous_step)
+    # If we get here, we didn't return early (shouldn't happen, but handle gracefully)
+    # Return the last step's SELECT
+    last_step = merged_steps[-1]
+    return build_select_for_step(last_step, previous_step_name, previous_step)
 
