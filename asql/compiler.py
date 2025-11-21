@@ -74,7 +74,8 @@ def compile(
                         # Create a SELECT that uses the CTE
                         select_from_cte = exp.Select()
                         select_from_cte.set("expressions", [exp.Star()])
-                        select_from_cte.set("from_", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
+                        # SQLGlot uses 'from' as the key, but it's a Python keyword, so we use args dict directly
+                        select_from_cte.args["from"] = exp.From(this=exp.Table(this=exp.Identifier(this=cte_name)))
                         final_queries.append(select_from_cte)
             else:
                 # Regular pipeline query
@@ -130,7 +131,8 @@ def compile(
                     existing_ctes.append(cte_expr)
             
             if existing_ctes:
-                final_select.set("with_", exp.With(expressions=existing_ctes))
+                # SQLGlot uses 'with' as the key, but it's a Python keyword, so we use args dict directly
+                final_select.args["with"] = exp.With(expressions=existing_ctes)
             
             sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
             return final_select.sql(dialect=sql_dialect, pretty=pretty)
@@ -182,9 +184,9 @@ def _compile_single_query(
             # Create a SELECT that uses the CTE
             select_from_cte = exp.Select()
             select_from_cte.set("expressions", [exp.Star()])
-            select_from_cte.set("from_", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
-            # Set WITH clause on the SELECT (SQLGlot uses 'with_' not 'with')
-            select_from_cte.set("with_", exp.With(expressions=[cte]))
+            # SQLGlot uses 'from' and 'with' as keys, but they're Python keywords, so we use args dict directly
+            select_from_cte.args["from"] = exp.From(this=exp.Table(this=exp.Identifier(this=cte_name)))
+            select_from_cte.args["with"] = exp.With(expressions=[cte])
             
             sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
             sql = select_from_cte.sql(dialect=sql_dialect, pretty=pretty)

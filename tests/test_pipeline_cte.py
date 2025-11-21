@@ -12,9 +12,8 @@ def test_simple_pipeline_single_step() -> None:
     asql = "from users"
     sql = compile(asql)
     
-    # Should generate a CTE
-    assert "WITH" in sql.upper()
-    assert "1_from" in sql.lower()
+    # Should NOT generate a CTE (optimization: single simple step)
+    assert "WITH" not in sql.upper()
     assert "SELECT" in sql.upper()
     assert "users" in sql.lower()  # Table name should appear
 
@@ -24,9 +23,8 @@ def test_pipeline_with_where() -> None:
     asql = 'from users where status == "active"'
     sql = compile(asql)
     
-    # Should generate CTE with descriptive name
-    assert "WITH" in sql.upper()
-    assert "1_where" in sql.lower() or "1_where_status" in sql.lower()
+    # Should NOT generate a CTE (optimization: single merged step)
+    assert "WITH" not in sql.upper()
     assert "WHERE" in sql.upper()
     assert "status" in sql.lower()
     assert "active" in sql.lower()
@@ -53,8 +51,8 @@ def test_pipeline_with_sort() -> None:
     asql = 'from users where status == "active" sort -created_at'
     sql = compile(asql)
     
-    # Should generate CTE
-    assert "WITH" in sql.upper()
+    # Should NOT generate a CTE (optimization: single merged step)
+    assert "WITH" not in sql.upper()
     assert "ORDER BY" in sql.upper()
     assert "DESC" in sql.upper()
 
@@ -94,8 +92,8 @@ def test_pipeline_with_join() -> None:
     asql = "from users join orders on users.id == orders.user_id"
     sql = compile(asql)
     
-    # Should generate CTEs
-    assert "WITH" in sql.upper()
+    # Should NOT generate a CTE (optimization: FROM and JOIN merged into single step)
+    assert "WITH" not in sql.upper()
     assert "JOIN" in sql.upper()
     assert "orders" in sql.lower()
 
@@ -135,12 +133,13 @@ def test_build_cte_pipeline() -> None:
 
 
 def test_pipeline_single_step_no_cte_needed() -> None:
-    """Test that single step queries still work."""
+    """Test that single step queries don't create unnecessary CTEs."""
     asql = "from users"
     sql = compile(asql)
     
-    # Even single steps should use CTEs for consistency
-    assert "WITH" in sql.upper() or "SELECT" in sql.upper()
+    # Should NOT create CTE (optimization: single simple step)
+    assert "WITH" not in sql.upper()
+    assert "SELECT" in sql.upper()
     assert "users" in sql.lower()
 
 
