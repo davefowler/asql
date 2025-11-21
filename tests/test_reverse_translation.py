@@ -147,3 +147,45 @@ def test_reverse_compile_order_by() -> None:
     asql = reverse_compile(sql)
     assert "sort" in asql.lower() or "order" in asql.lower()
     assert "take" in asql.lower() or "limit" in asql.lower()
+
+
+def test_reverse_compile_jinja_template_detection() -> None:
+    """Test that Jinja templates are detected and raise helpful error."""
+    # Test with dbt ref() macro
+    sql_with_ref = """
+    SELECT *
+    FROM {{ ref('stg_users') }}
+    WHERE status = 'active'
+    """
+    with pytest.raises(ASQLCompilationError) as exc_info:
+        reverse_compile(sql_with_ref)
+    assert "Jinja templating" in str(exc_info.value).lower() or "jinja" in str(exc_info.value).lower()
+    
+    # Test with dbt config() macro
+    sql_with_config = """
+    {{ config(enabled=var('enabled', True)) }}
+    SELECT * FROM users
+    """
+    with pytest.raises(ASQLCompilationError) as exc_info:
+        reverse_compile(sql_with_config)
+    assert "Jinja templating" in str(exc_info.value).lower() or "jinja" in str(exc_info.value).lower()
+    
+    # Test with Jinja if statement
+    sql_with_if = """
+    SELECT * FROM users
+    {% if var('filter_active') %}
+    WHERE status = 'active'
+    {% endif %}
+    """
+    with pytest.raises(ASQLCompilationError) as exc_info:
+        reverse_compile(sql_with_if)
+    assert "Jinja templating" in str(exc_info.value).lower() or "jinja" in str(exc_info.value).lower()
+
+
+def test_detect_dialect_with_jinja() -> None:
+    """Test that dialect detection returns None for Jinja templates."""
+    sql_with_jinja = """
+    SELECT * FROM {{ ref('users') }}
+    """
+    dialect = detect_dialect(sql_with_jinja)
+    assert dialect is None

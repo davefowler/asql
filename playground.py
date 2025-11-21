@@ -2,12 +2,149 @@
 
 import json
 import os
+import re
 from flask import Flask, render_template_string, request, jsonify, send_from_directory
 from asql import compile
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 from asql.reverse_compiler import reverse_compile, detect_dialect
 
 app = Flask(__name__)
+
+
+def strip_jinja_templates(sql_content: str) -> str:
+    """
+    Strip dbt/Jinja templating from SQL and replace with regular SQL.
+    
+    Handles:
+    - {{ config(...) }} - removes entire lines
+    - {{ ref('table') }} - replaces with table name
+    - {{ dbt.type_*() }} - replaces with SQL type
+    - {{ fivetran_utils.*() }} - replaces with SQL function
+    - {% if ... %} / {% endif %} - removes conditionals, keeps True branch
+    - {% else %} - removes
+    
+    Args:
+        sql_content: SQL string with Jinja templates
+        
+    Returns:
+        SQL string with Jinja templates removed/replaced
+    """
+    # First, handle multi-line {% if %} blocks by removing them entirely
+    # We'll keep the True branch content (before {% else %} if present)
+    
+    # Remove {% if ... %} ... {% else %} ... {% endif %} blocks, keeping the True branch
+    def process_if_block(match):
+        block_content = match.group(0)
+        # Find {% else %} if present
+        else_match = re.search(r'\{%\s*else\s*%\}', block_content)
+        if else_match:
+            # Keep only the part before {% else %}
+            return block_content[:else_match.start()]
+        # If no else, keep everything between {% if %} and {% endif %}
+        if_match = re.search(r'\{%\s*if\s+.*?\s*%\}', block_content)
+        endif_match = re.search(r'\{%\s*endif\s*%\}', block_content)
+        if if_match and endif_match:
+            return block_content[if_match.end():endif_match.start()]
+        return ''
+    
+    # Process {% if %} blocks (including multi-line)
+    sql_content = re.sub(
+        r'\{%\s*if\s+[^%]*%\}.*?\{%\s*endif\s*%\}',
+        process_if_block,
+        sql_content,
+        flags=re.DOTALL
+    )
+    
+    # Remove standalone {% else %} lines
+    sql_content = re.sub(r'^\s*\{%\s*else\s*%\}\s*$', '', sql_content, flags=re.MULTILINE)
+    
+    lines = sql_content.split('\n')
+    result_lines = []
+    
+    for line in lines:
+        # Skip lines that are entirely config blocks
+        if re.search(r'^\s*\{\{\s*config\s*\(', line, re.IGNORECASE):
+            continue
+        
+        # Replace {{ ref('table_name') }} with table_name
+        line = re.sub(
+            r'\{\{\s*ref\s*\(\s*[\'"]?([^\'"]+)[\'"]?\s*\)\s*\}\}',
+            r'\1',
+            line
+        )
+        
+        # Replace {{ dbt.type_int() }} with INT
+        line = re.sub(r'\{\{\s*dbt\.type_int\s*\(\)\s*\}\}', 'INT', line, flags=re.IGNORECASE)
+        line = re.sub(r'\{\{\s*dbt\.type_bigint\s*\(\)\s*\}\}', 'BIGINT', line, flags=re.IGNORECASE)
+        line = re.sub(r'\{\{\s*dbt\.type_string\s*\(\)\s*\}\}', 'VARCHAR', line, flags=re.IGNORECASE)
+        line = re.sub(r'\{\{\s*dbt\.type_float\s*\(\)\s*\}\}', 'FLOAT', line, flags=re.IGNORECASE)
+        line = re.sub(r'\{\{\s*dbt\.type_numeric\s*\(\)\s*\}\}', 'NUMERIC', line, flags=re.IGNORECASE)
+        line = re.sub(r'\{\{\s*dbt\.type_boolean\s*\(\)\s*\}\}', 'BOOLEAN', line, flags=re.IGNORECASE)
+        
+        # Replace {{ fivetran_utils.string_agg(...) }} with STRING_AGG(...)
+        def replace_fivetran_string_agg(match):
+            full_match = match.group(0)
+            # Extract arguments from string_agg('distinct col', "', '")
+            # Try to find the column and delimiter
+            args_match = re.search(r'string_agg\s*\(\s*([^)]+)\s*\)', full_match, re.IGNORECASE)
+            if args_match:
+                args = args_match.group(1)
+                # Handle 'distinct merged_lead_id', "', '"
+                # Split by comma, but be careful with nested quotes
+                parts = []
+                current = ''
+                in_quotes = False
+                quote_char = None
+                for char in args:
+                    if char in ("'", '"') and not in_quotes:
+                        in_quotes = True
+                        quote_char = char
+                        current += char
+                    elif char == quote_char and in_quotes:
+                        in_quotes = False
+                        quote_char = None
+                        current += char
+                    elif char == ',' and not in_quotes:
+                        parts.append(current.strip())
+                        current = ''
+                    else:
+                        current += char
+                if current:
+                    parts.append(current.strip())
+                
+                if len(parts) >= 1:
+                    col_expr = parts[0].strip("'\"")
+                    delimiter = parts[1].strip("'\"") if len(parts) > 1 else "', '"
+                    if 'distinct' in col_expr.lower():
+                        col = col_expr.replace('distinct', '').strip()
+                        return f"STRING_AGG(DISTINCT {col}, '{delimiter}')"
+                    return f"STRING_AGG({col_expr}, '{delimiter}')"
+            return 'STRING_AGG(...)'
+        
+        line = re.sub(
+            r'\{\{\s*fivetran_utils\.string_agg\s*\([^)]+\)\s*\}\}',
+            replace_fivetran_string_agg,
+            line,
+            flags=re.IGNORECASE
+        )
+        
+        # Replace other common dbt macros - remove them
+        line = re.sub(r'\{\{\s*var\s*\([^)]+\)\s*\}\}', '', line, flags=re.IGNORECASE)
+        
+        # Remove any remaining {{ ... }} blocks (catch-all)
+        line = re.sub(r'\{\{[^}]*\}\}', '', line)
+        
+        # Remove any remaining {% ... %} blocks (catch-all)
+        line = re.sub(r'\{%[^%]*%\}', '', line)
+        
+        result_lines.append(line)
+    
+    result = '\n'.join(result_lines)
+    
+    # Clean up: remove multiple blank lines
+    result = re.sub(r'\n\s*\n\s*\n+', '\n\n', result)
+    
+    return result.strip()
 
 @app.route('/static/syntax/<path:filename>')
 def serve_syntax(filename):
@@ -560,7 +697,19 @@ take 10`,
             }
         }
         
+        function ensureFromNotPostgresWhenToEmpty() {
+            const fromDialect = document.getElementById('from-dialect').value;
+            const toDialect = document.getElementById('to-dialect').value;
+            
+            // If "to" is not selected and "from" is postgresql, switch "from" to something else
+            if (!toDialect && (fromDialect === 'postgres' || fromDialect === 'postgresql')) {
+                document.getElementById('from-dialect').value = 'asql';
+            }
+        }
+        
         function updateUITitles() {
+            ensureFromNotPostgresWhenToEmpty();
+            
             const fromDialect = document.getElementById('from-dialect').value;
             const toDialect = document.getElementById('to-dialect').value;
             
@@ -668,11 +817,13 @@ take 10`
         
         // Update UI when dialects change
         document.getElementById('from-dialect').addEventListener('change', () => {
+            ensureFromNotPostgresWhenToEmpty();
             updateUITitles();
             translateQuery();
         });
         
         document.getElementById('to-dialect').addEventListener('change', () => {
+            ensureFromNotPostgresWhenToEmpty();
             updateUITitles();
             translateQuery();
         });
@@ -819,16 +970,29 @@ take 10`
             const fromDialect = document.getElementById('from-dialect').value;
             const toDialect = document.getElementById('to-dialect').value;
             
+            console.log('Translation request:', { currentMode, fromDialect, toDialect, input: input.substring(0, 100) });
+            
             try {
                 if (currentMode === 'asql-to-sql') {
                     // ASQL to SQL
+                    const requestBody = { asql: input, dialect: toDialect || '' };
+                    console.log('Sending compile request:', requestBody);
+                    
                     const response = await fetch('/api/compile', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({ asql: input, dialect: toDialect || '' })
+                        body: JSON.stringify(requestBody)
                     });
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        errorDiv.textContent = `HTTP Error ${response.status}: ${errorText}`;
+                        errorDiv.className = 'error';
+                        errorDiv.style.display = 'block';
+                        return;
+                    }
                     
                     const data = await response.json();
                     
@@ -836,8 +1000,12 @@ take 10`
                         errorDiv.textContent = data.error;
                         errorDiv.className = 'error';
                         errorDiv.style.display = 'block';
-                    } else {
+                    } else if (data.sql) {
                         outputEditor.setValue(data.sql);
+                    } else {
+                        errorDiv.textContent = 'Unexpected response format: ' + JSON.stringify(data);
+                        errorDiv.className = 'error';
+                        errorDiv.style.display = 'block';
                     }
                 } else if (currentMode === 'sql-to-asql') {
                     // SQL to ASQL
@@ -1138,12 +1306,15 @@ def api_fivetran_examples():
                 }
                 sql_dialect = dialect_map.get(final_dialect.lower(), 'snowflake')
                 
+                # Strip Jinja templates to make it regular SQL
+                cleaned_content = strip_jinja_templates(content)
+                
                 examples.append({
                     "title": title,
                     "desc": desc,
                     "language": sql_dialect,
                     "toLanguage": "asql",
-                    "query": content
+                    "query": cleaned_content
                 })
             except Exception as e:
                 # Skip files that can't be read
