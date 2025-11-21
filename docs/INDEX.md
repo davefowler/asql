@@ -43,6 +43,7 @@ LIMIT 10
 
 - 📖 [Quick Start Guide](quick-start.md) - Get started in minutes
 - 📚 [Examples](examples.md) - Extensive examples with SQL output
+- 🎮 [Interactive Playground](interactive-playground.md) - Try ASQL in your browser
 - 📋 [Language Specification](spec.md) - Complete ASQL syntax reference
 - 🏗️ [Architecture](architecture.md) - System design and implementation details
 

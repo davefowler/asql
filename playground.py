@@ -1,12 +1,19 @@
 """ASQL Interactive Playground - Web-based query editor and executor with bidirectional translation."""
 
 import json
-from flask import Flask, render_template_string, request, jsonify
+import os
+from flask import Flask, render_template_string, request, jsonify, send_from_directory
 from asql import compile
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 from asql.reverse_compiler import reverse_compile, detect_dialect
 
 app = Flask(__name__)
+
+@app.route('/static/syntax/<path:filename>')
+def serve_syntax(filename):
+    """Serve syntax highlighter files."""
+    syntax_dir = os.path.join(os.path.dirname(__file__), 'syntax')
+    return send_from_directory(syntax_dir, filename)
 
 # HTML template for the playground
 PLAYGROUND_HTML = """
@@ -16,6 +23,8 @@ PLAYGROUND_HTML = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ASQL Playground</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
     <style>
         * {
             margin: 0;
@@ -23,58 +32,106 @@ PLAYGROUND_HTML = """
             box-sizing: border-box;
         }
         
+        html, body {
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #f5f5f5;
+            background: white;
             color: #333;
         }
         
         .container {
-            max-width: 1600px;
-            margin: 0 auto;
+            max-width: none;
+            width: 100%;
+            margin: 0;
             padding: 20px;
         }
         
         h1 {
             text-align: center;
             margin-bottom: 30px;
-            color: #2c3e50;
+            color: #333;
+            font-weight: 400;
         }
         
-        .mode-toggle {
+        .language-selectors {
             display: flex;
             justify-content: center;
-            gap: 10px;
+            align-items: center;
+            gap: 12px;
             margin-bottom: 20px;
         }
         
-        .toggle-btn {
-            padding: 12px 24px;
-            border: 2px solid #3498db;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
+        .language-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .language-selector label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .language-selector select {
+            padding: 8px 32px 8px 12px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            font-size: 14px;
             background: white;
-            color: #3498db;
-            transition: all 0.3s;
+            color: #ea4335;
+            cursor: pointer;
+            min-width: 160px;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ea4335' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
         }
         
-        .toggle-btn.active {
-            background: #3498db;
-            color: white;
+        .language-selector select:hover {
+            border-color: #f28b82;
         }
         
-        .toggle-btn:hover {
-            background: #2980b9;
-            color: white;
+        .language-selector select:focus {
+            outline: none;
+            border-color: #ea4335;
+        }
+        
+        .swap-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+            margin-top: 20px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .swap-button:hover {
+            color: #ea4335;
+        }
+        
+        .swap-icon {
+            width: 20px;
+            height: 20px;
         }
         
         .playground {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            gap: 0;
             margin-bottom: 20px;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            overflow: hidden;
         }
         
         @media (max-width: 968px) {
@@ -85,75 +142,40 @@ PLAYGROUND_HTML = """
         
         .panel {
             background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .panel:first-child {
+            border-right: 1px solid #dadce0;
         }
         
         .panel-header {
-            background: #3498db;
-            color: white;
+            background: white;
+            color: #666;
             padding: 12px 16px;
-            font-weight: 600;
+            font-weight: 400;
+            font-size: 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-        }
-        
-        .panel-header.sql {
-            background: #27ae60;
-        }
-        
-        .panel-header.asql {
-            background: #9b59b6;
-        }
-        
-        .dialect-selector {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 12px;
-            padding: 0 16px;
-            padding-top: 12px;
-        }
-        
-        .dialect-selector label {
-            font-size: 12px;
-            font-weight: 600;
-            color: #7f8c8d;
-            text-transform: uppercase;
-        }
-        
-        .dialect-selector select {
-            flex: 1;
-            padding: 6px 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 13px;
-            background: white;
+            border-bottom: 1px solid #dadce0;
         }
         
         .panel-content {
-            padding: 16px;
-            padding-top: 0;
+            padding: 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
         }
         
-        textarea {
-            width: 100%;
+        #input-editor, #output-editor {
+            flex: 1;
             min-height: 350px;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 14px;
-            line-height: 1.5;
-            resize: vertical;
         }
         
-        textarea:focus {
-            outline: none;
-            border-color: #3498db;
-        }
         
         .controls {
             display: flex;
@@ -163,50 +185,61 @@ PLAYGROUND_HTML = """
             justify-content: center;
         }
         
-        select, button {
-            padding: 10px 16px;
-            border: 1px solid #ddd;
+        button {
+            padding: 10px 24px;
+            border: 1px solid #dadce0;
             border-radius: 4px;
             font-size: 14px;
             cursor: pointer;
             background: white;
-        }
-        
-        button {
-            background: #3498db;
-            color: white;
-            border: none;
-            font-weight: 600;
+            color: #ea4335;
+            font-weight: 500;
         }
         
         button:hover {
-            background: #2980b9;
+            background: #f8f9fa;
+            border-color: #f28b82;
         }
         
         button:disabled {
-            background: #95a5a6;
+            background: #f8f9fa;
+            color: #999;
             cursor: not-allowed;
+            border-color: #dadce0;
+        }
+        
+        .translate-btn {
+            background: #ea4335;
+            color: white;
+            border: none;
+        }
+        
+        .translate-btn:hover {
+            background: #c5221f;
+            border-color: #c5221f;
         }
         
         .error {
-            background: #e74c3c;
-            color: white;
+            background: #fce8e6;
+            color: #c5221f;
             padding: 12px;
             border-radius: 4px;
             margin-top: 10px;
+            font-size: 13px;
         }
         
         .examples {
             background: white;
+            border: 1px solid #dadce0;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             padding: 20px;
             margin-top: 20px;
         }
         
         .examples h2 {
             margin-bottom: 15px;
-            color: #2c3e50;
+            color: #333;
+            font-weight: 400;
         }
         
         .example-section {
@@ -215,8 +248,9 @@ PLAYGROUND_HTML = """
         
         .example-section h3 {
             margin-bottom: 10px;
-            color: #34495e;
+            color: #333;
             font-size: 16px;
+            font-weight: 400;
         }
         
         .example-list {
@@ -227,8 +261,8 @@ PLAYGROUND_HTML = """
         
         .example-btn {
             padding: 8px 12px;
-            background: #ecf0f1;
-            border: 1px solid #bdc3c7;
+            background: white;
+            border: 1px solid #dadce0;
             border-radius: 4px;
             cursor: pointer;
             text-align: left;
@@ -237,18 +271,18 @@ PLAYGROUND_HTML = """
         }
         
         .example-btn:hover {
-            background: #d5dbdb;
-            border-color: #95a5a6;
+            background: #f8f9fa;
+            border-color: #f28b82;
         }
         
         .example-title {
-            font-weight: 600;
+            font-weight: 500;
             margin-bottom: 4px;
-            color: #2c3e50;
+            color: #333;
         }
         
         .example-desc {
-            color: #7f8c8d;
+            color: #666;
             font-size: 12px;
         }
         
@@ -257,10 +291,99 @@ PLAYGROUND_HTML = """
             width: 16px;
             height: 16px;
             border: 2px solid #f3f3f3;
-            border-top: 2px solid #3498db;
+            border-top: 2px solid #ea4335;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-left: 10px;
+        }
+        
+        /* CodeMirror styling */
+        .CodeMirror {
+            height: 100%;
+            font-size: 14px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            border: none;
+            border-radius: 0;
+            padding: 12px;
+        }
+        
+        .CodeMirror-scroll {
+            min-height: 350px;
+        }
+        
+        .CodeMirror-focused {
+            outline: none;
+        }
+        
+        .CodeMirror-readonly .CodeMirror-cursor {
+            display: none;
+        }
+        
+        /* Output editor - grey background to look less editable */
+        #output-editor .CodeMirror {
+            background: #f8f9fa;
+        }
+        
+        #output-editor .CodeMirror-scroll {
+            background: #f8f9fa;
+        }
+        
+        #output-editor .CodeMirror-gutters {
+            background: #f1f3f4;
+            border-right: 1px solid #e8eaed;
+        }
+        
+        /* Custom CodeMirror theme colors - red accents */
+        .CodeMirror-linenumber {
+            color: #999;
+        }
+        
+        .CodeMirror-cursor {
+            border-left: 2px solid #ea4335;
+        }
+        
+        .CodeMirror-selected {
+            background: #fce8e6;
+        }
+        
+        .CodeMirror-focused .CodeMirror-selected {
+            background: #fce8e6;
+        }
+        
+        /* SQL and ASQL syntax highlighting colors */
+        .cm-keyword {
+            color: #ea4335;
+            font-weight: 600;
+        }
+        
+        .cm-string {
+            color: #137333;
+        }
+        
+        .cm-number {
+            color: #1967d2;
+        }
+        
+        .cm-comment {
+            color: #999;
+            font-style: italic;
+        }
+        
+        .cm-operator {
+            color: #ea4335;
+        }
+        
+        .cm-variable {
+            color: #333;
+        }
+        
+        .cm-def {
+            color: #ea4335;
+            font-weight: 500;
+        }
+        
+        .cm-atom {
+            color: #1967d2;
         }
         
         @keyframes spin {
@@ -269,90 +392,94 @@ PLAYGROUND_HTML = """
         }
         
         .copy-btn {
-            background: rgba(255,255,255,0.2);
-            padding: 6px 10px;
+            background: transparent;
+            padding: 4px 8px;
             font-size: 12px;
             margin-left: 10px;
-            border: 1px solid rgba(255,255,255,0.3);
+            border: 1px solid #dadce0;
+            color: #666;
+            border-radius: 4px;
         }
         
         .copy-btn:hover {
-            background: rgba(255,255,255,0.3);
+            background: #f8f9fa;
+            border-color: #f28b82;
         }
         
         .detected-dialect {
             font-size: 11px;
-            color: #95a5a6;
+            color: #999;
             font-style: italic;
-            margin-left: 8px;
+            padding: 8px 16px;
+            background: #f8f9fa;
+            border-top: 1px solid #dadce0;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🚀 ASQL Playground</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1 style="margin: 0;">🚀 ASQL Playground</h1>
+            <a href="/docs/" style="color: #ea4335; text-decoration: none; font-weight: 500; padding: 8px 16px; border: 1px solid #ea4335; border-radius: 4px; display: inline-block;">← Back to Docs</a>
+        </div>
         
-        <div class="mode-toggle">
-            <button class="toggle-btn active" id="mode-asql-to-sql" onclick="setMode('asql-to-sql')">
-                ASQL → SQL
+        <div class="language-selectors">
+            <div class="language-selector">
+                <label>From:</label>
+                <select id="from-dialect">
+                    <option value="asql">ASQL</option>
+                    <option value="">SQL (Auto-detect)</option>
+                    <option value="postgres">PostgreSQL</option>
+                    <option value="mysql">MySQL</option>
+                    <option value="bigquery">BigQuery</option>
+                    <option value="snowflake">Snowflake</option>
+                    <option value="redshift">Redshift</option>
+                    <option value="spark">Spark</option>
+                </select>
+            </div>
+            <button class="swap-button" onclick="swapLanguages()" title="Swap languages">
+                <svg class="swap-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/>
+                </svg>
             </button>
-            <button class="toggle-btn" id="mode-sql-to-asql" onclick="setMode('sql-to-asql')">
-                SQL → ASQL
-            </button>
+            <div class="language-selector">
+                <label>To:</label>
+                <select id="to-dialect">
+                    <option value="asql">ASQL</option>
+                    <option value="">SQL (ANSI)</option>
+                    <option value="postgres">PostgreSQL</option>
+                    <option value="mysql">MySQL</option>
+                    <option value="bigquery" selected>BigQuery</option>
+                    <option value="snowflake">Snowflake</option>
+                    <option value="redshift">Redshift</option>
+                    <option value="spark">Spark</option>
+                </select>
+            </div>
         </div>
         
         <div class="controls">
-            <button onclick="translateQuery()">Translate</button>
-            <button onclick="clearAll()">Clear</button>
+            <button class="translate-btn" onclick="translateQuery()">Translate</button>
         </div>
         
         <div class="playground">
             <div class="panel" id="input-panel">
                 <div class="panel-header" id="input-header">
-                    <span id="input-title">ASQL Query</span>
+                    <span id="input-title">Enter text</span>
                     <button class="copy-btn" onclick="copyInput()">Copy</button>
                 </div>
-                <div class="dialect-selector" id="input-dialect-selector" style="display: none;">
-                    <label>From:</label>
-                    <select id="input-dialect">
-                        <option value="">Auto-detect</option>
-                        <option value="bigquery">BigQuery</option>
-                        <option value="redshift">Redshift</option>
-                        <option value="postgres">PostgreSQL</option>
-                        <option value="mysql">MySQL</option>
-                        <option value="snowflake">Snowflake</option>
-                        <option value="spark">Spark</option>
-                    </select>
-                    <span class="detected-dialect" id="detected-dialect" style="display: none;"></span>
-                </div>
                 <div class="panel-content">
-                    <textarea id="input" placeholder="Enter your query here...">from users
-where status == "active"
-group by country ( # as total_users )
-sort -total_users
-take 10</textarea>
+                    <div id="input-editor"></div>
+                    <span class="detected-dialect" id="detected-dialect" style="display: none;"></span>
                 </div>
             </div>
             
             <div class="panel" id="output-panel">
                 <div class="panel-header" id="output-header">
-                    <span id="output-title">Generated SQL</span>
+                    <span id="output-title">Translation</span>
                     <button class="copy-btn" onclick="copyOutput()">Copy</button>
                 </div>
-                <div class="dialect-selector" id="output-dialect-selector">
-                    <label>To:</label>
-                    <select id="output-dialect">
-                        <option value="">Default (ANSI SQL)</option>
-                        <option value="postgres">PostgreSQL</option>
-                        <option value="mysql">MySQL</option>
-                        <option value="bigquery">BigQuery</option>
-                        <option value="snowflake">Snowflake</option>
-                        <option value="redshift">Redshift</option>
-                        <option value="spark">Spark</option>
-                    </select>
-                </div>
                 <div class="panel-content">
-                    <textarea id="output" readonly placeholder="Translation will appear here..."></textarea>
+                    <div id="output-editor"></div>
                     <div id="error" style="display: none;"></div>
                 </div>
             </div>
@@ -364,8 +491,116 @@ take 10</textarea>
         </div>
     </div>
     
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+    <script src="/static/syntax/codemirror/asql-mode.js"></script>
     <script>
-        let currentMode = 'asql-to-sql';
+        // Detect if embedded in docs
+        const isEmbedded = window.ASQL_EMBEDDED || (window.parent !== window && window.parent.location.hostname === window.location.hostname);
+        
+        // If embedded, adjust styling
+        if (isEmbedded) {
+            document.addEventListener('DOMContentLoaded', function() {
+                const container = document.querySelector('.container');
+                if (container) {
+                    container.style.maxWidth = '100%';
+                    container.style.padding = '10px';
+                }
+                // Hide back to docs link if embedded (it will be in parent frame)
+                const backLink = document.querySelector('a[href="/docs/"]');
+                if (backLink && window.parent !== window) {
+                    backLink.style.display = 'none';
+                }
+            });
+        }
+    </script>
+    <script>
+        // Initialize CodeMirror editors
+        const inputEditor = CodeMirror(document.getElementById('input-editor'), {
+            value: `from users
+where status == "active"
+group by country ( # as total_users )
+sort -total_users
+take 10`,
+            mode: 'text/x-asql',
+            lineNumbers: true,
+            matchBrackets: true,
+            autoCloseBrackets: true,
+            theme: 'default',
+            lineWrapping: true,
+            placeholder: 'Enter your query here...'
+        });
+        
+        const outputEditor = CodeMirror(document.getElementById('output-editor'), {
+            value: '',
+            mode: 'text/x-sql',
+            lineNumbers: true,
+            matchBrackets: true,
+            autoCloseBrackets: true,
+            theme: 'default',
+            readOnly: true,
+            lineWrapping: true,
+            placeholder: 'Translation will appear here...'
+        });
+        
+        function getCurrentMode() {
+            const fromDialect = document.getElementById('from-dialect').value;
+            const toDialect = document.getElementById('to-dialect').value;
+            
+            if (fromDialect === 'asql' && toDialect !== 'asql') {
+                return 'asql-to-sql';
+            } else if (fromDialect !== 'asql' && toDialect === 'asql') {
+                return 'sql-to-asql';
+            } else if (fromDialect === 'asql' && toDialect === 'asql') {
+                return 'asql-to-asql';
+            } else {
+                return 'sql-to-sql';
+            }
+        }
+        
+        function updateUITitles() {
+            const fromDialect = document.getElementById('from-dialect').value;
+            const toDialect = document.getElementById('to-dialect').value;
+            
+            const fromLabel = fromDialect === 'asql' ? 'ASQL' : (fromDialect || 'SQL');
+            const toLabel = toDialect === 'asql' ? 'ASQL' : (toDialect || 'SQL');
+            
+            document.getElementById('input-title').textContent = fromLabel;
+            document.getElementById('output-title').textContent = toLabel;
+            
+            // Update CodeMirror mode based on dialect
+            if (fromDialect === 'asql') {
+                inputEditor.setOption('mode', 'text/x-asql');
+            } else {
+                inputEditor.setOption('mode', 'text/x-sql');
+            }
+            
+            if (toDialect === 'asql') {
+                outputEditor.setOption('mode', 'text/x-asql');
+            } else {
+                outputEditor.setOption('mode', 'text/x-sql');
+            }
+        }
+        
+        function swapLanguages() {
+            const fromSelect = document.getElementById('from-dialect');
+            const toSelect = document.getElementById('to-dialect');
+            const fromValue = fromSelect.value;
+            const toValue = toSelect.value;
+            
+            fromSelect.value = toValue;
+            toSelect.value = fromValue;
+            
+            // Swap editor contents
+            const temp = inputEditor.getValue();
+            inputEditor.setValue(outputEditor.getValue());
+            outputEditor.setValue(temp);
+            
+            updateUITitles();
+            translateQuery();
+        }
         
         const asqlExamples = [
             {
@@ -427,90 +662,28 @@ take 10`
                 desc: "All comparison operators",
                 query: "from users where age >= 18 and age <= 65"
             },
-            {
-                title: "Fivetran: Shopify Line Items",
-                desc: "Complex joins from dbt_shopify",
-                query: `from stg_shopify_gql__order_line
-join stg_shopify_gql__order on order_line.order_id == order.order_id
-select order_line.order_id, order.created_timestamp as created_at, order_line.quantity`
-            },
-            {
-                title: "Fivetran: Stripe Customer Overview",
-                desc: "Complex aggregations from dbt_stripe",
-                query: `from stripe__balance_transactions
-where balance_transaction_type in ("payment", "charge")
-group by customer_id ( sum(balance_transaction_amount) as total_sales )`
-            },
-            {
-                title: "Fivetran: Zendesk Ticket Enriched",
-                desc: "Multiple user joins from dbt_zendesk",
-                query: `from int_zendesk__ticket_aggregates
-join int_zendesk__user_aggregates as requester on ticket.requester_id == requester.user_id
-join int_zendesk__user_aggregates as submitter on ticket.submitter_id == submitter.user_id
-select ticket.*, requester.email as requester_email, submitter.email as submitter_email`
-            },
-            {
-                title: "Fivetran: Stripe Balance Transactions",
-                desc: "Complex dispute logic from dbt_stripe",
-                query: `from stg_stripe__balance_transaction
-left join stg_stripe__charge on charge.balance_transaction_id == balance_transaction.balance_transaction_id
-select balance_transaction.balance_transaction_id, balance_transaction.amount, charge.charge_id`
-            },
-            {
-                title: "Fivetran: Shopify Customer Cohorts",
-                desc: "Cohort analysis from dbt_shopify",
-                query: `from orders
-group by customer_id, date_trunc("month", created_timestamp) (
-    count(distinct order_id) as order_count_in_month,
-    sum(order_adjusted_total) as total_price_in_month
-)`
-            },
         ];
         
         const sqlExamples = [];
         
-        function setMode(mode) {
-            currentMode = mode;
-            
-            // Update toggle buttons
-            document.getElementById('mode-asql-to-sql').classList.toggle('active', mode === 'asql-to-sql');
-            document.getElementById('mode-sql-to-asql').classList.toggle('active', mode === 'sql-to-asql');
-            
-            // Update UI
-            if (mode === 'asql-to-sql') {
-                document.getElementById('input-title').textContent = 'ASQL Query';
-                document.getElementById('output-title').textContent = 'Generated SQL';
-                document.getElementById('input-header').className = 'panel-header';
-                document.getElementById('output-header').className = 'panel-header sql';
-                document.getElementById('input-dialect-selector').style.display = 'none';
-                document.getElementById('output-dialect-selector').style.display = 'flex';
-                document.getElementById('input').placeholder = 'Enter your ASQL query here...';
-                document.getElementById('output').placeholder = 'SQL will appear here...';
-            } else {
-                document.getElementById('input-title').textContent = 'SQL Query';
-                document.getElementById('output-title').textContent = 'Generated ASQL';
-                document.getElementById('input-header').className = 'panel-header sql';
-                document.getElementById('output-header').className = 'panel-header asql';
-                document.getElementById('input-dialect-selector').style.display = 'flex';
-                document.getElementById('output-dialect-selector').style.display = 'none';
-                document.getElementById('input').placeholder = 'Enter your SQL query here...';
-                document.getElementById('output').placeholder = 'ASQL will appear here...';
-            }
-            
-            // Clear output
-            document.getElementById('output').value = '';
-            document.getElementById('error').style.display = 'none';
-            document.getElementById('detected-dialect').style.display = 'none';
-            
-            // Reload examples
-            loadExamples();
-        }
+        // Update UI when dialects change
+        document.getElementById('from-dialect').addEventListener('change', () => {
+            updateUITitles();
+            translateQuery();
+        });
+        
+        document.getElementById('to-dialect').addEventListener('change', () => {
+            updateUITitles();
+            translateQuery();
+        });
         
         function loadExamples() {
             const container = document.getElementById('examples-container');
             container.innerHTML = '';
             
-            if (currentMode === 'asql-to-sql') {
+            const currentMode = getCurrentMode();
+            
+            if (currentMode === 'asql-to-sql' || currentMode === 'asql-to-asql') {
                 const section = document.createElement('div');
                 section.className = 'example-section';
                 section.innerHTML = '<h3>ASQL Examples</h3><div class="example-list" id="asql-examples"></div>';
@@ -525,7 +698,13 @@ group by customer_id, date_trunc("month", created_timestamp) (
                         <div class="example-desc">${example.desc}</div>
                     `;
                     btn.onclick = () => {
-                        document.getElementById('input').value = example.query;
+                        // Set "from" to ASQL if not already set
+                        const fromDialect = document.getElementById('from-dialect').value;
+                        if (fromDialect !== 'asql') {
+                            document.getElementById('from-dialect').value = 'asql';
+                            updateUITitles();
+                        }
+                        inputEditor.setValue(example.query);
                         translateQuery();
                     };
                     examplesDiv.appendChild(btn);
@@ -538,7 +717,7 @@ group by customer_id, date_trunc("month", created_timestamp) (
                 
                 const examplesDiv = document.getElementById('sql-examples');
                 if (sqlExamples.length === 0) {
-                    examplesDiv.innerHTML = '<p style="color: #7f8c8d; padding: 20px;">SQL examples will be loaded from the server...</p>';
+                    examplesDiv.innerHTML = '<p style="color: #666; padding: 20px;">SQL examples will be loaded from the server...</p>';
                     loadSQLExamples();
                 } else {
                     sqlExamples.forEach(example => {
@@ -549,12 +728,62 @@ group by customer_id, date_trunc("month", created_timestamp) (
                             <div class="example-desc">${example.desc}</div>
                         `;
                         btn.onclick = () => {
-                            document.getElementById('input').value = example.query;
-                            document.getElementById('input-dialect').value = example.dialect || '';
+                            inputEditor.setValue(example.query);
+                            document.getElementById('from-dialect').value = example.dialect || '';
+                            updateUITitles();
                             translateQuery();
                         };
                         examplesDiv.appendChild(btn);
                     });
+                }
+            }
+            
+            // Always load Fivetran dbt examples
+            loadFivetranExamples();
+        }
+        
+        async function loadFivetranExamples() {
+            const container = document.getElementById('examples-container');
+            
+            // Check if Fivetran section already exists
+            let fivetranSection = document.getElementById('fivetran-examples-section');
+            if (!fivetranSection) {
+                fivetranSection = document.createElement('div');
+                fivetranSection.id = 'fivetran-examples-section';
+                fivetranSection.className = 'example-section';
+                fivetranSection.innerHTML = '<h3>Fivetran_dbt Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Here are some examples of some extensive queries used in the fivetran_dbt libraries.</p><div class="example-list" id="fivetran-examples"></div>';
+                container.appendChild(fivetranSection);
+            }
+            
+            const examplesDiv = document.getElementById('fivetran-examples');
+            if (examplesDiv.children.length === 0) {
+                examplesDiv.innerHTML = '<p style="color: #666; padding: 20px;">Fivetran examples will be loaded from the server...</p>';
+                try {
+                    const response = await fetch('/api/fivetran-examples');
+                    const examples = await response.json();
+                    
+                    examplesDiv.innerHTML = '';
+                    examples.forEach(example => {
+                        const btn = document.createElement('button');
+                        btn.className = 'example-btn';
+                        btn.innerHTML = `
+                            <div class="example-title">${example.title}</div>
+                            <div class="example-desc">${example.desc}</div>
+                        `;
+                        btn.onclick = () => {
+                            inputEditor.setValue(example.query);
+                            document.getElementById('from-dialect').value = example.language || '';
+                            if (example.toLanguage) {
+                                document.getElementById('to-dialect').value = example.toLanguage;
+                            }
+                            updateUITitles();
+                            translateQuery();
+                        };
+                        examplesDiv.appendChild(btn);
+                    });
+                } catch (error) {
+                    console.error('Failed to load Fivetran examples:', error);
+                    examplesDiv.innerHTML = '<p style="color: #c5221f; padding: 20px;">Failed to load Fivetran examples.</p>';
                 }
             }
         }
@@ -570,14 +799,14 @@ group by customer_id, date_trunc("month", created_timestamp) (
             }
         }
         
+        
         async function translateQuery() {
-            const input = document.getElementById('input').value;
-            const outputTextarea = document.getElementById('output');
+            const input = inputEditor.getValue();
             const errorDiv = document.getElementById('error');
             const detectedDialectSpan = document.getElementById('detected-dialect');
             
             // Clear previous results
-            outputTextarea.value = '';
+            outputEditor.setValue('');
             errorDiv.style.display = 'none';
             errorDiv.className = '';
             detectedDialectSpan.style.display = 'none';
@@ -586,16 +815,19 @@ group by customer_id, date_trunc("month", created_timestamp) (
                 return;
             }
             
+            const currentMode = getCurrentMode();
+            const fromDialect = document.getElementById('from-dialect').value;
+            const toDialect = document.getElementById('to-dialect').value;
+            
             try {
                 if (currentMode === 'asql-to-sql') {
                     // ASQL to SQL
-                    const outputDialect = document.getElementById('output-dialect').value;
                     const response = await fetch('/api/compile', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({ asql: input, dialect: outputDialect })
+                        body: JSON.stringify({ asql: input, dialect: toDialect || '' })
                     });
                     
                     const data = await response.json();
@@ -605,15 +837,14 @@ group by customer_id, date_trunc("month", created_timestamp) (
                         errorDiv.className = 'error';
                         errorDiv.style.display = 'block';
                     } else {
-                        outputTextarea.value = data.sql;
+                        outputEditor.setValue(data.sql);
                     }
-                } else {
+                } else if (currentMode === 'sql-to-asql') {
                     // SQL to ASQL
-                    const inputDialect = document.getElementById('input-dialect').value;
+                    let sourceDialect = fromDialect;
                     
                     // First, try to detect dialect if not specified
-                    let detectedDialect = null;
-                    if (!inputDialect) {
+                    if (!sourceDialect) {
                         const detectResponse = await fetch('/api/detect-dialect', {
                             method: 'POST',
                             headers: {
@@ -623,8 +854,8 @@ group by customer_id, date_trunc("month", created_timestamp) (
                         });
                         const detectData = await detectResponse.json();
                         if (detectData.dialect) {
-                            detectedDialect = detectData.dialect;
-                            detectedDialectSpan.textContent = `Detected: ${detectedDialect}`;
+                            sourceDialect = detectData.dialect;
+                            detectedDialectSpan.textContent = `Detected: ${sourceDialect}`;
                             detectedDialectSpan.style.display = 'inline';
                         }
                     }
@@ -636,7 +867,7 @@ group by customer_id, date_trunc("month", created_timestamp) (
                         },
                         body: JSON.stringify({ 
                             sql: input, 
-                            source_dialect: inputDialect || detectedDialect 
+                            source_dialect: sourceDialect || '' 
                         })
                     });
                     
@@ -647,8 +878,72 @@ group by customer_id, date_trunc("month", created_timestamp) (
                         errorDiv.className = 'error';
                         errorDiv.style.display = 'block';
                     } else {
-                        outputTextarea.value = data.asql;
+                        outputEditor.setValue(data.asql);
                     }
+                } else if (currentMode === 'sql-to-sql') {
+                    // SQL to SQL (dialect conversion)
+                    // First convert SQL to ASQL, then back to target SQL dialect
+                    let sourceDialect = fromDialect;
+                    
+                    // Detect source dialect if not specified
+                    if (!sourceDialect) {
+                        const detectResponse = await fetch('/api/detect-dialect', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ sql: input })
+                        });
+                        const detectData = await detectResponse.json();
+                        if (detectData.dialect) {
+                            sourceDialect = detectData.dialect;
+                            detectedDialectSpan.textContent = `Detected: ${sourceDialect}`;
+                            detectedDialectSpan.style.display = 'inline';
+                        }
+                    }
+                    
+                    // Convert to ASQL first
+                    const reverseResponse = await fetch('/api/reverse-compile', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            sql: input, 
+                            source_dialect: sourceDialect || '' 
+                        })
+                    });
+                    
+                    const reverseData = await reverseResponse.json();
+                    
+                    if (reverseData.error) {
+                        errorDiv.textContent = reverseData.error;
+                        errorDiv.className = 'error';
+                        errorDiv.style.display = 'block';
+                        return;
+                    }
+                    
+                    // Then convert ASQL to target SQL dialect
+                    const compileResponse = await fetch('/api/compile', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ asql: reverseData.asql, dialect: toDialect || '' })
+                    });
+                    
+                    const compileData = await compileResponse.json();
+                    
+                    if (compileData.error) {
+                        errorDiv.textContent = compileData.error;
+                        errorDiv.className = 'error';
+                        errorDiv.style.display = 'block';
+                    } else {
+                        outputEditor.setValue(compileData.sql);
+                    }
+                } else {
+                    // asql-to-asql (no-op or copy)
+                    outputEditor.setValue(input);
                 }
             } catch (error) {
                 errorDiv.textContent = 'Error: ' + error.message;
@@ -658,41 +953,45 @@ group by customer_id, date_trunc("month", created_timestamp) (
         }
         
         function clearAll() {
-            document.getElementById('input').value = '';
-            document.getElementById('output').value = '';
+            inputEditor.setValue('');
+            outputEditor.setValue('');
             document.getElementById('error').style.display = 'none';
             document.getElementById('detected-dialect').style.display = 'none';
         }
         
         function copyInput() {
-            const textarea = document.getElementById('input');
-            textarea.select();
-            document.execCommand('copy');
+            const text = inputEditor.getValue();
+            navigator.clipboard.writeText(text).then(() => {
+                // Visual feedback could be added here
+            });
         }
         
         function copyOutput() {
-            const textarea = document.getElementById('output');
-            textarea.select();
-            document.execCommand('copy');
+            const text = outputEditor.getValue();
+            navigator.clipboard.writeText(text).then(() => {
+                // Visual feedback could be added here
+            });
         }
         
         // Auto-translate on change (debounced)
         let translateTimeout;
-        document.getElementById('input').addEventListener('input', () => {
+        inputEditor.on('change', () => {
             clearTimeout(translateTimeout);
             translateTimeout = setTimeout(translateQuery, 500);
         });
         
-        // Auto-detect dialect when SQL is pasted (for SQL→ASQL mode)
-        document.getElementById('input').addEventListener('paste', () => {
+        // Auto-detect dialect when SQL is pasted
+        inputEditor.on('paste', () => {
             setTimeout(() => {
-                if (currentMode === 'sql-to-asql' && !document.getElementById('input-dialect').value) {
+                const fromDialect = document.getElementById('from-dialect').value;
+                if (fromDialect !== 'asql' && !fromDialect) {
                     translateQuery();
                 }
             }, 100);
         });
         
         // Initial load
+        updateUITitles();
         loadExamples();
         translateQuery();
     </script>
@@ -716,7 +1015,7 @@ def api_compile():
         if not asql_query.strip():
             return jsonify({'error': 'Empty ASQL query'})
         
-        sql = compile(asql_query, dialect=dialect if dialect else None)
+        sql = compile(asql_query, dialect=dialect if dialect else None, pretty=True)
         return jsonify({'sql': sql})
         
     except ASQLSyntaxError as e:
@@ -760,6 +1059,305 @@ def api_detect_dialect():
         
     except Exception as e:
         return jsonify({'dialect': None, 'error': str(e)})
+
+@app.route('/api/fivetran-examples', methods=['GET'])
+def api_fivetran_examples():
+    """API endpoint to get Fivetran dbt examples."""
+    import re
+    from pathlib import Path
+    
+    examples = []
+    real_examples_dir = Path(__file__).parent / 'examples' / 'real'
+    
+    # Load all SQL files from examples/real directory
+    if real_examples_dir.exists():
+        sql_files = sorted(real_examples_dir.glob('dbt_*.sql'))
+        
+        for sql_file in sql_files:
+            try:
+                content = sql_file.read_text()
+                
+                # Skip files that are too small or contain "404: Not Found"
+                if len(content) < 100 or "404: Not Found" in content:
+                    continue
+                
+                # Parse metadata from header comments
+                source = None
+                model = None
+                dialect = "snowflake"  # Default
+                
+                for line in content.split('\n')[:10]:
+                    if line.startswith('-- Source:'):
+                        source = line.replace('-- Source:', '').strip()
+                    elif line.startswith('-- Model:'):
+                        model = line.replace('-- Model:', '').strip()
+                    elif line.startswith('-- Dialect:'):
+                        dialect = line.replace('-- Dialect:', '').strip().lower()
+                
+                # Generate title and description from filename
+                filename = sql_file.stem
+                # Remove dbt_ prefix and dialect suffix (e.g., _snowflake, _bigquery)
+                # Extract dialect from filename first
+                filename_dialect = None
+                for d in ['snowflake', 'bigquery', 'postgres', 'redshift', 'mysql']:
+                    if filename.endswith('_' + d):
+                        filename_dialect = d
+                        break
+                
+                # Remove dbt_ prefix and dialect suffix
+                name_base = filename.replace('dbt_', '')
+                if filename_dialect:
+                    name_base = name_base.replace('_' + filename_dialect, '')
+                name_parts = name_base.split('_')
+                
+                # Extract repo name (first part)
+                repo = name_parts[0] if name_parts else 'unknown'
+                repo_display = repo.replace('_', ' ').title()
+                
+                # Generate model name (rest of parts)
+                model_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else name_parts[0] if name_parts else 'model'
+                model_name = model_name.replace('__', ' ').replace('_', ' ').title()
+                
+                # Create title
+                title = f"{repo_display}: {model_name}"
+                
+                # Create description
+                desc = f"Real query from {repo_display} dbt package"
+                if model:
+                    desc += f" ({model})"
+                
+                # Use dialect from filename if available, otherwise from header
+                final_dialect = filename_dialect or dialect
+                
+                # Map dialect names
+                dialect_map = {
+                    'snowflake': 'snowflake',
+                    'bigquery': 'bigquery',
+                    'postgres': 'postgres',
+                    'redshift': 'redshift'
+                }
+                sql_dialect = dialect_map.get(final_dialect.lower(), 'snowflake')
+                
+                examples.append({
+                    "title": title,
+                    "desc": desc,
+                    "language": sql_dialect,
+                    "toLanguage": "asql",
+                    "query": content
+                })
+            except Exception as e:
+                # Skip files that can't be read
+                continue
+    
+    # Add the original hardcoded examples if we didn't find many files
+    if len(examples) < 5:
+        examples.extend([
+            {
+                "title": "Shopify: Line Items with Multiple Joins",
+            "desc": "Complex query joining orders, transactions, and refunds (dbt_shopify)",
+            "language": "bigquery",
+            "toLanguage": "asql",
+            "query": """WITH line_items AS (
+    SELECT * FROM stg_shopify_gql__order_line
+),
+orders AS (
+    SELECT * FROM stg_shopify_gql__order
+),
+transactions AS (
+    SELECT order_id, kind, 
+           STRING_AGG(CAST(transaction_id AS STRING), ', ') AS transaction_id,
+           STRING_AGG(gateway, ', ') AS gateway
+    FROM stg_shopify_gql__transaction
+    WHERE kind = 'capture' AND status = 'success'
+    GROUP BY order_id, kind
+),
+refund_transactions AS (
+    SELECT order_id, SUM(amount_shop) AS total_order_refund_amount
+    FROM stg_shopify_gql__transaction
+    WHERE kind = 'refund'
+    GROUP BY order_id
+)
+SELECT 
+    li.order_id,
+    li.order_line_id,
+    o.created_timestamp AS created_at,
+    o.currency,
+    li.quantity,
+    li.price_shop_amount AS unit_amount,
+    (li.quantity * li.price_shop_amount) AS total_amount,
+    t.transaction_id AS payment_id,
+    t.gateway AS payment_method,
+    rt.total_order_refund_amount AS refund_amount
+FROM line_items li
+LEFT JOIN orders o ON li.order_id = o.order_id
+LEFT JOIN transactions t ON o.order_id = t.order_id
+LEFT JOIN refund_transactions rt ON o.order_id = rt.order_id"""
+        },
+        {
+            "title": "Stripe: Customer Overview with Aggregations",
+            "desc": "Multiple CASE statements aggregating transaction types (dbt_stripe)",
+            "language": "bigquery",
+            "toLanguage": "asql",
+            "query": """WITH transactions_grouped AS (
+    SELECT
+        customer_id,
+        SUM(CASE WHEN balance_transaction_type IN ('charge', 'payment') 
+            THEN balance_transaction_amount ELSE 0 END) AS total_sales,
+        SUM(CASE WHEN balance_transaction_type IN ('payment_refund', 'refund') 
+            THEN balance_transaction_amount ELSE 0 END) AS total_refunds,
+        SUM(balance_transaction_amount) AS total_gross_transaction_amount,
+        SUM(balance_transaction_fee) AS total_fees,
+        COUNT(CASE WHEN balance_transaction_type IN ('charge', 'payment') 
+            THEN 1 END) AS total_sales_count,
+        MIN(CASE WHEN balance_transaction_type IN ('charge', 'payment') 
+            THEN balance_transaction_created_at END) AS first_sale_date,
+        MAX(CASE WHEN balance_transaction_type IN ('charge', 'payment') 
+            THEN balance_transaction_created_at END) AS most_recent_sale_date
+    FROM stripe__balance_transactions
+    WHERE balance_transaction_type IN ('payment', 'charge', 'payment_refund', 'refund')
+    GROUP BY customer_id
+)
+SELECT 
+    c.customer_id,
+    c.description AS customer_description,
+    c.created_at AS customer_created_at,
+    COALESCE(tg.total_sales, 0) AS total_sales,
+    COALESCE(tg.total_refunds, 0) AS total_refunds,
+    COALESCE(tg.total_gross_transaction_amount, 0) AS total_gross_transaction_amount,
+    COALESCE(tg.total_fees, 0) AS total_fees,
+    tg.first_sale_date,
+    tg.most_recent_sale_date
+FROM stg_stripe__customer c
+LEFT JOIN transactions_grouped tg ON c.customer_id = tg.customer_id"""
+        },
+        {
+            "title": "Zendesk: Ticket Enrichment with Multiple User Joins",
+            "desc": "Complex joins to requester, submitter, assignee users (dbt_zendesk)",
+            "language": "bigquery",
+            "toLanguage": "asql",
+            "query": """WITH ticket AS (
+    SELECT * FROM int_zendesk__ticket_aggregates
+),
+users AS (
+    SELECT * FROM int_zendesk__user_aggregates
+),
+requester_updates AS (
+    SELECT * FROM int_zendesk__requester_updates
+),
+assignee_updates AS (
+    SELECT * FROM int_zendesk__assignee_updates
+)
+SELECT 
+    ticket.*,
+    requester.email AS requester_email,
+    requester.name AS requester_name,
+    requester.is_active AS is_requester_active,
+    COALESCE(requester_updates.total_updates, 0) AS requester_ticket_update_count,
+    submitter.email AS submitter_email,
+    submitter.name AS submitter_name,
+    submitter.is_active AS is_submitter_active,
+    assignee.email AS assignee_email,
+    assignee.name AS assignee_name,
+    assignee.is_active AS is_assignee_active,
+    COALESCE(assignee_updates.total_updates, 0) AS assignee_ticket_update_count
+FROM ticket
+JOIN users AS requester ON requester.user_id = ticket.requester_id
+JOIN users AS submitter ON submitter.user_id = ticket.submitter_id
+LEFT JOIN users AS assignee ON assignee.user_id = ticket.assignee_id
+LEFT JOIN requester_updates ON requester_updates.ticket_id = ticket.ticket_id 
+    AND requester_updates.requester_id = ticket.requester_id
+LEFT JOIN assignee_updates ON assignee_updates.ticket_id = ticket.ticket_id 
+    AND assignee_updates.assignee_id = ticket.assignee_id"""
+        },
+        {
+            "title": "Stripe: Balance Transactions with Dispute Logic",
+            "desc": "Multiple CTEs for disputes, charges, refunds (dbt_stripe)",
+            "language": "bigquery",
+            "toLanguage": "asql",
+            "query": """WITH dispute_summary AS (
+    SELECT charge_id, 
+           STRING_AGG(dispute_id, ',') AS dispute_ids,
+           STRING_AGG(DISTINCT dispute_reason, ',') AS dispute_reasons,
+           COUNT(dispute_id) AS dispute_count
+    FROM stg_stripe__dispute
+    GROUP BY charge_id
+),
+order_disputes AS (
+    SELECT charge_id, dispute_id, dispute_status, dispute_amount,
+           ROW_NUMBER() OVER (PARTITION BY charge_id, dispute_status 
+                              ORDER BY dispute_created_at DESC) = 1 AS is_latest_status_dispute
+    FROM stg_stripe__dispute
+)
+SELECT
+    bt.balance_transaction_id,
+    bt.created_at AS balance_transaction_created_at,
+    bt.amount AS balance_transaction_amount,
+    bt.fee AS balance_transaction_fee,
+    bt.net AS balance_transaction_net,
+    bt.type AS balance_transaction_type,
+    COALESCE(charge.amount, refund.amount) AS customer_facing_amount,
+    charge.charge_id,
+    dispute_summary.dispute_ids,
+    dispute_summary.dispute_count
+FROM stg_stripe__balance_transaction bt
+LEFT JOIN stg_stripe__charge charge 
+    ON charge.balance_transaction_id = bt.balance_transaction_id
+LEFT JOIN stg_stripe__refund refund 
+    ON refund.balance_transaction_id = bt.balance_transaction_id
+LEFT JOIN dispute_summary 
+    ON charge.charge_id = dispute_summary.charge_id"""
+        },
+        {
+            "title": "Shopify: Customer Cohorts with Window Functions",
+            "desc": "Complex window functions for cohort analysis (dbt_shopify)",
+            "language": "bigquery",
+            "toLanguage": "asql",
+            "query": """WITH customer_calendar AS (
+    SELECT 
+        calendar.date_day AS date_month,
+        customers.customer_id,
+        customers.first_order_timestamp,
+        DATE_TRUNC('month', first_order_timestamp) AS cohort_month
+    FROM calendar
+    INNER JOIN customers 
+        ON DATE_TRUNC('month', first_order_timestamp) <= calendar.date_day
+),
+orders_joined AS (
+    SELECT 
+        customer_calendar.date_month,
+        customer_calendar.customer_id,
+        customer_calendar.cohort_month,
+        COALESCE(COUNT(DISTINCT orders.order_id), 0) AS order_count_in_month,
+        COALESCE(SUM(orders.order_adjusted_total), 0) AS total_price_in_month
+    FROM customer_calendar
+    LEFT JOIN orders
+        ON customer_calendar.customer_id = orders.customer_id
+        AND customer_calendar.date_month = DATE_TRUNC('month', orders.created_timestamp)
+    GROUP BY customer_calendar.date_month, customer_calendar.customer_id, customer_calendar.cohort_month
+),
+windows AS (
+    SELECT *,
+        SUM(total_price_in_month) OVER (
+            PARTITION BY customer_id 
+            ORDER BY date_month 
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS total_price_lifetime,
+        SUM(order_count_in_month) OVER (
+            PARTITION BY customer_id 
+            ORDER BY date_month 
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS order_count_lifetime,
+        ROW_NUMBER() OVER (
+            PARTITION BY customer_id 
+            ORDER BY date_month ASC
+        ) AS cohort_month_number
+    FROM orders_joined
+)
+SELECT * FROM windows"""
+            }
+        ])
+    
+    return jsonify(examples)
 
 @app.route('/api/sql-examples', methods=['GET'])
 def api_sql_examples():

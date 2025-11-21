@@ -2,6 +2,12 @@
 
 The ASQL Interactive Playground is a web-based tool that lets you write ASQL queries and see the generated SQL in real-time. It's similar to SQLBox from dataschool.com, providing an interactive learning and experimentation environment.
 
+<div style="margin: 30px 0; border: 1px solid #dadce0; border-radius: 8px; overflow: hidden;">
+    <iframe src="/playground/embed" style="width: 100%; height: 900px; border: none;" frameborder="0" title="ASQL Playground"></iframe>
+</div>
+
+**Note**: If the playground doesn't load above, you can also [open it in a new tab](/playground) or access it directly at `http://localhost:5001`.
+
 ## Features
 
 - ✨ **Real-time Compilation** - See SQL output as you type
