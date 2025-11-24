@@ -206,7 +206,11 @@ def strip_jinja_templates(sql_content: str) -> str:
 def serve_syntax(filename):
     """Serve syntax highlighter files."""
     syntax_dir = os.path.join(os.path.dirname(__file__), 'syntax')
-    return send_from_directory(syntax_dir, filename)
+    response = send_from_directory(syntax_dir, filename)
+    # Ensure JavaScript files are served with correct content-type
+    if filename.endswith('.js'):
+        response.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+    return response
 
 # HTML template for the playground
 PLAYGROUND_HTML = """
@@ -688,7 +692,21 @@ PLAYGROUND_HTML = """
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
-    <script src="/static/syntax/codemirror/asql-mode.js"></script>
+    <script>
+        // Load ASQL mode with error handling - don't block if it fails
+        (function() {
+            try {
+                const script = document.createElement('script');
+                script.src = '/static/syntax/codemirror/asql-mode.js';
+                script.onerror = function() {
+                    console.warn('Failed to load ASQL syntax mode, using SQL mode as fallback');
+                };
+                document.head.appendChild(script);
+            } catch (e) {
+                console.warn('Error loading ASQL syntax mode:', e);
+            }
+        })();
+    </script>
     <script>
         // Detect if embedded in docs
         const isEmbedded = window.ASQL_EMBEDDED || (window.parent !== window && window.parent.location.hostname === window.location.hostname);
@@ -933,9 +951,15 @@ take 25`
         
         // Wait for DOM and ensure ASQL mode is loaded
         document.addEventListener('DOMContentLoaded', function() {
-            // Verify ASQL mode is available
-            if (!CodeMirror.modes['asql']) {
-                console.error('ASQL mode not loaded! Check that /static/syntax/codemirror/asql-mode.js is accessible.');
+            // Verify ASQL mode is available (but don't block if it's not)
+            try {
+                if (!CodeMirror.modes['asql']) {
+                    console.warn('ASQL mode not loaded! Check that /static/syntax/codemirror/asql-mode.js is accessible.');
+                    // Fallback to SQL mode if ASQL mode isn't available
+                    console.log('Falling back to SQL syntax highlighting');
+                }
+            } catch (e) {
+                console.warn('Error checking ASQL mode:', e);
             }
             
             // Initialize CodeMirror editors
@@ -1404,9 +1428,19 @@ take 10`,
             });
             
             // Initial load (after editors are initialized)
-            updateUITitles();
-            loadExamples();
-            translateQuery();
+            try {
+                updateUITitles();
+                loadExamples();
+                translateQuery();
+            } catch (e) {
+                console.error('Error during initial load:', e);
+                // Try to load examples anyway
+                try {
+                    loadExamples();
+                } catch (e2) {
+                    console.error('Failed to load examples:', e2);
+                }
+            }
         });
     </script>
 </body>
