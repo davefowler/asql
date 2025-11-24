@@ -713,110 +713,7 @@ PLAYGROUND_HTML = """
         // Initialize CodeMirror editors (make them global so functions can access them)
         let inputEditor, outputEditor;
         
-        // Wait for DOM and ensure ASQL mode is loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            // Verify ASQL mode is available
-            if (!CodeMirror.modes['asql']) {
-                console.error('ASQL mode not loaded! Check that /static/syntax/codemirror/asql-mode.js is accessible.');
-            }
-            
-            // Initialize CodeMirror editors
-            inputEditor = CodeMirror(document.getElementById('input-editor'), {
-                value: `from users
-where status == "active"
-group by country ( # as total_users )
-sort -total_users
-take 10`,
-                mode: 'text/x-asql',
-                lineNumbers: true,
-                matchBrackets: true,
-                autoCloseBrackets: true,
-                theme: 'default',
-                lineWrapping: true,
-                placeholder: 'Enter your query here...'
-            });
-        
-            outputEditor = CodeMirror(document.getElementById('output-editor'), {
-                value: '',
-                mode: 'text/x-sql',
-                lineNumbers: true,
-                matchBrackets: true,
-                autoCloseBrackets: true,
-                theme: 'default',
-                readOnly: true,
-                lineWrapping: true,
-                placeholder: 'Translation will appear here...'
-            });
-        
-        function getCurrentMode() {
-            const fromDialect = document.getElementById('from-dialect').value;
-            const toDialect = document.getElementById('to-dialect').value;
-            
-            if (fromDialect === 'asql' && toDialect !== 'asql') {
-                return 'asql-to-sql';
-            } else if (fromDialect !== 'asql' && toDialect === 'asql') {
-                return 'sql-to-asql';
-            } else if (fromDialect === 'asql' && toDialect === 'asql') {
-                return 'asql-to-asql';
-            } else {
-                return 'sql-to-sql';
-            }
-        }
-        
-        function ensureFromNotPostgresWhenToEmpty() {
-            const fromDialect = document.getElementById('from-dialect').value;
-            const toDialect = document.getElementById('to-dialect').value;
-            
-            // If "to" is not selected and "from" is postgresql, switch "from" to something else
-            if (!toDialect && (fromDialect === 'postgres' || fromDialect === 'postgresql')) {
-                document.getElementById('from-dialect').value = 'asql';
-            }
-        }
-        
-        function updateUITitles() {
-            ensureFromNotPostgresWhenToEmpty();
-            
-            const fromDialect = document.getElementById('from-dialect').value;
-            const toDialect = document.getElementById('to-dialect').value;
-            
-            const fromLabel = fromDialect === 'asql' ? 'ASQL' : (fromDialect || 'SQL');
-            const toLabel = toDialect === 'asql' ? 'ASQL' : (toDialect || 'SQL');
-            
-            document.getElementById('input-title').textContent = fromLabel;
-            document.getElementById('output-title').textContent = toLabel;
-            
-            // Update CodeMirror mode based on dialect
-            if (fromDialect === 'asql') {
-                inputEditor.setOption('mode', 'text/x-asql');
-            } else {
-                inputEditor.setOption('mode', 'text/x-sql');
-            }
-            
-            if (toDialect === 'asql') {
-                outputEditor.setOption('mode', 'text/x-asql');
-            } else {
-                outputEditor.setOption('mode', 'text/x-sql');
-            }
-        }
-        
-        function swapLanguages() {
-            const fromSelect = document.getElementById('from-dialect');
-            const toSelect = document.getElementById('to-dialect');
-            const fromValue = fromSelect.value;
-            const toValue = toSelect.value;
-            
-            fromSelect.value = toValue;
-            toSelect.value = fromValue;
-            
-            // Swap editor contents
-            const temp = inputEditor.getValue();
-            inputEditor.setValue(outputEditor.getValue());
-            outputEditor.setValue(temp);
-            
-            updateUITitles();
-            translateQuery();
-        }
-        
+        // Define example arrays in global scope so they're accessible to loadExamples()
         const asqlExamples = [
             {
                 title: "Simple FROM",
@@ -1033,6 +930,110 @@ take 25`
         ];
         
         const sqlExamples = [];
+        
+        // Wait for DOM and ensure ASQL mode is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Verify ASQL mode is available
+            if (!CodeMirror.modes['asql']) {
+                console.error('ASQL mode not loaded! Check that /static/syntax/codemirror/asql-mode.js is accessible.');
+            }
+            
+            // Initialize CodeMirror editors
+            inputEditor = CodeMirror(document.getElementById('input-editor'), {
+                value: `from users
+where status == "active"
+group by country ( # as total_users )
+sort -total_users
+take 10`,
+                mode: 'text/x-asql',
+                lineNumbers: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                theme: 'default',
+                lineWrapping: true,
+                placeholder: 'Enter your query here...'
+            });
+        
+            outputEditor = CodeMirror(document.getElementById('output-editor'), {
+                value: '',
+                mode: 'text/x-sql',
+                lineNumbers: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+                theme: 'default',
+                readOnly: true,
+                lineWrapping: true,
+                placeholder: 'Translation will appear here...'
+            });
+        
+        function getCurrentMode() {
+            const fromDialect = document.getElementById('from-dialect').value;
+            const toDialect = document.getElementById('to-dialect').value;
+            
+            if (fromDialect === 'asql' && toDialect !== 'asql') {
+                return 'asql-to-sql';
+            } else if (fromDialect !== 'asql' && toDialect === 'asql') {
+                return 'sql-to-asql';
+            } else if (fromDialect === 'asql' && toDialect === 'asql') {
+                return 'asql-to-asql';
+            } else {
+                return 'sql-to-sql';
+            }
+        }
+        
+        function ensureFromNotPostgresWhenToEmpty() {
+            const fromDialect = document.getElementById('from-dialect').value;
+            const toDialect = document.getElementById('to-dialect').value;
+            
+            // If "to" is not selected and "from" is postgresql, switch "from" to something else
+            if (!toDialect && (fromDialect === 'postgres' || fromDialect === 'postgresql')) {
+                document.getElementById('from-dialect').value = 'asql';
+            }
+        }
+        
+        function updateUITitles() {
+            ensureFromNotPostgresWhenToEmpty();
+            
+            const fromDialect = document.getElementById('from-dialect').value;
+            const toDialect = document.getElementById('to-dialect').value;
+            
+            const fromLabel = fromDialect === 'asql' ? 'ASQL' : (fromDialect || 'SQL');
+            const toLabel = toDialect === 'asql' ? 'ASQL' : (toDialect || 'SQL');
+            
+            document.getElementById('input-title').textContent = fromLabel;
+            document.getElementById('output-title').textContent = toLabel;
+            
+            // Update CodeMirror mode based on dialect
+            if (fromDialect === 'asql') {
+                inputEditor.setOption('mode', 'text/x-asql');
+            } else {
+                inputEditor.setOption('mode', 'text/x-sql');
+            }
+            
+            if (toDialect === 'asql') {
+                outputEditor.setOption('mode', 'text/x-asql');
+            } else {
+                outputEditor.setOption('mode', 'text/x-sql');
+            }
+        }
+        
+        function swapLanguages() {
+            const fromSelect = document.getElementById('from-dialect');
+            const toSelect = document.getElementById('to-dialect');
+            const fromValue = fromSelect.value;
+            const toValue = toSelect.value;
+            
+            fromSelect.value = toValue;
+            toSelect.value = fromValue;
+            
+            // Swap editor contents
+            const temp = inputEditor.getValue();
+            inputEditor.setValue(outputEditor.getValue());
+            outputEditor.setValue(temp);
+            
+            updateUITitles();
+            translateQuery();
+        }
         
         // Update UI when dialects change (set up after DOM is ready)
         document.addEventListener('DOMContentLoaded', function() {
