@@ -1,0 +1,2 @@
+web: python playground.py
+
