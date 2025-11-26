@@ -576,7 +576,7 @@ if __name__ == '__main__':
     static_dir.mkdir(exist_ok=True)
     
     # Get port from environment variable or use default
-    port = int(os.environ.get('DOCS_PORT', 5000))
+    port = int(os.environ.get('DOCS_PORT', 8000))
     
     # Try to find an available port if default is in use
     def find_free_port(start_port):
@@ -599,7 +599,7 @@ if __name__ == '__main__':
         except OSError:
             # Port is in use, find alternative
             print(f"Port {port} is already in use. Looking for alternative port...")
-            alt_port = find_free_port(5002)
+            alt_port = find_free_port(8001)
             if alt_port:
                 port = alt_port
                 print(f"Using port {port} instead.")
@@ -609,5 +609,4 @@ if __name__ == '__main__':
     
     print("Starting ASQL Documentation Server...")
     print(f"Open http://localhost:{port} in your browser")
-    print(f"\nNote: If port 5000 was in use, you may need to update playground links to use port {port}")
     app.run(debug=True, host='0.0.0.0', port=port)
