@@ -991,17 +991,30 @@ take 10`,
             });
         
         function getCurrentMode() {
-            const fromDialect = document.getElementById('from-dialect').value;
-            const toDialect = document.getElementById('to-dialect').value;
-            
-            if (fromDialect === 'asql' && toDialect !== 'asql') {
-                return 'asql-to-sql';
-            } else if (fromDialect !== 'asql' && toDialect === 'asql') {
-                return 'sql-to-asql';
-            } else if (fromDialect === 'asql' && toDialect === 'asql') {
-                return 'asql-to-asql';
-            } else {
-                return 'sql-to-sql';
+            try {
+                const fromSelect = document.getElementById('from-dialect');
+                const toSelect = document.getElementById('to-dialect');
+                
+                if (!fromSelect || !toSelect) {
+                    // Default to asql-to-sql if selects don't exist yet
+                    return 'asql-to-sql';
+                }
+                
+                const fromDialect = fromSelect.value;
+                const toDialect = toSelect.value;
+                
+                if (fromDialect === 'asql' && toDialect !== 'asql') {
+                    return 'asql-to-sql';
+                } else if (fromDialect !== 'asql' && toDialect === 'asql') {
+                    return 'sql-to-asql';
+                } else if (fromDialect === 'asql' && toDialect === 'asql') {
+                    return 'asql-to-asql';
+                } else {
+                    return 'sql-to-sql';
+                }
+            } catch (error) {
+                console.error('Error getting current mode:', error);
+                return 'asql-to-sql'; // Default fallback
             }
         }
         
@@ -1076,76 +1089,35 @@ take 10`,
         
         function loadExamples() {
             const container = document.getElementById('examples-container');
-            container.innerHTML = '';
+            if (!container) {
+                console.error('Examples container not found');
+                return;
+            }
             
-            const currentMode = getCurrentMode();
-            
-            if (currentMode === 'asql-to-sql' || currentMode === 'asql-to-asql') {
-                // Basic ASQL Examples section
-                const section = document.createElement('div');
-                section.className = 'example-section';
-                section.innerHTML = '<h3>ASQL Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Basic ASQL queries that showcase the language syntax. These examples shouldn\'t look too different from regular SQL - ASQL is designed to be familiar and intuitive.</p><div class="example-list" id="asql-examples"></div>';
-                container.appendChild(section);
+            try {
+                container.innerHTML = '';
                 
-                const examplesDiv = document.getElementById('asql-examples');
-                asqlExamples.forEach(example => {
-                    const btn = document.createElement('button');
-                    btn.className = 'example-btn';
-                    btn.innerHTML = `
-                        <div class="example-title">${example.title}</div>
-                        <div class="example-desc">${example.desc}</div>
-                    `;
-                    btn.onclick = () => {
-                        // Set "from" to ASQL if not already set
-                        const fromDialect = document.getElementById('from-dialect').value;
-                        if (fromDialect !== 'asql') {
-                            document.getElementById('from-dialect').value = 'asql';
-                            updateUITitles();
-                        }
-                        inputEditor.setValue(example.query);
-                        translateQuery();
-                    };
-                    examplesDiv.appendChild(btn);
-                });
+                let currentMode;
+                try {
+                    currentMode = getCurrentMode();
+                } catch (modeError) {
+                    console.warn('Error getting current mode, defaulting to asql-to-sql:', modeError);
+                    currentMode = 'asql-to-sql'; // Default fallback
+                }
                 
-                // ASQL Pipeline Examples section
-                const pipelineSection = document.createElement('div');
-                pipelineSection.className = 'example-section';
-                pipelineSection.innerHTML = '<h3>ASQL Pipeline Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Complex queries that showcase pipeline features and generate multiple CTEs.</p><div class="example-list" id="asql-pipeline-examples"></div>';
-                container.appendChild(pipelineSection);
-                
-                const pipelineExamplesDiv = document.getElementById('asql-pipeline-examples');
-                asqlPipelineExamples.forEach(example => {
-                    const btn = document.createElement('button');
-                    btn.className = 'example-btn';
-                    btn.innerHTML = `
-                        <div class="example-title">${example.title}</div>
-                        <div class="example-desc">${example.desc}</div>
-                    `;
-                    btn.onclick = () => {
-                        // Set "from" to ASQL if not already set
-                        const fromDialect = document.getElementById('from-dialect').value;
-                        if (fromDialect !== 'asql') {
-                            document.getElementById('from-dialect').value = 'asql';
-                            updateUITitles();
-                        }
-                        inputEditor.setValue(example.query);
-                        translateQuery();
-                    };
-                    pipelineExamplesDiv.appendChild(btn);
-                });
-            } else {
-                const section = document.createElement('div');
-                section.className = 'example-section';
-                section.innerHTML = '<h3>SQL Translation Examples</h3><div class="example-list" id="sql-examples"></div>';
-                container.appendChild(section);
-                
-                const examplesDiv = document.getElementById('sql-examples');
-                if (sqlExamples.length === 0) {
-                    examplesDiv.innerHTML = '<p style="color: #666; padding: 20px;">SQL examples will be loaded from the server...</p>';
-                    loadSQLExamples();
-                } else {
-                    sqlExamples.forEach(example => {
+                if (currentMode === 'asql-to-sql' || currentMode === 'asql-to-asql') {
+                    // Basic ASQL Examples section
+                    const section = document.createElement('div');
+                    section.className = 'example-section';
+                    section.innerHTML = '<h3>ASQL Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Basic ASQL queries that showcase the language syntax. These examples shouldn\'t look too different from regular SQL - ASQL is designed to be familiar and intuitive.</p><div class="example-list" id="asql-examples"></div>';
+                    container.appendChild(section);
+                    
+                    const examplesDiv = document.getElementById('asql-examples');
+                    if (!asqlExamples || !Array.isArray(asqlExamples)) {
+                        console.error('asqlExamples array is not defined or is not an array');
+                        examplesDiv.innerHTML = '<p style="color: #c5221f; padding: 20px;">Error: Examples data not available.</p>';
+                    } else {
+                        asqlExamples.forEach(example => {
                         const btn = document.createElement('button');
                         btn.className = 'example-btn';
                         btn.innerHTML = `
@@ -1153,18 +1125,85 @@ take 10`,
                             <div class="example-desc">${example.desc}</div>
                         `;
                         btn.onclick = () => {
+                            // Set "from" to ASQL if not already set
+                            const fromDialect = document.getElementById('from-dialect').value;
+                            if (fromDialect !== 'asql') {
+                                document.getElementById('from-dialect').value = 'asql';
+                                updateUITitles();
+                            }
                             inputEditor.setValue(example.query);
-                            document.getElementById('from-dialect').value = example.dialect || '';
-                            updateUITitles();
                             translateQuery();
                         };
                         examplesDiv.appendChild(btn);
-                    });
+                        });
+                    }
+                    
+                    // ASQL Pipeline Examples section
+                    const pipelineSection = document.createElement('div');
+                    pipelineSection.className = 'example-section';
+                    pipelineSection.innerHTML = '<h3>ASQL Pipeline Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Complex queries that showcase pipeline features and generate multiple CTEs.</p><div class="example-list" id="asql-pipeline-examples"></div>';
+                    container.appendChild(pipelineSection);
+                    
+                    const pipelineExamplesDiv = document.getElementById('asql-pipeline-examples');
+                    if (!asqlPipelineExamples || !Array.isArray(asqlPipelineExamples)) {
+                        console.error('asqlPipelineExamples array is not defined or is not an array');
+                        pipelineExamplesDiv.innerHTML = '<p style="color: #c5221f; padding: 20px;">Error: Pipeline examples data not available.</p>';
+                    } else {
+                        asqlPipelineExamples.forEach(example => {
+                        const btn = document.createElement('button');
+                        btn.className = 'example-btn';
+                        btn.innerHTML = `
+                            <div class="example-title">${example.title}</div>
+                            <div class="example-desc">${example.desc}</div>
+                        `;
+                        btn.onclick = () => {
+                            // Set "from" to ASQL if not already set
+                            const fromDialect = document.getElementById('from-dialect').value;
+                            if (fromDialect !== 'asql') {
+                                document.getElementById('from-dialect').value = 'asql';
+                                updateUITitles();
+                            }
+                            inputEditor.setValue(example.query);
+                            translateQuery();
+                        };
+                        pipelineExamplesDiv.appendChild(btn);
+                        });
+                    }
+                } else {
+                    const section = document.createElement('div');
+                    section.className = 'example-section';
+                    section.innerHTML = '<h3>SQL Translation Examples</h3><div class="example-list" id="sql-examples"></div>';
+                    container.appendChild(section);
+                    
+                    const examplesDiv = document.getElementById('sql-examples');
+                    if (sqlExamples.length === 0) {
+                        examplesDiv.innerHTML = '<p style="color: #666; padding: 20px;">SQL examples will be loaded from the server...</p>';
+                        loadSQLExamples();
+                    } else {
+                        sqlExamples.forEach(example => {
+                            const btn = document.createElement('button');
+                            btn.className = 'example-btn';
+                            btn.innerHTML = `
+                                <div class="example-title">${example.title}</div>
+                                <div class="example-desc">${example.desc}</div>
+                            `;
+                            btn.onclick = () => {
+                                inputEditor.setValue(example.query);
+                                document.getElementById('from-dialect').value = example.dialect || '';
+                                updateUITitles();
+                                translateQuery();
+                            };
+                            examplesDiv.appendChild(btn);
+                        });
+                    }
                 }
+                
+                // Always load Fivetran dbt examples
+                loadFivetranExamples();
+            } catch (error) {
+                console.error('Error loading examples:', error);
+                container.innerHTML = '<p style="color: #c5221f; padding: 20px;">Error loading examples. Please refresh the page.</p>';
             }
-            
-            // Always load Fivetran dbt examples
-            loadFivetranExamples();
         }
         
         async function loadFivetranExamples() {
