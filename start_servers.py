@@ -15,7 +15,7 @@ signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)
 
 # Start docs server
-print("Starting ASQL Documentation Server on http://0.0.0.0:5000...")
+print("Starting ASQL Documentation Server on http://0.0.0.0:8000...")
 docs_process = subprocess.Popen(
     [sys.executable, "docs_server.py"],
     cwd=Path(__file__).parent,
@@ -38,7 +38,7 @@ playground_process = subprocess.Popen(
 
 print("\n" + "="*60)
 print("ASQL Services Running:")
-print("  Documentation: http://localhost:5000")
+print("  Documentation: http://localhost:8000")
 print("  Playground:    http://localhost:5001")
 print("="*60)
 print("\nPress Ctrl+C to stop both servers\n")
