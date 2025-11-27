@@ -3,7 +3,7 @@
   publish = "site"
 
 [build.environment]
-  PYTHON_VERSION = "3.8"
+  PYTHON_VERSION = "3.11"
   # Set PLAYGROUND_URL to your Railway playground URL
   # This will be replaced in docs during build
   PLAYGROUND_URL = "https://asql-playground.railway.app"
@@ -16,6 +16,44 @@
 #   function = "basic-auth"
 #   path = "/*"
 
-# Note: MkDocs generates static HTML files, so no SPA-style redirects are needed
-# If you need redirects for specific paths, add them here with appropriate paths
+# Redirects for .md URLs to proper MkDocs paths
+[[redirects]]
+  from = "/quick_start.md"
+  to = "/quick_start/"
+  status = 301
+
+[[redirects]]
+  from = "/examples.md"
+  to = "/examples/"
+  status = 301
+
+[[redirects]]
+  from = "/integrating.md"
+  to = "/integrating/"
+  status = 301
+
+[[redirects]]
+  from = "/spec.md"
+  to = "/spec/"
+  status = 301
+
+[[redirects]]
+  from = "/architecture.md"
+  to = "/architecture/"
+  status = 301
+
+[[redirects]]
+  from = "/playground.md"
+  to = "/playground/"
+  status = 301
+
+[[redirects]]
+  from = "/status.md"
+  to = "/status/"
+  status = 301
+
+[[redirects]]
+  from = "/index.md"
+  to = "/"
+  status = 301
 
