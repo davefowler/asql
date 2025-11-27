@@ -316,15 +316,15 @@ def serve_doc(doc_path: str = 'spec.md'):
         '': 'spec.md',
         'index': 'spec.md',
         'spec': 'spec.md',
-        'quick-start': 'QUICK_START.md',
-        'QUICK_START': 'QUICK_START.md',
-        'examples': 'EXAMPLES.md',
-        'EXAMPLES': 'EXAMPLES.md',
-        'integrating': 'INTEGRATING.md',
-        'INTEGRATING': 'INTEGRATING.md',
+        'quick-start': 'quick_start.md',
+        'QUICK_START': 'quick_start.md',
+        'examples': 'examples.md',
+        'EXAMPLES': 'examples.md',
+        'integrating': 'integrating.md',
+        'INTEGRATING': 'integrating.md',
         'architecture': 'architecture.md',
-        'interactive-playground': 'INTERACTIVE_PLAYGROUND.md',
-        'INTERACTIVE_PLAYGROUND': 'INTERACTIVE_PLAYGROUND.md',
+        'interactive-playground': 'interactive_playground.md',
+        'INTERACTIVE_PLAYGROUND': 'interactive_playground.md',
     }
     
     # Normalize the path
@@ -345,14 +345,13 @@ def serve_doc(doc_path: str = 'spec.md'):
     
     # Map common paths to better titles
     title_map = {
-        'INDEX': 'Analytic SQL',
         'index': 'Analytic SQL',
-        'QUICK_START': 'Syntax Reference',
         'quick-start': 'Syntax Reference',
-        'EXAMPLES': 'Examples',
         'examples': 'Examples',
         'spec': 'Language Specification',
-        'SPEC': 'Language Specification',
+        'integrating': 'Integrating',
+        'architecture': 'Architecture',
+        'interactive-playground': 'Interactive Playground',
     }
     base_name = doc_path.replace('.md', '')
     title = title_map.get(base_name, base_name.replace('-', ' ').title())

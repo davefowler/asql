@@ -145,12 +145,11 @@ docker-compose up
 
 ### Documentation Pages
 
-- 📖 [Quick Start Guide](docs/QUICK_START.md) - Get started in minutes
-- 📚 [Comprehensive Examples](docs/EXAMPLES.md) - Extensive examples with SQL output
-- 🎮 [Interactive Playground](docs/INTERACTIVE_PLAYGROUND.md) - Try ASQL in your browser
+- 📖 [Quick Start Guide](docs/quick_start.md) - Get started in minutes
+- 📚 [Comprehensive Examples](docs/examples.md) - Extensive examples with SQL output
+- 🎮 [Interactive Playground](docs/playground.md) - Try ASQL in your browser
 - 🏗️ [Architecture](ARCHITECTURE.md) - System design and implementation details
 - 📋 [Language Specification](SPEC.md) - Complete ASQL syntax reference
-- 🌟 [Real-World Examples](docs/FIVETRAN_EXAMPLES.md) - Complex queries from Fivetran dbt models
 
 ## Interactive Playground
 

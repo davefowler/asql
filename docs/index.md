@@ -2,7 +2,7 @@
 
 **ASQL: Analytic SQL** - A modern, pipeline-based query language that transpiles to SQL.
 
-Analytic SQL (ASQL) uses a FROM-first, pipeline-based syntax that makes complex analytics queries more readable and intuitive.  It is designed for the advanced sql done for data cleaning and analytic queries.  It makes these quereis much more enjoyable to write, maintain and read.  
+Analytic SQL (ASQL) uses a FROM-first, pipeline-based syntax that makes complex analytics queries more readable and intuitive.  It is designed to help in data cleaning and analytic queries, which can often get very advanced and messy.  It makes these quereis much more enjoyable to write, maintain and read.  
 
 It transpiles to all major SQL dialects with the help of SQLGlot.  Here is a quick guide, and be sure to checkout our [ASQL playground](https://play.analyticsql.com)
 
@@ -43,9 +43,9 @@ LIMIT 10
 
 ## Documentation
 
-- 📖 [Quick Start Guide](QUICK_START.md) - Get started in minutes
-- 📚 [Examples](EXAMPLES.md) - Extensive examples with SQL output
-- 🎮 [Interactive Playground](INTERACTIVE_PLAYGROUND.md) - Try ASQL in your browser
+- 📖 [Quick Start Guide](quick_start.md) - Get started in minutes
+- 📚 [Examples](examples.md) - Extensive examples with SQL output
+- 🎮 [Interactive Playground](playground.md) - Try ASQL in your browser
 - 📋 [Language Specification](spec.md) - Complete ASQL syntax reference
 - 🏗️ [Architecture](architecture.md) - System design and implementation details
 
@@ -63,7 +63,7 @@ pip install -e ".[dev]"
 
 ## Next Steps
 
-1. Read the [Quick Start Guide](QUICK_START.md)
-2. Browse [Examples](EXAMPLES.md) to see what's possible
+1. Read the [Quick Start Guide](quick_start.md)
+2. Browse [Examples](examples.md) to see what's possible
 3. Check the [Language Specification](spec.md) for complete syntax reference
 4. Review [Status](status.md) for current implementation status
