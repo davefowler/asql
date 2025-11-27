@@ -95,8 +95,8 @@ def test_reverse_compile_with_cte() -> None:
     GROUP BY country
     """
     asql = reverse_compile(sql)
-    # Should convert CTE to SET statement
-    assert "set" in asql.lower() or "with" in asql.lower()
+    # Should convert CTE to stash statement
+    assert "stash as active_users" in asql.lower()
     assert "from" in asql.lower()
 
 
