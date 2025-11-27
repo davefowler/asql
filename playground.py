@@ -962,14 +962,35 @@ take 25`
                 console.warn('Error checking ASQL mode:', e);
             }
             
-            // Initialize CodeMirror editors
-            inputEditor = CodeMirror(document.getElementById('input-editor'), {
-                value: `from users
+            // Read URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const d_f = urlParams.get('d_f') || 'asql';  // from dialect
+            const d_t = urlParams.get('d_t') || '';      // to dialect
+            const sql_f = urlParams.get('sql_f') || '';  // from SQL/ASQL
+            const sql_t = urlParams.get('sql_t') || '';  // to SQL (optional)
+            
+            // Set default query if no URL params
+            const defaultQuery = `from users
 where status == "active"
 group by country ( # as total_users )
 sort -total_users
-take 10`,
-                mode: 'text/x-asql',
+take 10`;
+            
+            const initialInput = sql_f ? decodeURIComponent(sql_f) : defaultQuery;
+            const initialOutput = sql_t ? decodeURIComponent(sql_t) : '';
+            
+            // Set dialect selects
+            if (d_f) {
+                document.getElementById('from-dialect').value = d_f.toLowerCase();
+            }
+            if (d_t) {
+                document.getElementById('to-dialect').value = d_t.toLowerCase();
+            }
+            
+            // Initialize CodeMirror editors
+            inputEditor = CodeMirror(document.getElementById('input-editor'), {
+                value: initialInput,
+                mode: d_f.toLowerCase() === 'asql' ? 'text/x-asql' : 'text/x-sql',
                 lineNumbers: true,
                 matchBrackets: true,
                 autoCloseBrackets: true,
@@ -979,8 +1000,8 @@ take 10`,
             });
         
             outputEditor = CodeMirror(document.getElementById('output-editor'), {
-                value: '',
-                mode: 'text/x-sql',
+                value: initialOutput,
+                mode: d_t && d_t.toLowerCase() === 'asql' ? 'text/x-asql' : 'text/x-sql',
                 lineNumbers: true,
                 matchBrackets: true,
                 autoCloseBrackets: true,
@@ -1109,10 +1130,21 @@ take 10`,
                     // Basic ASQL Examples section
                     const section = document.createElement('div');
                     section.className = 'example-section';
-                    section.innerHTML = '<h3>ASQL Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Basic ASQL queries that showcase the language syntax. These examples shouldn\'t look too different from regular SQL - ASQL is designed to be familiar and intuitive.</p><div class="example-list" id="asql-examples"></div>';
+                    const h3 = document.createElement('h3');
+                    h3.textContent = 'ASQL Examples';
+                    section.appendChild(h3);
+                    const p = document.createElement('p');
+                    p.style.color = '#666';
+                    p.style.marginBottom = '15px';
+                    p.style.fontSize = '13px';
+                    p.textContent = 'Basic ASQL queries that showcase the language syntax. These examples should not look too different from regular SQL - ASQL is designed to be familiar and intuitive.';
+                    section.appendChild(p);
+                    const examplesDiv = document.createElement('div');
+                    examplesDiv.className = 'example-list';
+                    examplesDiv.id = 'asql-examples';
+                    section.appendChild(examplesDiv);
                     container.appendChild(section);
                     
-                    const examplesDiv = document.getElementById('asql-examples');
                     if (!asqlExamples || !Array.isArray(asqlExamples)) {
                         console.error('asqlExamples array is not defined or is not an array');
                         examplesDiv.innerHTML = '<p style="color: #c5221f; padding: 20px;">Error: Examples data not available.</p>';
@@ -1120,10 +1152,14 @@ take 10`,
                         asqlExamples.forEach(example => {
                         const btn = document.createElement('button');
                         btn.className = 'example-btn';
-                        btn.innerHTML = `
-                            <div class="example-title">${example.title}</div>
-                            <div class="example-desc">${example.desc}</div>
-                        `;
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'example-title';
+                        titleDiv.textContent = example.title;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'example-desc';
+                        descDiv.textContent = example.desc;
+                        btn.appendChild(titleDiv);
+                        btn.appendChild(descDiv);
                         btn.onclick = () => {
                             // Set "from" to ASQL if not already set
                             const fromDialect = document.getElementById('from-dialect').value;
@@ -1141,10 +1177,21 @@ take 10`,
                     // ASQL Pipeline Examples section
                     const pipelineSection = document.createElement('div');
                     pipelineSection.className = 'example-section';
-                    pipelineSection.innerHTML = '<h3>ASQL Pipeline Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Complex queries that showcase pipeline features and generate multiple CTEs.</p><div class="example-list" id="asql-pipeline-examples"></div>';
+                    const pipelineH3 = document.createElement('h3');
+                    pipelineH3.textContent = 'ASQL Pipeline Examples';
+                    pipelineSection.appendChild(pipelineH3);
+                    const pipelineP = document.createElement('p');
+                    pipelineP.style.color = '#666';
+                    pipelineP.style.marginBottom = '15px';
+                    pipelineP.style.fontSize = '13px';
+                    pipelineP.textContent = 'Complex queries that showcase pipeline features and generate multiple CTEs.';
+                    pipelineSection.appendChild(pipelineP);
+                    const pipelineExamplesDiv = document.createElement('div');
+                    pipelineExamplesDiv.className = 'example-list';
+                    pipelineExamplesDiv.id = 'asql-pipeline-examples';
+                    pipelineSection.appendChild(pipelineExamplesDiv);
                     container.appendChild(pipelineSection);
                     
-                    const pipelineExamplesDiv = document.getElementById('asql-pipeline-examples');
                     if (!asqlPipelineExamples || !Array.isArray(asqlPipelineExamples)) {
                         console.error('asqlPipelineExamples array is not defined or is not an array');
                         pipelineExamplesDiv.innerHTML = '<p style="color: #c5221f; padding: 20px;">Error: Pipeline examples data not available.</p>';
@@ -1152,10 +1199,14 @@ take 10`,
                         asqlPipelineExamples.forEach(example => {
                         const btn = document.createElement('button');
                         btn.className = 'example-btn';
-                        btn.innerHTML = `
-                            <div class="example-title">${example.title}</div>
-                            <div class="example-desc">${example.desc}</div>
-                        `;
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'example-title';
+                        titleDiv.textContent = example.title;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'example-desc';
+                        descDiv.textContent = example.desc;
+                        btn.appendChild(titleDiv);
+                        btn.appendChild(descDiv);
                         btn.onclick = () => {
                             // Set "from" to ASQL if not already set
                             const fromDialect = document.getElementById('from-dialect').value;
@@ -1172,7 +1223,13 @@ take 10`,
                 } else {
                     const section = document.createElement('div');
                     section.className = 'example-section';
-                    section.innerHTML = '<h3>SQL Translation Examples</h3><div class="example-list" id="sql-examples"></div>';
+                    const sqlH3 = document.createElement('h3');
+                    sqlH3.textContent = 'SQL Translation Examples';
+                    section.appendChild(sqlH3);
+                    const sqlExamplesDiv = document.createElement('div');
+                    sqlExamplesDiv.className = 'example-list';
+                    sqlExamplesDiv.id = 'sql-examples';
+                    section.appendChild(sqlExamplesDiv);
                     container.appendChild(section);
                     
                     const examplesDiv = document.getElementById('sql-examples');
@@ -1183,10 +1240,14 @@ take 10`,
                         sqlExamples.forEach(example => {
                             const btn = document.createElement('button');
                             btn.className = 'example-btn';
-                            btn.innerHTML = `
-                                <div class="example-title">${example.title}</div>
-                                <div class="example-desc">${example.desc}</div>
-                            `;
+                            const titleDiv = document.createElement('div');
+                            titleDiv.className = 'example-title';
+                            titleDiv.textContent = example.title;
+                            const descDiv = document.createElement('div');
+                            descDiv.className = 'example-desc';
+                            descDiv.textContent = example.desc;
+                            btn.appendChild(titleDiv);
+                            btn.appendChild(descDiv);
                             btn.onclick = () => {
                                 inputEditor.setValue(example.query);
                                 document.getElementById('from-dialect').value = example.dialect || '';
@@ -1215,7 +1276,19 @@ take 10`,
                 fivetranSection = document.createElement('div');
                 fivetranSection.id = 'fivetran-examples-section';
                 fivetranSection.className = 'example-section';
-                fivetranSection.innerHTML = '<h3>Fivetran_dbt Examples</h3><p style="color: #666; margin-bottom: 15px; font-size: 13px;">Here are some examples of some extensive queries used in the fivetran_dbt libraries.</p><div class="example-list" id="fivetran-examples"></div>';
+                const fivetranH3 = document.createElement('h3');
+                fivetranH3.textContent = 'Fivetran_dbt Examples';
+                fivetranSection.appendChild(fivetranH3);
+                const fivetranP = document.createElement('p');
+                fivetranP.style.color = '#666';
+                fivetranP.style.marginBottom = '15px';
+                fivetranP.style.fontSize = '13px';
+                fivetranP.textContent = 'Here are some examples of some extensive queries used in the fivetran_dbt libraries.';
+                fivetranSection.appendChild(fivetranP);
+                const fivetranExamplesDiv = document.createElement('div');
+                fivetranExamplesDiv.className = 'example-list';
+                fivetranExamplesDiv.id = 'fivetran-examples';
+                fivetranSection.appendChild(fivetranExamplesDiv);
                 container.appendChild(fivetranSection);
             }
             
@@ -1230,10 +1303,14 @@ take 10`,
                     examples.forEach(example => {
                         const btn = document.createElement('button');
                         btn.className = 'example-btn';
-                        btn.innerHTML = `
-                            <div class="example-title">${example.title}</div>
-                            <div class="example-desc">${example.desc}</div>
-                        `;
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'example-title';
+                        titleDiv.textContent = example.title;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'example-desc';
+                        descDiv.textContent = example.desc;
+                        btn.appendChild(titleDiv);
+                        btn.appendChild(descDiv);
                         btn.onclick = () => {
                             inputEditor.setValue(example.query);
                             document.getElementById('from-dialect').value = example.language || '';
@@ -1470,7 +1547,18 @@ take 10`,
             try {
                 updateUITitles();
                 loadExamples();
-                translateQuery();
+                // Auto-translate if we have input query (always translate on load)
+                // If sql_t is provided, output is already set, so we can skip translation
+                if (sql_f && !sql_t) {
+                    // We have input but no output - translate it
+                    translateQuery();
+                } else if (sql_f && sql_t) {
+                    // Both provided - output is already set, no need to translate
+                    // But ensure UI titles are correct
+                } else {
+                    // Default behavior - translate the default query
+                    translateQuery();
+                }
             } catch (e) {
                 console.error('Error during initial load:', e);
                 // Try to load examples anyway
