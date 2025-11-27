@@ -235,8 +235,8 @@ def build_select_for_step(
         raise ValueError("Step has no FROM clause and no previous step to reference")
     
     if from_expr:
-        # SQLGlot uses 'from' as the key, but it's a Python keyword, so we use args dict directly
-        select.args["from"] = from_expr
+        # SQLGlot 28+ uses 'from_' as the key (Python keyword escaping)
+        select.set("from_", from_expr)
     
     # Add WHERE clauses
     if step.where_clauses:
@@ -377,10 +377,10 @@ def build_cte_pipeline(steps: List[PipelineStep]) -> exp.Select:
             if is_last_step:
                 final_select = exp.Select()
                 final_select.set("expressions", [exp.Star()])
-                final_select.args["from"] = exp.From(
+                final_select.set("from_", exp.From(
                     this=exp.Table(this=exp.Identifier(this=step_name))
-                )
-                final_select.args["with"] = exp.With(expressions=ctes)
+                ))
+                final_select.set("with_", exp.With(expressions=ctes))
                 return final_select
         elif will_be_referenced and not is_simple_from:
             # Next step will reference this one, and it's not a simple FROM (can't be inlined)
@@ -407,10 +407,10 @@ def build_cte_pipeline(steps: List[PipelineStep]) -> exp.Select:
                 # Create final SELECT that references the last CTE
                 final_select = exp.Select()
                 final_select.set("expressions", [exp.Star()])
-                final_select.args["from"] = exp.From(
+                final_select.set("from_", exp.From(
                     this=exp.Table(this=exp.Identifier(this=step_name))
-                )
-                final_select.args["with"] = exp.With(expressions=ctes)
+                ))
+                final_select.set("with_", exp.With(expressions=ctes))
                 return final_select
             else:
                 # No CTEs, last step - return it directly

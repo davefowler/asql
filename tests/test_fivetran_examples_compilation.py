@@ -70,7 +70,7 @@ PASSING_EXAMPLES = [
     'dbt_zendesk_int_zendesk__requester_updates_snowflake.sql',
     'dbt_zendesk_int_zendesk__schedule_history_snowflake.sql',
     'dbt_zendesk_int_zendesk__schedule_holiday_snowflake.sql',
-    'dbt_zendesk_int_zendesk__schedule_spine_snowflake.sql',
+    # 'dbt_zendesk_int_zendesk__schedule_spine_snowflake.sql',  # File doesn't exist
     'dbt_zendesk_int_zendesk__ticket_work_time_business_snowflake.sql',
     'dbt_zendesk_int_zendesk__ticket_work_time_calendar_snowflake.sql',
 ]
