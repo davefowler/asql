@@ -19,7 +19,6 @@ htmlcov/
 *.md
 !docs/*.md
 tests/
-examples/
 test_*.py
 *.toml
 !pyproject.toml
