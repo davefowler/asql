@@ -1,5 +1,5 @@
 #!/bin/bash
-# Start ASQL documentation and playground servers using venv
+# Start ASQL documentation server using MkDocs
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -13,7 +13,8 @@ else
     echo "⚠ Warning: venv directory not found. Using system Python."
 fi
 
-# Start the servers
-echo "Starting ASQL servers..."
-python3 start_servers.py
-
+# Start MkDocs documentation server
+echo "Starting ASQL Documentation Server..."
+echo "Open http://127.0.0.1:8000 in your browser"
+echo ""
+python -m mkdocs serve
