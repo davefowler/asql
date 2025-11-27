@@ -12,6 +12,7 @@ COPY pyproject.toml ./
 COPY asql/ ./asql/
 COPY docs/ ./docs/
 COPY static/ ./static/
+COPY examples/ ./examples/
 COPY docs_server.py ./
 COPY playground.py ./
 
