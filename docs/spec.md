@@ -264,7 +264,52 @@ The `||` operator has higher precedence than logical operators (`and`, `or`, `no
 
 ### 4.7 Conditional Expressions (CASE)
 
-ASQL supports SQL's `CASE` statement with natural language alternatives:
+ASQL uses DuckDB/Spark-style `CASE` syntax, which is cleaner and more concise than SQL-standard syntax:
+
+**Simple CASE (DuckDB/Spark-style)**:
+```asql
+from users
+  select 
+    case status
+      when "active" then 1
+      when "pending" then 0
+      else -1
+    end as status_code
+```
+
+**Searched CASE (when conditions are complex)**:
+```asql
+from users
+  select 
+    case
+      when status == "active" and created_at > "2024-01-01" then 1
+      when status == "pending" then 0
+      else -1
+    end as status_code
+```
+
+**Benefits of DuckDB/Spark-style**:
+- More concise - expression appears once at the top (for simple CASE)
+- More readable - avoids repeating the expression in each WHEN clause
+- Familiar to users of DuckDB and Spark SQL
+- Consistent indentation makes nested conditions easier to read
+
+**Reverse Compilation**: SQL `CASE` statements are automatically converted to this syntax when converting SQL to ASQL.
+
+**Examples from real queries**:
+```asql
+# Complex business logic
+from opportunity
+  select 
+    case
+      when is_won then "Won"
+      when NOT is_won and is_closed then "Lost"
+      when NOT is_closed and lower(forecast_category) in ("pipeline", "forecast", "bestcase") then "Pipeline"
+      else "Other"
+    end as status
+```
+
+**Natural language alternatives** (future consideration):
 
 **Standard CASE syntax:**
 ```asql
