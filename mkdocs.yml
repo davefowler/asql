@@ -42,7 +42,7 @@ theme:
 
 # Custom CSS and JavaScript
 extra_css:
-  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css
+  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css
   - static/docs.css
 
 extra_javascript:

@@ -68,14 +68,34 @@
     font-weight: 600;
 }
 
-/* Code blocks */
-.md-typeset pre > code {
-    background: #282c34;
-    color: #abb2bf;
+/* Code blocks - light GitHub theme */
+.md-typeset pre > code,
+.md-typeset .highlight pre,
+.md-typeset .highlight code,
+.highlight pre,
+pre code {
+    background: #f6f8fa !important;
+    color: #24292e !important;
 }
 
-.md-typeset .highlight pre {
-    background: #282c34;
+.md-typeset code {
+    background: #f6f8fa;
+}
+
+/* Ensure syntax highlighting colors work on light background */
+.highlight .hljs {
+    background: #f6f8fa !important;
+}
+
+/* Copy button visibility on light background */
+.md-typeset .highlight .md-clipboard,
+.md-clipboard {
+    color: #666 !important;
+}
+
+.md-typeset .highlight .md-clipboard:hover,
+.md-clipboard:hover {
+    color: #d32f2f !important;
 }
 
 /* Admonitions */
