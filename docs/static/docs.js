@@ -224,8 +224,35 @@ function reorderTabs(blockId) {
     reorderTabsOnLoad(blockId);
 }
 
+// Add playground button to header
+function addPlaygroundButton() {
+    // Check if button already exists
+    if (document.querySelector('.playground-btn')) return;
+    
+    // Find the header topic/title area
+    const headerTitle = document.querySelector('.md-header__title');
+    if (!headerTitle) return;
+    
+    // Create playground button
+    const btn = document.createElement('a');
+    btn.href = 'https://play.analyticsql.com';
+    btn.target = '_blank';
+    btn.className = 'playground-btn';
+    btn.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z"/>
+        </svg>
+        Playground
+    `;
+    
+    // Insert after the header title
+    headerTitle.parentNode.insertBefore(btn, headerTitle.nextSibling);
+}
+
 // Initialize all code blocks on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // Add playground button to header
+    addPlaygroundButton();
     // Wait a bit for highlight.js to be fully loaded
     const initHighlighting = () => {
         if (!window.hljs) {
