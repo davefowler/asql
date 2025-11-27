@@ -296,7 +296,7 @@ This query:
 
 ## Next Steps
 
-- **[Examples](examples.md)** - See more real-world query patterns
+- **[Examples](EXAMPLES.md)** - See more real-world query patterns
 - **[Language Specification](spec.md)** - Complete syntax reference
 - **[Playground](https://play.analyticsql.com)** - Try writing queries interactively
 

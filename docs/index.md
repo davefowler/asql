@@ -41,9 +41,9 @@ LIMIT 10
 
 ## Documentation
 
-- 📖 [Quick Start Guide](quick-start.md) - Get started in minutes
-- 📚 [Examples](examples.md) - Extensive examples with SQL output
-- 🎮 [Interactive Playground](interactive-playground.md) - Try ASQL in your browser
+- 📖 [Quick Start Guide](QUICK_START.md) - Get started in minutes
+- 📚 [Examples](EXAMPLES.md) - Extensive examples with SQL output
+- 🎮 [Interactive Playground](INTERACTIVE_PLAYGROUND.md) - Try ASQL in your browser
 - 📋 [Language Specification](spec.md) - Complete ASQL syntax reference
 - 🏗️ [Architecture](architecture.md) - System design and implementation details
 
@@ -61,7 +61,7 @@ pip install -e ".[dev]"
 
 ## Next Steps
 
-1. Read the [Getting Started Guide](getting-started.md)
-2. Browse [Examples](examples.md) to see what's possible
+1. Read the [Quick Start Guide](QUICK_START.md)
+2. Browse [Examples](EXAMPLES.md) to see what's possible
 3. Check the [Language Specification](spec.md) for complete syntax reference
 4. Review [Status](status.md) for current implementation status
