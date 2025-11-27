@@ -1,0 +1,375 @@
+// ASQL Documentation JavaScript - Dialect Tabs
+
+// Initialize dialect tracking from localStorage
+function initDialectTracking() {
+    // Get or initialize dialects tracking object
+    let dialects = JSON.parse(localStorage.getItem('asql_dialects') || '{}');
+    
+    // Get user's preferred second tab (asql is always first)
+    const preferredDialect = localStorage.getItem('asql_preferred_dialect');
+    
+    return { dialects, preferredDialect };
+}
+
+// Save dialect preference
+function saveDialectPreference(dialect) {
+    localStorage.setItem('asql_preferred_dialect', dialect);
+    
+    // Update view count
+    let dialects = JSON.parse(localStorage.getItem('asql_dialects') || '{}');
+    dialects[dialect] = (dialects[dialect] || 0) + 1;
+    localStorage.setItem('asql_dialects', JSON.stringify(dialects));
+}
+
+// Get sorted dialects by view count (excluding asql)
+function getSortedDialects(compiled) {
+    const { dialects } = initDialectTracking();
+    
+    // Get all dialects except asql
+    const allDialects = Object.keys(compiled).filter(d => d !== 'asql');
+    
+    // Sort by view count (descending), then alphabetically
+    return allDialects.sort((a, b) => {
+        const countA = dialects[a] || 0;
+        const countB = dialects[b] || 0;
+        if (countB !== countA) {
+            return countB - countA;
+        }
+        return a.localeCompare(b);
+    });
+}
+
+// Open code block in playground
+function openInPlayground(blockId) {
+    const block = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (!block) return;
+    
+    // Get compiled SQL
+    const compiledB64 = block.getAttribute('data-compiled');
+    const compiled = JSON.parse(atob(compiledB64));
+    
+    // Get current active dialect (or default to asql)
+    const activeTab = block.querySelector('.tab-btn.active');
+    const currentDialect = activeTab ? activeTab.getAttribute('data-dialect') : 'asql';
+    
+    // Get the current code (either ASQL or SQL)
+    const codeElement = document.getElementById(`code-${blockId}`);
+    const currentCode = codeElement ? codeElement.textContent : compiled.get('asql', '');
+    
+    // Determine from dialect
+    const fromDialect = currentDialect === 'asql' ? 'ASQL' : currentDialect;
+    
+    // Determine to dialect (default to bigquery if ASQL, otherwise keep current)
+    const toDialect = currentDialect === 'asql' ? 'bigquery' : currentDialect;
+    
+    // Encode the query
+    const encodedQuery = encodeURIComponent(currentCode);
+    
+    // Build URL
+    const url = `https://play.analyticsql.com?d_f=${fromDialect}&d_t=${toDialect}&sql_f=${encodedQuery}`;
+    
+    // Open in new tab
+    window.open(url, '_blank');
+}
+
+// Show dialect in a code block
+function showDialect(blockId, dialect) {
+    const block = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (!block) return;
+    
+    // Get compiled SQL
+    const compiledB64 = block.getAttribute('data-compiled');
+    const compiled = JSON.parse(atob(compiledB64));
+    
+    // Update code content
+    const codeElement = document.getElementById(`code-${blockId}`);
+    if (codeElement && compiled[dialect]) {
+        // Determine language based on dialect
+        const language = dialect === 'asql' ? 'asql' : 'sql';
+        
+        // Highlight syntax - ensure highlight.js is available
+        if (window.hljs) {
+            try {
+                // Use highlight() directly for more control
+                const result = hljs.highlight(compiled[dialect], { language: language });
+                codeElement.innerHTML = result.value;
+                codeElement.className = `hljs language-${language}`;
+            } catch (e) {
+                console.warn('Highlight.js error:', e);
+                // Fallback: just set text content
+                codeElement.textContent = compiled[dialect];
+                codeElement.className = `language-${language}`;
+            }
+        } else {
+            // Fallback if highlight.js isn't loaded
+            codeElement.textContent = compiled[dialect];
+            codeElement.className = `language-${language}`;
+        }
+    }
+    
+    // Update active tab
+    const tabs = block.querySelectorAll('.tab-btn');
+    tabs.forEach(tab => {
+        if (tab.getAttribute('data-dialect') === dialect) {
+            tab.classList.add('active');
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+    
+    // Track view
+    if (dialect !== 'asql') {
+        saveDialectPreference(dialect);
+    }
+    
+    // Close more dialects menu if open
+    const menu = block.querySelector('.more-dialects-menu');
+    if (menu) {
+        menu.classList.remove('show');
+    }
+}
+
+// Show more dialects menu
+function showMoreDialects(blockId) {
+    const block = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (!block) return;
+    
+    // Get compiled SQL
+    const compiledB64 = block.getAttribute('data-compiled');
+    const compiled = JSON.parse(atob(compiledB64));
+    
+    // Get top dialects
+    const topDialects = ['postgres', 'snowflake', 'bigquery', 'databricks'];
+    const otherDialects = Object.keys(compiled).filter(
+        d => d !== 'asql' && !topDialects.includes(d)
+    );
+    
+    if (otherDialects.length === 0) return;
+    
+    // Create or update menu
+    let menu = block.querySelector('.more-dialects-menu');
+    if (!menu) {
+        menu = document.createElement('div');
+        menu.className = 'more-dialects-menu';
+        block.appendChild(menu);
+    }
+    
+    // Clear and populate menu
+    menu.innerHTML = '';
+    otherDialects.forEach(dialect => {
+        const btn = document.createElement('button');
+        btn.textContent = getDialectName(dialect);
+        btn.onclick = () => {
+            showDialect(blockId, dialect);
+            // Reorder tabs based on new view count
+            reorderTabs(blockId);
+        };
+        menu.appendChild(btn);
+    });
+    
+    // Position menu relative to the more tab
+    const moreTab = block.querySelector('.more-tab');
+    if (moreTab) {
+        const rect = moreTab.getBoundingClientRect();
+        const blockRect = block.getBoundingClientRect();
+        // Position relative to the code block container
+        menu.style.top = `${rect.bottom - blockRect.top}px`;
+        menu.style.left = `${rect.left - blockRect.left}px`;
+    }
+    
+    // Toggle menu
+    menu.classList.toggle('show');
+    
+    // Close menu when clicking outside
+    if (menu.classList.contains('show')) {
+        const closeMenu = (e) => {
+            if (!block.contains(e.target)) {
+                menu.classList.remove('show');
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        // Use setTimeout to avoid immediate close
+        setTimeout(() => {
+            document.addEventListener('click', closeMenu);
+        }, 0);
+    }
+}
+
+// Get dialect display name
+function getDialectName(dialect) {
+    const names = {
+        'postgres': 'PostgreSQL',
+        'snowflake': 'Snowflake',
+        'bigquery': 'BigQuery',
+        'redshift': 'Redshift',
+        'mysql': 'MySQL',
+        'sqlite': 'SQLite',
+        'oracle': 'Oracle',
+        'mssql': 'SQL Server',
+        'presto': 'Presto',
+        'trino': 'Trino',
+        'spark': 'Spark',
+        'hive': 'Hive',
+        'clickhouse': 'ClickHouse',
+        'duckdb': 'DuckDB',
+        'databricks': 'Databricks',
+    };
+    return names[dialect] || dialect.charAt(0).toUpperCase() + dialect.slice(1);
+}
+
+// Reorder tabs after a dialect is viewed (called from showDialect)
+function reorderTabs(blockId) {
+    // Just reorder on load, don't dynamically reorder during session
+    // This prevents confusion from tabs moving around
+    reorderTabsOnLoad(blockId);
+}
+
+// Initialize all code blocks on page load
+document.addEventListener('DOMContentLoaded', () => {
+    // Wait a bit for highlight.js to be fully loaded
+    const initHighlighting = () => {
+        if (!window.hljs) {
+            // Retry if highlight.js isn't loaded yet
+            setTimeout(initHighlighting, 100);
+            return;
+        }
+        
+        // First, highlight any existing code blocks (from server-side HTML)
+        // This includes both standalone code blocks and code blocks in tabs
+        document.querySelectorAll('pre code[class*="language-"], pre code:not([class])').forEach((block) => {
+            if (block.textContent && block.textContent.trim()) {
+                try {
+                    const code = block.textContent;
+                    // Determine language from class name, or try to detect from parent
+                    let language = null;
+                    const langMatch = block.className.match(/language-(\w+)/);
+                    if (langMatch) {
+                        language = langMatch[1];
+                    } else {
+                        // Check if parent pre has a class
+                        const parentPre = block.parentElement;
+                        if (parentPre && parentPre.className) {
+                            const parentLangMatch = parentPre.className.match(/language-(\w+)/);
+                            if (parentLangMatch) {
+                                language = parentLangMatch[1];
+                            }
+                        }
+                    }
+                    
+                    // Default to sql if no language detected
+                    if (!language) {
+                        language = 'sql';
+                    }
+                    
+                    // Only highlight if not already highlighted (check for hljs class)
+                    if (!block.classList.contains('hljs')) {
+                        const result = hljs.highlight(code, { language: language });
+                        block.innerHTML = result.value;
+                        block.className = `hljs language-${language}`;
+                    }
+                } catch (e) {
+                    console.warn('Highlight.js error on initial block:', e);
+                    // Ensure it still has the background even if highlighting fails
+                    if (!block.classList.contains('hljs')) {
+                        block.className = block.className || 'language-sql';
+                    }
+                }
+            }
+        });
+        
+        const blocks = document.querySelectorAll('.asql-code-block');
+        
+        blocks.forEach(block => {
+            const blockId = block.getAttribute('data-block-id');
+            
+            // Reorder tabs based on view counts
+            reorderTabsOnLoad(blockId);
+            
+            // Always default to ASQL
+            showDialect(blockId, 'asql');
+        });
+    };
+    
+    // Start initialization
+    initHighlighting();
+    
+    // Close more dialects menu when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.more-tab') && !e.target.closest('.more-dialects-menu')) {
+            document.querySelectorAll('.more-dialects-menu').forEach(menu => {
+                menu.classList.remove('show');
+            });
+        }
+    });
+});
+
+// Reorder tabs on page load based on view counts
+function reorderTabsOnLoad(blockId) {
+    const block = document.querySelector(`[data-block-id="${blockId}"]`);
+    if (!block) return;
+    
+    const compiledB64 = block.getAttribute('data-compiled');
+    const compiled = JSON.parse(atob(compiledB64));
+    
+    const { dialects } = initDialectTracking();
+    const topDialects = ['postgres', 'snowflake', 'bigquery', 'databricks'];
+    const topDialectsAvailable = topDialects.filter(d => d in compiled);
+    
+    // Sort top dialects by view count
+    const sortedTopDialects = topDialectsAvailable.sort((a, b) => {
+        const countA = dialects[a] || 0;
+        const countB = dialects[b] || 0;
+        if (countB !== countA) {
+            return countB - countA;
+        }
+        return a.localeCompare(b);
+    });
+    
+    // Rebuild tabs container
+    const tabsContainer = block.querySelector('.dialect-tabs');
+    if (!tabsContainer) return;
+    
+    // Get current active dialect before rebuilding
+    // Always default to asql
+    const activeTab = tabsContainer.querySelector('.tab-btn.active');
+    const activeDialect = activeTab ? activeTab.getAttribute('data-dialect') : 'asql';
+    
+    // Clear and rebuild
+    tabsContainer.innerHTML = '';
+    
+    // Add ASQL tab first (always)
+    const asqlTab = document.createElement('button');
+    asqlTab.className = 'tab-btn';
+    asqlTab.setAttribute('data-dialect', 'asql');
+    asqlTab.textContent = 'ASQL';
+    asqlTab.onclick = () => showDialect(blockId, 'asql');
+    if (activeDialect === 'asql') {
+        asqlTab.classList.add('active');
+    }
+    tabsContainer.appendChild(asqlTab);
+    
+    // Add sorted top dialects
+    sortedTopDialects.forEach(dialect => {
+        const tab = document.createElement('button');
+        tab.className = 'tab-btn';
+        tab.setAttribute('data-dialect', dialect);
+        tab.textContent = getDialectName(dialect);
+        tab.onclick = () => showDialect(blockId, dialect);
+        if (activeDialect === dialect) {
+            tab.classList.add('active');
+        }
+        tabsContainer.appendChild(tab);
+    });
+    
+    // Add more tab if there are other dialects
+    const otherDialects = Object.keys(compiled).filter(
+        d => d !== 'asql' && !topDialects.includes(d)
+    );
+    if (otherDialects.length > 0) {
+        const newMoreTab = document.createElement('button');
+        newMoreTab.className = 'tab-btn more-tab';
+        newMoreTab.textContent = '⋯';
+        newMoreTab.onclick = () => showMoreDialects(blockId);
+        tabsContainer.appendChild(newMoreTab);
+    }
+}
