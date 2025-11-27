@@ -33,13 +33,25 @@ theme:
     - navigation.tabs
     - navigation.sections
     - navigation.expand
-    - navigation.top
     - search.suggest
     - search.highlight
     - content.code.annotate
     - content.code.copy
   icon:
     repo: fontawesome/brands/github
+
+# Custom CSS and JavaScript
+extra_css:
+  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css
+  - static/docs.css
+
+extra_javascript:
+  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js
+  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js
+  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js
+  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js
+  - static/asql-lang.js
+  - static/docs.js
 
 # Extensions
 markdown_extensions:
@@ -62,8 +74,8 @@ markdown_extensions:
   - admonition
   - pymdownx.details
   - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - attr_list
   - md_in_html
   - toc:
@@ -72,8 +84,8 @@ markdown_extensions:
 # Plugins
 plugins:
   - search
-  - minify:
-      minify_html: true
+  # - minify:
+  #     minify_html: true
 
 # Navigation
 nav:
