@@ -89,8 +89,7 @@ plugins:
 
 # Navigation
 nav:
-  - Home: index.md
-  - Language Specification: spec.md
+  - Language Spec: index.md
   - Syntax: quick_start.md
   - Examples: examples.md
   - Integrating: integrating.md
