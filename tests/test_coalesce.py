@@ -57,3 +57,4 @@ class TestCoalesceReverse:
         assert "||" in asql
         assert asql.count("||") >= 2  # Should have at least 2 || operators
 
+

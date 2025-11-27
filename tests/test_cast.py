@@ -123,3 +123,4 @@ class TestCastReverse:
         assert "FLOAT" in asql.upper()
         assert "as" in asql.lower()
 
+
