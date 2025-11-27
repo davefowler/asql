@@ -391,7 +391,8 @@ def _expression_to_asql(expr: exp.Expression) -> str:
             return f"{left} is null" if expr.right is None else f"{left} is {_expression_to_asql(expr.right)}"
     
     elif isinstance(expr, exp.In):
-        left = _expression_to_asql(expr.left)
+        # In expressions use 'this' for the left side, not 'left'
+        left = _expression_to_asql(expr.this) if expr.this else ""
         expressions = expr.expressions
         values = ", ".join(_expression_to_asql(e) for e in expressions)
         if expr.args.get("not"):
@@ -454,6 +455,46 @@ def _expression_to_asql(expr: exp.Expression) -> str:
         args = [expr.this] + (expr.expressions if expr.expressions else [])
         arg_strs = [_expression_to_asql(arg) for arg in args]
         return " || ".join(arg_strs)
+    
+    elif isinstance(expr, exp.Case):
+        # Convert CASE statement to DuckDB/Spark-style syntax
+        # CASE expr WHEN value THEN result ... ELSE default END
+        # or CASE WHEN condition THEN result ... ELSE default END
+        
+        parts = ["case"]
+        
+        # Get WHEN clauses from args['ifs'] (list of If expressions)
+        ifs = expr.args.get("ifs", [])
+        
+        # Check if this is a simple CASE (CASE expr WHEN ...) or searched CASE (CASE WHEN ...)
+        if expr.this:
+            # Simple CASE: CASE expr WHEN value THEN result
+            expr_str = _expression_to_asql(expr.this)
+            parts.append(expr_str)
+            
+            # Process WHEN clauses (stored in ifs list as If expressions)
+            for if_expr in ifs:
+                if isinstance(if_expr, exp.If):
+                    when_value = _expression_to_asql(if_expr.this) if if_expr.this else ""
+                    then_value = _expression_to_asql(if_expr.args.get("true")) if if_expr.args.get("true") else ""
+                    parts.append(f"  when {when_value} then {then_value}")
+        else:
+            # Searched CASE: CASE WHEN condition THEN result
+            # Process WHEN clauses (stored in ifs list as If expressions)
+            for if_expr in ifs:
+                if isinstance(if_expr, exp.If):
+                    when_condition = _expression_to_asql(if_expr.this) if if_expr.this else ""
+                    then_value = _expression_to_asql(if_expr.args.get("true")) if if_expr.args.get("true") else ""
+                    parts.append(f"  when {when_condition} then {then_value}")
+        
+        # Add ELSE clause if present
+        default = expr.args.get("default")
+        if default:
+            default_str = _expression_to_asql(default)
+            parts.append(f"  else {default_str}")
+        
+        parts.append("end")
+        return "\n".join(parts)
     
     elif isinstance(expr, exp.Anonymous):
         # Generic function call (e.g., STRING_AGG, DATE_TRUNC, CAST, COALESCE, etc.)
