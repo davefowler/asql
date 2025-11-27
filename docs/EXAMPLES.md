@@ -1,6 +1,8 @@
-# ASQL Examples
+# Analytic SQL Examples
 
-This document provides comprehensive examples of ASQL queries, showing how they translate to SQL.
+Real-world examples of Analytic SQL queries. Each example shows the Analytic SQL syntax alongside the generated SQL for different database dialects.
+
+**Try these queries yourself:** [play.analyticsql.com](https://play.analyticsql.com)
 
 ## Table of Contents
 
@@ -45,7 +47,8 @@ This document provides comprehensive examples of ASQL queries, showing how they 
 
 === "ASQL"
     ```asql
-    from users where status == "active"
+    from users
+    where status == "active"
     ```
 
 === "PostgreSQL"
@@ -72,7 +75,8 @@ This document provides comprehensive examples of ASQL queries, showing how they 
 
 === "ASQL"
     ```asql
-    from users select name, email
+    from users
+    select name, email
     ```
 
 === "PostgreSQL"
@@ -99,7 +103,9 @@ This document provides comprehensive examples of ASQL queries, showing how they 
 
 === "ASQL"
     ```asql
-    from users where status == "active" select name, email
+    from users
+    where status == "active"
+    select name, email
     ```
 
 === "PostgreSQL"
@@ -130,7 +136,8 @@ This document provides comprehensive examples of ASQL queries, showing how they 
 
 **ASQL:**
 ```asql
-from users where age < 18
+from users
+where age < 18
 ```
 
 **SQL (PostgreSQL):**
@@ -140,7 +147,8 @@ SELECT * FROM users WHERE age < 18
 
 **ASQL:**
 ```asql
-from users where age > 65
+from users
+where age > 65
 ```
 
 **SQL (PostgreSQL):**
@@ -150,7 +158,8 @@ SELECT * FROM users WHERE age > 65
 
 **ASQL:**
 ```asql
-from users where age >= 18
+from users
+where age >= 18
 ```
 
 **SQL (PostgreSQL):**
@@ -160,7 +169,8 @@ SELECT * FROM users WHERE age >= 18
 
 **ASQL:**
 ```asql
-from users where status != "inactive"
+from users
+where status != "inactive"
 ```
 
 **SQL (PostgreSQL):**
@@ -172,7 +182,8 @@ SELECT * FROM users WHERE status <> 'inactive'
 
 **ASQL:**
 ```asql
-from users where email is null
+from users
+where email is null
 ```
 
 **SQL (PostgreSQL):**
@@ -182,7 +193,8 @@ SELECT * FROM users WHERE email IS NULL
 
 **ASQL:**
 ```asql
-from users where email is not null
+from users
+where email is not null
 ```
 
 **SQL (PostgreSQL):**
@@ -194,7 +206,9 @@ SELECT * FROM users WHERE email IS NOT NULL
 
 **ASQL:**
 ```asql
-from users where status == "active" and age >= 18
+from users
+where status == "active" 
+    and age >= 18
 ```
 
 **SQL (PostgreSQL):**
@@ -204,7 +218,9 @@ SELECT * FROM users WHERE status = 'active' AND age >= 18
 
 **ASQL:**
 ```asql
-from users where status == "active" or status == "pending"
+from users
+where status == "active" 
+    or status == "pending"
 ```
 
 **SQL (PostgreSQL):**
@@ -214,7 +230,8 @@ SELECT * FROM users WHERE status = 'active' OR status = 'pending'
 
 **ASQL:**
 ```asql
-from users where not status == "inactive"
+from users
+where not status == "inactive"
 ```
 
 **SQL (PostgreSQL):**
@@ -226,7 +243,10 @@ SELECT * FROM users WHERE NOT status = 'inactive'
 
 **ASQL:**
 ```asql
-from users where status == "active" and age >= 18 and email is not null
+from users
+where status == "active" 
+    and age >= 18 
+    and email is not null
 ```
 
 **SQL (PostgreSQL):**
@@ -238,7 +258,8 @@ SELECT * FROM users WHERE status = 'active' AND age >= 18 AND email IS NOT NULL
 
 **ASQL:**
 ```asql
-from users where status in ("active", "pending", "verified")
+from users
+where status in ("active", "pending", "verified")
 ```
 
 **SQL (PostgreSQL):**
@@ -248,7 +269,8 @@ SELECT * FROM users WHERE status IN ('active', 'pending', 'verified')
 
 **ASQL:**
 ```asql
-from users where age in (18, 19, 20, 21)
+from users
+where age in (18, 19, 20, 21)
 ```
 
 **SQL (PostgreSQL):**
@@ -260,7 +282,8 @@ SELECT * FROM users WHERE age IN (18, 19, 20, 21)
 
 **ASQL:**
 ```asql
-from users where status not in ("inactive", "deleted", "banned")
+from users
+where status not in ("inactive", "deleted", "banned")
 ```
 
 **SQL (PostgreSQL):**
@@ -276,7 +299,8 @@ SELECT * FROM users WHERE NOT status IN ('inactive', 'deleted', 'banned')
 
 **ASQL:**
 ```asql
-from users group by country ( # as total_users )
+from users
+group by country ( # as total_users )
 ```
 
 **SQL (PostgreSQL):**
@@ -288,7 +312,8 @@ SELECT country, COUNT(*) AS total_users FROM users GROUP BY country
 
 **ASQL:**
 ```asql
-from sales group by region ( sum(amount) as revenue )
+from sales
+group by region ( sum(amount) as revenue )
 ```
 
 **SQL (PostgreSQL):**
@@ -300,7 +325,8 @@ SELECT region, SUM(amount) AS revenue FROM sales GROUP BY region
 
 **ASQL:**
 ```asql
-from users group by country ( avg(age) as avg_age )
+from users
+group by country ( avg(age) as avg_age )
 ```
 
 **SQL (PostgreSQL):**
@@ -312,7 +338,8 @@ SELECT country, AVG(age) AS avg_age FROM users GROUP BY country
 
 **ASQL:**
 ```asql
-from sales group by region ( 
+from sales
+group by region ( 
     sum(amount) as revenue, 
     # as orders, 
     avg(amount) as avg_order 
@@ -330,7 +357,8 @@ GROUP BY region
 
 **ASQL:**
 ```asql
-from sales group by region, month ( sum(amount) as revenue )
+from sales
+group by region, month ( sum(amount) as revenue )
 ```
 
 **SQL (PostgreSQL):**
@@ -342,7 +370,9 @@ SELECT region, month, SUM(amount) AS revenue FROM sales GROUP BY region, month
 
 **ASQL:**
 ```asql
-from sales where year == 2024 group by region ( sum(amount) as revenue )
+from sales
+where year == 2024
+group by region ( sum(amount) as revenue )
 ```
 
 **SQL (PostgreSQL):**
@@ -357,7 +387,8 @@ GROUP BY region
 
 **ASQL:**
 ```asql
-from sales group by region (
+from sales
+group by region (
     sum(amount) as total_revenue,
     avg(amount) as avg_order,
     count(*) as order_count,
@@ -387,7 +418,8 @@ GROUP BY region
 
 **ASQL:**
 ```asql
-from users sort name
+from users
+sort name
 ```
 
 **SQL (PostgreSQL):**
@@ -399,7 +431,8 @@ SELECT * FROM users ORDER BY name ASC
 
 **ASQL:**
 ```asql
-from users sort -total_users
+from users
+sort -total_users
 ```
 
 **SQL (PostgreSQL):**
@@ -411,7 +444,8 @@ SELECT * FROM users ORDER BY total_users DESC
 
 **ASQL:**
 ```asql
-from users sort -total_users, name
+from users
+sort -total_users, name
 ```
 
 **SQL (PostgreSQL):**
@@ -423,7 +457,8 @@ SELECT * FROM users ORDER BY total_users DESC, name ASC
 
 **ASQL:**
 ```asql
-from users take 10
+from users
+take 10
 ```
 
 **SQL (PostgreSQL):**
@@ -435,7 +470,9 @@ SELECT * FROM users LIMIT 10
 
 **ASQL:**
 ```asql
-from users group by country ( # as total_users ) sort -total_users
+from users
+group by country ( # as total_users )
+sort -total_users
 ```
 
 **SQL (PostgreSQL):**
@@ -471,7 +508,8 @@ LIMIT 10
 
 **ASQL:**
 ```asql
-from users sort -updated_at
+from users
+sort -updated_at
 ```
 
 **SQL (PostgreSQL):**
@@ -481,7 +519,8 @@ SELECT * FROM users ORDER BY updated_at DESC
 
 **ASQL:**
 ```asql
-from users sort -updated_at, name
+from users
+sort -updated_at, name
 ```
 
 **SQL (PostgreSQL):**
@@ -589,7 +628,9 @@ LIMIT 10
 
 ## Try It Yourself
 
-You can try these examples using the ASQL compiler:
+**The easiest way to try these examples is in the [Interactive Playground](https://play.analyticsql.com)**. Just copy any ASQL query from the examples above and paste it into the playground to see the generated SQL in real-time.
+
+You can also use the ASQL compiler in your Python code:
 
 ```python
 from asql import compile
@@ -605,5 +646,3 @@ take 10
 sql = compile(asql_query, dialect="postgres")
 print(sql)
 ```
-
-Or use the [Interactive Playground](#interactive-playground) to experiment with queries in your browser!

@@ -16,7 +16,7 @@ import requests
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
 # Top 4 dbt dialects (most commonly used)
-TOP_DIALECTS = ["postgres", "snowflake", "bigquery", "redshift"]
+TOP_DIALECTS = ["postgres", "snowflake", "bigquery", "databricks"]
 
 # All available dialects
 ALL_DIALECTS = [
@@ -239,9 +239,22 @@ def generate_tabs_html(compiled: Dict[str, str], block_id: str) -> str:
     import html
     initial_code_escaped = html.escape(initial_code)
     
+    # Initial code is always ASQL
+    lang_class = 'language-asql'
+    
+    # Generate play button - will use JavaScript to get current dialect
+    import urllib.parse
+    asql_query_encoded = urllib.parse.quote(compiled.get('asql', ''))
+    base_play_url = f"https://play.analyticsql.com?d_f=ASQL&sql_f={asql_query_encoded}"
+    
     tabs_html += f'''    </div>
-    <div class="code-content">
-        <pre><code class="language-sql" id="code-{block_id}">{initial_code_escaped}</code></pre>
+    <div class="code-content" style="position: relative;">
+        <a href="#" onclick="openInPlayground('{block_id}'); return false;" class="play-button" title="Open in Playground" data-block-id="{block_id}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8 5v14l11-7z"/>
+            </svg>
+        </a>
+        <pre><code class="{lang_class}" id="code-{block_id}">{initial_code_escaped}</code></pre>
     </div>
 </div>
 '''
@@ -256,22 +269,26 @@ DOC_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }} - ASQL Documentation</title>
+    <title>{{ title }} - Analytic SQL</title>
     <link rel="stylesheet" href="/static/docs.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+    <script src="/static/asql-lang.js"></script>
 </head>
 <body>
     <div class="doc-container">
         <nav class="doc-nav">
-            <h1><a href="/">ASQL</a></h1>
+            <h1><a href="/">Analytic SQL</a></h1>
             <ul>
-                <li><a href="/docs/">Index</a></li>
-                <li><a href="/docs/quick-start">Quick Start</a></li>
-                <li><a href="/docs/examples">Examples</a></li>
-                <li><a href="/docs/getting-started">Getting Started</a></li>
-                <li><a href="/playground">Playground</a></li>
+                <li><a href="/docs/">Language Specification</a></li>
+                <li><a href="/docs/QUICK_START">Syntax</a></li>
+                <li><a href="/docs/EXAMPLES">Examples</a></li>
+                <li><a href="/docs/INTEGRATING">Integrating</a></li>
+                <li><a href="/docs/architecture">Architecture</a></li>
+                <li><a href="https://play.analyticsql.com" target="_blank">Playground →</a></li>
             </ul>
         </nav>
         <main class="doc-content">
@@ -286,15 +303,38 @@ DOC_TEMPLATE = """
 
 @app.route('/')
 def index():
-    """Redirect to docs index."""
-    return render_doc('INDEX.md', 'ASQL Documentation')
+    """Redirect to docs spec."""
+    return render_doc('spec.md', 'Analytic SQL Language Specification')
 
 
 @app.route('/docs/')
 @app.route('/docs/<path:doc_path>')
-def serve_doc(doc_path: str = 'INDEX.md'):
+def serve_doc(doc_path: str = 'spec.md'):
     """Serve a documentation page."""
-    if not doc_path.endswith('.md'):
+    # Map URL paths to actual file names
+    path_to_file = {
+        '': 'spec.md',
+        'index': 'spec.md',
+        'spec': 'spec.md',
+        'quick-start': 'QUICK_START.md',
+        'QUICK_START': 'QUICK_START.md',
+        'examples': 'EXAMPLES.md',
+        'EXAMPLES': 'EXAMPLES.md',
+        'integrating': 'INTEGRATING.md',
+        'INTEGRATING': 'INTEGRATING.md',
+        'architecture': 'architecture.md',
+        'interactive-playground': 'INTERACTIVE_PLAYGROUND.md',
+        'INTERACTIVE_PLAYGROUND': 'INTERACTIVE_PLAYGROUND.md',
+    }
+    
+    # Normalize the path
+    if doc_path.endswith('/'):
+        doc_path = doc_path[:-1]
+    
+    # Map to actual file name if needed
+    if doc_path in path_to_file:
+        doc_path = path_to_file[doc_path]
+    elif not doc_path.endswith('.md'):
         doc_path += '.md'
     
     docs_dir = Path(__file__).parent / 'docs'
@@ -303,7 +343,19 @@ def serve_doc(doc_path: str = 'INDEX.md'):
     if not md_path.exists():
         return f"Documentation file not found: {doc_path}", 404
     
-    title = doc_path.replace('.md', '').replace('-', ' ').title()
+    # Map common paths to better titles
+    title_map = {
+        'INDEX': 'Analytic SQL',
+        'index': 'Analytic SQL',
+        'QUICK_START': 'Syntax Reference',
+        'quick-start': 'Syntax Reference',
+        'EXAMPLES': 'Examples',
+        'examples': 'Examples',
+        'spec': 'Language Specification',
+        'SPEC': 'Language Specification',
+    }
+    base_name = doc_path.replace('.md', '')
+    title = title_map.get(base_name, base_name.replace('-', ' ').title())
     return render_doc(doc_path, title)
 
 
