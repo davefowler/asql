@@ -96,15 +96,41 @@ def reverse_compile(
         if not source_dialect:
             source_dialect = detect_dialect(sql_query)
         
-        # Parse SQL to AST
+        # Parse SQL to AST - try multiple dialects if one fails
+        expressions = None
+        parse_error = None
+        
+        # List of dialects to try (in order of preference)
+        dialects_to_try = []
         if source_dialect:
-            dialect = Dialect.get_or_raise(source_dialect)
-            expressions = sqlglot.parse(sql_query, dialect=dialect)
-        else:
-            expressions = sqlglot.parse(sql_query)
+            dialects_to_try.append(source_dialect)
+        # Add common dialects as fallbacks
+        dialects_to_try.extend(['snowflake', 'bigquery', 'postgres', 'redshift', 'mysql', 'spark'])
+        
+        for dialect_name in dialects_to_try:
+            try:
+                dialect = Dialect.get_or_raise(dialect_name)
+                expressions = sqlglot.parse(sql_query, dialect=dialect)
+                if expressions:
+                    # Successfully parsed, use this dialect
+                    break
+            except Exception as e:
+                # Try next dialect
+                parse_error = e
+                continue
+        
+        # If all dialects failed, try generic parsing
+        if not expressions:
+            try:
+                expressions = sqlglot.parse(sql_query)
+            except Exception as e:
+                parse_error = e
         
         if not expressions:
-            raise ASQLCompilationError("Failed to parse SQL query")
+            error_msg = "Failed to parse SQL query"
+            if parse_error:
+                error_msg = f"Failed to parse SQL query: {str(parse_error)}"
+            raise ASQLCompilationError(error_msg)
         
         # Convert each expression to ASQL
         asql_parts = []
@@ -119,7 +145,10 @@ def reverse_compile(
                 # Try to convert other expression types
                 asql_parts.append(str(expr))
         
-        return "\n".join(asql_parts)
+        # Join ASQL parts (no dialect comment needed - dialect info is in UI)
+        result = "\n".join(asql_parts)
+        
+        return result
         
     except sqlglot.errors.ParseError as e:
         error_msg = str(e)
@@ -148,21 +177,30 @@ def _select_to_asql(select_expr: exp.Select) -> str:
     if select_expr.args.get("with"):
         with_clause = select_expr.args["with"]
         ctes = []
-        for cte in with_clause.expressions:
-            # Handle CTE alias - could be Identifier or string
-            if cte.alias:
-                if isinstance(cte.alias, exp.Identifier):
-                    cte_name = cte.alias.this
-                elif isinstance(cte.alias, str):
-                    cte_name = cte.alias
-                else:
-                    cte_name = str(cte.alias)
-            else:
-                cte_name = None
-            
-            if cte_name and isinstance(cte.this, exp.Select):
-                cte_asql = _select_to_asql(cte.this)
-                ctes.append(f"set {cte_name} = {cte_asql}")
+        # Handle case where expressions might not be available
+        try:
+            # Try to get expressions from the with clause
+            if hasattr(with_clause, 'expressions') and with_clause.expressions:
+                for cte in with_clause.expressions:
+                    # Handle CTE alias - could be Identifier or string
+                    if cte.alias:
+                        if isinstance(cte.alias, exp.Identifier):
+                            cte_name = cte.alias.this
+                        elif isinstance(cte.alias, str):
+                            cte_name = cte.alias
+                        else:
+                            cte_name = str(cte.alias)
+                    else:
+                        cte_name = None
+                    
+                    if cte_name and isinstance(cte.this, exp.Select):
+                        cte_asql = _select_to_asql(cte.this)
+                        ctes.append(f"{cte_asql}\nstash as {cte_name}")
+        except (AttributeError, TypeError) as e:
+            # If we can't parse CTEs, skip them and continue with the main query
+            # This allows the query to still be converted even if CTE parsing fails
+            pass
+        
         if ctes:
             parts.extend(ctes)
             parts.append("")  # Empty line between CTEs and main query
@@ -385,13 +423,111 @@ def _expression_to_asql(expr: exp.Expression) -> str:
         alias = expr.alias.this if isinstance(expr.alias, exp.Identifier) else str(expr.alias)
         return f"{expr_str} as {alias}"
     
+    elif isinstance(expr, exp.Cast):
+        # Convert CAST(... AS ...) to PostgreSQL-style :: syntax
+        expr_str = _expression_to_asql(expr.this)
+        # Extract type name from 'to' field
+        to_type = expr.args.get("to")
+        if to_type:
+            if isinstance(to_type, exp.DataType):
+                # DataType.this is a Type enum, use .name to get the string
+                if hasattr(to_type.this, 'name'):
+                    type_name = to_type.this.name
+                elif isinstance(to_type.this, str):
+                    type_name = to_type.this
+                else:
+                    type_name = str(to_type.this)
+            elif isinstance(to_type, exp.Identifier):
+                type_name = to_type.this if isinstance(to_type.this, str) else str(to_type.this)
+            else:
+                type_name = str(to_type)
+            return f"{expr_str}::{type_name}"
+        # Fallback if type not found
+        return f"{expr_str}::UNKNOWN"
+    
     elif isinstance(expr, (exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
         return _aggregation_to_asql(expr)
     
-    elif isinstance(expr, exp.Function):
-        func_name = expr.sql_name()
-        args = ", ".join(_expression_to_asql(arg) for arg in expr.expressions)
+    elif isinstance(expr, exp.Coalesce):
+        # Convert COALESCE to || operator
+        # COALESCE(a, b, c) becomes a || b || c
+        args = [expr.this] + (expr.expressions if expr.expressions else [])
+        arg_strs = [_expression_to_asql(arg) for arg in args]
+        return " || ".join(arg_strs)
+    
+    elif isinstance(expr, exp.Anonymous):
+        # Generic function call (e.g., STRING_AGG, DATE_TRUNC, CAST, COALESCE, etc.)
+        func_name = expr.this if isinstance(expr.this, str) else str(expr.this)
+        func_name_upper = func_name.upper()
+        
+        # Check if it's COALESCE function call
+        if func_name_upper == "COALESCE":
+            # Convert COALESCE(a, b, c) to a || b || c
+            # Anonymous COALESCE might have first arg in expr.this or expr.expressions
+            args = []
+            if hasattr(expr, 'this') and expr.this:
+                args.append(expr.this)
+            if expr.expressions:
+                args.extend(expr.expressions)
+            # If no args found, try expressions only
+            if not args and expr.expressions:
+                args = expr.expressions
+            arg_strs = [_expression_to_asql(arg) for arg in args]
+            return " || ".join(arg_strs) if arg_strs else "COALESCE()"
+        
+        # Check if it's CAST function call (CAST(expr AS type))
+        # Note: SQLGlot usually parses CAST as exp.Cast, but some dialects might parse as Anonymous
+        if func_name_upper == "CAST":
+            # CAST expressions: CAST(expr AS type)
+            # SQLGlot might structure this differently when parsed as Anonymous
+            # Try to extract the expression and type
+            if expr.expressions and len(expr.expressions) >= 1:
+                cast_expr = expr.expressions[0]
+                cast_expr_str = _expression_to_asql(cast_expr)
+                type_name = "UNKNOWN"
+                
+                # Look for type in expressions (might be after AS keyword)
+                # SQLGlot might have: expressions = [expr, "AS", type] or [expr, type]
+                for i, e in enumerate(expr.expressions[1:], 1):
+                    # Skip "AS" keyword if present
+                    if isinstance(e, str) and e.upper() == "AS":
+                        continue
+                    # Found type
+                    if isinstance(e, (exp.Identifier, exp.DataType)):
+                        type_name = _expression_to_asql(e)
+                        break
+                    elif isinstance(e, exp.Expression):
+                        # Might be a type expression
+                        type_name = _expression_to_asql(e)
+                        break
+                
+                # Also check if there's a 'to' argument (like exp.Cast has)
+                if type_name == "UNKNOWN" and hasattr(expr, 'args') and 'to' in expr.args:
+                    to_type = expr.args['to']
+                    if isinstance(to_type, exp.DataType):
+                        if hasattr(to_type.this, 'name'):
+                            type_name = to_type.this.name
+                        else:
+                            type_name = str(to_type.this)
+                    elif isinstance(to_type, exp.Identifier):
+                        type_name = to_type.this if isinstance(to_type.this, str) else str(to_type.this)
+                    else:
+                        type_name = str(to_type)
+                
+                return f"{cast_expr_str}::{type_name}"
+        
+        # For other functions, just pass through
+        args = ", ".join(_expression_to_asql(arg) for arg in expr.expressions) if expr.expressions else ""
         return f"{func_name}({args})"
+    
+    elif hasattr(expr, 'sql_name') and hasattr(expr, 'expressions'):
+        # Try to handle as function if it has sql_name and expressions
+        try:
+            func_name = expr.sql_name()
+            args = ", ".join(_expression_to_asql(arg) for arg in expr.expressions) if expr.expressions else ""
+            return f"{func_name}({args})"
+        except Exception:
+            pass
     
     else:
         # Fallback: use SQL representation
@@ -401,12 +537,16 @@ def _expression_to_asql(expr: exp.Expression) -> str:
 def _aggregation_to_asql(expr: exp.Expression) -> str:
     """Convert an aggregation expression to ASQL."""
     if isinstance(expr, exp.Count):
+        # Check for DISTINCT keyword
+        distinct = getattr(expr, 'distinct', False) or expr.args.get('distinct', False)
         if expr.expressions:
             arg = expr.expressions[0]
             if isinstance(arg, exp.Star):
                 return "#"
             else:
                 col = _expression_to_asql(arg)
+                if distinct:
+                    return f"count(distinct {col})"
                 return f"count({col})"
         return "#"
     

@@ -48,9 +48,9 @@ function openInPlayground(blockId) {
     const compiledB64 = block.getAttribute('data-compiled');
     const compiled = JSON.parse(atob(compiledB64));
     
-    // Get current active dialect (or default to postgres)
+    // Get current active dialect (or default to asql)
     const activeTab = block.querySelector('.tab-btn.active');
-    const currentDialect = activeTab ? activeTab.getAttribute('data-dialect') : 'postgres';
+    const currentDialect = activeTab ? activeTab.getAttribute('data-dialect') : 'asql';
     
     // Get the current code (either ASQL or SQL)
     const codeElement = document.getElementById(`code-${blockId}`);
@@ -59,8 +59,8 @@ function openInPlayground(blockId) {
     // Determine from dialect
     const fromDialect = currentDialect === 'asql' ? 'ASQL' : currentDialect;
     
-    // Determine to dialect (default to postgres if ASQL, otherwise keep current)
-    const toDialect = currentDialect === 'asql' ? 'postgres' : currentDialect;
+    // Determine to dialect (default to bigquery if ASQL, otherwise keep current)
+    const toDialect = currentDialect === 'asql' ? 'bigquery' : currentDialect;
     
     // Encode the query
     const encodedQuery = encodeURIComponent(currentCode);
@@ -281,23 +281,12 @@ document.addEventListener('DOMContentLoaded', () => {
         
         blocks.forEach(block => {
             const blockId = block.getAttribute('data-block-id');
-            const { preferredDialect } = initDialectTracking();
             
             // Reorder tabs based on view counts
             reorderTabsOnLoad(blockId);
             
-            // Check if we're on the examples page - always default to asql there
-            const isExamplesPage = window.location.pathname.includes('/docs/examples');
-            
-            // Show preferred dialect or default to asql
-            // On examples page, always default to asql
-            const initialDialect = !isExamplesPage && preferredDialect && 
-                block.getAttribute('data-compiled') && 
-                JSON.parse(atob(block.getAttribute('data-compiled')))[preferredDialect]
-                ? preferredDialect 
-                : 'asql';
-            
-            showDialect(blockId, initialDialect);
+            // Always default to ASQL
+            showDialect(blockId, 'asql');
         });
     };
     
@@ -341,10 +330,9 @@ function reorderTabsOnLoad(blockId) {
     if (!tabsContainer) return;
     
     // Get current active dialect before rebuilding
-    // On examples page, always default to asql
-    const isExamplesPage = window.location.pathname.includes('/docs/examples');
+    // Always default to asql
     const activeTab = tabsContainer.querySelector('.tab-btn.active');
-    const activeDialect = isExamplesPage ? 'asql' : (activeTab ? activeTab.getAttribute('data-dialect') : 'asql');
+    const activeDialect = activeTab ? activeTab.getAttribute('data-dialect') : 'asql';
     
     // Clear and rebuild
     tabsContainer.innerHTML = '';

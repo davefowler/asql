@@ -4,23 +4,21 @@
 -- Repository: https://github.com/fivetran/dbt_shopify
 -- File: models/graphql/intermediate/base/int_shopify_gql__order_adjustment.sql
 
-{{ config(enabled=var('shopify_api', 'rest') == var('shopify_api_override','graphql')) }}
-
 with order_adjustment as (
 
     select *
-    from {{ ref('stg_shopify_gql__order_adjustment') }}
+    from order_adjustment
 ),
 
 refund as (
 
     select *
-    from {{ ref('stg_shopify_gql__refund') }}
+    from refund
 ),
 
 joined as (
 
-    select 
+    select
         order_adjustment.*,
         refund.order_id
 

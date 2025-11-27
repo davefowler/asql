@@ -7,7 +7,7 @@
 with ticket_comments as (
 
     select *
-    from {{ ref('int_zendesk__comments_enriched') }}
+    from ticket_comments
 ),
 
 comment_counts as (
@@ -56,5 +56,5 @@ final as (
     from comment_counts
 )
 
-select * 
+select *
 from final

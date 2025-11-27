@@ -7,22 +7,22 @@
 with contact as (
 
     select *
-    from {{ ref('stg_salesforce__contact') }}
-), 
+    from contact
+),
 
 account as (
 
     select *
-    from {{ ref('stg_salesforce__account') }}
+    from account
 ),
 
 salesforce_user as (
 
     select *
-    from {{ ref('stg_salesforce__user') }}
+    from salesforce_user
 )
 
-select 
+select
     contact.contact_id,
     contact.contact_name,
     contact.account_id,
@@ -60,12 +60,9 @@ select
     account.type as account_type
 
         --The below scripts allows for pass through columns.
-    {{ fivetran_utils.persist_pass_through_columns(pass_through_variable='salesforce__contact_pass_through_columns', identifier='contact') }}
-    {{ fivetran_utils.persist_pass_through_columns(pass_through_variable='salesforce__account_pass_through_columns', identifier='account') }}
-    {{ fivetran_utils.persist_pass_through_columns(pass_through_variable='salesforce__user_pass_through_columns', identifier='salesforce_user') }}
 
 from contact
-left join account 
+left join account
     on contact.account_id = account.account_id
 left join salesforce_user
     on contact.owner_id = salesforce_user.user_id

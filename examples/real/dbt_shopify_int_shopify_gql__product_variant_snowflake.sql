@@ -4,18 +4,16 @@
 -- Repository: https://github.com/fivetran/dbt_shopify
 -- File: models/graphql/intermediate/base/int_shopify_gql__product_variant.sql
 
-{{ config(enabled=var('shopify_api', 'rest') == var('shopify_api_override','graphql')) }}
-
 with product_variants as (
 
     select *
-    from {{ ref('stg_shopify_gql__product_variant') }}
+    from product_variants
 ),
 
 inventory_item as (
 
     select *
-    from {{ ref('stg_shopify_gql__inventory_item') }}
+    from inventory_item
 ),
 
 joined as (

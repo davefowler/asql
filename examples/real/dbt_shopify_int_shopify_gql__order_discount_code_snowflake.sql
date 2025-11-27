@@ -4,23 +4,21 @@
 -- Repository: https://github.com/fivetran/dbt_shopify
 -- File: models/graphql/intermediate/base/int_shopify_gql__order_discount_code.sql
 
-{{ config(enabled=var('shopify_api', 'rest') == var('shopify_api_override','graphql')) }}
-
 with order_discount_code as (
 
     select *
-    from {{ ref('stg_shopify_gql__order_discount_code') }}
+    from order_discount_code
 ),
 
 discount_application as (
 
     select *
-    from {{ ref('stg_shopify_gql__discount_application') }}
+    from discount_application
 ),
 
 joined as (
 
-    select 
+    select
         order_discount_code.*,
         discount_application.value_type as type,
         discount_application.value_amount,

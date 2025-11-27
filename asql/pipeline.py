@@ -163,7 +163,7 @@ def merge_steps(step1: PipelineStep, step2: PipelineStep) -> PipelineStep:
     if step2.limit:
         step1.limit = step2.limit
     
-    # STORE AS: step2's store_name replaces step1's (last STORE AS wins)
+    # STASH AS: step2's store_name replaces step1's (last STASH AS wins)
     if step2.store_name:
         step1.store_name = step2.store_name
     
@@ -176,7 +176,7 @@ def step_requires_separate_cte(step: PipelineStep) -> bool:
     
     A step needs a separate CTE if:
     - It has GROUP BY (aggregation changes the shape)
-    - It has STORE AS (explicit CTE name)
+    - It has STASH AS (explicit CTE name)
     
     Returns:
         True if step needs separate CTE, False otherwise
@@ -283,7 +283,7 @@ def build_cte_pipeline(steps: List[PipelineStep]) -> exp.Select:
     Build a CTE-based pipeline from a list of pipeline steps.
     
     Optimizes by merging consecutive steps that don't require separate CTEs.
-    A step requires a separate CTE if it has GROUP BY or STORE AS.
+    A step requires a separate CTE if it has GROUP BY or STASH AS.
     
     Args:
         steps: List of PipelineStep objects representing the pipeline
@@ -355,14 +355,14 @@ def build_cte_pipeline(steps: List[PipelineStep]) -> exp.Select:
         
         # Decide if we need to create a CTE for this step
         # We need a CTE if:
-        # 1. Step has STORE AS (explicit CTE name)
+        # 1. Step has STASH AS (explicit CTE name)
         # 2. Next step will reference this one AND this isn't a simple FROM (can be inlined)
         # Note: GROUP BY doesn't automatically require a CTE - only if it will be referenced
         is_simple_from = is_simple_from_step(step)
         will_be_referenced = i < len(merged_steps) - 1  # Not the last step
         is_last_step = i == len(merged_steps) - 1
         
-        # STORE AS always requires a CTE
+        # STASH AS always requires a CTE
         if step.store_name:
             step_name = step.store_name
             cte = exp.CTE(
@@ -372,6 +372,16 @@ def build_cte_pipeline(steps: List[PipelineStep]) -> exp.Select:
             ctes.append(cte)
             previous_step_name = step_name
             previous_step = None
+            
+            # If this is the last step with stash as, create final SELECT
+            if is_last_step:
+                final_select = exp.Select()
+                final_select.set("expressions", [exp.Star()])
+                final_select.args["from"] = exp.From(
+                    this=exp.Table(this=exp.Identifier(this=step_name))
+                )
+                final_select.args["with"] = exp.With(expressions=ctes)
+                return final_select
         elif will_be_referenced and not is_simple_from:
             # Next step will reference this one, and it's not a simple FROM (can't be inlined)
             # Create CTE for this step

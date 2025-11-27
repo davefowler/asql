@@ -7,33 +7,26 @@
 with opportunity as (
 
     select *
-    from {{ ref('stg_salesforce__opportunity') }}
+    from opportunity
 ),
 
 salesforce_user as (
 
     select *
-    from {{ ref('stg_salesforce__user') }}
-), 
+    from salesforce_user
+),
 
 -- If using user_role table, the following will be included, otherwise it will not.
-{% if var('salesforce__user_role_enabled', True) %}
-user_role as (
-
-    select *
-    from {{ ref('stg_salesforce__user_role') }}
-), 
-{% endif %}
 
 account as (
 
     select *
-    from {{ ref('stg_salesforce__account') }}
-),  
+    from account
+),
 
 add_fields as (
 
-    select 
+    select
         opportunity.*,
         account.account_number,
         account.account_source,
@@ -52,12 +45,6 @@ add_fields as (
         opportunity_manager.state as opportunity_manager_state,
 
         -- If using user_role table, the following will be included, otherwise it will not.
-        {% if var('salesforce__user_role_enabled', True) %}
-        user_role.user_role_name as opportunity_owner_position, 
-        user_role.developer_name as opportunity_owner_developer_name,
-        user_role.parent_role_id as opportunity_owner_parent_role_id,
-        user_role.rollup_description as opportunity_owner_rollup_description,
-        {% endif %}
 
         case
             when opportunity.is_won then 'Won'
@@ -75,28 +62,19 @@ add_fields as (
         case when is_closed_this_quarter then 1 else 0 end as closed_count_this_quarter
 
         --The below script allows for pass through columns.
-        {{ fivetran_utils.persist_pass_through_columns(pass_through_variable='salesforce__account_pass_through_columns', identifier='account') }}
-        {{ custom_persist_pass_through_columns(pass_through_variable='salesforce__user_pass_through_columns', identifier='opportunity_owner', append_string= '_owner') }}
-        {{ custom_persist_pass_through_columns(pass_through_variable='salesforce__user_pass_through_columns', identifier='opportunity_manager', append_string= '_manager') }}
 
         -- If using user_role table, the following will be included, otherwise it will not.
-        {% if var('salesforce__user_role_enabled', True) %}
-        {{ fivetran_utils.persist_pass_through_columns(pass_through_variable='salesforce__user_role_pass_through_columns', identifier='user_role') }}
-        {% endif %}
 
     from opportunity
-    left join account 
+    left join account
         on opportunity.account_id = account.account_id
-    left join salesforce_user as opportunity_owner 
+    left join salesforce_user as opportunity_owner
         on opportunity.owner_id = opportunity_owner.user_id
-    left join salesforce_user as opportunity_manager 
+    left join salesforce_user as opportunity_manager
         on opportunity_owner.manager_id = opportunity_manager.user_id
 
     -- If using user_role table, the following will be included, otherwise it will not.
-    {% if var('salesforce__user_role_enabled', True) %}
-    left join user_role 
-        on opportunity_owner.user_role_id = user_role.user_role_id
-    {% endif %}
+
 )
 
 select *

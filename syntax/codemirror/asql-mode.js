@@ -21,57 +21,18 @@
  *   </script>
  * 
  * Features:
- *   - Keywords: from, where, select, group by, sort, take, join, with, etc.
+ *   - Keywords: from, where, select, group by, sort, take, join, with, stash, etc.
  *   - Functions: sum, avg, count, min, max, date functions, string functions
- *   - Operators: ==, !=, <=, >=, <, >, +, -, *, /, %, |
+ *   - Operators: ==, !=, <=, >=, <, >, +, -, *, /, %, || (null coalescing), :: (type casting)
  *   - Strings: Single and double quoted strings
  *   - Numbers: Integers and floats
  *   - Comments: # to end of line
- *   - Special ASQL syntax: # (count shorthand), -column (descending sort)
- *   - Multi-word keywords: group by, not in, is null, is not null
+ *   - Special ASQL syntax: # (count shorthand), -column (descending sort), col::TYPE (type casting)
+ *   - Multi-word keywords: group by, not in, is null, is not null, stash as
  * 
- * @version 1.0.0
+ * @version 1.1.0
  * @license MIT
  */
-
-/**
- * ASQL Syntax Highlighting Mode for CodeMirror
- * 
- * This file provides syntax highlighting for ASQL (Analytic SQL) queries
- * in CodeMirror-based editors. It can be included in any web application
- * that uses CodeMirror.
- * 
- * Usage:
- *   1. Include CodeMirror library
- *   2. Include this file after CodeMirror
- *   3. Use mode: 'text/x-asql' or mode: 'asql' in CodeMirror options
- * 
- * Example:
- *   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
- *   <script src="syntax/codemirror/asql-mode.js"></script>
- *   <script>
- *     const editor = CodeMirror(document.getElementById('editor'), {
- *       mode: 'text/x-asql',
- *       lineNumbers: true
- *     });
- *   </script>
- * 
- * Features:
- *   - Keywords: from, where, select, group by, sort, take, join, with, etc.
- *   - Functions: sum, avg, count, min, max, date functions, string functions
- *   - Operators: ==, !=, <=, >=, <, >, +, -, *, /, %, |
- *   - Strings: Single and double quoted strings
- *   - Numbers: Integers and floats
- *   - Comments: # to end of line
- *   - Special ASQL syntax: # (count shorthand), -column (descending sort)
- *   - Multi-word keywords: group by, not in, is null, is not null
- * 
- * @version 1.0.0
- * @license MIT
- */
-
-(function() {
-"use strict";
 
 // Works with CodeMirror loaded via script tag or module system
 (function(mod) {
@@ -79,22 +40,48 @@
     mod(require("codemirror"));
   else if (typeof define == "function" && define.amd) // AMD
     define(["codemirror"], mod);
-  else // Plain browser env (CodeMirror must be loaded globally)
-    mod(typeof CodeMirror !== "undefined" ? CodeMirror : null);
+  else {
+    // Plain browser env - try immediately, then wait if needed
+    if (typeof CodeMirror !== "undefined" && CodeMirror.defineMode) {
+      // CodeMirror is ready, register immediately
+      mod(CodeMirror);
+    } else {
+      // CodeMirror not ready yet, wait for it
+      let attempts = 0;
+      const maxAttempts = 40; // Max 2 seconds
+      function waitForCodeMirror() {
+        attempts++;
+        if (typeof CodeMirror !== "undefined" && CodeMirror.defineMode) {
+          mod(CodeMirror);
+        } else if (attempts < maxAttempts) {
+          setTimeout(waitForCodeMirror, 50);
+        } else {
+          console.error("CodeMirror not available after waiting. ASQL mode not registered.");
+        }
+      }
+      waitForCodeMirror();
+    }
+  }
 })(function(CodeMirror) {
   if (!CodeMirror) {
-    console.error("CodeMirror must be loaded before asql-mode.js");
+    console.error("CodeMirror is not defined");
+    return;
+  }
+  
+  if (!CodeMirror.defineMode) {
+    console.error("CodeMirror.defineMode is not available. CodeMirror version:", CodeMirror.version);
     return;
   }
 
-CodeMirror.defineMode("asql", function(config, parserConfig) {
+  try {
+    CodeMirror.defineMode("asql", function(config, parserConfig) {
     // Keywords
     const keywords = {
         "from": true, "where": true, "select": true, "project": true,
         "group": true, "by": true, "sort": true, "order": true,
         "take": true, "limit": true, "join": true, "with": true,
         "let": true, "as": true, "on": true, "desc": true, "asc": true,
-        "descending": true, "ascending": true, "store": true,
+        "descending": true, "ascending": true, "store": true, "stash": true,
         "and": true, "or": true, "not": true, "is": true, "in": true,
         "if": true, "set": true
     };
@@ -145,12 +132,22 @@ CodeMirror.defineMode("asql", function(config, parserConfig) {
             return "operator";
         }
         
+        // Handle null coalescing operator (||)
+        if (stream.match(/^\|\|/)) {
+            return "operator";
+        }
+        
+        // Handle type casting operator (::)
+        if (stream.match(/^::/)) {
+            return "operator";
+        }
+        
         // Handle arithmetic operators
         if (stream.match(/^[+\-*/%]/)) {
             return "operator";
         }
         
-        // Handle pipeline operator
+        // Handle single pipeline operator (|)
         if (stream.match(/^\|/)) {
             return "operator";
         }
@@ -177,6 +174,11 @@ CodeMirror.defineMode("asql", function(config, parserConfig) {
         
         // Handle "group by" as a single keyword
         if (stream.match(/^group\s+by/i)) {
+            return "keyword";
+        }
+        
+        // Handle "stash as" as a single keyword
+        if (stream.match(/^stash\s+as/i)) {
             return "keyword";
         }
         
@@ -242,9 +244,11 @@ CodeMirror.defineMode("asql", function(config, parserConfig) {
 });
 
 // Register the mode with MIME type
-CodeMirror.defineMIME("text/x-asql", "asql");
+    CodeMirror.defineMIME("text/x-asql", "asql");
 
-});
-
+    console.log("ASQL mode registered successfully");
+  } catch (error) {
+    console.error("Error registering ASQL mode:", error);
+  }
 });
 

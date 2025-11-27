@@ -1,19 +1,19 @@
-"""Tests for store as CTE functionality in ASQL."""
+"""Tests for stash as CTE functionality in ASQL."""
 
 import pytest
 from asql import compile
 from asql.errors import ASQLSyntaxError
 
 
-class TestStoreAs:
-    """Test store as functionality for CTEs."""
+class TestStashAs:
+    """Test stash as functionality for CTEs."""
     
-    def test_simple_store_as(self) -> None:
-        """Test simple store as in pipeline."""
+    def test_simple_stash_as(self) -> None:
+        """Test simple stash as in pipeline."""
         asql = """
         from users
           where status == "active"
-          store as active_users
+          stash as active_users
         """
         sql = compile(asql)
         assert "WITH" in sql.upper()
@@ -22,13 +22,13 @@ class TestStoreAs:
         assert "SELECT" in sql.upper()
         assert "status" in sql.lower()
     
-    def test_store_as_with_group_by(self) -> None:
-        """Test store as with GROUP BY."""
+    def test_stash_as_with_group_by(self) -> None:
+        """Test stash as with GROUP BY."""
         asql = """
         from users
           where status == "active"
           group by country ( # as total_users )
-          store as by_country
+          stash as by_country
         """
         sql = compile(asql)
         assert "WITH" in sql.upper()
@@ -36,13 +36,13 @@ class TestStoreAs:
         assert "GROUP BY" in sql.upper()
         assert "country" in sql.lower()
     
-    def test_store_as_with_select(self) -> None:
-        """Test store as with SELECT."""
+    def test_stash_as_with_select(self) -> None:
+        """Test stash as with SELECT."""
         asql = """
         from users
           where status == "active"
           select name, email
-          store as active_users
+          stash as active_users
         """
         sql = compile(asql)
         assert "WITH" in sql.upper()
@@ -50,12 +50,12 @@ class TestStoreAs:
         assert "name" in sql.lower()
         assert "email" in sql.lower()
     
-    def test_store_as_continues_pipeline(self) -> None:
-        """Test that pipeline can continue after store as."""
+    def test_stash_as_continues_pipeline(self) -> None:
+        """Test that pipeline can continue after stash as."""
         asql = """
         from users
           where status == "active"
-          store as active_users
+          stash as active_users
           group by country ( # as total_users )
         """
         sql = compile(asql)
@@ -65,14 +65,14 @@ class TestStoreAs:
         # Should have multiple CTEs
         assert sql.upper().count("WITH") >= 1
     
-    def test_store_as_with_multiple_operations(self) -> None:
-        """Test store as with multiple operations before it."""
+    def test_stash_as_with_multiple_operations(self) -> None:
+        """Test stash as with multiple operations before it."""
         asql = """
         from sales
           where amount > 100
           group by region ( sum(amount) as revenue )
           select region, revenue
-          store as revenue_by_region
+          stash as revenue_by_region
         """
         sql = compile(asql)
         assert "WITH" in sql.upper()
@@ -81,21 +81,21 @@ class TestStoreAs:
         assert "region" in sql.lower()
 
 
-class TestStoreAsErrors:
-    """Test store as error handling."""
+class TestStashAsErrors:
+    """Test stash as error handling."""
     
-    def test_store_as_without_name(self) -> None:
-        """Test that store as without name raises error."""
+    def test_stash_as_without_name(self) -> None:
+        """Test that stash as without name raises error."""
         with pytest.raises(ASQLSyntaxError):
-            compile("from users store as")
+            compile("from users stash as")
     
-    def test_store_without_as(self) -> None:
-        """Test that store without as raises error."""
+    def test_stash_without_as(self) -> None:
+        """Test that stash without as raises error."""
         with pytest.raises(ASQLSyntaxError):
-            compile("from users store revenue")
+            compile("from users stash revenue")
     
-    def test_store_as_at_start(self) -> None:
-        """Test that store as cannot be at the start."""
+    def test_stash_as_at_start(self) -> None:
+        """Test that stash as cannot be at the start."""
         with pytest.raises(ASQLSyntaxError):
-            compile("store as revenue")
+            compile("stash as revenue")
 

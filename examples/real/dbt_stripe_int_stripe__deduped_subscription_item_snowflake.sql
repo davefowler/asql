@@ -4,10 +4,10 @@
 -- Repository: https://github.com/fivetran/dbt_stripe
 -- File: models/intermediate/int_stripe__deduped_subscription_item.sql
 
-with subscription_item as ( 
+with subscription_item as (
 
-    select * 
-    from {{ ref('stg_stripe__subscription_item') }}
+    select *
+    from subscription_item
 
 )
 
@@ -20,6 +20,6 @@ select
     source_relation,
     min(current_period_start) as current_period_start,
     max(current_period_end) as current_period_end
-        
+
 from subscription_item
 group by 1, 2

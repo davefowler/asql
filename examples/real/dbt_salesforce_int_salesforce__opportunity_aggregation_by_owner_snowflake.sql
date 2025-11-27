@@ -5,20 +5,20 @@
 -- File: models/salesforce/intermediate/int_salesforce__opportunity_aggregation_by_owner.sql
 
 with salesforce_opportunity_enhanced as (
-    
+
     select *
-    from {{ ref('salesforce__opportunity_enhanced') }}
-), 
+    from salesforce_opportunity_enhanced
+),
 
 salesforce_user as (
 
-    select * 
-    from {{ ref('stg_salesforce__user') }}
-), 
+    select *
+    from salesforce_user
+),
 
 booking_by_owner as (
 
-    select 
+    select
         opportunity_manager_id as b_manager_id,
         opportunity_owner_id as b_owner_id,
         round(sum(closed_amount_this_month)) as bookings_amount_closed_this_month,
@@ -33,11 +33,11 @@ booking_by_owner as (
     from salesforce_opportunity_enhanced
     where status = 'Won'
     group by 1, 2
-), 
+),
 
 lost_by_owner as (
 
-    select 
+    select
         opportunity_manager_id as l_manager_id,
         opportunity_owner_id as l_owner_id,
         round(sum(closed_amount_this_month)) as lost_amount_this_month,
@@ -49,11 +49,11 @@ lost_by_owner as (
     from salesforce_opportunity_enhanced
     where status = 'Lost'
     group by 1, 2
-), 
+),
 
 pipeline_by_owner as (
 
-    select 
+    select
         opportunity_manager_id as p_manager_id,
         opportunity_owner_id as p_owner_id,
         round(sum(created_amount_this_month)) as pipeline_created_amount_this_month,
@@ -73,16 +73,16 @@ pipeline_by_owner as (
     group by 1, 2
 )
 
-select 
+select
     salesforce_user.user_id as owner_id,
     coalesce(p_manager_id, b_manager_id, l_manager_id) as manager_id,
     booking_by_owner.*,
     lost_by_owner.*,
     pipeline_by_owner.*
 from salesforce_user
-left join booking_by_owner 
+left join booking_by_owner
     on booking_by_owner.b_owner_id = salesforce_user.user_id
-left join lost_by_owner 
+left join lost_by_owner
     on lost_by_owner.l_owner_id = salesforce_user.user_id
-left join pipeline_by_owner 
+left join pipeline_by_owner
     on pipeline_by_owner.p_owner_id = salesforce_user.user_id

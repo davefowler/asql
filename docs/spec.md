@@ -8,23 +8,11 @@
 
 <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 20px; margin: 20px 0; font-size: 16px; line-height: 1.6;">
 
-## ⚠️ Important Disclaimer
 
-**This language specification and implementation are a heavy work-in-progress (WIP).**
+⚠️ <b>This language specification and implementation are a heavy work-in-progress (WIP).</b>
 
-This project is in active development and contains many known issues, bugs, and incomplete features. The specification describes both implemented features and planned features, and not everything documented here is fully functional.
+This project is in active development and contains many known issues, bugs, and incomplete features.  Much of the specification is just brainstorming and prototyping.  Do not rely on this for anything yet. 
 
-**Please be aware:**
-- Many features may not work as documented
-- There are bugs and edge cases throughout the implementation
-- The API and syntax may change without notice
-- Some documented features may not be implemented yet
-- Error messages may be unclear or unhelpful
-- Performance has not been optimized
-
-**Use at your own risk.** This is experimental software intended for exploration and feedback, not production use.
-
-If you encounter issues or have feedback, please report them, but please understand that this is early-stage software with significant limitations.
 
 </div>
 
@@ -135,7 +123,9 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 ### 4.2 Logical Operators
 
 - `and`, `or`, `not` - logical operations
-- `&&`, `||` - alternative syntax (where `||` can also mean COALESCE)
+- `&&` - alternative syntax for `and`
+
+**Note**: `||` is **not** used for logical OR in ASQL. Use the `or` keyword instead. The `||` operator is reserved for COALESCE (see Section 4.6).
 
 ### 4.3 Arithmetic Operators
 
@@ -230,7 +220,49 @@ from users where phone matches "^\d{3}-\d{3}-\d{4}$"
 
 **Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim. Should be implemented after arithmetic operators and before advanced features.
 
-### 4.6 Conditional Expressions (CASE)
+### 4.6 COALESCE Operator (`||`)
+
+ASQL uses the `||` operator for COALESCE, providing a cleaner syntax than the function call. This is similar to JavaScript's nullish coalescing, but works with any falsy values (NULL, FALSE, empty strings, etc.).
+
+**Syntax:**
+```asql
+# Function form
+coalesce(column, default_value)
+
+# Operator form (preferred)
+column || default_value
+
+# Chained (multiple fallbacks)
+column || fallback1 || fallback2 || "default"
+```
+
+**Examples:**
+```asql
+# Handle NULL values
+from users select name || "Unknown" as display_name
+
+# Multiple fallbacks
+from products select price || sale_price || 0 as final_price
+
+# In WHERE clauses
+from users where not is_deleted || FALSE
+
+# With boolean logic
+from orders where status || "pending" == "completed"
+```
+
+**Why `||` for COALESCE?**
+- More concise than `coalesce()` function calls
+- Familiar to developers who use `||` for nullish coalescing in JavaScript/TypeScript
+- Chains naturally: `a || b || c` reads as "a, or b, or c"
+- Note: In ASQL, `||` is **not** used for logical OR (use `or` keyword instead) or string concatenation (use `concat()` function)
+
+**Precedence:**
+The `||` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`==`, `!=`, etc.). This means:
+- `not is_deleted || FALSE` parses as `NOT COALESCE(is_deleted, FALSE)` ✅
+- `status == "active" || "pending"` parses as `COALESCE(status == "active", "pending")` ✅
+
+### 4.7 Conditional Expressions (CASE)
 
 ASQL supports SQL's `CASE` statement with natural language alternatives:
 
@@ -259,7 +291,57 @@ select discount as if amount > 100 then amount * 0.1 else 0
 
 All three syntaxes compile to standard SQL `CASE` statements. Choose based on readability preference.
 
-### 4.7 Comments
+### 4.8 Type Casting (`::`)
+
+ASQL uses PostgreSQL-style double colon (`::`) syntax for type casting, which is more concise and readable than SQL's `CAST(... AS ...)` syntax.
+
+**Syntax:**
+```asql
+expression::type_name
+```
+
+**Examples:**
+```asql
+# Cast to timestamp
+from fields
+  select _fivetran_synced::TIMESTAMP as _fivetran_synced
+
+# Cast to date
+from events
+  select created_at::DATE as date_day
+
+# Cast to integer
+from products
+  select price::INT as price_int
+
+# Cast to string
+from users
+  select id::VARCHAR as user_id_str
+
+# Cast in WHERE clauses
+from orders
+  where created_at::DATE == "2024-01-01"
+```
+
+**Precedence:**
+The `::` operator has high precedence (same as function calls), so it binds tightly:
+- `amount::INT * 2` → `(amount::INT) * 2` ✅
+- `sum(amount)::FLOAT` → `(sum(amount))::FLOAT` ✅
+
+**Reverse Translation:**
+When converting SQL to ASQL, `CAST(... AS ...)` expressions are automatically converted to `::` syntax:
+- SQL: `CAST(_fivetran_synced AS TIMESTAMP)` → ASQL: `_fivetran_synced::TIMESTAMP`
+- SQL: `CAST(created_at AS DATE)` → ASQL: `created_at::DATE`
+
+**Supported Types:**
+All standard SQL types are supported, including:
+- Numeric: `INT`, `INTEGER`, `BIGINT`, `FLOAT`, `DOUBLE`, `DECIMAL`, `NUMERIC`
+- String: `VARCHAR`, `CHAR`, `TEXT`, `STRING`
+- Date/Time: `DATE`, `TIMESTAMP`, `TIMESTAMP_NTZ`, `TIME`
+- Boolean: `BOOLEAN`, `BOOL`
+- And dialect-specific types (e.g., Snowflake's `NUMBER`, BigQuery's `INT64`)
+
+### 4.9 Comments
 
 ASQL uses SQL-standard comment syntax:
 
@@ -869,7 +951,60 @@ from users
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally. CTEs are still available when you need to reuse a subquery multiple times.
 
-### 11.2 Nested Variables
+### 11.2 Stashing CTEs in Pipelines (`stash as`)
+
+Instead of defining CTEs at the top level with `set`, you can stash intermediate pipeline results directly within a pipeline using `stash as`. This keeps CTEs close to where they're used and makes chaining clearer. The key benefit is that you end with the name and use it right after, so your eyes don't have to jump around.
+
+**Basic usage (at the end):**
+```asql
+from users
+  where status == "active"
+  group by country ( # as total_users )
+  select country, total_users
+  stash as revenue
+
+from revenue
+  sort -total_users
+```
+
+**Using `stash as` in the middle of a pipeline:**
+```asql
+from users
+  where status == "active"
+  stash as active_users
+  group by country ( # as total_users )
+  sort -total_users
+```
+
+When `stash as` appears in the middle, it stashes everything before it as a CTE, then continues with the pipeline.
+
+**Multiple queries reusing a stashed CTE:**
+```asql
+from sales
+  where year(date) == 2025
+  group by region ( sum(amount) as revenue )
+  stash as use_this_later
+  sort -revenue
+  take 10;
+
+from use_this_later
+  where revenue > 1000
+  select region, revenue
+```
+
+**Benefits of `stash as`:**
+- ✅ **Proximity**: CTEs are defined where they're used, often right before they're referenced
+- ✅ **Clear chaining**: You can see the data flow clearly at the end of pipelines
+- ✅ **Reusability**: Multiple queries can reference the same stashed CTE
+- ✅ **Natural flow**: Fits naturally into the pipeline syntax
+- ✅ **Better readability**: You end with the name and use it right after, so your eyes don't have to jump around
+
+**When to use `stash as` vs `set`:**
+- Use `stash as` when you want to stash an intermediate result within a pipeline (can be in the middle or at the end)
+- Use `set` when you want to define a CTE at the top level before any queries
+- Both compile to SQL `WITH ... AS` CTEs
+
+### 11.3 Nested Variables
 
 ```asql
 set base = from users
@@ -884,9 +1019,9 @@ from by_country
 
 ---
 
-## 11. Functions
+## 12. Functions
 
-### 11.1 User-Defined Scalar Functions
+### 12.1 User-Defined Scalar Functions
 
 Functions in ASQL are similar to dbt macros or PostgreSQL functions, but simpler and more integrated:
 
@@ -947,7 +1082,7 @@ from users
   group by country ( avg(user_age) as avg_age )
 ```
 
-### 11.2 User-Defined Table Functions
+### 12.2 User-Defined Table Functions
 
 Table functions transform entire tables. These are implemented as drop-in replacements (macros) that expand inline:
 
@@ -963,7 +1098,7 @@ from sales
 
 **Implementation**: Table functions are expanded inline during compilation - they don't create actual database functions. The function body is substituted where the function is called, then the whole query is compiled to SQL.
 
-### 11.3 Built-in Functions
+### 12.3 Built-in Functions
 
 Standard SQL functions are available:
 
@@ -973,7 +1108,7 @@ Standard SQL functions are available:
 - `date_format()`, `year()`, `month()`, etc.
 - `years_between()`, `days_between()`, etc.
 
-### 11.4 Function Examples
+### 12.4 Function Examples
 
 ```asql
 func year(table) = DATE_FORMAT('%Y', table._mainDate)
@@ -984,7 +1119,7 @@ from users
 
 ---
 
-## 12. Models (Optional Metadata)
+## 13. Models (Optional Metadata)
 
 **Philosophy**: Ideally, ASQL doesn't create its own model format. It should:
 1. Use dbt's existing `schema.yml` files when available
@@ -1033,7 +1168,7 @@ from users
 
 ---
 
-## 13. Nested Results (Optional)
+## 14. Nested Results (Optional)
 
 Inspired by EdgeQL, support nested result shapes:
 
@@ -1049,7 +1184,7 @@ from countries
 
 ---
 
-## 14. Indentation & Multi-line Queries
+## 15. Indentation & Multi-line Queries
 
 ### 14.1 Indentation Rules
 
@@ -1076,7 +1211,7 @@ from users
 
 ---
 
-## 15. Capitalization & Naming
+## 16. Capitalization & Naming
 
 ### 15.1 Case-Safe Design
 
@@ -1160,7 +1295,7 @@ select users.id as user_id, orders.id as order_id
 
 ---
 
-## 16. Examples
+## 17. Examples
 
 ### Example 1: Simple Analytic Query
 
@@ -1296,7 +1431,7 @@ Avg Users.age by country
 
 ---
 
-## 17. Compilation & Transpilation
+## 18. Compilation & Transpilation
 
 ### 17.1 Compilation Process
 
@@ -1340,7 +1475,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 18. Implementation Roadmap
+## 19. Implementation Roadmap
 
 | Stage | Milestone | Description |
 |-------|-----------|-------------|
@@ -1352,7 +1487,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 19. Design Decisions & Rationale
+## 20. Design Decisions & Rationale
 
 ### 19.1 Why Remove SELECT?
 
@@ -1388,7 +1523,7 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ---
 
-## 20. Future Considerations
+## 21. Future Considerations
 
 - **Visual SQL Editor**: ASQL's structure could enable a great visual query builder whose base could also be a text editor/IDE. Get the best of visual and text-based exploration.
 - **dbt Integration**: Building ASQL into dbt out of the gate would make it immediately useful for the dbt community
@@ -1399,7 +1534,7 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ---
 
-## 21. Major Benefits of ASQL
+## 22. Major Benefits of ASQL
 
 ### 21.1 Reduced Need for CTEs and Nested Queries
 

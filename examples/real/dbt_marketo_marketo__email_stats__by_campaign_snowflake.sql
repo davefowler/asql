@@ -4,12 +4,10 @@
 -- Repository: https://github.com/fivetran/dbt_marketo
 -- File: models/intermediate/marketo__email_stats__by_campaign.sql
 
-{{ config(enabled=var('marketo__enable_campaigns', True)) }}
-
 with email_sends as (
 
     select *
-    from {{ ref('marketo__email_sends') }}
+    from email_sends
 
 ), aggregated as (
 
