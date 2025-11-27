@@ -1,30 +1,30 @@
 /* ASQL Documentation Styles */
 
-/* Override Material theme colors to use our red */
+/* Override Material theme colors to use our darker red */
 :root {
-    --md-primary-fg-color: #ff7b72;
-    --md-primary-fg-color--light: #ff9a94;
-    --md-primary-fg-color--dark: #ff5c50;
-    --md-accent-fg-color: #ff7b72;
+    --md-primary-fg-color: #d32f2f;
+    --md-primary-fg-color--light: #e57373;
+    --md-primary-fg-color--dark: #b71c1c;
+    --md-accent-fg-color: #d32f2f;
 }
 
 [data-md-color-scheme="default"] {
-    --md-primary-fg-color: #ff7b72;
-    --md-accent-fg-color: #ff7b72;
+    --md-primary-fg-color: #d32f2f;
+    --md-accent-fg-color: #d32f2f;
 }
 
 [data-md-color-scheme="slate"] {
-    --md-primary-fg-color: #ff7b72;
-    --md-accent-fg-color: #ff7b72;
+    --md-primary-fg-color: #d32f2f;
+    --md-accent-fg-color: #d32f2f;
 }
 
 /* MkDocs Material Theme Overrides */
 .md-sidebar {
-    background-color: #ff7b72 !important;
+    background-color: #d32f2f !important;
 }
 
 .md-sidebar--primary {
-    background-color: #ff7b72 !important;
+    background-color: #d32f2f !important;
 }
 
 .md-nav__link {
@@ -40,7 +40,7 @@
 }
 
 .md-header {
-    background-color: #ff7b72 !important;
+    background-color: #d32f2f !important;
 }
 
 .md-header__title {
@@ -58,11 +58,11 @@
 
 /* Inline code color */
 .md-typeset code {
-    color: #ff7b72 !important;
+    color: #d32f2f !important;
 }
 
 .md-typeset a code {
-    color: #ff7b72 !important;
+    color: #d32f2f !important;
 }
 
 /* Old Flask server styles (kept for backwards compatibility) */
@@ -86,7 +86,7 @@ body {
 
 .doc-nav {
     width: 250px;
-    background: #ff7b72;
+    background: #d32f2f;
     color: white;
     padding: 20px;
     position: fixed;
@@ -140,7 +140,7 @@ body {
     color: #1a1a1a;
     margin-bottom: 24px;
     padding-bottom: 12px;
-    border-bottom: 2px solid #ff7b72;
+    border-bottom: 2px solid #d32f2f;
     font-size: 32px;
     font-weight: 600;
     letter-spacing: -0.5px;
@@ -174,7 +174,7 @@ body {
     border-radius: 4px;
     font-family: 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
     font-size: 0.9em;
-    color: #ff7b72;
+    color: #d32f2f;
 }
 
 /* ASQL Code Block with Tabs */
@@ -213,8 +213,8 @@ body {
 }
 
 .tab-btn.active {
-    color: #ff7b72;
-    border-bottom-color: #ff7b72;
+    color: #d32f2f;
+    border-bottom-color: #d32f2f;
     background: white;
     font-weight: 500;
 }
@@ -243,15 +243,15 @@ body {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 6px;
-    color: #ff7b72;
+    color: #d32f2f;
     text-decoration: none;
     transition: all 0.2s;
     cursor: pointer;
 }
 
 .play-button:hover {
-    background: rgba(255, 123, 114, 0.2);
-    border-color: #ff7b72;
+    background: rgba(211, 47, 47, 0.2);
+    border-color: #d32f2f;
     transform: scale(1.05);
 }
 
