@@ -1,7 +1,7 @@
-site_name: ASQL Documentation
-site_description: A modern, pipeline-based query language that transpiles to SQL
-site_author: ASQL Contributors
-site_url: https://asql.dev
+site_name: Analytic SQL
+site_description: A modern, pipeline-based query language designed for analytics
+site_author: Analytic SQL Contributors
+site_url: https://analyticsql.com
 
 # Repository
 repo_name: asql
@@ -9,7 +9,7 @@ repo_url: https://github.com/davefowler/asql
 edit_uri: edit/main/docs/
 
 # Copyright
-copyright: Copyright &copy; 2025 ASQL Contributors
+copyright: Copyright &copy; 2025 Analytic SQL Contributors
 
 # Theme
 theme:
@@ -17,15 +17,15 @@ theme:
   palette:
     # Light mode
     - scheme: default
-      primary: green
-      accent: green
+      primary: indigo
+      accent: indigo
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     # Dark mode
     - scheme: slate
-      primary: green
-      accent: green
+      primary: indigo
+      accent: indigo
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -77,15 +77,9 @@ plugins:
 
 # Navigation
 nav:
-  - Home: index.md
-  - Getting Started:
-    - getting-started.md
-    - quick-start.md
-  - Documentation:
-    - examples.md
-    - spec.md
-    - architecture.md
-  - Project Info:
-    - status.md
-    - interactive-playground.md
+  - Language Specification: spec.md
+  - Syntax: QUICK_START.md
+  - Examples: EXAMPLES.md
+  - Integrating: INTEGRATING.md
+  - Architecture: architecture.md
 
