@@ -7,11 +7,11 @@
 with charge as (
 
     select *
-    from {{ ref('stg_stripe__charge') }}
+    from charge
 
 )
 
-select 
+select
   balance_transaction_id,
   created_at,
   customer_id,

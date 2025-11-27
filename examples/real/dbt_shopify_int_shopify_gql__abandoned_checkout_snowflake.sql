@@ -4,23 +4,21 @@
 -- Repository: https://github.com/fivetran/dbt_shopify
 -- File: models/graphql/intermediate/base/int_shopify_gql__abandoned_checkout.sql
 
-{{ config(enabled=(var('shopify_gql_using_abandoned_checkout', True) and var('shopify_api', 'rest') == var('shopify_api_override','graphql'))) }}
-
 with abandoned_checkout as (
 
     select *
-    from {{ ref('stg_shopify_gql__abandoned_checkout') }}
+    from abandoned_checkout
 ),
 
 customer as (
 
     select *
-    from {{ ref('stg_shopify_gql__customer') }}
+    from customer
 ),
 
 add_customer_email as (
 
-    select 
+    select
         abandoned_checkout.*,
         customer.email
     from abandoned_checkout

@@ -63,8 +63,12 @@ def strip_jinja_templates(sql_content: str) -> str:
     
     lines = sql_content.split('\n')
     result_lines = []
+    prev_line_was_cte_end = False  # Track if previous line ended a CTE
     
-    for line in lines:
+    for i, line in enumerate(lines):
+        original_line = line
+        line_has_macro = bool(re.search(r'\{\{|%\}', line))
+        
         # Skip lines that are entirely config blocks or 404 errors
         if re.search(r'^\s*\{\{\s*config\s*\(', line, re.IGNORECASE):
             continue
@@ -146,10 +150,10 @@ def strip_jinja_templates(sql_content: str) -> str:
             flags=re.IGNORECASE
         )
         
-        # Remove complex macros like {{ google_ads_persist_pass_through_columns(...) }}
-        # These are typically entire lines that should be removed
+        # Check if this line contains a macro that should be removed entirely
+        should_skip_line = False
         if re.search(r'\{\{\s*\w+_persist_pass_through_columns\s*\(', line, re.IGNORECASE):
-            continue
+            should_skip_line = True
         
         # Replace {{ var('name', default) }} with default value or remove
         def replace_var(match):
@@ -170,7 +174,7 @@ def strip_jinja_templates(sql_content: str) -> str:
         
         # Remove any remaining complex macros (entire lines that are just macros)
         if re.match(r'^\s*\{%\s*set\s+.*%\}\s*$', line):
-            continue
+            should_skip_line = True
         
         # Check if line is entirely a macro before processing
         line_before = line
@@ -180,16 +184,93 @@ def strip_jinja_templates(sql_content: str) -> str:
         # Remove any remaining {% ... %} blocks (catch-all)
         line = re.sub(r'\{%[^%]*%\}', '', line)
         
+        # Check if this line ends a CTE (has closing paren and possibly comma)
+        line_stripped = line.strip()
+        is_cte_end = bool(re.match(r'^\s*\)\s*,?\s*$', line_stripped))
+        
         # If the line was entirely a macro and is now empty/whitespace, skip it
+        # BUT preserve commas if this is a CTE end
         if not line.strip() and re.search(r'\{\{|%\}', line_before):
+            if should_skip_line:
+                # If we're skipping a line that had a macro, check if previous line was CTE end
+                # and next line starts a new CTE - we need to add a comma
+                if prev_line_was_cte_end and i + 1 < len(lines):
+                    next_line = lines[i + 1].strip()
+                    if next_line and not next_line.startswith('--') and not re.search(r'\{\{|%\}', next_line):
+                        # Next line starts a new CTE, add comma to previous line
+                        if result_lines:
+                            result_lines[-1] = result_lines[-1].rstrip().rstrip(',') + ','
+                continue
+        
+        # If we're skipping a line with a macro, but it had a comma, preserve it
+        if should_skip_line:
+            # Check if next non-empty line starts a new CTE
+            if i + 1 < len(lines):
+                for j in range(i + 1, len(lines)):
+                    next_line = lines[j].strip()
+                    if not next_line or next_line.startswith('--'):
+                        continue
+                    if re.search(r'\{\{|%\}', next_line):
+                        break
+                    # Check if it starts a new CTE (identifier followed by "as (")
+                    if re.match(r'^\w+\s+as\s*\(', next_line, re.IGNORECASE):
+                        # Previous CTE needs a comma
+                        if result_lines and prev_line_was_cte_end:
+                            result_lines[-1] = result_lines[-1].rstrip().rstrip(',') + ','
+                    break
             continue
         
-        # Clean up trailing commas that might be left after macro removal
-        line = re.sub(r',\s*$', '', line)
+        # Don't remove trailing commas - they're needed for SQL syntax
+        # Only clean up if the line is empty after macro removal
         
         # Only add non-empty lines
         if line.strip():
             result_lines.append(line)
+            prev_line_was_cte_end = is_cte_end
+        else:
+            prev_line_was_cte_end = False
+    
+    # Post-process: Fix missing commas in SELECT statements and CTEs
+    result = '\n'.join(result_lines)
+    
+    # Fix missing commas between SELECT columns (add comma if line ends with identifier and next line starts with identifier)
+    fixed_lines = []
+    lines = result.split('\n')
+    in_select = False
+    
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        
+        # Detect SELECT statement start
+        if re.match(r'^\s*select\s+', stripped, re.IGNORECASE):
+            in_select = True
+            fixed_lines.append(line)
+            continue
+        
+        # Detect end of SELECT (FROM, GROUP BY, etc.)
+        if in_select and re.match(r'^\s*(from|group\s+by|order\s+by|having|where)\s+', stripped, re.IGNORECASE):
+            in_select = False
+            fixed_lines.append(line)
+            continue
+        
+        # If we're in a SELECT and this line has a column but no comma
+        if in_select and stripped and not stripped.startswith('--'):
+            # Check if this looks like a column (has identifier or function call)
+            if re.match(r'^\s*[\w\.]+\s*', stripped) or re.match(r'^\s*\w+\s*\(', stripped):
+                # Check if next line also looks like a column
+                if i + 1 < len(lines):
+                    next_stripped = lines[i + 1].strip()
+                    if next_stripped and not next_stripped.startswith('--'):
+                        # Check if next line is a column (not FROM, GROUP BY, etc.)
+                        if not re.match(r'^\s*(from|group\s+by|order\s+by|having|where)\s+', next_stripped, re.IGNORECASE):
+                            if re.match(r'^\s*[\w\.]+\s*', next_stripped) or re.match(r'^\s*\w+\s*\(', next_stripped):
+                                # Current line needs a comma if it doesn't have one
+                                if not stripped.rstrip().endswith(','):
+                                    line = line.rstrip() + ','
+        
+        fixed_lines.append(line)
+    
+    result = '\n'.join(fixed_lines)
     
     result = '\n'.join(result_lines)
     
@@ -646,8 +727,8 @@ PLAYGROUND_HTML = """
                     <option value="">SQL (ANSI)</option>
                     <option value="postgres">PostgreSQL</option>
                     <option value="mysql">MySQL</option>
-                    <option value="bigquery" selected>BigQuery</option>
-                    <option value="snowflake">Snowflake</option>
+                    <option value="bigquery">BigQuery</option>
+                    <option value="snowflake" selected>Snowflake</option>
                     <option value="redshift">Redshift</option>
                     <option value="spark">Spark</option>
                 </select>
@@ -692,21 +773,7 @@ PLAYGROUND_HTML = """
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
-    <script>
-        // Load ASQL mode with error handling - don't block if it fails
-        (function() {
-            try {
-                const script = document.createElement('script');
-                script.src = '/static/syntax/codemirror/asql-mode.js';
-                script.onerror = function() {
-                    console.warn('Failed to load ASQL syntax mode, using SQL mode as fallback');
-                };
-                document.head.appendChild(script);
-            } catch (e) {
-                console.warn('Error loading ASQL syntax mode:', e);
-            }
-        })();
-    </script>
+    <script src="/static/syntax/codemirror/asql-mode.js"></script>
     <script>
         // Detect if embedded in docs
         const isEmbedded = window.ASQL_EMBEDDED || (window.parent !== window && window.parent.location.hostname === window.location.hostname);
@@ -952,16 +1019,65 @@ take 25`
         // Wait for DOM and ensure ASQL mode is loaded
         document.addEventListener('DOMContentLoaded', function() {
             // Verify ASQL mode is available (but don't block if it's not)
-            try {
-                if (!CodeMirror.modes['asql']) {
-                    console.warn('ASQL mode not loaded! Check that /static/syntax/codemirror/asql-mode.js is accessible.');
-                    // Fallback to SQL mode if ASQL mode isn't available
-                    console.log('Falling back to SQL syntax highlighting');
+            // Wait a bit for the script to load if it hasn't yet
+            let modeCheckAttempts = 0;
+            const maxModeCheckAttempts = 20; // Max 2 seconds wait
+            
+            function checkASQLMode() {
+                try {
+                    // Check if CodeMirror is available
+                    if (typeof CodeMirror === 'undefined') {
+                        modeCheckAttempts++;
+                        if (modeCheckAttempts < maxModeCheckAttempts) {
+                            setTimeout(checkASQLMode, 100);
+                            return;
+                        }
+                        console.warn('CodeMirror not loaded yet');
+                        initializeEditors();
+                        return;
+                    }
+                    
+                    // Check if ASQL mode is registered (check both ways)
+                    const modeExists = CodeMirror.modes && CodeMirror.modes['asql'];
+                    const mimeExists = CodeMirror.mimeModes && CodeMirror.mimeModes['text/x-asql'];
+                    
+                    if (!modeExists && !mimeExists) {
+                        modeCheckAttempts++;
+                        if (modeCheckAttempts < maxModeCheckAttempts) {
+                            // Try again after a short delay if mode isn't loaded yet
+                            setTimeout(checkASQLMode, 100);
+                            return;
+                        } else {
+                            console.warn('ASQL mode not loaded after waiting. Using SQL mode as fallback.');
+                            console.log('Available modes:', Object.keys(CodeMirror.modes || {}));
+                        }
+                    } else {
+                        console.log('ASQL mode loaded successfully');
+                    }
+                } catch (e) {
+                    console.warn('Error checking ASQL mode:', e);
                 }
-            } catch (e) {
-                console.warn('Error checking ASQL mode:', e);
+                initializeEditors();
+                
+                // After editors are initialized, ensure modes are set correctly
+                // This handles the case where editors were initialized before mode was registered
+                setTimeout(function() {
+                    if (typeof inputEditor !== 'undefined' && inputEditor) {
+                        const fromDialect = document.getElementById('from-dialect').value;
+                        if (fromDialect === 'asql' && CodeMirror.modes && CodeMirror.modes['asql']) {
+                            inputEditor.setOption('mode', 'text/x-asql');
+                        }
+                    }
+                    if (typeof outputEditor !== 'undefined' && outputEditor) {
+                        const toDialect = document.getElementById('to-dialect').value;
+                        if (toDialect === 'asql' && CodeMirror.modes && CodeMirror.modes['asql']) {
+                            outputEditor.setOption('mode', 'text/x-asql');
+                        }
+                    }
+                }, 100);
             }
             
+            function initializeEditors() {
             // Read URL parameters
             const urlParams = new URLSearchParams(window.location.search);
             const d_f = urlParams.get('d_f') || 'asql';  // from dialect
@@ -969,28 +1085,29 @@ take 25`
             const sql_f = urlParams.get('sql_f') || '';  // from SQL/ASQL
             const sql_t = urlParams.get('sql_t') || '';  // to SQL (optional)
             
-            // Set default query if no URL params
-            const defaultQuery = `from users
-where status == "active"
-group by country ( # as total_users )
-sort -total_users
-take 10`;
+            // Set default query if no URL params (blank by default)
+            const defaultQuery = '';
             
             const initialInput = sql_f ? decodeURIComponent(sql_f) : defaultQuery;
             const initialOutput = sql_t ? decodeURIComponent(sql_t) : '';
             
-            // Set dialect selects
+            // Set dialect selects (defaults: from=asql, to=snowflake)
             if (d_f) {
                 document.getElementById('from-dialect').value = d_f.toLowerCase();
+            } else {
+                document.getElementById('from-dialect').value = 'asql';
             }
             if (d_t) {
                 document.getElementById('to-dialect').value = d_t.toLowerCase();
+            } else {
+                document.getElementById('to-dialect').value = 'snowflake';
             }
             
             // Initialize CodeMirror editors
+            const fromDialectValue = d_f ? d_f.toLowerCase() : 'asql';
             inputEditor = CodeMirror(document.getElementById('input-editor'), {
                 value: initialInput,
-                mode: d_f.toLowerCase() === 'asql' ? 'text/x-asql' : 'text/x-sql',
+                mode: fromDialectValue === 'asql' ? 'text/x-asql' : 'text/x-sql',
                 lineNumbers: true,
                 matchBrackets: true,
                 autoCloseBrackets: true,
@@ -1037,6 +1154,48 @@ take 10`;
                 console.error('Error getting current mode:', error);
                 return 'asql-to-sql'; // Default fallback
             }
+        }
+        
+        // Update URL with current state
+        function updateURL() {
+            if (!inputEditor) return;
+            
+            const fromDialect = document.getElementById('from-dialect').value || 'asql';
+            const toDialect = document.getElementById('to-dialect').value || '';
+            const inputQuery = inputEditor.getValue();
+            const outputQuery = outputEditor ? outputEditor.getValue() : '';
+            
+            const params = new URLSearchParams();
+            
+            // Set from dialect (uppercase for ASQL, lowercase for others)
+            if (fromDialect === 'asql') {
+                params.set('d_f', 'ASQL');
+            } else if (fromDialect) {
+                params.set('d_f', fromDialect);
+            }
+            
+            // Set to dialect
+            if (toDialect) {
+                if (toDialect === 'asql') {
+                    params.set('d_t', 'ASQL');
+                } else {
+                    params.set('d_t', toDialect);
+                }
+            }
+            
+            // Set from SQL/ASQL query
+            if (inputQuery && inputQuery.trim()) {
+                params.set('sql_f', encodeURIComponent(inputQuery));
+            }
+            
+            // Set to SQL query (optional, only if we have output)
+            if (outputQuery && outputQuery.trim()) {
+                params.set('sql_t', encodeURIComponent(outputQuery));
+            }
+            
+            // Update URL without reloading page
+            const newURL = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+            window.history.pushState({}, '', newURL);
         }
         
         function ensureFromNotPostgresWhenToEmpty() {
@@ -1099,12 +1258,14 @@ take 10`;
                 ensureFromNotPostgresWhenToEmpty();
                 updateUITitles();
                 translateQuery();
+                updateURL();
             });
             
             document.getElementById('to-dialect').addEventListener('change', () => {
                 ensureFromNotPostgresWhenToEmpty();
                 updateUITitles();
                 translateQuery();
+                updateURL();
             });
         });
         
@@ -1169,6 +1330,10 @@ take 10`;
                             }
                             inputEditor.setValue(example.query);
                             translateQuery();
+                            // Update URL after a short delay to allow translation to complete
+                            setTimeout(() => {
+                                updateURL();
+                            }, 1000);
                         };
                         examplesDiv.appendChild(btn);
                         });
@@ -1216,6 +1381,10 @@ take 10`;
                             }
                             inputEditor.setValue(example.query);
                             translateQuery();
+                            // Update URL after a short delay to allow translation to complete
+                            setTimeout(() => {
+                                updateURL();
+                            }, 1000);
                         };
                         pipelineExamplesDiv.appendChild(btn);
                         });
@@ -1253,6 +1422,10 @@ take 10`;
                                 document.getElementById('from-dialect').value = example.dialect || '';
                                 updateUITitles();
                                 translateQuery();
+                                // Update URL after a short delay to allow translation to complete
+                                setTimeout(() => {
+                                    updateURL();
+                                }, 1000);
                             };
                             examplesDiv.appendChild(btn);
                         });
@@ -1385,8 +1558,10 @@ take 10`;
                         errorDiv.textContent = data.error;
                         errorDiv.className = 'error';
                         errorDiv.style.display = 'block';
-                    } else if (data.sql) {
+                    } else                     if (data.sql) {
                         outputEditor.setValue(data.sql);
+                        // Update URL after successful translation
+                        updateURL();
                     } else {
                         errorDiv.textContent = 'Unexpected response format: ' + JSON.stringify(data);
                         errorDiv.className = 'error';
@@ -1432,6 +1607,8 @@ take 10`;
                         errorDiv.style.display = 'block';
                     } else {
                         outputEditor.setValue(data.asql);
+                        // Update URL after successful translation
+                        updateURL();
                     }
                 } else if (currentMode === 'sql-to-sql') {
                     // SQL to SQL (dialect conversion)
@@ -1493,6 +1670,8 @@ take 10`;
                         errorDiv.style.display = 'block';
                     } else {
                         outputEditor.setValue(compileData.sql);
+                        // Update URL after successful translation
+                        updateURL();
                     }
                 } else {
                     // asql-to-asql (no-op or copy)
@@ -1528,9 +1707,13 @@ take 10`;
         
             // Auto-translate on change (debounced)
             let translateTimeout;
+            let urlUpdateTimeout;
             inputEditor.on('change', () => {
                 clearTimeout(translateTimeout);
                 translateTimeout = setTimeout(translateQuery, 500);
+                // Update URL on input change (debounced)
+                clearTimeout(urlUpdateTimeout);
+                urlUpdateTimeout = setTimeout(updateURL, 1000);
             });
             
             // Auto-detect dialect when SQL is pasted
@@ -1568,6 +1751,10 @@ take 10`;
                     console.error('Failed to load examples:', e2);
                 }
             }
+            } // end initializeEditors
+            
+            // Start checking for ASQL mode and initialize editors when ready
+            checkASQLMode();
         });
     </script>
 </body>
@@ -1615,9 +1802,21 @@ def api_reverse_compile():
         return jsonify({'asql': asql})
         
     except ASQLCompilationError as e:
-        return jsonify({'error': f'Compilation Error: {str(e)}'})
+        error_msg = str(e)
+        # Clean up error messages - remove ANSI escape codes
+        error_msg = re.sub(r'\x1b\[[0-9;]*m', '', error_msg)
+        # Truncate very long error messages
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        return jsonify({'error': f'Compilation Error: {error_msg}'})
     except Exception as e:
-        return jsonify({'error': f'Error: {str(e)}'})
+        error_msg = str(e)
+        # Clean up error messages - remove ANSI escape codes
+        error_msg = re.sub(r'\x1b\[[0-9;]*m', '', error_msg)
+        # Truncate very long error messages
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        return jsonify({'error': f'Error: {error_msg}'})
 
 @app.route('/api/detect-dialect', methods=['POST'])
 def api_detect_dialect():

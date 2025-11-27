@@ -5,36 +5,26 @@
 -- File: models/salesforce/salesforce__manager_performance.sql
 
 with opportunity_aggregation_by_owner as (
-    
+
     select *
-    from {{ ref('int_salesforce__opportunity_aggregation_by_owner') }}
-), 
+    from opportunity_aggregation_by_owner
+),
 
 -- If using user_role table, the following will be included, otherwise it will not.
-{% if var('salesforce__user_role_enabled', True) %}
-user_role as (
-
-    select *
-    from {{ ref('stg_salesforce__user_role') }}
-),
-{% endif %}
 
 salesforce_user as (
 
     select *
-    from {{ ref('stg_salesforce__user') }}
+    from salesforce_user
 )
 
-select 
+select
     coalesce(manager.user_id, 'No Manager Assigned') as manager_id,
     coalesce(manager.user_name, 'No Manager Assigned') as manager_name,
     manager.city as manager_city,
     manager.state as manager_state,
 
     -- If using user_role table, the following will be included, otherwise it will not.
-    {% if var('salesforce__user_role_enabled', True) %}
-    user_role.user_role_name as manager_position,
-    {% endif %}
 
     count(distinct owner_id) as number_of_direct_reports,
     coalesce(sum(bookings_amount_closed_this_month), 0) as bookings_amount_closed_this_month,
@@ -60,7 +50,7 @@ select
     coalesce(sum(total_pipeline_amount), 0) as total_pipeline_amount,
     coalesce(sum(total_pipeline_forecast_amount), 0) as total_pipeline_forecast_amount,
     coalesce(max(largest_deal_in_pipeline), 0) as largest_deal_in_pipeline,
-    round(case 
+    round(case
         when sum(bookings_amount_closed_this_month + lost_amount_this_month) > 0 then
         sum(bookings_amount_closed_this_month) / sum(bookings_amount_closed_this_month + lost_amount_this_month) * 100
         else 0
@@ -81,15 +71,5 @@ left join salesforce_user as manager
     on manager.user_id = opportunity_aggregation_by_owner.manager_id
 
 -- If using user_role table, the following will be included, otherwise it will not.
-{% if var('salesforce__user_role_enabled', True) %}
-left join user_role
-    on manager.user_role_id = user_role.user_role_id
-
-group by 1, 2, 3, 4, 5
-
-{% else %}
-group by 1, 2, 3, 4
-
-{% endif %}
 
 having count(distinct owner_id) > 0

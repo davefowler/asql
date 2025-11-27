@@ -7,7 +7,7 @@
 with activity as (
 
     select *
-    from {{ ref('stg_marketo__activity_click_email') }}
+    from activity
 
 ), aggregate as (
 
@@ -20,6 +20,5 @@ with activity as (
 
 )
 
-select * 
+select *
 from aggregate
-

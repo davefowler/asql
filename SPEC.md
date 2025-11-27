@@ -95,7 +95,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -updated_at` (descending column) |
 | `take` | Limit rows | `LIMIT` | `take 10` |
 | `with` | Define variable/fragment (CTE) | `WITH ... AS` | `with active = from users \| where is_active` or `with active as from users \| where is_active` |
-| `store as` | Store pipeline result as named CTE | `WITH ... AS` | `from users \| where is_active \| store as active_users` |
+| `stash as` | Stash pipeline result as named CTE | `WITH ... AS` | `from users \| where is_active \| stash as active_users` |
 
 ---
 
@@ -112,7 +112,9 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 ### 4.2 Logical Operators
 
 - `and`, `or`, `not` - logical operations
-- `&&`, `||` - alternative syntax (where `||` can also mean COALESCE)
+- `&&` - alternative syntax for `and`
+
+**Note**: `||` is **not** used for logical OR in ASQL. Use the `or` keyword instead. The `||` operator is reserved for COALESCE (see Section 4.6).
 
 ### 4.3 Arithmetic Operators
 
@@ -207,7 +209,49 @@ from users where phone matches "^\d{3}-\d{3}-\d{4}$"
 
 **Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim. Should be implemented after arithmetic operators and before advanced features.
 
-### 4.6 Conditional Expressions (CASE)
+### 4.6 COALESCE Operator (`||`)
+
+ASQL uses the `||` operator for COALESCE, providing a cleaner syntax than the function call. This is similar to JavaScript's nullish coalescing, but works with any falsy values (NULL, FALSE, empty strings, etc.).
+
+**Syntax:**
+```asql
+# Function form
+coalesce(column, default_value)
+
+# Operator form (preferred)
+column || default_value
+
+# Chained (multiple fallbacks)
+column || fallback1 || fallback2 || "default"
+```
+
+**Examples:**
+```asql
+# Handle NULL values
+from users select name || "Unknown" as display_name
+
+# Multiple fallbacks
+from products select price || sale_price || 0 as final_price
+
+# In WHERE clauses
+from users where not is_deleted || FALSE
+
+# With boolean logic
+from orders where status || "pending" == "completed"
+```
+
+**Why `||` for COALESCE?**
+- More concise than `coalesce()` function calls
+- Familiar to developers who use `||` for nullish coalescing in JavaScript/TypeScript
+- Chains naturally: `a || b || c` reads as "a, or b, or c"
+- Note: In ASQL, `||` is **not** used for logical OR (use `or` keyword instead) or string concatenation (use `concat()` function)
+
+**Precedence:**
+The `||` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`==`, `!=`, etc.). This means:
+- `not is_deleted || FALSE` parses as `NOT COALESCE(is_deleted, FALSE)` ✅
+- `status == "active" || "pending"` parses as `COALESCE(status == "active", "pending")` ✅
+
+### 4.7 Conditional Expressions (CASE)
 
 ASQL supports SQL's `CASE` statement with natural language alternatives:
 
@@ -876,9 +920,9 @@ from by_country
   sort -total_users
 ```
 
-### 11.3 Storing CTEs in Pipelines (`store as`)
+### 11.3 Stashing CTEs in Pipelines (`stash as`)
 
-Instead of defining CTEs at the top level with `with`, you can store intermediate pipeline results directly within a pipeline using `store as`. This keeps CTEs close to where they're used and makes chaining clearer:
+Instead of defining CTEs at the top level with `with`, you can stash intermediate pipeline results directly within a pipeline using `stash as`. This keeps CTEs close to where they're used and makes chaining clearer. The key benefit is that you end with the name and use it right after, so your eyes don't have to jump around.
 
 **Basic usage:**
 ```asql
@@ -886,18 +930,18 @@ from users
   where status == "active"
   group by country ( # as total_users )
   select country, total_users
-  store as revenue
+  stash as revenue
 
 from revenue
   sort -total_users
 ```
 
-**Multiple queries reusing a stored CTE:**
+**Multiple queries reusing a stashed CTE:**
 ```asql
 from sales
   where year(date) == 2025
   group by region ( sum(amount) as revenue )
-  store as use_this_later
+  stash as use_this_later
   sort -revenue
   take 10;
 
@@ -906,14 +950,26 @@ from use_this_later
   select region, revenue
 ```
 
-**Benefits of `store as`:**
+**Using `stash as` in the middle of a pipeline:**
+```asql
+from users
+  where status == "active"
+  stash as active_users
+  group by country ( # as total_users )
+  sort -total_users
+```
+
+When `stash as` appears in the middle, it stashes everything before it as a CTE, then continues with the pipeline.
+
+**Benefits of `stash as`:**
 - ✅ **Proximity**: CTEs are defined where they're used, often right before they're referenced
 - ✅ **Clear chaining**: You can see the data flow clearly at the end of pipelines
-- ✅ **Reusability**: Multiple queries can reference the same stored CTE
+- ✅ **Reusability**: Multiple queries can reference the same stashed CTE
 - ✅ **Natural flow**: Fits naturally into the pipeline syntax
+- ✅ **Better readability**: You end with the name and use it right after, so your eyes don't have to jump around
 
-**When to use `store as` vs `with`:**
-- Use `store as` when you want to store an intermediate result within a pipeline
+**When to use `stash as` vs `with`:**
+- Use `stash as` when you want to stash an intermediate result within a pipeline (can be in the middle or at the end)
 - Use `with` when you want to define a CTE at the top level before any queries
 - Both compile to SQL `WITH ... AS` CTEs
 
@@ -1004,7 +1060,7 @@ Standard SQL functions are available:
 
 - `count()`, `sum()`, `avg()`, `min()`, `max()`
 - `distinct()`
-- `coalesce()` or `||` operator (JavaScript-style, also used in some SQL dialects like PostgreSQL for string concatenation, but ASQL uses it for COALESCE to match common usage)
+- `coalesce()` or `||` operator - See Section 4.6 for details on the `||` COALESCE operator
 - `date_format()`, `year()`, `month()`, etc.
 - `years_between()`, `days_between()`, etc.
 

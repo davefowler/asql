@@ -4,34 +4,32 @@
 -- Repository: https://github.com/fivetran/dbt_google_ads
 -- File: models/google_ads__search_term_report.sql
 
-{{ config(enabled=var('ad_reporting__google_ads_enabled', True) and var('google_ads__using_search_term_keyword_stats', True)) }}
-
 with stats as (
 
     select *
-    from {{ ref('stg_google_ads__search_term_keyword_stats') }}
-), 
+    from stats
+),
 
 accounts as (
 
     select *
-    from {{ ref('stg_google_ads__account_history') }}
+    from accounts
     where is_most_recent_record = True
 ),
 
 campaigns as (
 
     select *
-    from {{ ref('stg_google_ads__campaign_history') }}
+    from campaigns
     where is_most_recent_record = True
-), 
+),
 
 ad_groups as (
 
     select *
-    from {{ ref('stg_google_ads__ad_group_history') }}
+    from ad_groups
     where is_most_recent_record = True
-), 
+),
 
 fields as (
 
@@ -57,8 +55,6 @@ fields as (
         sum(stats.conversions_value) as conversions_value,
         sum(stats.view_through_conversions) as view_through_conversions
 
-        {{ google_ads_persist_pass_through_columns(pass_through_variable='google_ads__search_term_keyword_stats_passthrough_metrics', identifier='stats', transform='sum', coalesce_with=0) }}
-
     from stats
     left join ad_groups
         on stats.ad_group_id = ad_groups.ad_group_id
@@ -69,7 +65,7 @@ fields as (
     left join accounts
         on stats.account_id = accounts.account_id
         and stats.source_relation = accounts.source_relation
-    {{ dbt_utils.group_by(14) }}
+
 )
 
 select *

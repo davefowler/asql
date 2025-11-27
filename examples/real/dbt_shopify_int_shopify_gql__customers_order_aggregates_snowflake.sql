@@ -4,23 +4,21 @@
 -- Repository: https://github.com/fivetran/dbt_shopify
 -- File: models/graphql/intermediate/int_shopify_gql__customers_order_aggregates.sql
 
-{{ config(enabled=var('shopify_api', 'rest') == var('shopify_api_override','graphql')) }}
-
 with orders as (
 
     select *
-    from {{ ref('stg_shopify_gql__order') }}
+    from orders
     where customer_id is not null
 
 ), order_aggregates as (
 
     select *
-    from {{ ref('int_shopify_gql__orders_order_line_aggregates') }}
+    from order_aggregates
 
 ), transactions as (
 
     select *
-    from {{ ref('shopify_gql__transactions')}}
+    from transactions
 
     where lower(status) = 'success'
     and lower(kind) not in ('authorization', 'void')
@@ -28,7 +26,7 @@ with orders as (
 
 ), transaction_aggregates as (
     -- this is necessary as customers can pay via multiple payment gateways
-    select 
+    select
         order_id,
         source_relation,
         lower(kind) as kind,
@@ -61,7 +59,7 @@ with orders as (
         avg(order_aggregates.order_total_shipping_tax) as avg_shipping_tax_per_order
 
     from orders
-    left join transaction_aggregates 
+    left join transaction_aggregates
         on orders.order_id = transaction_aggregates.order_id
         and orders.source_relation = transaction_aggregates.source_relation
         and transaction_aggregates.kind in ('sale','capture')
@@ -72,7 +70,7 @@ with orders as (
     left join order_aggregates
         on orders.order_id = order_aggregates.order_id
         and orders.source_relation = order_aggregates.source_relation
-    
+
     group by 1, 2
 )
 

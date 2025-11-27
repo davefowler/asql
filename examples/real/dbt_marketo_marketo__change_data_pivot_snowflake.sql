@@ -4,39 +4,16 @@
 -- Repository: https://github.com/fivetran/dbt_marketo
 -- File: models/intermediate/marketo__change_data_pivot.sql
 
-{{
-    config(
-        materialized='incremental',
-        partition_by = {'field': 'date_day', 'data_type': 'date'} if target.type not in ['spark','databricks'] else ['date_day'],
-        unique_key='lead_day_id',
-        incremental_strategy='merge' if target.type not in ['postgres', 'redshift'] else 'delete+insert',
-        file_format='delta'
-        ) 
-}}
-
-{% if execute -%}
-    {% set results = run_query('select distinct rest_name_xf from ' ~ ref('stg_marketo__lead_describe')) %}
-    {% set results_list = results.columns[0].values() %}
-{% endif -%}
-
-with change_data as (
+with lead_describe as (
 
     select *
-    from {{ ref('stg_marketo__activity_change_data_value') }}
-    {% if is_incremental() %}
-    where cast({{ dbt.dateadd('day', -1, 'activity_timestamp') }} as date) >= (select max(date_day) from {{ this }})
-    {% endif %}
-
-), lead_describe as (
-
-    select *
-    from {{ ref('stg_marketo__lead_describe') }}
+    from lead_describe
 
 ), joined as (
 
     -- Join the column names from the describe table onto the change data table
 
-    select 
+    select
         change_data.*,
         lead_describe.rest_name_xf as primary_attribute_column
     from change_data
@@ -46,10 +23,10 @@ with change_data as (
 
 ), event_order as (
 
-    select 
+    select
         *,
         row_number() over (
-            partition by cast(activity_timestamp as date), lead_id, primary_attribute_value_id {{ marketo.partition_by_source_relation() }}
+            partition by cast(activity_timestamp as date), lead_id, primary_attribute_value_id
             order by activity_timestamp asc, activity_id desc -- In the case that events come in the exact same time, we will rely on the activity_id to prove the order
             ) as row_num
     from joined
@@ -70,12 +47,7 @@ with change_data as (
     select
         source_relation,
         lead_id,
-        cast({{ dbt.dateadd('day', -1, 'activity_timestamp') }} as date) as date_day
-
-        {% for col in results_list if col|lower|replace("__c","_c") in var('lead_history_columns') %}
-        {% set col_xf = col|lower|replace("__c","_c") %}
-        , min(case when lower(primary_attribute_column) = '{{ col|lower }}' then old_value end) as {{ col_xf }}
-        {% endfor %}
+        cast(activity_timestamp as date) as date_day
 
     from filtered
     where cast(activity_timestamp as date) < current_date
@@ -83,9 +55,9 @@ with change_data as (
 
 ), surrogate_key as (
 
-    select 
+    select
         *,
-        {{ dbt_utils.generate_surrogate_key(['source_relation','lead_id','date_day'])}} as lead_day_id
+        concat(lead_id, '_', date_day) as lead_day_id
     from pivots
 
 )

@@ -7,7 +7,7 @@
 with email_sends as (
 
     select *
-    from {{ ref('marketo__email_sends') }}
+    from email_sends
 
 ), aggregated as (
 

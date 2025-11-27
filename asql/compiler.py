@@ -7,6 +7,38 @@ from sqlglot.dialects import Dialect
 
 from asql.errors import ASQLCompilationError, ASQLSyntaxError
 from asql.parser import ASQLParser
+import re
+
+
+def _extract_dialect_from_comment(asql_query: str) -> Optional[str]:
+    """
+    Extract dialect from comment directive in ASQL query.
+    
+    Looks for patterns like:
+    - -- dialect: snowflake
+    - -- Dialect: snowflake
+    - # dialect: snowflake
+    
+    Can appear at the beginning, middle, or end of the query.
+    
+    Args:
+        asql_query: ASQL query string
+        
+    Returns:
+        Dialect name if found, None otherwise
+    """
+    # Check for -- dialect: or # dialect: patterns
+    patterns = [
+        r'--\s*dialect\s*:\s*(\w+)',  # -- dialect: snowflake
+        r'#\s*dialect\s*:\s*(\w+)',    # # dialect: snowflake
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, asql_query, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+    
+    return None
 
 
 def compile(
@@ -20,6 +52,7 @@ def compile(
     Args:
         asql_query: ASQL query string (can contain multiple queries separated by semicolons)
         dialect: Target SQL dialect (e.g., 'postgres', 'mysql', 'bigquery')
+                 If None, will try to extract from -- dialect: comment in query
         pretty: Whether to format SQL output
     
     Returns:
@@ -32,6 +65,10 @@ def compile(
     try:
         if not asql_query.strip():
             raise ASQLSyntaxError("Empty ASQL query")
+        
+        # Extract dialect from comment if not provided
+        if not dialect:
+            dialect = _extract_dialect_from_comment(asql_query)
         
         # Split by semicolons to handle multiple queries
         query_parts = [q.strip() for q in asql_query.split(';') if q.strip()]

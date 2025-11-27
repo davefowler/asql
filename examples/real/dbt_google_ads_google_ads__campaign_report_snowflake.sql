@@ -4,27 +4,25 @@
 -- Repository: https://github.com/fivetran/dbt_google_ads
 -- File: models/google_ads__campaign_report.sql
 
-{{ config(enabled=var('ad_reporting__google_ads_enabled', True)) }}
-
 with stats as (
 
     select *
-    from {{ ref('stg_google_ads__campaign_stats') }}
-), 
+    from stats
+),
 
 accounts as (
 
     select *
-    from {{ ref('stg_google_ads__account_history') }}
+    from accounts
     where is_most_recent_record = True
-), 
+),
 
 campaigns as (
 
     select *
-    from {{ ref('stg_google_ads__campaign_history') }}
+    from campaigns
     where is_most_recent_record = True
-), 
+),
 
 fields as (
 
@@ -46,8 +44,6 @@ fields as (
         sum(conversions_value) as conversions_value,
         sum(view_through_conversions) as view_through_conversions
 
-        {{ google_ads_persist_pass_through_columns(pass_through_variable='google_ads__campaign_stats_passthrough_metrics', identifier='stats', transform='sum', coalesce_with=0, exclude_fields=['conversions','conversions_value','view_through_conversions']) }}
-
     from stats
     left join campaigns
         on stats.campaign_id = campaigns.campaign_id
@@ -55,7 +51,7 @@ fields as (
     left join accounts
         on campaigns.account_id = accounts.account_id
         and campaigns.source_relation = accounts.source_relation
-    {{ dbt_utils.group_by(10) }}
+
 )
 
 select *

@@ -6,11 +6,11 @@
 
 with ticket_updates as (
     select *
-    from {{ ref('int_zendesk__updates') }}
+    from ticket_updates
 
 ), ticket as (
     select *
-    from {{ ref('stg_zendesk__ticket') }}
+    from ticket
 
 ), ticket_requester as (
     select
@@ -27,7 +27,7 @@ with ticket_updates as (
             and ticket_updates.source_relation = ticket.source_relation
 
 ), final as (
-    select 
+    select
         source_relation,
         ticket_id,
         assignee_id,
@@ -38,5 +38,5 @@ with ticket_updates as (
     group by 1, 2, 3
 )
 
-select * 
+select *
 from final

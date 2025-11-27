@@ -4,28 +4,16 @@
 -- Repository: https://github.com/fivetran/dbt_google_ads
 -- File: models/staging/stg_google_ads__ad_group_criterion_history.sql
 
-{{ config(enabled=var('ad_reporting__google_ads_enabled', True)) }}
-
 with base as (
 
-    select * 
-    from {{ ref('stg_google_ads__ad_group_criterion_history_tmp') }}
+    select * from stg_table
 ),
 
 fields as (
 
     select
-        {{
-            fivetran_utils.fill_staging_columns(
-                source_columns=adapter.get_columns_in_relation(ref('stg_google_ads__ad_group_criterion_history_tmp')),
-                staging_columns=get_ad_group_criterion_history_columns()
-            )
-        }}
-    
-        {{ fivetran_utils.source_relation(
-            union_schema_variable='google_ads_union_schemas', 
-            union_database_variable='google_ads_union_databases') 
-        }}
+        *,
+        'source' as source_relation
 
     from base
 ),
@@ -33,9 +21,9 @@ fields as (
 final as (
 
     select
-        source_relation, 
+        source_relation,
         id as criterion_id,
-        cast(ad_group_id as {{ dbt.type_string() }}) as ad_group_id,
+        cast(ad_group_id as VARCHAR) as ad_group_id,
         base_campaign_id,
         updated_at,
         type,

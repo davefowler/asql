@@ -4,30 +4,16 @@
 -- Repository: https://github.com/fivetran/dbt_google_ads
 -- File: models/staging/stg_google_ads__account_history.sql
 
-{{ config(enabled=var('ad_reporting__google_ads_enabled', True)) }}
-
 with base as (
 
-    select * 
-    from {{ ref('stg_google_ads__account_history_tmp') }}
-
+    select * from stg_table
 ),
 
 fields as (
 
     select
-        {{
-            fivetran_utils.fill_staging_columns(
-                source_columns=adapter.get_columns_in_relation(ref('stg_google_ads__account_history_tmp')),
-                staging_columns=get_account_history_columns()
-            )
-        }}
-        
-    
-        {{ fivetran_utils.source_relation(
-            union_schema_variable='google_ads_union_schemas', 
-            union_database_variable='google_ads_union_databases') 
-        }}
+        *,
+        'source' as source_relation
 
     from base
 ),
@@ -35,7 +21,7 @@ fields as (
 final as (
 
     select
-        source_relation, 
+        source_relation,
         id as account_id,
         updated_at,
         currency_code,
@@ -47,5 +33,5 @@ final as (
     where coalesce(_fivetran_active, true)
 )
 
-select * 
+select *
 from final

@@ -4,39 +4,16 @@
 -- Repository: https://github.com/fivetran/dbt_marketo
 -- File: models/intermediate/marketo__change_data_details.sql
 
-{{
-    config(
-        materialized='incremental',
-        partition_by = {'field': 'date_day', 'data_type': 'date'} if target.type not in ['spark','databricks'] else ['date_day'],
-        unique_key='lead_day_id',
-        incremental_strategy='merge' if target.type not in ['postgres', 'redshift'] else 'delete+insert',
-        file_format='delta'
-        ) 
-}}
-
-{% if execute -%}
-    {% set results = run_query('select distinct rest_name_xf from ' ~ ref('stg_marketo__lead_describe')) %}
-    {% set results_list = results.columns[0].values() %}
-{% endif -%}
-
-with change_data as (
+with lead_describe as (
 
     select *
-    from {{ ref('stg_marketo__activity_change_data_value') }}
-    {% if is_incremental() %}
-    where cast({{ dbt.dateadd('day', -1, 'activity_timestamp') }} as date) >= (select max(date_day) from {{ this }})
-    {% endif %}
+    from lead_describe
 
-), lead_describe as (
-
-    select *
-    from {{ ref('stg_marketo__lead_describe') }}
-
-), joined as ( 
+), joined as (
 
     -- Join the column names from the describe table onto the change data table
 
-    select 
+    select
         change_data.*,
         lead_describe.rest_name_xf as primary_attribute_column
     from change_data
@@ -47,28 +24,23 @@ with change_data as (
 ), pivots as (
 
     -- For each column that is in both the lead_history_columns variable and the restname of the lead_describe table,
-    -- find whether a change occurred for a given column on a given day for a given lead. 
+    -- find whether a change occurred for a given column on a given day for a given lead.
     -- This will feed the daily slowly changing dimension model.
 
-    select 
+    select
         source_relation,
         lead_id,
-        cast({{ dbt.dateadd('day', -1, 'activity_timestamp') }} as date) as date_day
+        cast(activity_timestamp as date) as date_day
 
-        {% for col in results_list if col|lower|replace("__c","_c") in var('lead_history_columns') %}
-        {% set col_xf = col|lower|replace("__c","_c") %}
-        , cast( max(case when lower(primary_attribute_column) = '{{ col|lower }}' then 1 else 0 end) as boolean) as {{ col_xf }}
-        {% endfor %}
-    
     from joined
     where cast(activity_timestamp as date) < current_date
     group by 1,2,3
 
 ), surrogate_key as (
 
-    select 
+    select
         *,
-        {{ dbt_utils.generate_surrogate_key(['source_relation','lead_id','date_day'])}} as lead_day_id
+        concat(lead_id, '_', date_day) as lead_day_id
     from pivots
 
 )

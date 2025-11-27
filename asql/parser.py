@@ -122,20 +122,20 @@ class ASQLParser:
             elif self._peek_keyword("select") or self._peek_keyword("project"):
                 select_list = self._parse_select_list()
                 current_step.select = select_list
-            # Check for STORE AS (creates a named CTE)
-            elif self._peek_keyword("store"):
-                # Parse store as <name> first
-                store_name = self._parse_store_as()
-                # Save current step if it has content, marking it as stored
+            # Check for STASH AS (creates a named CTE)
+            elif self._peek_keyword("stash"):
+                # Parse stash as <name> first
+                stash_name = self._parse_stash_as()
+                # Save current step if it has content, marking it as stashed
                 if current_step.has_content():
-                    current_step.store_name = store_name
+                    current_step.store_name = stash_name
                     steps.append(current_step)
                     # Start new step for any subsequent operations
                     current_step = PipelineStep()
                 else:
-                    # No content yet, but we still want to mark the last step as stored
+                    # No content yet, but we still want to mark the last step as stashed
                     if steps:
-                        steps[-1].store_name = store_name
+                        steps[-1].store_name = stash_name
             else:
                 # Unknown operator, stop parsing
                 break
@@ -357,6 +357,13 @@ class ASQLParser:
                 self._consume("(")
                 self._skip_whitespace()
                 
+                # Check for DISTINCT keyword (for count(distinct col))
+                distinct = False
+                if self._peek_keyword("distinct"):
+                    distinct = True
+                    self._consume_keyword("distinct")
+                    self._skip_whitespace()
+                
                 # Parse argument (column or expression with arithmetic)
                 arg = self._parse_additive_expression()
                 if not arg:
@@ -375,7 +382,7 @@ class ASQLParser:
             elif func_name_lower in ("avg", "average"):
                 agg_expr = exp.Avg(this=arg)
             elif func_name_lower == "count":
-                agg_expr = exp.Count(this=arg)
+                agg_expr = exp.Count(this=arg, distinct=distinct)
             elif func_name_lower == "min":
                 agg_expr = exp.Min(this=arg)
             elif func_name_lower == "max":
@@ -487,19 +494,68 @@ class ASQLParser:
                 self.pos = peek_pos
                 return exp.Column(this=exp.Identifier(this=identifier))
             
-            # Not aggregation - it's a function call like month(created_at)
-            # Parse as function call
+            # Not aggregation - it's a function call like month(created_at) or date_trunc(col, "month")
+            # Parse as function call with multiple arguments
             self.pos = peek_pos
             self._consume("(")
             self._skip_whitespace()
-            arg = self._parse_column()
-            if not arg:
-                raise ASQLSyntaxError(f"Expected column argument in function call {identifier}()")
+            
+            # Parse function arguments (can be multiple, comma-separated)
+            args = []
+            while True:
+                # Try parsing as column first
+                arg = self._parse_column()
+                if not arg:
+                    # Try parsing as string literal
+                    if self._peek() in ('"', "'"):
+                        arg = self._parse_string_literal()
+                        if arg:
+                            arg = exp.Literal(this=arg, is_string=True)
+                    # Try parsing as number
+                    elif self._peek().isdigit() or self._peek() == '-':
+                        num_str = ""
+                        if self._peek() == '-':
+                            num_str += self._peek()
+                            self._consume("-")
+                        while self._has_more() and (self._peek().isdigit() or self._peek() == '.'):
+                            num_str += self._peek()
+                            self._consume(self._peek())
+                        if num_str:
+                            try:
+                                if '.' in num_str:
+                                    arg = exp.Literal(this=float(num_str), is_string=False)
+                                else:
+                                    arg = exp.Literal(this=int(num_str), is_string=False)
+                            except ValueError:
+                                arg = None
+                
+                if not arg:
+                    raise ASQLSyntaxError(f"Expected function argument in {identifier}()")
+                
+                args.append(arg)
+                self._skip_whitespace()
+                
+                if self._peek() == ",":
+                    self._consume(",")
+                    self._skip_whitespace()
+                elif self._peek() == ")":
+                    self._consume(")")
+                    break
+                else:
+                    raise ASQLSyntaxError(f"Expected ',' or ')' after function argument in {identifier}()")
+            
+            func_expr = exp.Anonymous(this=identifier, expressions=args)
+            
+            # Check for alias after function call
             self._skip_whitespace()
-            if self._peek() != ")":
-                raise ASQLSyntaxError(f"Expected ')' after function argument in {identifier}()")
-            self._consume(")")
-            return exp.Anonymous(this=identifier, expressions=[arg])
+            if self._peek_keyword("as"):
+                self._consume_keyword("as")
+                self._skip_whitespace()
+                alias = self._parse_identifier()
+                if alias:
+                    return exp.Alias(this=func_expr, alias=exp.Identifier(this=alias))
+            
+            return func_expr
         else:
             # No ( - could be simple column or qualified column (table.column)
             # Try parsing as qualified column
@@ -510,13 +566,35 @@ class ASQLParser:
                 column_id = self._parse_identifier()
                 if not column_id:
                     raise ASQLSyntaxError("Expected column name after '.'")
-                return exp.Column(
+                col_expr = exp.Column(
                     this=exp.Identifier(this=column_id),
                     table=exp.Identifier(this=identifier)
                 )
+                
+                # Check for alias after qualified column
+                self._skip_whitespace()
+                if self._peek_keyword("as"):
+                    self._consume_keyword("as")
+                    self._skip_whitespace()
+                    alias = self._parse_identifier()
+                    if alias:
+                        return exp.Alias(this=col_expr, alias=exp.Identifier(this=alias))
+                
+                return col_expr
             else:
                 # Simple column reference
-                return exp.Column(this=exp.Identifier(this=identifier))
+                col_expr = exp.Column(this=exp.Identifier(this=identifier))
+                
+                # Check for alias after column
+                self._skip_whitespace()
+                if self._peek_keyword("as"):
+                    self._consume_keyword("as")
+                    self._skip_whitespace()
+                    alias = self._parse_identifier()
+                    if alias:
+                        return exp.Alias(this=col_expr, alias=exp.Identifier(this=alias))
+                
+                return col_expr
     
     def _parse_sort_expression(self) -> Optional[exp.Expression]:
         """Parse a sort expression (column reference or function call)."""
@@ -562,22 +640,56 @@ class ASQLParser:
         # Check if it's a function call
         self._skip_whitespace()
         if self._peek() == "(":
-            # It's a function call: month(updated_at)
+            # It's a function call: month(updated_at) or date_trunc(col, "month")
             self._consume("(")
             self._skip_whitespace()
             
-            # Parse function argument (column reference)
-            arg = self._parse_column()
-            if not arg:
-                raise ASQLSyntaxError(f"Expected column argument in function call {identifier}()")
-            
-            self._skip_whitespace()
-            if self._peek() != ")":
-                raise ASQLSyntaxError(f"Expected ')' after function argument in {identifier}()")
-            self._consume(")")
+            # Parse function arguments (can be multiple, comma-separated)
+            args = []
+            while True:
+                # Try parsing as column first
+                arg = self._parse_column()
+                if not arg:
+                    # Try parsing as string literal
+                    if self._peek() in ('"', "'"):
+                        arg = self._parse_string_literal()
+                        if arg:
+                            arg = exp.Literal(this=arg, is_string=True)
+                    # Try parsing as number
+                    elif self._peek().isdigit() or self._peek() == '-':
+                        num_str = ""
+                        if self._peek() == '-':
+                            num_str += self._peek()
+                            self._consume("-")
+                        while self._has_more() and (self._peek().isdigit() or self._peek() == '.'):
+                            num_str += self._peek()
+                            self._consume(self._peek())
+                        if num_str:
+                            try:
+                                if '.' in num_str:
+                                    arg = exp.Literal(this=float(num_str), is_string=False)
+                                else:
+                                    arg = exp.Literal(this=int(num_str), is_string=False)
+                            except ValueError:
+                                arg = None
+                
+                if not arg:
+                    raise ASQLSyntaxError(f"Expected function argument in {identifier}()")
+                
+                args.append(arg)
+                self._skip_whitespace()
+                
+                if self._peek() == ",":
+                    self._consume(",")
+                    self._skip_whitespace()
+                elif self._peek() == ")":
+                    self._consume(")")
+                    break
+                else:
+                    raise ASQLSyntaxError(f"Expected ',' or ')' after function argument in {identifier}()")
             
             # Create function call expression
-            return exp.Anonymous(this=identifier, expressions=[arg])
+            return exp.Anonymous(this=identifier, expressions=args)
         else:
             # It's a simple column reference
             return exp.Column(this=exp.Identifier(this=identifier))
@@ -605,26 +717,26 @@ class ASQLParser:
         
         return exp.Limit(this=exp.Literal(this=limit_value, is_string=False))
     
-    def _parse_store_as(self) -> str:
-        """Parse STORE AS <name> clause."""
-        if not self._consume_keyword("store"):
-            raise ASQLSyntaxError("Expected 'store' keyword")
+    def _parse_stash_as(self) -> str:
+        """Parse STASH AS <name> clause."""
+        if not self._consume_keyword("stash"):
+            raise ASQLSyntaxError("Expected 'stash' keyword")
         
         self._skip_whitespace()
         
         # Parse "as" keyword
         if not self._peek_keyword("as"):
-            raise ASQLSyntaxError("Expected 'as' after 'store'")
+            raise ASQLSyntaxError("Expected 'as' after 'stash'")
         
         self._consume_keyword("as")
         self._skip_whitespace()
         
         # Parse identifier (CTE name)
-        store_name = self._parse_identifier()
-        if not store_name:
-            raise ASQLSyntaxError("Expected CTE name after 'store as'")
+        stash_name = self._parse_identifier()
+        if not stash_name:
+            raise ASQLSyntaxError("Expected CTE name after 'stash as'")
         
-        return store_name
+        return stash_name
     
     def _parse_with_statement(self) -> exp.Select:
         """
@@ -797,8 +909,8 @@ class ASQLParser:
                 # Not a positional reference, reset position
                 self.pos = start_pos
         
-        # Parse expression (supports arithmetic)
-        expr = self._parse_additive_expression()
+        # Parse expression (supports arithmetic and coalesce)
+        expr = self._parse_coalesce_expression()
         if not expr:
             return None
         
@@ -902,8 +1014,8 @@ class ASQLParser:
                 raise ASQLSyntaxError("Expected expression after 'not'")
             return exp.Not(this=expr)
         
-        # Parse left side (arithmetic expression)
-        left_expr = self._parse_additive_expression()
+        # Parse left side (coalesce expression - handles || operator)
+        left_expr = self._parse_coalesce_expression()
         if not left_expr:
             return None
         
@@ -1053,6 +1165,37 @@ class ASQLParser:
         # Fallback: just return the expression (column reference, etc.)
         return left_expr
     
+    def _parse_coalesce_expression(self) -> Optional[exp.Expression]:
+        """
+        Parse COALESCE expressions using || operator.
+        
+        Syntax: expr1 || expr2 || expr3 ...
+        This is right-associative: a || b || c = COALESCE(a, b, c)
+        """
+        # Parse left side (arithmetic expression)
+        left_expr = self._parse_additive_expression()
+        if not left_expr:
+            return None
+        
+        self._skip_whitespace()
+        
+        # Check for || operator (COALESCE)
+        coalesce_args = [left_expr]
+        while self._peek(2) == "||":
+            self._consume("||")
+            self._skip_whitespace()
+            right_expr = self._parse_additive_expression()
+            if not right_expr:
+                raise ASQLSyntaxError("Expected expression after '||'")
+            coalesce_args.append(right_expr)
+            self._skip_whitespace()
+        
+        # If we have multiple args, create COALESCE expression
+        if len(coalesce_args) > 1:
+            return exp.Coalesce(this=coalesce_args[0], expressions=coalesce_args[1:])
+        
+        return left_expr
+    
     def _parse_additive_expression(self) -> Optional[exp.Expression]:
         """
         Parse additive expressions (+ and -).
@@ -1094,9 +1237,10 @@ class ASQLParser:
     
     def _parse_multiplicative_expression(self) -> Optional[exp.Expression]:
         """
-        Parse multiplicative expressions (*, /, %).
+        Parse multiplicative expressions (*, /, %) and cast expressions (::).
         
-        Precedence: Multiplicative operators have higher precedence than additive.
+        Precedence: Cast (::) has higher precedence than multiplicative operators.
+        Multiplicative operators have higher precedence than additive.
         """
         # Parse primary expression (highest precedence)
         left_expr = self._parse_primary_expression()
@@ -1104,6 +1248,22 @@ class ASQLParser:
             return None
         
         self._skip_whitespace()
+        
+        # Check for cast operator (::) - higher precedence than multiplicative
+        # Cast is right-associative: a::b::c = (a::b)::c
+        while self._peek(2) == "::":
+            self._consume("::")
+            self._skip_whitespace()
+            
+            # Parse the target type (identifier)
+            type_name = self._parse_identifier()
+            if not type_name:
+                raise ASQLSyntaxError("Expected type name after '::'")
+            
+            # Create Cast expression
+            # SQLGlot uses 'to' for the target type
+            left_expr = exp.Cast(this=left_expr, to=exp.DataType(this=exp.Identifier(this=type_name)))
+            self._skip_whitespace()
         
         # Check for multiplicative operators
         while True:
@@ -1113,6 +1273,18 @@ class ASQLParser:
                 right_expr = self._parse_primary_expression()
                 if not right_expr:
                     raise ASQLSyntaxError("Expected expression after '*'")
+                
+                # Check for cast on right side
+                self._skip_whitespace()
+                while self._peek(2) == "::":
+                    self._consume("::")
+                    self._skip_whitespace()
+                    type_name = self._parse_identifier()
+                    if not type_name:
+                        raise ASQLSyntaxError("Expected type name after '::'")
+                    right_expr = exp.Cast(this=right_expr, to=exp.DataType(this=exp.Identifier(this=type_name)))
+                    self._skip_whitespace()
+                
                 left_expr = exp.Mul(this=left_expr, expression=right_expr)
                 self._skip_whitespace()
             elif self._peek() == "/":
@@ -1121,6 +1293,18 @@ class ASQLParser:
                 right_expr = self._parse_primary_expression()
                 if not right_expr:
                     raise ASQLSyntaxError("Expected expression after '/'")
+                
+                # Check for cast on right side
+                self._skip_whitespace()
+                while self._peek(2) == "::":
+                    self._consume("::")
+                    self._skip_whitespace()
+                    type_name = self._parse_identifier()
+                    if not type_name:
+                        raise ASQLSyntaxError("Expected type name after '::'")
+                    right_expr = exp.Cast(this=right_expr, to=exp.DataType(this=exp.Identifier(this=type_name)))
+                    self._skip_whitespace()
+                
                 left_expr = exp.Div(this=left_expr, expression=right_expr)
                 self._skip_whitespace()
             elif self._peek() == "%":
@@ -1129,6 +1313,18 @@ class ASQLParser:
                 right_expr = self._parse_primary_expression()
                 if not right_expr:
                     raise ASQLSyntaxError("Expected expression after '%'")
+                
+                # Check for cast on right side
+                self._skip_whitespace()
+                while self._peek(2) == "::":
+                    self._consume("::")
+                    self._skip_whitespace()
+                    type_name = self._parse_identifier()
+                    if not type_name:
+                        raise ASQLSyntaxError("Expected type name after '::'")
+                    right_expr = exp.Cast(this=right_expr, to=exp.DataType(this=exp.Identifier(this=type_name)))
+                    self._skip_whitespace()
+                
                 left_expr = exp.Mod(this=left_expr, expression=right_expr)
                 self._skip_whitespace()
             else:

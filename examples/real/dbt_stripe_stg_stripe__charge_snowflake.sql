@@ -6,40 +6,28 @@
 
 with base as (
 
-    select * 
-    from {{ ref('stg_stripe__charge_tmp') }}
+    select *
+    from base
 
 ),
 
 fields as (
 
     select
-        {{
-            fivetran_utils.fill_staging_columns(
-                source_columns=adapter.get_columns_in_relation(ref('stg_stripe__charge_tmp')),
-                staging_columns=get_charge_columns()
-            )
-        }}
-
-        {{ fivetran_utils.source_relation(
-            union_schema_variable='stripe_union_schemas', 
-            union_database_variable='stripe_union_databases') 
-        }}
+        *,
+        'source' as source_relation
 
     from base
 ),
 
 final as (
 
-    select 
-        id as charge_id, 
-        {{ stripe.convert_values('amount') }},
-        {{ stripe.convert_values('amount_refunded') }},
-        {{ stripe.convert_values('application_fee_amount') }},
+    select
+        id as charge_id,
         balance_transaction_id,
         captured as is_captured,
         card_id,
-        cast(created as {{ dbt.type_timestamp() }}) as created_at,
+        cast(created as TIMESTAMP) as created_at,
         connected_account_id,
         customer_id,
         currency,
@@ -80,13 +68,9 @@ final as (
         billing_detail_phone,
         source_relation
 
-        {% if var('stripe__charge_metadata',[]) %}
-        , {{ fivetran_utils.pivot_json_extract(string = 'metadata', list_of_properties = var('stripe__charge_metadata')) }}
-        {% endif %}
-
     from fields
-    {{ livemode_predicate() }}
+
 )
 
-select * 
+select *
 from final

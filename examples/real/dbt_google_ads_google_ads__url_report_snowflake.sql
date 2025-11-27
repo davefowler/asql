@@ -4,41 +4,39 @@
 -- Repository: https://github.com/fivetran/dbt_google_ads
 -- File: models/google_ads__url_report.sql
 
-{{ config(enabled=var('ad_reporting__google_ads_enabled', True)) }}
-
 with stats as (
 
     select *
-    from {{ ref('stg_google_ads__ad_stats') }}
-), 
+    from stats
+),
 
 accounts as (
 
     select *
-    from {{ ref('stg_google_ads__account_history') }}
+    from accounts
     where is_most_recent_record = True
-), 
+),
 
 campaigns as (
 
     select *
-    from {{ ref('stg_google_ads__campaign_history') }}
+    from campaigns
     where is_most_recent_record = True
-), 
+),
 
 ad_groups as (
 
     select *
-    from {{ ref('stg_google_ads__ad_group_history') }}
+    from ad_groups
     where is_most_recent_record = True
 ),
 
 ads as (
 
     select *
-    from {{ ref('stg_google_ads__ad_history') }}
+    from ads
     where is_most_recent_record = True
-), 
+),
 
 fields as (
 
@@ -57,22 +55,6 @@ fields as (
         ads.url_host,
         ads.url_path,
 
-        {% if var('google_auto_tagging_enabled', false) %}
-
-        coalesce( {{ google_ads.google_ads_extract_url_parameter('ads.final_url', 'utm_source') }} , 'google')  as utm_source,
-        coalesce( {{ google_ads.google_ads_extract_url_parameter('ads.final_url', 'utm_medium') }} , 'cpc') as utm_medium,
-        coalesce( {{ google_ads.google_ads_extract_url_parameter('ads.final_url', 'utm_campaign') }} , campaigns.campaign_name) as utm_campaign,
-        coalesce( {{ google_ads.google_ads_extract_url_parameter('ads.final_url', 'utm_content') }} , ad_groups.ad_group_name) as utm_content,
-
-        {% else %}
-
-        ads.utm_source,
-        ads.utm_medium,
-        ads.utm_campaign,
-        ads.utm_content,
-        
-        {% endif %}
-
         ads.utm_term,
         sum(stats.spend) as spend,
         sum(stats.clicks) as clicks,
@@ -80,8 +62,6 @@ fields as (
         sum(conversions) as conversions,
         sum(conversions_value) as conversions_value,
         sum(view_through_conversions) as view_through_conversions
-
-        {{ google_ads_persist_pass_through_columns(pass_through_variable='google_ads__ad_stats_passthrough_metrics', identifier='stats', transform='sum', coalesce_with=0, exclude_fields=['conversions','conversions_value','view_through_conversions']) }}
 
     from stats
     left join ads
@@ -98,11 +78,6 @@ fields as (
         on campaigns.account_id = accounts.account_id
         and campaigns.source_relation = accounts.source_relation
 
-    {% if var('ad_reporting__url_report__using_null_filter', True) %}
-        where ads.source_final_urls is not null
-    {% endif %}
-
-    {{ dbt_utils.group_by(18) }}
 )
 
 select *

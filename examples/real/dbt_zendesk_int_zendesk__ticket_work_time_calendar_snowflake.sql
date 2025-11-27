@@ -7,11 +7,11 @@
 with ticket_historical_status as (
 
     select *
-    from {{ ref('int_zendesk__ticket_historical_status') }}
+    from ticket_historical_status
 
 ), calendar_minutes as (
-  
-    select 
+
+    select
         source_relation,
         ticket_id,
         status,
@@ -19,8 +19,8 @@ with ticket_historical_status as (
             else 0 end as agent_wait_time_in_minutes,
         case when status in ('new', 'open', 'hold') then status_duration_calendar_minutes
             else 0 end as requester_wait_time_in_minutes,
-        case when status in ('new', 'open', 'hold', 'pending') then status_duration_calendar_minutes 
-            else 0 end as solve_time_in_minutes, 
+        case when status in ('new', 'open', 'hold', 'pending') then status_duration_calendar_minutes
+            else 0 end as solve_time_in_minutes,
         case when status in ('new', 'open') then status_duration_calendar_minutes
             else 0 end as agent_work_time_in_minutes,
         case when status in ('hold') then status_duration_calendar_minutes
@@ -31,8 +31,8 @@ with ticket_historical_status as (
             else 0 end as open_status_duration_minutes,
         case when status = 'deleted' then 1
             else 0 end as ticket_deleted,
-        first_value(valid_starting_at) over (partition by ticket_id {{ partition_by_source_relation() }} order by valid_starting_at desc, ticket_id, source_relation rows unbounded preceding) as last_status_assignment_date,
-        case when lag(status) over (partition by ticket_id {{ partition_by_source_relation() }} order by valid_starting_at) = 'deleted' and status != 'deleted'
+        first_value(valid_starting_at) over (partition by ticket_id  order by valid_starting_at desc, ticket_id, source_relation rows unbounded preceding) as last_status_assignment_date,
+        case when lag(status) over (partition by ticket_id  order by valid_starting_at) = 'deleted' and status != 'deleted'
             then 1
             else 0
                 end as ticket_recoveries
@@ -41,7 +41,7 @@ with ticket_historical_status as (
 
 )
 
-select 
+select
   source_relation,
   ticket_id,
   last_status_assignment_date,
