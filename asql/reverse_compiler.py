@@ -174,8 +174,9 @@ def _select_to_asql(select_expr: exp.Select) -> str:
     parts = []
     
     # Handle WITH/CTE clauses
-    if select_expr.args.get("with"):
-        with_clause = select_expr.args["with"]
+    # Note: sqlglot 28+ uses "with_" instead of "with"
+    with_clause = select_expr.args.get("with") or select_expr.args.get("with_")
+    if with_clause:
         ctes = []
         # Handle case where expressions might not be available
         try:
@@ -194,8 +195,14 @@ def _select_to_asql(select_expr: exp.Select) -> str:
                         cte_name = None
                     
                     if cte_name and isinstance(cte.this, exp.Select):
-                        cte_asql = _select_to_asql(cte.this)
-                        ctes.append(f"{cte_asql}\nstash as {cte_name}")
+                        try:
+                            cte_asql = _select_to_asql(cte.this)
+                            ctes.append(f"{cte_asql}\nstash as {cte_name}")
+                        except ASQLCompilationError as cte_error:
+                            # If a CTE can't be converted (e.g., no FROM clause), 
+                            # include it as a comment and continue
+                            cte_sql = str(cte.this)
+                            ctes.append(f"-- CTE '{cte_name}' could not be converted: {cte_error}\n-- Original: {cte_sql[:100]}...")
         except (AttributeError, TypeError) as e:
             # If we can't parse CTEs, skip them and continue with the main query
             # This allows the query to still be converted even if CTE parsing fails
@@ -206,8 +213,16 @@ def _select_to_asql(select_expr: exp.Select) -> str:
             parts.append("")  # Empty line between CTEs and main query
     
     # FROM clause (required in ASQL)
-    from_expr = select_expr.args.get("from")
+    # Note: sqlglot 28+ uses "from_" instead of "from"
+    from_expr = select_expr.args.get("from") or select_expr.args.get("from_")
     if not from_expr:
+        # Check if this is a SELECT without FROM (e.g., SELECT 1, SELECT CURRENT_DATE)
+        # These are valid SQL but can't be converted to ASQL
+        select_exprs = select_expr.args.get("expressions", [])
+        if select_exprs:
+            # Return as a pass-through expression (e.g., for scalar queries)
+            expr_strs = [_expression_to_asql(e) for e in select_exprs]
+            return f"-- No FROM clause, cannot convert to ASQL: SELECT {', '.join(expr_strs)}"
         raise ASQLCompilationError("ASQL requires a FROM clause")
     
     table = from_expr.this
