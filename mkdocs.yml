@@ -30,9 +30,9 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
   features:
-    - navigation.tabs
     - navigation.sections
     - navigation.expand
+    - navigation.top
     - search.suggest
     - search.highlight
     - content.code.annotate
@@ -42,7 +42,7 @@ theme:
 
 # Custom CSS and JavaScript
 extra_css:
-  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css
+  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css
   - static/docs.css
 
 extra_javascript:
