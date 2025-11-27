@@ -173,9 +173,8 @@ def _select_to_asql(select_expr: exp.Select) -> str:
     """Convert a SQLGlot Select expression to ASQL."""
     parts = []
     
-    # Handle WITH/CTE clauses
-    # Note: sqlglot 28+ uses "with_" instead of "with"
-    with_clause = select_expr.args.get("with") or select_expr.args.get("with_")
+    # Handle WITH/CTE clauses (sqlglot 28+ uses "with_")
+    with_clause = select_expr.args.get("with_")
     if with_clause:
         ctes = []
         # Handle case where expressions might not be available
@@ -212,9 +211,8 @@ def _select_to_asql(select_expr: exp.Select) -> str:
             parts.extend(ctes)
             parts.append("")  # Empty line between CTEs and main query
     
-    # FROM clause (required in ASQL)
-    # Note: sqlglot 28+ uses "from_" instead of "from"
-    from_expr = select_expr.args.get("from") or select_expr.args.get("from_")
+    # FROM clause (required in ASQL) - sqlglot 28+ uses "from_"
+    from_expr = select_expr.args.get("from_")
     if not from_expr:
         # Check if this is a SELECT without FROM (e.g., SELECT 1, SELECT CURRENT_DATE)
         # These are valid SQL but can't be converted to ASQL

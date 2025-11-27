@@ -111,16 +111,16 @@ def compile(
                         # Create a SELECT that uses the CTE
                         select_from_cte = exp.Select()
                         select_from_cte.set("expressions", [exp.Star()])
-                        # SQLGlot uses 'from' as the key, but it's a Python keyword, so we use args dict directly
-                        select_from_cte.args["from"] = exp.From(this=exp.Table(this=exp.Identifier(this=cte_name)))
+                        # SQLGlot 28+ uses 'from_' as the key (Python keyword escaping)
+                        select_from_cte.set("from_", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
                         final_queries.append(select_from_cte)
             else:
                 # Regular pipeline query
                 parser = ASQLParser(query_part)
                 select_expr = parser.parse()
                 
-                # Extract CTEs from this query if it has a WITH clause
-                with_clause = select_expr.args.get("with")
+                # Extract CTEs from this query if it has a WITH clause (sqlglot 28+)
+                with_clause = select_expr.args.get("with_")
                 if with_clause and isinstance(with_clause, exp.With):
                     for cte_expr in with_clause.expressions:
                         if isinstance(cte_expr, exp.CTE):
@@ -142,9 +142,9 @@ def compile(
             # Use the last query as the final SELECT
             final_select = final_queries[-1]
             
-            # Merge all CTEs
+            # Merge all CTEs (sqlglot 28+)
             existing_ctes = []
-            with_clause = final_select.args.get("with")
+            with_clause = final_select.args.get("with_")
             if with_clause and isinstance(with_clause, exp.With):
                 existing_ctes = list(with_clause.expressions)
             
@@ -168,8 +168,8 @@ def compile(
                     existing_ctes.append(cte_expr)
             
             if existing_ctes:
-                # SQLGlot uses 'with' as the key, but it's a Python keyword, so we use args dict directly
-                final_select.args["with"] = exp.With(expressions=existing_ctes)
+                # SQLGlot 28+ uses 'with_' as the key (Python keyword escaping)
+                final_select.set("with_", exp.With(expressions=existing_ctes))
             
             sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
             return final_select.sql(dialect=sql_dialect, pretty=pretty)
@@ -221,9 +221,9 @@ def _compile_single_query(
             # Create a SELECT that uses the CTE
             select_from_cte = exp.Select()
             select_from_cte.set("expressions", [exp.Star()])
-            # SQLGlot uses 'from' and 'with' as keys, but they're Python keywords, so we use args dict directly
-            select_from_cte.args["from"] = exp.From(this=exp.Table(this=exp.Identifier(this=cte_name)))
-            select_from_cte.args["with"] = exp.With(expressions=[cte])
+            # SQLGlot 28+ uses 'from_' and 'with_' as keys (Python keyword escaping)
+            select_from_cte.set("from_", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
+            select_from_cte.set("with_", exp.With(expressions=[cte]))
             
             sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
             sql = select_from_cte.sql(dialect=sql_dialect, pretty=pretty)

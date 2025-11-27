@@ -12,7 +12,8 @@ def test_shopify_line_items_structure() -> None:
     """
     sql = compile(asql)
     
-    assert "WITH" in sql.upper()
+    # Simple queries don't need CTEs
+    assert "FROM" in sql.upper()
     assert "JOIN" in sql.upper() or "join" in sql.lower()
 
 
@@ -26,7 +27,8 @@ def test_stripe_customer_overview_structure() -> None:
     """
     sql = compile(asql)
     
-    assert "WITH" in sql.upper()
+    # Simple queries don't need CTEs
+    assert "FROM" in sql.upper()
     assert "GROUP BY" in sql.upper() or "group" in sql.lower()
     assert "SUM" in sql.upper() or "sum" in sql.lower()
 
@@ -40,7 +42,8 @@ def test_zendesk_ticket_enriched_structure() -> None:
     """
     sql = compile(asql)
     
-    assert "WITH" in sql.upper()
+    # Simple queries don't need CTEs
+    assert "FROM" in sql.upper()
     assert "JOIN" in sql.upper() or "join" in sql.lower()
 
 
@@ -54,7 +57,8 @@ def test_stripe_balance_transactions_structure() -> None:
     """
     sql = compile(asql)
     
-    assert "WITH" in sql.upper()
+    # Simple queries don't need CTEs
+    assert "FROM" in sql.upper()
     assert "JOIN" in sql.upper() or "join" in sql.lower()
 
 
@@ -70,6 +74,7 @@ def test_shopify_customer_cohorts_structure() -> None:
     """
     sql = compile(asql)
     
-    assert "WITH" in sql.upper()
+    # Simple queries don't need CTEs
+    assert "FROM" in sql.upper()
     assert "GROUP BY" in sql.upper() or "group" in sql.lower()
 

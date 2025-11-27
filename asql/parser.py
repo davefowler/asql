@@ -715,7 +715,8 @@ class ASQLParser:
         except ValueError:
             raise ASQLSyntaxError(f"Invalid number: {number_str}")
         
-        return exp.Limit(this=exp.Literal(this=limit_value, is_string=False))
+        # sqlglot 28+ uses 'expression' for the limit value
+        return exp.Limit(expression=exp.Literal.number(limit_value))
     
     def _parse_stash_as(self) -> str:
         """Parse STASH AS <name> clause."""
