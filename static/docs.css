@@ -7,10 +7,10 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     line-height: 1.6;
     color: #333;
-    background: #f5f5f5;
+    background: #ffffff;
 }
 
 .doc-container {
@@ -20,17 +20,20 @@ body {
 
 .doc-nav {
     width: 250px;
-    background: #2c3e50;
+    background: #dc2626;
     color: white;
     padding: 20px;
     position: fixed;
     height: 100vh;
     overflow-y: auto;
+    box-shadow: 2px 0 4px rgba(0,0,0,0.1);
 }
 
 .doc-nav h1 {
     margin-bottom: 20px;
     font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
 }
 
 .doc-nav h1 a {
@@ -47,13 +50,14 @@ body {
 }
 
 .doc-nav a {
-    color: #ecf0f1;
+    color: rgba(255, 255, 255, 0.9);
     text-decoration: none;
     transition: color 0.2s;
+    font-weight: 400;
 }
 
 .doc-nav a:hover {
-    color: #3498db;
+    color: white;
 }
 
 .doc-content {
@@ -62,25 +66,36 @@ body {
     max-width: 900px;
     background: white;
     min-height: 100vh;
+    font-size: 16px;
+    line-height: 1.7;
 }
 
 .doc-content h1 {
-    color: #2c3e50;
-    margin-bottom: 20px;
-    padding-bottom: 10px;
-    border-bottom: 2px solid #3498db;
+    color: #1a1a1a;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #dc2626;
+    font-size: 32px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
 }
 
 .doc-content h2 {
-    color: #34495e;
-    margin-top: 30px;
-    margin-bottom: 15px;
+    color: #1a1a1a;
+    margin-top: 40px;
+    margin-bottom: 16px;
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
 }
 
 .doc-content h3 {
-    color: #555;
-    margin-top: 20px;
-    margin-bottom: 10px;
+    color: #333;
+    margin-top: 28px;
+    margin-bottom: 12px;
+    font-size: 20px;
+    font-weight: 600;
 }
 
 .doc-content p {
@@ -88,11 +103,12 @@ body {
 }
 
 .doc-content code {
-    background: #f4f4f4;
+    background: transparent;
     padding: 2px 6px;
-    border-radius: 3px;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    border-radius: 4px;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
     font-size: 0.9em;
+    color: #dc2626;
 }
 
 /* ASQL Code Block with Tabs */
@@ -131,9 +147,10 @@ body {
 }
 
 .tab-btn.active {
-    color: #3498db;
-    border-bottom-color: #3498db;
+    color: #dc2626;
+    border-bottom-color: #dc2626;
     background: white;
+    font-weight: 500;
 }
 
 .tab-btn.more-tab {
@@ -144,6 +161,37 @@ body {
 .code-content {
     background: #282c34;
     padding: 0;
+    position: relative;
+}
+
+.play-button {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: #dc2626;
+    text-decoration: none;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.play-button:hover {
+    background: rgba(220, 38, 38, 0.2);
+    border-color: #dc2626;
+    transform: scale(1.05);
+}
+
+.play-button svg {
+    width: 16px;
+    height: 16px;
 }
 
 .code-content pre {
@@ -162,6 +210,10 @@ body {
 }
 
 /* More Dialects Dropdown */
+.asql-code-block {
+    position: relative;
+}
+
 .more-dialects-menu {
     position: absolute;
     background: white;
@@ -173,6 +225,8 @@ body {
     overflow-y: auto;
     min-width: 200px;
     display: none;
+    top: 100%;
+    margin-top: 4px;
 }
 
 .more-dialects-menu.show {
@@ -195,10 +249,124 @@ body {
     background: #f8f9fa;
 }
 
-/* Highlight.js overrides */
+/* Standalone code blocks (not in tabs) */
+.doc-content pre {
+    background: #282c34;
+    border-radius: 8px;
+    padding: 0;
+    overflow-x: auto;
+    margin: 20px 0;
+    border: 1px solid #1e2228;
+}
+
+.doc-content pre code {
+    background: transparent;
+    padding: 20px;
+    color: #abb2bf;
+    font-family: 'SF Mono', 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    display: block;
+    white-space: pre;
+    border-radius: 8px;
+}
+
+/* Ensure code blocks without highlighting still have proper styling */
+.doc-content pre code:not(.hljs) {
+    background: #282c34;
+    color: #abb2bf;
+}
+
+/* Highlight.js overrides - ensure consistent dark theme */
 .hljs {
     background: #282c34 !important;
     padding: 20px !important;
+    border-radius: 8px;
+    display: block;
+    overflow-x: auto;
+    color: #abb2bf !important;
+}
+
+/* Override github-dark theme colors to match our design */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-title,
+.hljs-section,
+.hljs-doctag,
+.hljs-type,
+.hljs-name,
+.hljs-strong {
+    color: #c678dd;
+    font-weight: 500;
+}
+
+.hljs-string,
+.hljs-title.class_,
+.hljs-attr,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-link {
+    color: #98c379;
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion,
+.hljs-meta {
+    color: #5c6370;
+    font-style: italic;
+}
+
+.hljs-number,
+.hljs-regexp,
+.hljs-literal {
+    color: #d19a66;
+}
+
+.hljs-built_in,
+.hljs-builtin-name {
+    color: #61afef;
+}
+
+.hljs-operator {
+    color: #56b6c2;
+}
+
+/* ASQL-specific syntax highlighting */
+.hljs-keyword,
+.hljs-built_in {
+    color: #c678dd;
+    font-weight: 500;
+}
+
+.hljs-string {
+    color: #98c379;
+}
+
+.hljs-number {
+    color: #d19a66;
+}
+
+.hljs-comment {
+    color: #5c6370;
+    font-style: italic;
+}
+
+.hljs-variable {
+    color: #e06c75;
+}
+
+.hljs-operator {
+    color: #56b6c2;
+}
+
+.hljs-function,
+.hljs-title {
+    color: #61afef;
 }
 
 /* Responsive */
