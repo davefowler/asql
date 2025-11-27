@@ -6,6 +6,30 @@
 
 ---
 
+<div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 20px; margin: 20px 0; font-size: 16px; line-height: 1.6;">
+
+## ⚠️ Important Disclaimer
+
+**This language specification and implementation are a heavy work-in-progress (WIP).**
+
+This project is in active development and contains many known issues, bugs, and incomplete features. The specification describes both implemented features and planned features, and not everything documented here is fully functional.
+
+**Please be aware:**
+- Many features may not work as documented
+- There are bugs and edge cases throughout the implementation
+- The API and syntax may change without notice
+- Some documented features may not be implemented yet
+- Error messages may be unclear or unhelpful
+- Performance has not been optimized
+
+**Use at your own risk.** This is experimental software intended for exploration and feedback, not production use.
+
+If you encounter issues or have feedback, please report them, but please understand that this is early-stage software with significant limitations.
+
+</div>
+
+---
+
 ## 1. Overview
 
 ASQL (Analytic SQL, pronounced "Ask-el") is a modern, pipeline-based query language designed specifically for analytical workloads. It transpiles cleanly to standard SQL (via SQLGlot) and aims to be more human-readable, less verbose, and better suited for analytics than traditional SQL.
