@@ -47,3 +47,6 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
+# MkDocs build output (Netlify builds this fresh)
+site/
+
