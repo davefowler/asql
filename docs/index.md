@@ -2,7 +2,9 @@
 
 **ASQL: Analytic SQL** - A modern, pipeline-based query language that transpiles to SQL.
 
-ASQL uses a FROM-first, pipeline-based syntax that makes complex analytics queries more readable and intuitive.
+Analytic SQL (ASQL) uses a FROM-first, pipeline-based syntax that makes complex analytics queries more readable and intuitive.  It is designed for the advanced sql done for data cleaning and analytic queries.  It makes these quereis much more enjoyable to write, maintain and read.  
+
+It transpiles to all major SQL dialects with the help of SQLGlot.  Here is a quick guide, and be sure to checkout our [ASQL playground](https://play.analyticsql.com)
 
 ## Quick Start
 
