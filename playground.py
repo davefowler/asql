@@ -1834,14 +1834,70 @@ def api_detect_dialect():
     except Exception as e:
         return jsonify({'dialect': None, 'error': str(e)})
 
+@app.route('/api/debug/examples-path', methods=['GET'])
+def api_debug_examples_path():
+    """Debug endpoint to check examples directory access."""
+    import os
+    from pathlib import Path
+    
+    debug_info = {
+        'current_working_directory': os.getcwd(),
+        'playground_file': __file__,
+        'playground_dir': str(Path(__file__).parent),
+        'possible_paths': [],
+        'found_path': None,
+        'examples_count': 0
+    }
+    
+    possible_paths = [
+        Path(__file__).parent / 'examples' / 'real',
+        Path('examples') / 'real',
+        Path(os.getcwd()) / 'examples' / 'real',
+        Path(__file__).parent.parent / 'examples' / 'real',
+    ]
+    
+    for path in possible_paths:
+        path_str = str(path)
+        exists = path.exists()
+        is_dir = path.is_dir() if exists else False
+        file_count = len(list(path.glob('*.sql'))) if exists and is_dir else 0
+        
+        debug_info['possible_paths'].append({
+            'path': path_str,
+            'exists': exists,
+            'is_dir': is_dir,
+            'file_count': file_count
+        })
+        
+        if exists and is_dir and not debug_info['found_path']:
+            debug_info['found_path'] = path_str
+            debug_info['examples_count'] = file_count
+    
+    return jsonify(debug_info)
+
 @app.route('/api/fivetran-examples', methods=['GET'])
 def api_fivetran_examples():
     """API endpoint to get Fivetran dbt examples."""
     import re
+    import os
     from pathlib import Path
     
     examples = []
-    real_examples_dir = Path(__file__).parent / 'examples' / 'real'
+    
+    # Try multiple possible paths for the examples directory
+    # Railway might have different working directory or path resolution
+    possible_paths = [
+        Path(__file__).parent / 'examples' / 'real',  # Relative to playground.py
+        Path('examples') / 'real',  # Relative to current working directory
+        Path(os.getcwd()) / 'examples' / 'real',  # Absolute from cwd
+        Path(__file__).parent.parent / 'examples' / 'real',  # One level up
+    ]
+    
+    real_examples_dir = None
+    for path in possible_paths:
+        if path.exists() and path.is_dir():
+            real_examples_dir = path
+            break
     
     # Load all SQL files from examples/real directory
     if real_examples_dir.exists():
