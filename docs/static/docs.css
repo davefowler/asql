@@ -1,44 +1,44 @@
 /* ASQL Documentation Styles - MkDocs Material Theme */
 
-/* Override Material theme colors to use our darker red */
+/* Override Material theme colors to use blue */
 :root {
-    --md-primary-fg-color: #d32f2f;
-    --md-primary-fg-color--light: #e57373;
-    --md-primary-fg-color--dark: #b71c1c;
-    --md-accent-fg-color: #d32f2f;
+    --md-primary-fg-color: #306bea;
+    --md-primary-fg-color--light: #5a8bef;
+    --md-primary-fg-color--dark: #2255c4;
+    --md-accent-fg-color: #306bea;
 }
 
 [data-md-color-scheme="default"] {
-    --md-primary-fg-color: #d32f2f;
-    --md-accent-fg-color: #d32f2f;
+    --md-primary-fg-color: #306bea;
+    --md-accent-fg-color: #306bea;
 }
 
 [data-md-color-scheme="slate"] {
-    --md-primary-fg-color: #d32f2f;
-    --md-accent-fg-color: #d32f2f;
+    --md-primary-fg-color: #306bea;
+    --md-accent-fg-color: #306bea;
 }
 
 /* Header styling */
 .md-header {
-    background-color: #d32f2f !important;
+    background-color: #306bea !important;
 }
 
 /* Inline code color */
 .md-typeset code {
-    color: #d32f2f;
+    color: #306bea;
 }
 
 .md-typeset a code {
-    color: #d32f2f;
+    color: #306bea;
 }
 
 /* Links */
 .md-typeset a {
-    color: #d32f2f;
+    color: #306bea;
 }
 
 .md-typeset a:hover {
-    color: #b71c1c;
+    color: #2255c4;
 }
 
 /* Table of contents - right sidebar */
@@ -47,11 +47,11 @@
 }
 
 .md-sidebar--secondary .md-nav__link:hover {
-    color: #d32f2f !important;
+    color: #306bea !important;
 }
 
 .md-sidebar--secondary .md-nav__link--active {
-    color: #d32f2f !important;
+    color: #306bea !important;
 }
 
 /* Navigation sidebar - left */
@@ -60,11 +60,11 @@
 }
 
 .md-nav__link:hover {
-    color: #d32f2f;
+    color: #306bea;
 }
 
 .md-nav__item--active > .md-nav__link {
-    color: #d32f2f;
+    color: #306bea;
     font-weight: 600;
 }
 
@@ -95,7 +95,7 @@ pre code {
 
 .md-typeset .highlight .md-clipboard:hover,
 .md-clipboard:hover {
-    color: #d32f2f !important;
+    color: #306bea !important;
 }
 
 /* Admonitions */
@@ -115,12 +115,12 @@ pre code {
 }
 
 .md-typeset .tabbed-labels > label:hover {
-    color: #d32f2f;
+    color: #306bea;
 }
 
 .md-typeset .tabbed-set > input:checked + label {
-    color: #d32f2f;
-    border-color: #d32f2f;
+    color: #306bea;
+    border-color: #306bea;
 }
 
 /* Playground button in header */
