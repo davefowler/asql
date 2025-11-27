@@ -8,7 +8,7 @@ This directory contains the MkDocs documentation source files for ASQL.
 - `getting-started.md` - Installation and setup guide
 - `quick-start.md` - Quick start tutorial
 - `examples.md` - Comprehensive examples with SQL dialect tabs
-- `spec.md` - Complete language specification
+- `index.md` - Complete language specification (landing page)
 - `architecture.md` - System architecture and design
 - `status.md` - Implementation status
 - `interactive-playground.md` - Playground documentation

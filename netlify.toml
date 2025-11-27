@@ -16,44 +16,14 @@
 #   function = "basic-auth"
 #   path = "/*"
 
-# Redirects for .md URLs to proper MkDocs paths
+# Redirect old spec URL to home (spec is now the landing page)
 [[redirects]]
-  from = "/quick_start.md"
-  to = "/quick_start/"
+  from = "/spec/"
+  to = "/"
   status = 301
 
 [[redirects]]
-  from = "/examples.md"
-  to = "/examples/"
-  status = 301
-
-[[redirects]]
-  from = "/integrating.md"
-  to = "/integrating/"
-  status = 301
-
-[[redirects]]
-  from = "/spec.md"
-  to = "/spec/"
-  status = 301
-
-[[redirects]]
-  from = "/architecture.md"
-  to = "/architecture/"
-  status = 301
-
-[[redirects]]
-  from = "/playground.md"
-  to = "/playground/"
-  status = 301
-
-[[redirects]]
-  from = "/status.md"
-  to = "/status/"
-  status = 301
-
-[[redirects]]
-  from = "/index.md"
+  from = "/spec"
   to = "/"
   status = 301
 
