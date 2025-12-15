@@ -227,6 +227,61 @@ from users
 
 ---
 
+### 🪟 Simplified Window Functions
+
+Window functions are powerful but verbose. ASQL makes common patterns intuitive:
+
+<div class="grid-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+<div>
+
+**SQL (get most recent order per customer)**
+```sql
+SELECT * FROM (
+    SELECT *, 
+        ROW_NUMBER() OVER (
+            PARTITION BY customer_id 
+            ORDER BY order_date DESC
+        ) as rn
+    FROM orders
+) sub WHERE rn = 1;
+```
+
+</div>
+<div>
+
+**ASQL**
+```asql
+from orders
+  select *, row_number() over (
+    partition by customer_id 
+    order by -order_date
+  ) as rn
+  qualify rn == 1
+```
+
+Or use `prior()` for LAG:
+```asql
+from sales
+  sort month
+  select month, revenue, 
+    prior(revenue) as prev_month
+```
+
+</div>
+</div>
+
+**Built-in window utilities:**
+
+| Function | SQL Equivalent | Example |
+|----------|---------------|---------|
+| `prior(col)` | `LAG(col, 1)` | `prior(revenue)` → previous row's revenue |
+| `next(col)` | `LEAD(col, 1)` | `next(revenue)` → next row's revenue |
+| `running_sum(col)` | `SUM(col) OVER (ROWS UNBOUNDED PRECEDING)` | `running_sum(amount)` |
+| `rolling_avg(col, n)` | `AVG(col) OVER (ROWS n-1 PRECEDING)` | `rolling_avg(revenue, 7)` → 7-day average |
+| `qualify` clause | Subquery with filter | `qualify rn == 1` |
+
+---
+
 ### 🔤 Case-Safe Identifiers
 
 No more quoting headaches. Write `createdAt`, `created_at`, or `CreatedAt` — ASQL matches case-insensitively:
@@ -264,6 +319,9 @@ Write once, run anywhere. ASQL transpiles to any SQL dialect via SQLGlot:
 | Count syntax | `COUNT(*)` | `#` |
 | Descending sort | `ORDER BY x DESC` | `sort -x` |
 | Date extraction | Dialect-specific (`EXTRACT`, `DATE_TRUNC`, etc.) | Universal (`year()`, `month()`) |
+| Previous row value | `LAG(col, 1) OVER (...)` | `prior(col)` |
+| Running total | `SUM(col) OVER (ROWS UNBOUNDED PRECEDING)` | `running_sum(col)` |
+| Filter on window | Requires subquery | `qualify` clause |
 | Case sensitivity | Requires exact case or quotes | Case-safe by default |
 | CTEs required | Often (for readability) | Rarely (pipeline handles it) |
 
@@ -322,6 +380,12 @@ from events
 <h3 style="margin-top: 0;">📖 Learn the Syntax</h3>
 <p>Quick introduction to ASQL's core syntax and operators.</p>
 <a href="quick_start/">Syntax Guide →</a>
+</div>
+
+<div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px;">
+<h3 style="margin-top: 0;">🪟 Window Functions</h3>
+<p>Simplified window functions: prior(), running_sum(), qualify, and more.</p>
+<a href="window_functions/">Window Functions →</a>
 </div>
 
 <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px;">
