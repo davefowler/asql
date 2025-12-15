@@ -92,6 +92,7 @@ nav:
   - Home: index.md
   - Language Specification: spec.md
   - Syntax: quick_start.md
+  - Window Functions: window_functions.md
   - Examples: examples.md
   - Integrating: integrating.md
   - Architecture: architecture.md

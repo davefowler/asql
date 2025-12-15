@@ -10,6 +10,7 @@ Learn the syntax of Analytic SQL. This guide covers all the language features yo
 - [Sorting & Limiting](#sorting--limiting)
 - [Date Functions](#date-functions)
 - [Joins](#joins)
+- [Window Functions](#window-functions)
 - [Common Patterns](#common-patterns)
 
 ## Basic Operations
@@ -214,6 +215,77 @@ select
     orders.amount
 ```
 
+## Window Functions
+
+ASQL provides simplified syntax for common window function patterns.
+
+### prior() and next()
+
+Get values from previous or next rows:
+
+```asql
+from monthly_sales
+sort month
+select 
+    month,
+    revenue,
+    prior(revenue) as prev_month,           # Previous row's revenue
+    prior(revenue, 3) as three_months_ago,  # 3 rows back
+    next(revenue) as next_month             # Next row's revenue
+```
+
+### Running Aggregates
+
+Calculate cumulative totals:
+
+```asql
+from transactions
+sort date
+select 
+    date,
+    amount,
+    running_sum(amount) as cumulative_total,
+    running_avg(amount) as avg_to_date,
+    running_count(*) as transaction_number
+```
+
+### Rolling Aggregates
+
+Calculate moving averages with a window size:
+
+```asql
+from daily_sales
+sort date
+select 
+    date,
+    revenue,
+    rolling_avg(revenue, 7) as seven_day_avg
+```
+
+### QUALIFY Clause
+
+Filter on window function results without a subquery:
+
+```asql
+from orders
+select *, row_number() over (partition by customer_id order by -order_date) as rn
+qualify rn == 1
+```
+
+### DISTINCT ON
+
+PostgreSQL-style deduplication:
+
+```asql
+from orders
+distinct on (customer_id)
+sort customer_id, -order_date
+```
+
+See the [Window Functions](window_functions.md) guide for more details and patterns.
+
+---
+
 ## Common Patterns
 
 ### Top N by Group
@@ -296,7 +368,8 @@ This query:
 
 ## Next Steps
 
-- **[Examples](EXAMPLES.md)** - See more real-world query patterns
+- **[Window Functions](window_functions.md)** - Simplified window function utilities
+- **[Examples](examples.md)** - See more real-world query patterns
 - **[Language Specification](spec.md)** - Complete syntax reference
 - **[Playground](https://play.analyticsql.com)** - Try writing queries interactively
 
