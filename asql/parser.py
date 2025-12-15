@@ -122,6 +122,15 @@ class ASQLParser:
             elif self._peek_keyword("select") or self._peek_keyword("project"):
                 select_list = self._parse_select_list()
                 current_step.select = select_list
+            # Check for QUALIFY (window function filter)
+            elif self._peek_keyword("qualify"):
+                qualify_expr = self._parse_qualify()
+                current_step.qualify = qualify_expr
+            # Check for DISTINCT ON
+            elif self._peek_keyword("distinct"):
+                distinct_on_cols = self._parse_distinct_on()
+                if distinct_on_cols:
+                    current_step.distinct_on = distinct_on_cols
             # Check for STASH AS (creates a named CTE)
             elif self._peek_keyword("stash"):
                 # Parse stash as <name> first
@@ -718,6 +727,83 @@ class ASQLParser:
         # sqlglot 28+ uses 'expression' for the limit value
         return exp.Limit(expression=exp.Literal.number(limit_value))
     
+    def _parse_qualify(self) -> exp.Expression:
+        """
+        Parse QUALIFY clause for filtering on window function results.
+        
+        Syntax: qualify <condition>
+        Example: qualify row_number() over (partition by customer_id order by -order_date) == 1
+        Example: qualify rn == 1  (where rn is a window function alias)
+        """
+        if not self._consume_keyword("qualify"):
+            raise ASQLSyntaxError("Expected 'qualify' keyword")
+        
+        self._skip_whitespace()
+        
+        # Parse the condition (can include window functions or references to them)
+        condition = self._parse_expression()
+        if not condition:
+            raise ASQLSyntaxError("Expected condition after 'qualify'")
+        
+        return condition
+    
+    def _parse_distinct_on(self) -> Optional[List[exp.Expression]]:
+        """
+        Parse DISTINCT ON clause for PostgreSQL-style deduplication.
+        
+        Syntax: distinct on (col1, col2, ...)
+        Example: distinct on (customer_id)
+        
+        Returns list of columns to distinct on, or None if not a DISTINCT ON.
+        """
+        if not self._consume_keyword("distinct"):
+            raise ASQLSyntaxError("Expected 'distinct' keyword")
+        
+        self._skip_whitespace()
+        
+        # Check for 'on' keyword - if not present, this might be a different distinct
+        if not self._peek_keyword("on"):
+            # Not a DISTINCT ON, just regular DISTINCT - handle elsewhere
+            return None
+        
+        self._consume_keyword("on")
+        self._skip_whitespace()
+        
+        # Expect parentheses with column list
+        if self._peek() != "(":
+            raise ASQLSyntaxError("Expected '(' after 'distinct on'")
+        
+        self._consume("(")
+        self._skip_whitespace()
+        
+        # Parse column list
+        columns = []
+        while True:
+            col = self._parse_column()
+            if not col:
+                # Try as identifier (for simple column names)
+                ident = self._parse_identifier()
+                if ident:
+                    col = exp.Column(this=exp.Identifier(this=ident))
+            
+            if col:
+                columns.append(col)
+            
+            self._skip_whitespace()
+            if self._peek() == ",":
+                self._consume(",")
+                self._skip_whitespace()
+            elif self._peek() == ")":
+                self._consume(")")
+                break
+            else:
+                raise ASQLSyntaxError("Expected ',' or ')' in DISTINCT ON column list")
+        
+        if not columns:
+            raise ASQLSyntaxError("Expected at least one column in DISTINCT ON")
+        
+        return columns
+    
     def _parse_stash_as(self) -> str:
         """Parse STASH AS <name> clause."""
         if not self._consume_keyword("stash"):
@@ -843,17 +929,22 @@ class ASQLParser:
         
         columns = []
         
-        # Check for *
-        if self._peek() == "*":
-            self._consume("*")
-            return [exp.Star()]
-        
-        # Parse expression list (can include arithmetic)
+        # Parse expression list (can include *, arithmetic, etc.)
         while True:
-            # Parse expression (may include arithmetic, aliases, etc.)
-            expr = self._parse_select_expression()
-            if expr:
-                columns.append(expr)
+            self._skip_whitespace()
+            
+            # Check for *
+            if self._peek() == "*":
+                self._consume("*")
+                columns.append(exp.Star())
+            else:
+                # Parse expression (may include arithmetic, aliases, etc.)
+                expr = self._parse_select_expression()
+                if expr:
+                    columns.append(expr)
+                else:
+                    # No more expressions
+                    break
             
             self._skip_whitespace()
             if self._peek() == ",":
@@ -931,6 +1022,212 @@ class ASQLParser:
             pass
         
         return expr
+    
+    def _parse_ordered_aggregate(self, func_name: str) -> Optional[exp.Expression]:
+        """
+        Parse aggregate functions with ORDER BY clause.
+        
+        Handles:
+        - first(col order by sort_col) -> First value when sorted
+        - last(col order by sort_col) -> Last value when sorted
+        - arg_max(col, sort_col) -> Value of col where sort_col is maximum
+        - arg_min(col, sort_col) -> Value of col where sort_col is minimum
+        
+        These compile to subqueries with ROW_NUMBER() in most dialects.
+        DuckDB and ClickHouse have native support.
+        """
+        func_name_lower = func_name.lower()
+        
+        if func_name_lower not in ("first", "last", "arg_max", "arg_min"):
+            return None
+        
+        self._skip_whitespace()
+        
+        if self._peek() != "(":
+            return None
+        
+        self._consume("(")
+        self._skip_whitespace()
+        
+        # Parse the value column
+        value_col = self._parse_additive_expression()
+        if not value_col:
+            raise ASQLSyntaxError(f"Expected column in {func_name}()")
+        
+        self._skip_whitespace()
+        
+        order_col = None
+        order_desc = False
+        
+        if func_name_lower in ("arg_max", "arg_min"):
+            # arg_max(col, sort_col) syntax - comma separated
+            if self._peek() != ",":
+                raise ASQLSyntaxError(f"Expected ',' in {func_name}(col, sort_col)")
+            self._consume(",")
+            self._skip_whitespace()
+            
+            # Check for descending
+            if self._peek() == "-":
+                self._consume("-")
+                order_desc = True
+                self._skip_whitespace()
+            
+            order_col = self._parse_additive_expression()
+            if not order_col:
+                raise ASQLSyntaxError(f"Expected sort column in {func_name}()")
+        else:
+            # first(col order by sort_col) / last(col order by sort_col) syntax
+            if self._peek_keyword("order"):
+                self._consume_keyword("order")
+                if not self._consume_keyword("by"):
+                    raise ASQLSyntaxError(f"Expected 'by' after 'order' in {func_name}()")
+                self._skip_whitespace()
+                
+                # Check for descending
+                if self._peek() == "-":
+                    self._consume("-")
+                    order_desc = True
+                    self._skip_whitespace()
+                
+                order_col = self._parse_additive_expression()
+                if not order_col:
+                    raise ASQLSyntaxError(f"Expected sort column after 'order by' in {func_name}()")
+        
+        self._skip_whitespace()
+        if self._peek() != ")":
+            raise ASQLSyntaxError(f"Expected ')' after {func_name}() arguments")
+        self._consume(")")
+        
+        # For arg_max/arg_min, determine the actual order direction
+        # arg_max returns value where sort_col is MAX -> ORDER BY sort_col DESC, take first
+        # arg_min returns value where sort_col is MIN -> ORDER BY sort_col ASC, take first
+        if func_name_lower == "arg_max":
+            # arg_max: descending order to get max first
+            order_desc = not order_desc if order_desc else True
+        elif func_name_lower == "arg_min":
+            # arg_min: ascending order to get min first
+            order_desc = order_desc  # Keep as-is, default is ascending
+        elif func_name_lower == "last":
+            # last: reverse the order
+            order_desc = not order_desc
+        
+        # Create the window expression
+        # This compiles to FIRST_VALUE(col) OVER (ORDER BY sort_col [DESC])
+        if func_name_lower in ("first", "arg_min"):
+            func_expr = exp.FirstValue(this=value_col)
+        else:  # last, arg_max
+            func_expr = exp.FirstValue(this=value_col)
+        
+        if order_col:
+            order_expr = exp.Order(expressions=[exp.Ordered(this=order_col, desc=order_desc)])
+            window = exp.Window(this=func_expr)
+            window.set("order", order_expr)
+            return window
+        else:
+            return exp.Window(this=func_expr)
+    
+    def _parse_window_function(self, func_name: str, args: List[exp.Expression]) -> Optional[exp.Expression]:
+        """
+        Parse window function expressions.
+        
+        Handles:
+        - prior(col) / prior(col, n) -> LAG(col, n)
+        - next(col) / next(col, n) -> LEAD(col, n)
+        - running_sum(col) -> SUM(col) OVER (ORDER BY ... ROWS UNBOUNDED PRECEDING)
+        - running_avg(col) -> AVG(col) OVER (ORDER BY ... ROWS UNBOUNDED PRECEDING)
+        - running_count(*) / running_count(col) -> COUNT(*) OVER (ORDER BY ... ROWS UNBOUNDED PRECEDING)
+        - rolling_sum(col, n) -> SUM(col) OVER (ORDER BY ... ROWS n-1 PRECEDING)
+        - rolling_avg(col, n) -> AVG(col) OVER (ORDER BY ... ROWS n-1 PRECEDING)
+        """
+        func_name_lower = func_name.lower()
+        
+        # prior() -> LAG()
+        if func_name_lower == "prior":
+            if not args:
+                raise ASQLSyntaxError("prior() requires at least one argument")
+            col = args[0]
+            offset = args[1] if len(args) > 1 else exp.Literal.number(1)
+            return exp.Lag(this=col, offset=offset)
+        
+        # next() -> LEAD()
+        elif func_name_lower == "next":
+            if not args:
+                raise ASQLSyntaxError("next() requires at least one argument")
+            col = args[0]
+            offset = args[1] if len(args) > 1 else exp.Literal.number(1)
+            return exp.Lead(this=col, offset=offset)
+        
+        # running_sum() -> SUM() OVER (ROWS UNBOUNDED PRECEDING)
+        elif func_name_lower == "running_sum":
+            if not args:
+                raise ASQLSyntaxError("running_sum() requires at least one argument")
+            agg = exp.Sum(this=args[0])
+            window_spec = exp.WindowSpec(
+                kind="ROWS",
+                start="UNBOUNDED PRECEDING",
+                start_side="PRECEDING"
+            )
+            return exp.Window(this=agg, spec=window_spec)
+        
+        # running_avg() -> AVG() OVER (ROWS UNBOUNDED PRECEDING)
+        elif func_name_lower == "running_avg":
+            if not args:
+                raise ASQLSyntaxError("running_avg() requires at least one argument")
+            agg = exp.Avg(this=args[0])
+            window_spec = exp.WindowSpec(
+                kind="ROWS",
+                start="UNBOUNDED PRECEDING",
+                start_side="PRECEDING"
+            )
+            return exp.Window(this=agg, spec=window_spec)
+        
+        # running_count() -> COUNT() OVER (ROWS UNBOUNDED PRECEDING)
+        elif func_name_lower == "running_count":
+            if not args:
+                agg = exp.Count(this=exp.Star())
+            else:
+                agg = exp.Count(this=args[0])
+            window_spec = exp.WindowSpec(
+                kind="ROWS",
+                start="UNBOUNDED PRECEDING",
+                start_side="PRECEDING"
+            )
+            return exp.Window(this=agg, spec=window_spec)
+        
+        # rolling_sum(col, n) -> SUM(col) OVER (ROWS n-1 PRECEDING)
+        elif func_name_lower == "rolling_sum":
+            if len(args) < 2:
+                raise ASQLSyntaxError("rolling_sum() requires two arguments: column and window size")
+            col = args[0]
+            # Window size is the number of rows to include
+            # ROWS n-1 PRECEDING means include n rows total (current + n-1 before)
+            window_size = args[1]
+            agg = exp.Sum(this=col)
+            # Calculate n-1 for the frame
+            frame_size = exp.Sub(this=window_size, expression=exp.Literal.number(1))
+            window_spec = exp.WindowSpec(
+                kind="ROWS",
+                start=frame_size,
+                start_side="PRECEDING"
+            )
+            return exp.Window(this=agg, spec=window_spec)
+        
+        # rolling_avg(col, n) -> AVG(col) OVER (ROWS n-1 PRECEDING)
+        elif func_name_lower == "rolling_avg":
+            if len(args) < 2:
+                raise ASQLSyntaxError("rolling_avg() requires two arguments: column and window size")
+            col = args[0]
+            window_size = args[1]
+            agg = exp.Avg(this=col)
+            frame_size = exp.Sub(this=window_size, expression=exp.Literal.number(1))
+            window_spec = exp.WindowSpec(
+                kind="ROWS",
+                start=frame_size,
+                start_side="PRECEDING"
+            )
+            return exp.Window(this=agg, spec=window_spec)
+        
+        return None
     
     def _parse_column(self) -> Optional[exp.Expression]:
         """Parse a column reference (may be qualified: table.column)."""
@@ -1334,7 +1631,7 @@ class ASQLParser:
         return left_expr
     
     def _parse_primary_expression(self) -> Optional[exp.Expression]:
-        """Parse a primary expression (literal, identifier, column, or parenthesized expression)."""
+        """Parse a primary expression (literal, identifier, column, function call, or parenthesized expression)."""
         self._skip_whitespace()
         
         # Check for parenthesized expression
@@ -1360,6 +1657,218 @@ class ASQLParser:
         if num_literal is not None:
             # SQLGlot expects string values for Literal
             return exp.Literal(this=str(num_literal), is_string=False)
+        
+        # Check for function call (window functions, aggregates, etc.)
+        saved_pos = self.pos
+        identifier = self._parse_identifier()
+        if identifier:
+            self._skip_whitespace()
+            if self._peek() == "(":
+                # Check if this is an ordered aggregate (first, last, arg_max, arg_min)
+                func_name_lower = identifier.lower()
+                if func_name_lower in ("first", "last", "arg_max", "arg_min"):
+                    # Reset position and try parsing as ordered aggregate
+                    self.pos = saved_pos + len(identifier)
+                    self._skip_whitespace()
+                    ordered_agg = self._parse_ordered_aggregate(identifier)
+                    if ordered_agg:
+                        return ordered_agg
+                    # If parsing failed, continue with normal function parsing
+                    self.pos = saved_pos + len(identifier)
+                    self._skip_whitespace()
+                
+                # It's a function call
+                func_name = identifier
+                self._consume("(")
+                self._skip_whitespace()
+                
+                # Parse function arguments
+                args = []
+                if self._peek() != ")":
+                    while True:
+                        # Check for * (for count(*), etc.)
+                        if self._peek() == "*":
+                            self._consume("*")
+                            args.append(exp.Star())
+                        else:
+                            arg = self._parse_additive_expression()
+                            if arg:
+                                args.append(arg)
+                        
+                        self._skip_whitespace()
+                        if self._peek() == ",":
+                            self._consume(",")
+                            self._skip_whitespace()
+                        elif self._peek() == ")":
+                            break
+                        else:
+                            raise ASQLSyntaxError(f"Expected ',' or ')' in function call {func_name}()")
+                
+                self._consume(")")
+                self._skip_whitespace()
+                
+                # Check if this is a window function we handle specially
+                func_name_lower = func_name.lower()
+                window_funcs = ["prior", "next", "running_sum", "running_avg", "running_count", 
+                               "rolling_sum", "rolling_avg"]
+                
+                if func_name_lower in window_funcs:
+                    window_expr = self._parse_window_function(func_name, args)
+                    if window_expr:
+                        return window_expr
+                
+                # Check for OVER clause (for window functions like row_number(), etc.)
+                if self._peek_keyword("over"):
+                    self._consume_keyword("over")
+                    self._skip_whitespace()
+                    
+                    if self._peek() != "(":
+                        raise ASQLSyntaxError("Expected '(' after OVER")
+                    self._consume("(")
+                    self._skip_whitespace()
+                    
+                    partition_by = None
+                    order_by = None
+                    
+                    # Parse PARTITION BY
+                    if self._peek_keyword("partition"):
+                        self._consume_keyword("partition")
+                        if not self._consume_keyword("by"):
+                            raise ASQLSyntaxError("Expected 'by' after 'partition'")
+                        self._skip_whitespace()
+                        
+                        partition_cols = []
+                        while True:
+                            col = self._parse_column()
+                            if col:
+                                partition_cols.append(col)
+                            self._skip_whitespace()
+                            if self._peek() == ",":
+                                self._consume(",")
+                                self._skip_whitespace()
+                            else:
+                                break
+                        
+                        if partition_cols:
+                            partition_by = partition_cols
+                    
+                    # Parse ORDER BY
+                    if self._peek_keyword("order"):
+                        self._consume_keyword("order")
+                        if not self._consume_keyword("by"):
+                            raise ASQLSyntaxError("Expected 'by' after 'order'")
+                        self._skip_whitespace()
+                        
+                        order_exprs = []
+                        while True:
+                            # Check for descending indicator
+                            desc = False
+                            if self._peek() == "-":
+                                self._consume("-")
+                                desc = True
+                                self._skip_whitespace()
+                            
+                            col = self._parse_column()
+                            if col:
+                                order_expr = exp.Ordered(this=col, desc=desc)
+                                order_exprs.append(order_expr)
+                            
+                            self._skip_whitespace()
+                            if self._peek() == ",":
+                                self._consume(",")
+                                self._skip_whitespace()
+                            else:
+                                break
+                        
+                        if order_exprs:
+                            order_by = order_exprs
+                    
+                    self._skip_whitespace()
+                    if self._peek() != ")":
+                        raise ASQLSyntaxError("Expected ')' after OVER clause")
+                    self._consume(")")
+                    
+                    # Create window function expression
+                    # First, create the base function
+                    if func_name_lower == "row_number":
+                        func_expr = exp.RowNumber()
+                    elif func_name_lower == "rank":
+                        func_expr = exp.Rank()
+                    elif func_name_lower == "dense_rank":
+                        func_expr = exp.DenseRank()
+                    elif func_name_lower == "lag":
+                        func_expr = exp.Lag(this=args[0] if args else None, 
+                                           offset=args[1] if len(args) > 1 else None)
+                    elif func_name_lower == "lead":
+                        func_expr = exp.Lead(this=args[0] if args else None,
+                                            offset=args[1] if len(args) > 1 else None)
+                    elif func_name_lower == "sum":
+                        func_expr = exp.Sum(this=args[0] if args else None)
+                    elif func_name_lower == "avg":
+                        func_expr = exp.Avg(this=args[0] if args else None)
+                    elif func_name_lower == "count":
+                        func_expr = exp.Count(this=args[0] if args else exp.Star())
+                    elif func_name_lower == "min":
+                        func_expr = exp.Min(this=args[0] if args else None)
+                    elif func_name_lower == "max":
+                        func_expr = exp.Max(this=args[0] if args else None)
+                    elif func_name_lower == "first_value":
+                        func_expr = exp.FirstValue(this=args[0] if args else None)
+                    elif func_name_lower == "last_value":
+                        func_expr = exp.LastValue(this=args[0] if args else None)
+                    else:
+                        # Generic function with OVER
+                        func_expr = exp.Anonymous(this=func_name, expressions=args)
+                    
+                    # Create Window expression with partition_by and order directly on Window
+                    window_expr = exp.Window(this=func_expr)
+                    if partition_by:
+                        window_expr.set("partition_by", partition_by)
+                    if order_by:
+                        window_expr.set("order", exp.Order(expressions=order_by))
+                    
+                    return window_expr
+                
+                # Regular function call (not a window function with OVER)
+                # Check for common aggregate/scalar functions
+                if func_name_lower == "row_number":
+                    return exp.RowNumber()
+                elif func_name_lower == "rank":
+                    return exp.Rank()
+                elif func_name_lower == "dense_rank":
+                    return exp.DenseRank()
+                elif func_name_lower == "count":
+                    if args and isinstance(args[0], exp.Star):
+                        return exp.Count(this=exp.Star())
+                    return exp.Count(this=args[0] if args else exp.Star())
+                elif func_name_lower == "sum":
+                    return exp.Sum(this=args[0] if args else None)
+                elif func_name_lower == "avg":
+                    return exp.Avg(this=args[0] if args else None)
+                elif func_name_lower == "min":
+                    return exp.Min(this=args[0] if args else None)
+                elif func_name_lower == "max":
+                    return exp.Max(this=args[0] if args else None)
+                elif func_name_lower == "coalesce":
+                    if args:
+                        return exp.Coalesce(this=args[0], expressions=args[1:] if len(args) > 1 else [])
+                    return exp.Coalesce()
+                elif func_name_lower == "lag":
+                    return exp.Lag(this=args[0] if args else None,
+                                  offset=args[1] if len(args) > 1 else None)
+                elif func_name_lower == "lead":
+                    return exp.Lead(this=args[0] if args else None,
+                                   offset=args[1] if len(args) > 1 else None)
+                elif func_name_lower == "first_value":
+                    return exp.FirstValue(this=args[0] if args else None)
+                elif func_name_lower == "last_value":
+                    return exp.LastValue(this=args[0] if args else None)
+                else:
+                    # Generic function call
+                    return exp.Anonymous(this=func_name, expressions=args)
+            
+            # Not a function call, restore position and try as column
+            self.pos = saved_pos
         
         # Try to parse column (supports qualified names: table.column)
         column = self._parse_column()

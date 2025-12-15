@@ -6,6 +6,23 @@ This document explores ideas for making common window function patterns easier a
 
 ---
 
+## ✅ Implementation Status
+
+The following features have been implemented:
+
+| Feature | Status | Example |
+|---------|--------|---------|
+| QUALIFY clause | ✅ Implemented | `qualify rn == 1` |
+| DISTINCT ON | ✅ Implemented | `distinct on (customer_id)` |
+| prior() / next() | ✅ Implemented | `prior(revenue)`, `next(revenue, 2)` |
+| first() / last() with ORDER BY | ✅ Implemented | `first(order_id order by -order_date)` |
+| arg_max() / arg_min() | ✅ Implemented | `arg_max(order_id, order_date)` |
+| running_sum/avg/count() | ✅ Implemented | `running_sum(amount)` |
+| rolling_avg/sum() | ✅ Implemented | `rolling_avg(revenue, 7)` |
+| Window functions with OVER | ✅ Implemented | `row_number() over (partition by customer_id order by -order_date)` |
+
+---
+
 ## The Problem
 
 Window functions are extremely powerful but have notoriously verbose syntax. The most common pattern — "get the first/last row per group" — requires a subquery with `ROW_NUMBER()`:
@@ -403,6 +420,110 @@ From analyzing Fivetran dbt examples:
 | Running totals | ~5 | Pass-through | `running_sum()` |
 | Rolling averages | ~4 | Pass-through | `rolling_avg()` |
 | RANK for ranking | ~5 | Pass-through | Consider `rank by` |
+
+---
+
+## Implementation Examples
+
+### QUALIFY Clause
+
+```asql
+# Get most recent order per customer using QUALIFY
+from orders
+    select *, row_number() over (partition by customer_id order by -order_date) as rn
+    qualify rn == 1
+```
+
+Compiles to:
+```sql
+SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) AS rn 
+FROM orders 
+QUALIFY rn = 1
+```
+
+### DISTINCT ON
+
+```asql
+# PostgreSQL-style DISTINCT ON
+from orders
+    distinct on (customer_id)
+    sort customer_id, -order_date
+```
+
+### prior() and next() Functions
+
+```asql
+# Calculate month-over-month change
+from monthly_sales
+    sort month
+    select 
+        month,
+        revenue,
+        prior(revenue) as prev_month,
+        revenue - prior(revenue) as mom_change
+```
+
+Compiles to:
+```sql
+SELECT month, revenue, LAG(revenue, 1), revenue - LAG(revenue, 1) AS mom_change 
+FROM monthly_sales 
+ORDER BY month
+```
+
+### Running Aggregates
+
+```asql
+# Cumulative totals
+from transactions
+    sort date
+    select 
+        date, 
+        amount, 
+        running_sum(amount) as cumulative_total,
+        running_avg(amount) as avg_to_date,
+        running_count(*) as transaction_number
+```
+
+### Rolling Aggregates
+
+```asql
+# 7-day rolling average
+from daily_sales
+    sort date
+    select date, revenue, rolling_avg(revenue, 7) as seven_day_avg
+```
+
+### first() / last() with ORDER BY
+
+```asql
+# Get first and last order per customer
+from orders
+    select 
+        customer_id,
+        first(order_id order by order_date) as first_order,
+        last(order_id order by order_date) as latest_order
+```
+
+### arg_max() / arg_min() (ClickHouse-style)
+
+```asql
+# Get order_id where order_date is maximum per customer
+from orders
+    select 
+        customer_id,
+        arg_max(order_id, order_date) as latest_order_id,
+        arg_min(order_id, order_date) as earliest_order_id
+```
+
+### Window Functions with OVER
+
+```asql
+# Explicit window function syntax
+from employees
+    select *, 
+        rank() over (partition by department order by -salary) as salary_rank,
+        sum(salary) over (partition by department) as dept_total_salary
+```
 
 ---
 
