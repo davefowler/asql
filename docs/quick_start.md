@@ -296,8 +296,8 @@ This query:
 
 ## Next Steps
 
-- **[Examples](examples.md)** - See more real-world query patterns
-- **[Language Specification](index.md)** - Complete syntax reference
+- **[Examples](EXAMPLES.md)** - See more real-world query patterns
+- **[Language Specification](spec.md)** - Complete syntax reference
 - **[Playground](https://play.analyticsql.com)** - Try writing queries interactively
 
 ---
