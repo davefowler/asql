@@ -224,8 +224,28 @@ function reorderTabs(blockId) {
     reorderTabsOnLoad(blockId);
 }
 
+// Add WIP warning banner
+function addWIPBanner() {
+    // Check if banner already exists
+    if (document.querySelector('.wip-banner')) return;
+    
+    // Create banner element
+    const banner = document.createElement('div');
+    banner.className = 'wip-banner';
+    banner.innerHTML = `
+        <span class="wip-icon">🚧</span>
+        <strong>Work in Progress:</strong> ASQL is under active development. Syntax and features may change. 
+        <a href="https://github.com/davefowler/asql" target="_blank">Contribute on GitHub</a>
+    `;
+    
+    // Insert at the very top of the body
+    document.body.insertBefore(banner, document.body.firstChild);
+}
+
 // Initialize all code blocks on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // Add WIP warning banner
+    addWIPBanner();
     // Wait a bit for highlight.js to be fully loaded
     const initHighlighting = () => {
         if (!window.hljs) {
