@@ -89,10 +89,10 @@ plugins:
 
 # Navigation
 nav:
-  - Language Spec: index.md
+  - Home: index.md
+  - Language Specification: spec.md
   - Syntax: quick_start.md
   - Examples: examples.md
   - Integrating: integrating.md
   - Architecture: architecture.md
-  - Playground ↗: https://play.analyticsql.com
 
