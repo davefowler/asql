@@ -262,9 +262,27 @@ select
     rolling_avg(revenue, 7) as seven_day_avg
 ```
 
+### Deduplication with `per`
+
+Get the first/last row per group with the `per` command:
+
+```asql
+# Most recent order per customer
+from orders
+per customer_id first by -order_date
+
+# Add row numbers per customer
+from orders
+per customer_id number by -order_date
+
+# Rank employees by salary within department
+from employees
+per department rank by -salary
+```
+
 ### QUALIFY Clause
 
-Filter on window function results without a subquery:
+For more complex window function filtering:
 
 ```asql
 from orders

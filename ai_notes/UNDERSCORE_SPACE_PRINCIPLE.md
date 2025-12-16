@@ -438,7 +438,122 @@ def test_ambiguous_resolution():
 
 ---
 
-## 8. Dependencies
+## 8. Configuration & Style Enforcement
+
+### 8.1 Philosophy
+
+By default, ASQL is **permissive** - underscores and spaces are interchangeable. However, teams may want to enforce consistency for readability and code review.
+
+We support **three levels of enforcement**:
+
+| Level | Behavior | Use Case |
+|-------|----------|----------|
+| `flexible` (default) | All styles accepted | Learning, rapid prototyping |
+| `strict` (compiler) | Only one style compiles | Hard enforcement, CI gates |
+| `lint` (separate tool) | Warnings, no breakage | Gradual adoption, suggestions |
+
+### 8.2 Compiler Configuration
+
+```python
+from asql import compile, CompilerConfig
+
+# Default: flexible (all styles work)
+compile("from users select sum amount")  # ✅
+compile("from users select sum_amount")  # ✅
+
+# Strict mode: enforce underscores
+config = CompilerConfig(syntax_style='underscores')
+compile("from users select sum_amount", config=config)  # ✅
+compile("from users select sum amount", config=config)  # ❌ SyntaxError
+
+# Strict mode: enforce spaces  
+config = CompilerConfig(syntax_style='spaces')
+compile("from users select sum amount", config=config)   # ✅
+compile("from users select sum_amount", config=config)   # ❌ SyntaxError
+```
+
+**Configuration Options:**
+
+```python
+class CompilerConfig:
+    syntax_style: Literal['flexible', 'underscores', 'spaces'] = 'flexible'
+    # 'flexible' - accept both (default)
+    # 'underscores' - only underscore style allowed
+    # 'spaces' - only space style allowed
+```
+
+### 8.3 Independent Linter (Recommended for Teams)
+
+A separate `asql-lint` tool provides style checking without breaking compilation:
+
+```bash
+# Check files for style violations
+asql-lint queries/ --style=underscores
+
+# Auto-fix to preferred style
+asql-lint queries/ --style=underscores --fix
+
+# CI integration (exit code 1 on violations)
+asql-lint queries/ --style=underscores --strict
+```
+
+**Linter Configuration (`.asqlrc` or `pyproject.toml`):**
+
+```toml
+# pyproject.toml
+[tool.asql-lint]
+style = "underscores"  # or "spaces" or "flexible"
+check_consistency = true  # warn if mixed styles in same file
+auto_fix = false
+ignore_paths = ["examples/", "tests/fixtures/"]
+```
+
+```yaml
+# .asqlrc
+style: underscores
+check_consistency: true
+rules:
+  prefer-explicit-parens: warn  # sum(amount) vs sum_amount
+  prefer-shorthand: off         # sum_amount vs sum(amount)
+```
+
+**Linter Output Example:**
+
+```
+queries/sales.asql:5:8 warning: Use underscore style for consistency
+  5 | select sum amount, avg price
+              ^^^^^^^^^^
+  Auto-fix: sum_amount, avg_price
+
+queries/sales.asql:12:3 warning: Mixed styles in same file
+  12 | group by day_of_week_created_at
+  Previously used space style on line 5
+```
+
+### 8.4 Why Both Compiler + Linter?
+
+| Scenario | Use Compiler Strict | Use Linter |
+|----------|---------------------|------------|
+| Hard CI gate, block merges | ✅ | |
+| Gradual migration to consistent style | | ✅ |
+| Auto-fix existing codebase | | ✅ |
+| Warning without breaking builds | | ✅ |
+| Maximum strictness | ✅ | ✅ (both) |
+| Learning/exploring | neither | |
+
+**Recommendation**: Start with the linter for existing projects, use compiler strict mode for new projects or after migration.
+
+### 8.5 Implementation Priority
+
+1. **Phase 1**: Compiler `flexible` mode (current behavior)
+2. **Phase 2**: Compiler `strict` modes (`underscores`, `spaces`)
+3. **Phase 3**: Standalone `asql-lint` tool with auto-fix
+
+The linter is lower priority since it's additive and doesn't block core functionality.
+
+---
+
+## 9. Dependencies
 
 ### Features That Depend on This
 
@@ -454,7 +569,7 @@ def test_ambiguous_resolution():
 
 ---
 
-## 9. Rollout Plan
+## 10. Rollout Plan
 
 1. **Phase 1**: Implement function registry and pattern matching (internal only)
 2. **Phase 2**: Enable shorthand for existing functions (`sum_amount`)
@@ -466,7 +581,7 @@ Each phase should be backward compatible - existing queries continue to work.
 
 ---
 
-## 10. Related Documentation
+## 11. Related Documentation
 
 - `SPEC.md`: Core language specification (includes this principle)
 - `universal_function_shorthand.md`: The broader shorthand pattern

@@ -19,6 +19,11 @@ class PipelineStep:
         self.store_name: Optional[str] = None  # Name for stored CTE
         self.qualify: Optional[exp.Expression] = None  # QUALIFY clause for window function filtering
         self.distinct_on: Optional[List[exp.Expression]] = None  # DISTINCT ON columns
+        # Window operations: per <partition> <op> by <order> [as <alias>]
+        # Or standalone: <op> by <order> [as <alias>]
+        # Operations: first, last (filter), number, rank, dense_rank (add column)
+        # Structure: {"op": str, "order": List[exp], "partition": List[exp], "alias": Optional[str]}
+        self.window_op: Optional[dict] = None
     
     def has_content(self) -> bool:
         """Check if step has any content."""
@@ -31,7 +36,8 @@ class PipelineStep:
             self.sort,
             self.limit,
             self.qualify,
-            self.distinct_on
+            self.distinct_on,
+            self.window_op
         ])
     
     def add_where(self, where_expr: exp.Where) -> None:
@@ -179,6 +185,10 @@ def merge_steps(step1: PipelineStep, step2: PipelineStep) -> PipelineStep:
     if step2.distinct_on:
         step1.distinct_on = step2.distinct_on
     
+    # WINDOW OP: step2's window_op replaces step1's
+    if step2.window_op:
+        step1.window_op = step2.window_op
+    
     return step1
 
 
@@ -191,6 +201,7 @@ def step_requires_separate_cte(step: PipelineStep) -> bool:
     - It has STASH AS (explicit CTE name)
     - It has QUALIFY (window filter needs subquery)
     - It has DISTINCT ON (needs subquery for non-postgres dialects)
+    - It has WINDOW OP (window operation needs subquery)
     
     Returns:
         True if step needs separate CTE, False otherwise
@@ -199,7 +210,8 @@ def step_requires_separate_cte(step: PipelineStep) -> bool:
         step.group_by is not None or 
         step.store_name is not None or
         step.qualify is not None or
-        step.distinct_on is not None
+        step.distinct_on is not None or
+        step.window_op is not None
     )
 
 
@@ -210,7 +222,7 @@ def is_simple_from_step(step: PipelineStep) -> bool:
     A simple FROM step can be inlined directly instead of creating a CTE.
     
     Returns:
-        True if step is just FROM (no WHERE, JOIN, GROUP BY, SORT, LIMIT, SELECT, QUALIFY, DISTINCT ON)
+        True if step is just FROM (no WHERE, JOIN, GROUP BY, SORT, LIMIT, SELECT, etc.)
     """
     return (
         step.from_clause is not None and
@@ -222,7 +234,8 @@ def is_simple_from_step(step: PipelineStep) -> bool:
         not step.select and
         not step.store_name and
         not step.qualify and
-        not step.distinct_on
+        not step.distinct_on and
+        not step.window_op
     )
 
 
@@ -308,6 +321,64 @@ def build_select_for_step(
     # For other dialects, we use ROW_NUMBER() and filter
     if step.distinct_on:
         select.set("distinct", exp.Distinct(on=exp.Tuple(expressions=step.distinct_on)))
+    
+    # Handle WINDOW OP (per ... <op> by ... or standalone <op> by ...)
+    # Operations: first/last (filter), number/rank/dense_rank (add column)
+    if step.window_op:
+        op = step.window_op.get("op", "first")
+        order_cols = step.window_op.get("order", [])
+        partition_cols = step.window_op.get("partition", [])
+        alias = step.window_op.get("alias")
+        
+        # Determine the window function based on operation
+        if op == "number":
+            window_func = exp.RowNumber()
+            default_alias = alias or "row_num"
+        elif op == "rank":
+            window_func = exp.Rank()
+            default_alias = alias or "rank"
+        elif op == "dense_rank":
+            window_func = exp.DenseRank()
+            default_alias = alias or "dense_rank"
+        elif op in ("first", "last"):
+            window_func = exp.RowNumber()
+            default_alias = "_rn"  # Internal, used for filtering
+        else:
+            # Unknown op, default to row_number
+            window_func = exp.RowNumber()
+            default_alias = alias or "row_num"
+        
+        # Build window expression
+        window = exp.Window(this=window_func)
+        
+        if partition_cols:
+            window.set("partition_by", partition_cols)
+        
+        if order_cols:
+            # For "last", reverse the order direction
+            if op == "last":
+                reversed_order = []
+                for col in order_cols:
+                    if isinstance(col, exp.Ordered):
+                        reversed_order.append(exp.Ordered(this=col.this, desc=not col.args.get("desc", False)))
+                    else:
+                        reversed_order.append(exp.Ordered(this=col, desc=True))
+                window.set("order", exp.Order(expressions=reversed_order))
+            else:
+                window.set("order", exp.Order(expressions=order_cols))
+        
+        # Add the window function as a select column
+        window_alias = exp.Alias(this=window, alias=exp.Identifier(this=default_alias))
+        current_expressions = select.args.get("expressions", [])
+        select.set("expressions", current_expressions + [window_alias])
+        
+        # For first/last, add QUALIFY to filter to first row
+        if op in ("first", "last"):
+            qualify_condition = exp.EQ(
+                this=exp.Column(this=exp.Identifier(this=default_alias)),
+                expression=exp.Literal.number(1)
+            )
+            select.set("qualify", exp.Qualify(this=qualify_condition))
     
     return select
 

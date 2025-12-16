@@ -35,8 +35,137 @@ class TestQualifyClause:
         assert "PARTITION BY" in sql_upper
 
 
+class TestPerCommand:
+    """Tests for the new PER command syntax (per <partition> <op> by <order>)."""
+    
+    def test_per_first_by(self) -> None:
+        """Test per customer_id first by -order_date (new syntax)."""
+        asql = """
+        from orders
+            per customer_id first by -order_date
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "PARTITION BY" in sql_upper
+        assert "CUSTOMER_ID" in sql_upper
+        assert "ORDER BY" in sql_upper
+        assert "DESC" in sql_upper
+        assert "QUALIFY" in sql_upper or "WHERE" in sql_upper
+    
+    def test_per_last_by(self) -> None:
+        """Test per customer_id last by order_date."""
+        asql = """
+        from orders
+            per customer_id last by order_date
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "PARTITION BY" in sql_upper
+        # last by order_date becomes ORDER BY order_date DESC
+        assert "DESC" in sql_upper
+    
+    def test_per_number_by(self) -> None:
+        """Test per customer_id number by -order_date."""
+        asql = """
+        from orders
+            per customer_id number by -order_date
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "PARTITION BY" in sql_upper
+        assert "ROW_NUM" in sql_upper  # Default alias
+    
+    def test_per_rank_by(self) -> None:
+        """Test per department rank by -salary."""
+        asql = """
+        from employees
+            per department rank by -salary
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "RANK()" in sql_upper
+        assert "PARTITION BY" in sql_upper
+        # Should have 'rank' as default alias (may be quoted)
+    
+    def test_per_dense_rank_by(self) -> None:
+        """Test per department dense rank by -salary (with space)."""
+        asql = """
+        from employees
+            per department dense rank by -salary
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "DENSE_RANK()" in sql_upper
+        assert "PARTITION BY" in sql_upper
+    
+    def test_per_with_custom_alias(self) -> None:
+        """Test per with custom alias."""
+        asql = """
+        from orders
+            per customer_id number by -order_date as order_num
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "ORDER_NUM" in sql_upper
+    
+    def test_per_multiple_partition_columns(self) -> None:
+        """Test per with multiple partition columns."""
+        asql = """
+        from events
+            per user_id, event_type number by -timestamp
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "USER_ID" in sql_upper
+        assert "EVENT_TYPE" in sql_upper
+
+
+class TestStandaloneWindowOps:
+    """Tests for standalone window operations (without per partition)."""
+    
+    def test_number_by_without_partition(self) -> None:
+        """Test number by -timestamp (whole table)."""
+        asql = """
+        from events
+            number by -timestamp
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "ORDER BY" in sql_upper
+        # No PARTITION BY
+        assert "PARTITION BY" not in sql_upper
+    
+    def test_rank_by_without_partition(self) -> None:
+        """Test rank by -score (whole table)."""
+        asql = """
+        from scores
+            rank by -score
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "RANK()" in sql_upper
+        assert "ORDER BY" in sql_upper
+    
+    def test_dense_rank_by_without_partition(self) -> None:
+        """Test dense rank by -score (whole table)."""
+        asql = """
+        from scores
+            dense rank by -score
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "DENSE_RANK()" in sql_upper
+        assert "ORDER BY" in sql_upper
+
+
 class TestDistinctOn:
-    """Tests for DISTINCT ON support."""
+    """Tests for DISTINCT ON support (legacy, prefer first by/last by)."""
     
     def test_distinct_on_single_column(self) -> None:
         """Test DISTINCT ON with single column."""
@@ -280,6 +409,69 @@ class TestArgMaxMinFunctions:
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
+
+
+class TestFirstLastInGroupBy:
+    """Tests for first() and last() inside GROUP BY aggregation blocks."""
+    
+    def test_first_in_group_by(self) -> None:
+        """Test first() inside GROUP BY aggregation block."""
+        asql = """
+        from orders
+            group by customer_id (
+                first(order_id order by -order_date) as latest_order
+            )
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "FIRST_VALUE" in sql_upper
+        assert "ORDER BY" in sql_upper
+        assert "GROUP BY" in sql_upper
+    
+    def test_last_in_group_by(self) -> None:
+        """Test last() inside GROUP BY aggregation block."""
+        asql = """
+        from orders
+            group by customer_id (
+                last(order_id order by order_date) as earliest_order
+            )
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "FIRST_VALUE" in sql_upper  # Implemented as FIRST_VALUE with reversed order
+        assert "ORDER BY" in sql_upper
+        assert "GROUP BY" in sql_upper
+    
+    def test_arg_max_in_group_by(self) -> None:
+        """Test arg_max() inside GROUP BY aggregation block."""
+        asql = """
+        from orders
+            group by customer_id (
+                arg_max(order_id, order_date) as latest_order
+            )
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "FIRST_VALUE" in sql_upper
+        assert "ORDER BY" in sql_upper
+        assert "GROUP BY" in sql_upper
+    
+    def test_first_with_other_aggregates(self) -> None:
+        """Test first() combined with other aggregates in GROUP BY."""
+        asql = """
+        from orders
+            group by customer_id (
+                first(order_id order by -order_date) as latest_order,
+                count(*) as total_orders,
+                sum(amount) as total_amount
+            )
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "FIRST_VALUE" in sql_upper
+        assert "COUNT" in sql_upper
+        assert "SUM" in sql_upper
+        assert "GROUP BY" in sql_upper
 
 
 class TestIntegrationScenarios:

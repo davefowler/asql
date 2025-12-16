@@ -252,11 +252,7 @@ SELECT * FROM (
 **ASQL**
 ```asql
 from orders
-  select *, row_number() over (
-    partition by customer_id 
-    order by -order_date
-  ) as rn
-  qualify rn == 1
+  per customer_id first by -order_date
 ```
 
 Or use `prior()` for LAG:
@@ -274,11 +270,12 @@ from sales
 
 | Function | SQL Equivalent | Example |
 |----------|---------------|---------|
+| `per ... first by` | ROW_NUMBER() + QUALIFY | `per customer_id first by -date` → most recent per customer |
+| `per ... number by` | ROW_NUMBER() | `per customer_id number by -date` → add row numbers |
 | `prior(col)` | `LAG(col, 1)` | `prior(revenue)` → previous row's revenue |
 | `next(col)` | `LEAD(col, 1)` | `next(revenue)` → next row's revenue |
 | `running_sum(col)` | `SUM(col) OVER (ROWS UNBOUNDED PRECEDING)` | `running_sum(amount)` |
 | `rolling_avg(col, n)` | `AVG(col) OVER (ROWS n-1 PRECEDING)` | `rolling_avg(revenue, 7)` → 7-day average |
-| `qualify` clause | Subquery with filter | `qualify rn == 1` |
 
 ---
 
@@ -321,7 +318,7 @@ Write once, run anywhere. ASQL transpiles to any SQL dialect via SQLGlot:
 | Date extraction | Dialect-specific (`EXTRACT`, `DATE_TRUNC`, etc.) | Universal (`year()`, `month()`) |
 | Previous row value | `LAG(col, 1) OVER (...)` | `prior(col)` |
 | Running total | `SUM(col) OVER (ROWS UNBOUNDED PRECEDING)` | `running_sum(col)` |
-| Filter on window | Requires subquery | `qualify` clause |
+| Deduplication | ROW_NUMBER() + subquery | `per ... first by ...` |
 | Case sensitivity | Requires exact case or quotes | Case-safe by default |
 | CTEs required | Often (for readability) | Rarely (pipeline handles it) |
 

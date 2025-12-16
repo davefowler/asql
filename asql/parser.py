@@ -131,6 +131,18 @@ class ASQLParser:
                 distinct_on_cols = self._parse_distinct_on()
                 if distinct_on_cols:
                     current_step.distinct_on = distinct_on_cols
+            # Check for PER command (window operations with partition)
+            # per <partition> <op> by <order>
+            elif self._peek_keyword("per"):
+                window_op_result = self._parse_per()
+                if window_op_result:
+                    current_step.window_op = window_op_result
+            # Check for standalone window ops: number/rank/dense rank by <order>
+            # Note: first/last are NOT allowed standalone - use 'per ... first by' or first() in GROUP BY
+            elif self._peek_keyword("number") or self._peek_keyword("rank") or self._peek_keyword("dense"):
+                window_op_result = self._parse_window_op_standalone()
+                if window_op_result:
+                    current_step.window_op = window_op_result
             # Check for STASH AS (creates a named CTE)
             elif self._peek_keyword("stash"):
                 # Parse stash as <name> first
@@ -373,10 +385,15 @@ class ASQLParser:
                     self._consume_keyword("distinct")
                     self._skip_whitespace()
                 
-                # Parse argument (column or expression with arithmetic)
-                arg = self._parse_additive_expression()
-                if not arg:
-                    raise ASQLSyntaxError(f"Expected argument for {func_name}()")
+                # Check for * (e.g., count(*))
+                if self._peek() == "*":
+                    self._consume("*")
+                    arg = exp.Star()
+                else:
+                    # Parse argument (column or expression with arithmetic)
+                    arg = self._parse_additive_expression()
+                    if not arg:
+                        raise ASQLSyntaxError(f"Expected argument for {func_name}()")
                 
                 self._skip_whitespace()
                 if self._peek() != ")":
@@ -412,6 +429,38 @@ class ASQLParser:
                 return exp.Alias(this=agg_expr, alias=exp.Identifier(this=natural_lang_text, quoted=True))
             
             return agg_expr
+        
+        # Check for ordered aggregate functions (first, last, arg_max, arg_min)
+        if func_name_lower in ("first", "last", "arg_max", "arg_min"):
+            self._skip_whitespace()
+            if self._peek() != "(":
+                # Not a function call, return None
+                return None
+            
+            # Parse as ordered aggregate - use the existing method
+            # Reset position to before function name
+            self.pos = self.pos - len(func_name)
+            self._skip_whitespace()
+            
+            # Re-parse the function name
+            func_name = self._parse_identifier()
+            self._skip_whitespace()
+            
+            # Parse the ordered aggregate function
+            window_expr = self._parse_ordered_aggregate(func_name)
+            if not window_expr:
+                return None
+            
+            # Parse alias if present
+            self._skip_whitespace()
+            if self._peek_keyword("as"):
+                self._consume_keyword("as")
+                self._skip_whitespace()
+                alias = self._parse_identifier()
+                if alias:
+                    return exp.Alias(this=window_expr, alias=exp.Identifier(this=alias))
+            
+            return window_expr
         
         # Not an aggregation, return None
         return None
@@ -498,7 +547,9 @@ class ASQLParser:
             self._consume("(")
             self._skip_whitespace()
             test_id = self._parse_identifier()
-            if test_id and test_id.lower() in ("sum", "avg", "average", "count", "min", "max"):
+            aggregation_keywords = ("sum", "avg", "average", "count", "min", "max", 
+                                   "first", "last", "arg_max", "arg_min")
+            if test_id and test_id.lower() in aggregation_keywords:
                 # This is aggregation block
                 self.pos = peek_pos
                 return exp.Column(this=exp.Identifier(this=identifier))
@@ -803,6 +854,273 @@ class ASQLParser:
             raise ASQLSyntaxError("Expected at least one column in DISTINCT ON")
         
         return columns
+    
+    def _parse_per(self) -> Optional[dict]:
+        """
+        Parse PER command for window operations with partition.
+        
+        Syntax: per <partition_cols> <operation> by <order_cols> [as <alias>]
+        
+        Operations:
+            - first: keep first row per partition (deduplication)
+            - last: keep last row per partition (deduplication)
+            - number: add row_num column
+            - rank: add rank column
+            - dense rank / dense_rank: add dense_rank column
+        
+        Examples:
+            per customer_id first by -order_date
+            per department rank by -salary
+            per user_id, status number by -created_at as rn
+            per department dense rank by -salary
+        
+        Returns dict with:
+            - op: str (first, last, number, rank, dense_rank)
+            - order: List of Ordered expressions
+            - partition: List of column expressions
+            - alias: Optional[str]
+        """
+        if not self._consume_keyword("per"):
+            return None
+        
+        self._skip_whitespace()
+        
+        # Parse partition columns (required after 'per')
+        partition_cols: List[exp.Expression] = []
+        while True:
+            col = self._parse_column()
+            if not col:
+                ident = self._parse_identifier()
+                if ident:
+                    col = exp.Column(this=exp.Identifier(this=ident))
+            
+            if not col:
+                if not partition_cols:
+                    raise ASQLSyntaxError("Expected column after 'per'")
+                break
+            
+            partition_cols.append(col)
+            self._skip_whitespace()
+            
+            # Check for comma (more partition columns) or operation keyword
+            if self._peek() == ",":
+                self._consume(",")
+                self._skip_whitespace()
+                # Check if next is an operation keyword
+                if self._peek_keyword("first") or self._peek_keyword("last") or \
+                   self._peek_keyword("number") or self._peek_keyword("rank") or \
+                   self._peek_keyword("dense"):
+                    break
+            else:
+                break
+        
+        if not partition_cols:
+            raise ASQLSyntaxError("Expected partition columns after 'per'")
+        
+        # Parse operation (first, last, number, rank, dense rank)
+        op = None
+        if self._peek_keyword("first"):
+            self._consume_keyword("first")
+            op = "first"
+        elif self._peek_keyword("last"):
+            self._consume_keyword("last")
+            op = "last"
+        elif self._peek_keyword("number"):
+            self._consume_keyword("number")
+            op = "number"
+        elif self._peek_keyword("rank"):
+            self._consume_keyword("rank")
+            op = "rank"
+        elif self._peek_keyword("dense"):
+            self._consume_keyword("dense")
+            self._skip_whitespace()
+            # Allow both "dense rank" and "dense_rank"
+            if self._peek_keyword("rank"):
+                self._consume_keyword("rank")
+            elif self._peek() == "_":
+                self._consume("_")
+                if self._peek_keyword("rank"):
+                    self._consume_keyword("rank")
+            op = "dense_rank"
+        
+        if not op:
+            raise ASQLSyntaxError("Expected operation (first, last, number, rank, dense rank) after partition columns")
+        
+        self._skip_whitespace()
+        
+        # Must have 'by' keyword
+        if not self._peek_keyword("by"):
+            raise ASQLSyntaxError(f"Expected 'by' after '{op}'")
+        
+        self._consume_keyword("by")
+        self._skip_whitespace()
+        
+        # Parse ORDER columns (required)
+        order_cols: List[exp.Expression] = []
+        while True:
+            desc = False
+            if self._peek() == "-":
+                self._consume("-")
+                desc = True
+                self._skip_whitespace()
+            
+            col = self._parse_column()
+            if not col:
+                ident = self._parse_identifier()
+                if ident:
+                    col = exp.Column(this=exp.Identifier(this=ident))
+            
+            if not col:
+                if not order_cols:
+                    raise ASQLSyntaxError(f"Expected column after 'by' in {op} clause")
+                break
+            
+            order_cols.append(exp.Ordered(this=col, desc=desc))
+            self._skip_whitespace()
+            
+            # Check for comma (more order columns) or 'as' keyword
+            if self._peek() == ",":
+                self._consume(",")
+                self._skip_whitespace()
+                # Check if next is 'as' keyword
+                if self._peek_keyword("as"):
+                    break
+            else:
+                break
+        
+        if not order_cols:
+            raise ASQLSyntaxError(f"Expected at least one order column in {op} clause")
+        
+        # Parse optional alias (as <name>)
+        alias = None
+        self._skip_whitespace()
+        if self._peek_keyword("as"):
+            self._consume_keyword("as")
+            self._skip_whitespace()
+            alias = self._parse_identifier()
+            if not alias:
+                raise ASQLSyntaxError("Expected alias after 'as'")
+        
+        return {
+            "op": op,
+            "order": order_cols,
+            "partition": partition_cols,
+            "alias": alias
+        }
+    
+    def _parse_window_op_standalone(self) -> Optional[dict]:
+        """
+        Parse standalone window operations (without per partition).
+        
+        Syntax: <operation> by <order_cols> [as <alias>]
+        
+        Operations (standalone - adds a column):
+            - number: add row_num column
+            - rank: add rank column
+            - dense rank / dense_rank: add dense_rank column
+        
+        Note: first/last are NOT allowed standalone.
+        - Use 'per <partition> first by <order>' for deduplication
+        - Use 'first(col order by ...)' in GROUP BY for value extraction
+        
+        Examples:
+            number by -timestamp
+            rank by -score as ranking
+            dense rank by -salary
+        
+        Returns dict with:
+            - op: str (number, rank, dense_rank)
+            - order: List of Ordered expressions
+            - partition: [] (empty - no partition)
+            - alias: Optional[str]
+        """
+        # Save position BEFORE consuming any keywords
+        saved_pos = self.pos
+        op = None
+        
+        if self._peek_keyword("number"):
+            self._consume_keyword("number")
+            op = "number"
+        elif self._peek_keyword("rank"):
+            self._consume_keyword("rank")
+            op = "rank"
+        elif self._peek_keyword("dense"):
+            self._consume_keyword("dense")
+            self._skip_whitespace()
+            # Allow both "dense rank" and "dense_rank"
+            if self._peek_keyword("rank"):
+                self._consume_keyword("rank")
+            elif self._peek() == "_":
+                self._consume("_")
+                if self._peek_keyword("rank"):
+                    self._consume_keyword("rank")
+            op = "dense_rank"
+        
+        if not op:
+            return None
+        
+        self._skip_whitespace()
+        
+        # Must have 'by' keyword, otherwise it's not this construct
+        if not self._peek_keyword("by"):
+            # Reset to before we consumed the keyword
+            self.pos = saved_pos
+            return None
+        
+        self._consume_keyword("by")
+        self._skip_whitespace()
+        
+        # Parse ORDER columns (required)
+        order_cols: List[exp.Expression] = []
+        while True:
+            desc = False
+            if self._peek() == "-":
+                self._consume("-")
+                desc = True
+                self._skip_whitespace()
+            
+            col = self._parse_column()
+            if not col:
+                ident = self._parse_identifier()
+                if ident:
+                    col = exp.Column(this=exp.Identifier(this=ident))
+            
+            if not col:
+                if not order_cols:
+                    raise ASQLSyntaxError(f"Expected column after 'by' in {op} clause")
+                break
+            
+            order_cols.append(exp.Ordered(this=col, desc=desc))
+            self._skip_whitespace()
+            
+            # Check for comma (more order columns) or 'as' keyword
+            if self._peek() == ",":
+                self._consume(",")
+                self._skip_whitespace()
+                if self._peek_keyword("as"):
+                    break
+            else:
+                break
+        
+        if not order_cols:
+            raise ASQLSyntaxError(f"Expected at least one order column in {op} clause")
+        
+        # Parse optional alias (as <name>)
+        alias = None
+        self._skip_whitespace()
+        if self._peek_keyword("as"):
+            self._consume_keyword("as")
+            self._skip_whitespace()
+            alias = self._parse_identifier()
+            if not alias:
+                raise ASQLSyntaxError("Expected alias after 'as'")
+        
+        return {
+            "op": op,
+            "order": order_cols,
+            "partition": [],  # No partition for standalone
+            "alias": alias
+        }
     
     def _parse_stash_as(self) -> str:
         """Parse STASH AS <name> clause."""

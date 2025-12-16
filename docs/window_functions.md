@@ -26,9 +26,81 @@ That's 10 lines for a simple concept: "give me the latest order for each custome
 
 ## ASQL Solutions
 
-### QUALIFY Clause
+### The `per` Command (Recommended)
 
-The `qualify` clause filters on window function results without needing a subquery:
+The `per` command is the most intuitive way to handle window-based deduplication and ranking:
+
+```asql
+# Get the most recent order per customer
+from orders
+  per customer_id first by -order_date
+```
+
+That's it! One line that reads naturally: "per customer, get the first by order date descending."
+
+#### Syntax
+
+```
+per <partition_cols> <operation> by <order_cols> [as <alias>]
+```
+
+#### Operations
+
+| Operation | What it does | Default alias |
+|-----------|--------------|---------------|
+| `first` | Keep first row per partition | (no column added) |
+| `last` | Keep last row per partition | (no column added) |
+| `number` | Add row number column | `row_num` |
+| `rank` | Add rank column | `rank` |
+| `dense rank` | Add dense rank column (no gaps) | `dense_rank` |
+
+#### Examples
+
+```asql
+# Deduplication: most recent order per customer
+from orders
+  per customer_id first by -order_date
+
+# Add row numbers per customer
+from orders
+  per customer_id number by -order_date
+# Result: adds `row_num` column
+
+# Rank employees by salary within department
+from employees
+  per department rank by -salary
+# Result: adds `rank` column
+
+# Dense rank (no gaps in ranking)
+from employees
+  per department dense rank by -salary
+# Result: adds `dense_rank` column
+```
+
+Note: `dense rank` and `dense_rank` are interchangeable - underscores and spaces work the same.
+
+---
+
+### Standalone Window Operations (No Partition)
+
+For operations across all rows without partitioning:
+
+```asql
+# Number all rows
+from events
+  number by -timestamp
+# Result: adds `row_num` to all rows
+
+# Rank all rows
+from scores
+  rank by -score
+```
+
+---
+
+### QUALIFY Clause (Advanced)
+
+For more complex filtering on window function results:
 
 ```asql
 from orders
@@ -193,6 +265,20 @@ from employees
 
 ## Function Reference
 
+### Pipeline Commands
+
+| ASQL Command | SQL Equivalent | Description |
+|--------------|----------------|-------------|
+| `per group first by col` | Subquery + ROW_NUMBER + QUALIFY | Keep first row per group |
+| `per group last by col` | Subquery + ROW_NUMBER + QUALIFY | Keep last row per group |
+| `per group number by col` | ROW_NUMBER() OVER (PARTITION BY) | Add row number column |
+| `per group rank by col` | RANK() OVER (PARTITION BY) | Add rank column |
+| `per group dense rank by col` | DENSE_RANK() OVER (PARTITION BY) | Add dense rank column |
+| `number by col` | ROW_NUMBER() OVER (ORDER BY) | Add row number (all rows) |
+| `rank by col` | RANK() OVER (ORDER BY) | Add rank (all rows) |
+
+### Window Functions
+
 | ASQL Function | SQL Equivalent | Description |
 |--------------|----------------|-------------|
 | `prior(col)` | `LAG(col, 1)` | Value from previous row |
@@ -216,12 +302,16 @@ from employees
 ### Get Most Recent Record Per Group
 
 ```asql
--- Pattern 1: Using QUALIFY (cleaner)
+# Pattern 1: Using per command (cleanest)
+from orders
+  per customer_id first by -order_date
+
+# Pattern 2: Using QUALIFY
 from orders
   select *, row_number() over (partition by customer_id order by -order_date) as rn
   qualify rn == 1
 
--- Pattern 2: Using DISTINCT ON (PostgreSQL-style)
+# Pattern 3: Using DISTINCT ON (PostgreSQL-style)
 from orders
   distinct on (customer_id)
   sort customer_id, -order_date
@@ -265,6 +355,12 @@ from transactions
 ### Rank Within Groups
 
 ```asql
+# Pattern 1: Using per command
+from employees
+  per department rank by -salary
+  where rank <= 3  -- Top 3 in each department
+
+# Pattern 2: Using QUALIFY
 from employees
   select 
     department,
