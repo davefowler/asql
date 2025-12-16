@@ -411,33 +411,92 @@ Potential additions:
 
 ---
 
-## 13. Examples
+## 13. Recommended Features (Survey of Related CLIs)
 
-### 13.1 Connect and start a shell
+This section is **non-normative**, but recommended based on ergonomics from `psql`, `sqlite3`, `duckdb`, `mysql`, `sqlcmd`, plus project-aware workflows from `dbt` and `sqlmesh`.
+
+### 13.1 v0.1 Must-haves (beyond “it connects”)
+
+- **Startup/rc behavior**: `.asqlrc` (user) + `.asqlrc` (project) with `-X` to disable (mirrors `.psqlrc`).
+- **History + search**: persistent history with reverse search; opt-out via flag/env.
+- **Editor integration**: `\e` open $EDITOR, `\p` print buffer, `\r` reset buffer.
+- **Error controls for scripts**: `ON_ERROR_STOP` (or equivalent) to fail fast in `-f` mode.
+- **Pagers**: `less` integration; `--pset pager=on/off`.
+
+### 13.2 Near-term “psql-quality” features
+
+- **Completion**:
+  - SQL keyword completion.
+  - Table/column completion from live DB introspection and/or schema provider.
+  - `\` command completion and help (`\h` / `\?`).
+- **Introspection parity (common)**: `\l`, `\du`, `\df`, plus richer `\d+` variants where possible.
+- **Export formats**:
+  - `--csv`, `--json`, `--ndjson` (plus `\copy`-like UX).
+  - Stable machine-readable output for scripting (`--no-align`, `--tuples-only`, explicit delimiters).
+- **Query timing and profiling helpers**:
+  - `\timing` plus convenience `\explain` / `\xplan` wrappers.
+- **Transaction UX**:
+  - Prompt indicator when in a transaction.
+  - `\begin` / `\commit` / `\rollback` shorthands; autocommit toggle.
+
+### 13.3 ASQL-specific differentiators (“why not just use psql?”)
+
+- **Mode switching**:
+  - `\asql` / `\sql` to set default mode.
+  - `asql:` / `sql:` one-statement overrides (already recommended in §5.2).
+- **Compilation visibility**:
+  - `\show` to print compiled SQL for the current buffer.
+  - `\g` to execute; `\gshow` (or similar) to show SQL then execute.
+- **Dialect control**:
+  - `\dialect <name>` to set compilation target (e.g., `postgres`, `bigquery`, `snowflake`).
+
+### 13.4 Project-aware workflows (dbt / SQLMesh / local data)
+
+- **Provider-first metadata**:
+  - Prefer linking to dbt/SQLMesh metadata rather than duplicating schema.
+  - Provide `asql project info` (or `schema show`) to display what is linked and why.
+- **Model navigation**:
+  - `asql models ls`, `asql models show <name>`, with provider-specific behavior.
+- **Dependency checks**:
+  - `asql deps check` to validate dbt/sqlmesh detection and required files.
+
+### 13.5 Security + secrets UX (recommended early)
+
+- **Do not persist secrets** by default (already required in §11).
+- **Password sources**:
+  - `.pgpass` support (future roadmap item) and/or OS keychain hooks (optional).
+- **Redaction**:
+  - Always redact credentials in logs, `\conninfo`, and error output.
+
+---
+
+## 14. Examples
+
+### 14.1 Connect and start a shell
 
 ```bash
 asql postgresql://me@localhost:5432/mydb
 ```
 
-### 13.2 Connect using psql-like flags
+### 14.2 Connect using psql-like flags
 
 ```bash
 asql -h localhost -p 5432 -U me -d mydb
 ```
 
-### 13.3 Run a single query
+### 14.3 Run a single query
 
 ```bash
 asql postgresql://me@localhost/mydb -c "from users where status = 'active';"
 ```
 
-### 13.4 Initialize a project
+### 14.4 Initialize a project
 
 ```bash
 asql init
 ```
 
-### 13.5 Pull schema from database
+### 14.5 Pull schema from database
 
 ```bash
 asql postgresql://me@localhost/mydb schema pull
@@ -445,7 +504,7 @@ asql postgresql://me@localhost/mydb schema pull
 
 ---
 
-## 14. Implementation Notes (Non-normative)
+## 15. Implementation Notes (Non-normative)
 
 - The shell can be implemented using `readline` or `prompt_toolkit`.
 - The database layer can start with Postgres via a standard Python driver (e.g., `psycopg`/`psycopg2`) and expand later.
