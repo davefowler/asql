@@ -298,3 +298,4 @@ tests/
 4. Commit frequently with clear messages
 
 The full implementation plan with code examples is in `ai_notes/dialect.md`. Follow that document closely - it has working code snippets for most components.
+

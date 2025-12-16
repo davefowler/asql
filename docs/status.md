@@ -157,8 +157,8 @@ compile('from users where age + 5 >= 23')
 compile("from users group by country ( # as total_users, avg(age) as avg_age )")
 # → SELECT country, COUNT(*) AS total_users, AVG(age) AS avg_age FROM users GROUP BY country
 
-# JOIN
-compile("from orders join users on orders.user_id == users.id")
+# JOIN (& for INNER, &? for LEFT, ?& for RIGHT, ?&? for FULL, * for CROSS)
+compile("from orders & users on orders.user_id == users.id")
 # → SELECT * FROM orders JOIN users ON orders.user_id = users.id
 
 # COALESCE with ??
