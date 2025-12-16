@@ -52,8 +52,11 @@ Create a new file that transforms ASQL structure to SQL-like structure before SQ
    - `avg of revenue` → `avg(revenue)`
    - `# of users` → `count(*)`
 
-6. **Underscore/space normalization**
+6. **Underscore/space normalization** (see spec.md Section 4.13)
+   - `sum_amount` → `sum(amount)`
    - `day of week created_at` → `day_of_week(created_at)`
+   - `days_since_created_at` → `days(now() - created_at)`
+   - See `ai_notes/UNDERSCORE_SPACE_PRINCIPLE.md` for full implementation details
 
 7. **Window utilities (per command)**
    - `per customer_id first by -order_date` → ROW_NUMBER window + filter
@@ -65,6 +68,28 @@ Create a new file that transforms ASQL structure to SQL-like structure before SQ
    - `order_date + 7 days` → `order_date + INTERVAL '7 days'`
    - `days(end - start)` → date difference function
    - See `ai_notes/dates.md` for full patterns
+
+9. **Data transformation operators** (see spec.md §13, macros.md)
+   - **Column operators**:
+     - `except email, phone` → Explicit SELECT excluding those columns (schema-aware)
+     - `rename id as user_id` → SELECT ... AS ... aliases
+     - `prefix user_` → SELECT cols with prefixed names
+   - **Deduplicate**:
+     - `deduplicate by user_id order by -date` → ROW_NUMBER + filter (like `per` but simpler)
+   - **Pivot/Unpivot**:
+     - `pivot amount by category` → Native PIVOT or CASE/GROUP BY fallback
+     - `unpivot jan, feb into month, value` → Native UNPIVOT or UNION fallback
+   - **Gap fill**:
+     - `fill month with {revenue: 0}` → LEFT JOIN with date_spine + COALESCE
+   - **Table functions**:
+     - `from date_spine(start='2024-01-01', end=today(), grain=day)` → generate_series or CTE
+     - `from series(1, 100)` → generate_series or numbers CTE
+     - `from union(t1, t2, t3)` → Schema-aligned SELECT + UNION ALL
+   - **Surrogate keys**:
+     - `key(user_id, order_id)` → Warehouse-specific hash function
+   - **Safe casting**:
+     - `value::integer?` → TRY_CAST/SAFE_CAST
+     - `safe_divide(a, b)` → CASE WHEN b = 0 THEN NULL ELSE a/b END
 
 ### Step 2: Create ASQL Dialect (`asql/dialect.py`)
 
@@ -147,6 +172,15 @@ def parse(asql_text: str, dialect: str = "postgres") -> str:
 | Window | `per customer_id first by -date` | See WINDOW_UTILS.md |
 | Strings | `email[1:5]` slice syntax | Python-style |
 | Comparison | `max(a, b, c)` | Not `greatest()` |
+| Column exclude | `except email, phone` | Schema-aware |
+| Column rename | `rename id as user_id` | |
+| Deduplicate | `deduplicate by user_id order by -date` | |
+| Pivot | `pivot amount by category` | |
+| Unpivot | `unpivot jan, feb into month, value` | |
+| Fill gaps | `fill month with {revenue: 0}` | |
+| Date spine | `from date_spine(start=..., end=..., grain=day)` | |
+| Safe cast | `value::integer?` | TRY_CAST |
+| Surrogate key | `key(user_id, order_id)` | Hash function |
 
 ---
 
@@ -192,6 +226,8 @@ tests/
 | `ai_notes/dates.md` | Date handling patterns |
 | `ai_notes/case.md` | Conditional expression design |
 | `ai_notes/comments.md` | Comment handling design |
+| `ai_notes/macros.md` | Data transformation operators (dbt macro replacements) |
+| `ai_notes/UNDERSCORE_SPACE_PRINCIPLE.md` | Function shorthand syntax |
 
 ---
 

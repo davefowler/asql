@@ -9,6 +9,7 @@
 > - [UNDERSCORE_SPACE_PRINCIPLE.md](UNDERSCORE_SPACE_PRINCIPLE.md) - Function name flexibility (pre-parse handling)
 > - [WINDOW_UTILS.md](WINDOW_UTILS.md) - Window function patterns (`per`, `running_sum`, etc.)
 > - [dates.md](dates.md) - Date handling, arithmetic, relative dates, timezone syntax
+> - [macros.md](macros.md) - Data transformation operators (except, pivot, fill, deduplicate, etc.)
 
 ---
 
@@ -477,6 +478,20 @@ class ASQL(Dialect):
 | `col::PST` timezone | | | ✅ | Map to AT TIME ZONE |
 | `day of week col` | ✅ | | | Natural language extraction |
 | `week_sunday()` | | | ✅ | Week start variant |
+| **Data Transformation Operators** | | | | See spec.md §13, macros.md |
+| `except col1, col2` | ✅ | ✅ | | Column exclusion (schema-aware) |
+| `rename col as alias` | ✅ | ✅ | | Column renaming |
+| `prefix name_` | ✅ | ✅ | | Column prefixing |
+| `deduplicate by cols` | ✅ | | | Transform to ROW_NUMBER + filter |
+| `pivot val by key` | ✅ | ✅ | ✅ | Native or CASE fallback |
+| `unpivot cols into k, v` | ✅ | ✅ | ✅ | Native or UNION fallback |
+| `fill col` | ✅ | ✅ | ✅ | Gap-fill with date_spine |
+| `date_spine()` | | | ✅ | Table-valued function |
+| `series()` | | | ✅ | Table-valued function |
+| `union(t1, t2, t3)` | | | ✅ | Schema-aligned union |
+| `key(col1, col2)` | | | ✅ | Surrogate key hash |
+| `::type?` safe cast | | ✅ | ✅ | TRY_CAST / SAFE_CAST |
+| `safe_divide(a, b)` | | | ✅ | NULL on divide-by-zero |
 
 ---
 
