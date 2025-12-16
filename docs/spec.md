@@ -49,17 +49,17 @@ Every ASQL query starts with a data source. Transformations can be chained using
 **Indentation-based (preferred, cleaner):**
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 **Pipeline operator (optional, explicit):**
 ```asql
 from users
-| where status == "active"
+| where status = "active"
 | group by country ( # as total_users )
-| sort -total_users
+| order by -total_users
 ```
 
 Both styles are equivalent. Choose based on preference or context.
@@ -100,12 +100,12 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 
 | Operator | Meaning | SQL Equivalent | Example |
 |----------|---------|----------------|---------|
-| `where` | Filter rows | `WHERE` | `where status == "active"` |
+| `where` | Filter rows | `WHERE` | `where status = "active"` |
 | `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
-| `join` | Join datasets | `JOIN` | `join owners on owner_id == owners.id` |
+| `join` | Join datasets | `JOIN` | `join owners on owner_id = owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
-| `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -updated_at` (descending column) |
-| `take` | Limit rows | `LIMIT` | `take 10` |
+| `order by` | Sort rows | `ORDER BY` | `order by -users` (descending) |
+| `limit` | Limit rows | `LIMIT` | `limit 10` |
 | `set` | Define variable/fragment (CTE) | `WITH ... AS` | `set active = from users \| where is_active` |
 
 ---
@@ -114,18 +114,20 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 
 ### 4.1 Comparison Operators
 
-- `==` - equals
+- `=` - equals (also accepts `==`)
 - `!=` - not equals
 - `<`, `>`, `<=`, `>=` - comparison
 - `is`, `is not` - null checks
 - `in`, `not in` - membership
+
+**Note**: Both `=` and `==` work for equality. `=` is preferred as it's standard SQL, but `==` is accepted for those coming from programming languages.
 
 ### 4.2 Logical Operators
 
 - `and`, `or`, `not` - logical operations
 - `&&` - alternative syntax for `and`
 
-**Note**: `||` is **not** used for logical OR in ASQL. Use the `or` keyword instead. The `||` operator is reserved for COALESCE (see Section 4.6).
+**Note**: Use the `or` keyword for logical OR (not `||`). The `??` operator is used for COALESCE (see Section 4.6).
 
 ### 4.3 Arithmetic Operators
 
@@ -220,9 +222,9 @@ from users where phone matches "^\d{3}-\d{3}-\d{4}$"
 
 **Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim. Should be implemented after arithmetic operators and before advanced features.
 
-### 4.6 COALESCE Operator (`||`)
+### 4.6 COALESCE Operator (`??`)
 
-ASQL uses the `||` operator for COALESCE, providing a cleaner syntax than the function call. This is similar to JavaScript's nullish coalescing, but works with any falsy values (NULL, FALSE, empty strings, etc.).
+ASQL uses the `??` operator for COALESCE (nullish coalescing), providing a cleaner syntax than the function call.
 
 **Syntax:**
 ```asql
@@ -230,37 +232,35 @@ ASQL uses the `||` operator for COALESCE, providing a cleaner syntax than the fu
 coalesce(column, default_value)
 
 # Operator form (preferred)
-column || default_value
+column ?? default_value
 
 # Chained (multiple fallbacks)
-column || fallback1 || fallback2 || "default"
+column ?? fallback1 ?? fallback2 ?? "default"
 ```
 
 **Examples:**
 ```asql
 # Handle NULL values
-from users select name || "Unknown" as display_name
+from users select name ?? "Unknown" as display_name
 
 # Multiple fallbacks
-from products select price || sale_price || 0 as final_price
+from products select price ?? sale_price ?? 0 as final_price
 
 # In WHERE clauses
-from users where not is_deleted || FALSE
+from users where not (is_deleted ?? false)
 
 # With boolean logic
-from orders where status || "pending" == "completed"
+from orders where (status ?? "pending") = "completed"
 ```
 
-**Why `||` for COALESCE?**
+**Why `??` for COALESCE?**
+- JavaScript uses `??` for nullish coalescing (not `||`)
+- `||` in SQL is string concatenation in most dialects - avoids confusion
 - More concise than `coalesce()` function calls
-- Familiar to developers who use `||` for nullish coalescing in JavaScript/TypeScript
-- Chains naturally: `a || b || c` reads as "a, or b, or c"
-- Note: In ASQL, `||` is **not** used for logical OR (use `or` keyword instead) or string concatenation (use `concat()` function)
+- Chains naturally: `a ?? b ?? c` reads as "a, or if null b, or if null c"
 
 **Precedence:**
-The `||` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`==`, `!=`, etc.). This means:
-- `not is_deleted || FALSE` parses as `NOT COALESCE(is_deleted, FALSE)` ✅
-- `status == "active" || "pending"` parses as `COALESCE(status == "active", "pending")` ✅
+The `??` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`=`, `!=`, etc.). Use parentheses for clarity in complex expressions.
 
 ### 4.7 Conditional Expressions (`when`)
 
@@ -801,7 +801,7 @@ from daily_sales
 | Cumulative sum | `running_sum(col)` |
 | Cumulative average | `running_avg(col)` |
 | 7-day moving average | `rolling_avg(col, 7)` |
-| First value in group | `first(col order by sort)` |
+| First value in group | `first(col order by ...)` |
 
 ---
 
@@ -1264,7 +1264,7 @@ ASQL uses `where` instead of `filter` because it's more intuitive - "where" clea
 
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   where age >= 18
 ```
 
@@ -1275,7 +1275,7 @@ Multiple conditions can be written in several ways:
 **Separate where clauses:**
 ```asql
 from opportunities
-  where status == "open"
+  where status = "open"
   where owner.is_active
   where org_type != "Non Profit"
 ```
@@ -1283,19 +1283,19 @@ from opportunities
 **Using `and` on same line:**
 ```asql
 from opportunities
-  where status == "open" and owner.is_active and org_type != "Non Profit"
+  where status = "open" and owner.is_active and org_type != "Non Profit"
 ```
 
 **Using `&` operator:**
 ```asql
 from opportunities
-  where status == "open" & owner.is_active & org_type != "Non Profit"
+  where status = "open" & owner.is_active & org_type != "Non Profit"
 ```
 
 **Tabbed indentation (multi-line):**
 ```asql
 from opportunities
-  where status == "open"
+  where status = "open"
     and owner.is_active
     and org_type != "Non Profit"
 ```
@@ -1322,45 +1322,45 @@ from opportunities
 
 ---
 
-## 10. Sorting
+## 10. Ordering
 
-### 10.1 Basic Sorting
+### 10.1 Basic Ordering
 
-The `sort` clause orders rows by one or more columns:
+The `order by` clause sorts rows by one or more columns:
 
 ```asql
-from users sort name
-from users sort -total_users
+from users order by name
+from users order by -total_users
 ```
 
-**Descending order**: Use the `-` prefix to sort in descending order:
-- `sort name` → ascending (A-Z)
-- `sort -name` → descending (Z-A)
+**Descending order**: Use the `-` prefix for descending order:
+- `order by name` → ascending (A-Z)
+- `order by -name` → descending (Z-A)
 
-### 10.2 Sorting by Function Calls
+### 10.2 Ordering by Function Calls
 
-You can sort by function calls using the `-` prefix for descending order:
+You can order by function calls using the `-` prefix for descending order:
 
 ```asql
-from users sort month(created_at)
-from users sort -updated_at
-from events sort -year(created_at), name
+from users order by month(created_at)
+from users order by -updated_at
+from events order by -year(created_at), name
 ```
 
 **Examples:**
-- `sort updated_at` → Sort by updated_at ascending
-- `sort -updated_at` → Sort by updated_at descending (newest first)
-- `sort -year(created_at), name` → Sort by year descending, then name ascending
+- `order by updated_at` → Sort by updated_at ascending
+- `order by -updated_at` → Sort by updated_at descending (newest first)
+- `order by -year(created_at), name` → Sort by year descending, then name ascending
 
-This syntax makes it easy to sort by computed values like date functions.
+This syntax makes it easy to order by computed values like date functions.
 
-### 10.3 Multiple Sort Columns
+### 10.3 Multiple Order Columns
 
-Multiple sort columns are separated by commas:
+Multiple order columns are separated by commas:
 
 ```asql
-from users sort -total_users, name
-from sales sort -revenue, region, -date
+from users order by -total_users, name
+from sales order by -revenue, region, -date
 ```
 
 The `-` prefix applies only to the column immediately following it.
@@ -1402,7 +1402,7 @@ from users
   where is_active
   -- cleaned users by country
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally. CTEs are still available when you need to reuse a subquery multiple times.
@@ -1414,22 +1414,22 @@ Instead of defining CTEs at the top level with `set`, you can stash intermediate
 **Basic usage (at the end):**
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   group by country ( # as total_users )
   select country, total_users
   stash as revenue
 
 from revenue
-  sort -total_users
+  order by -total_users
 ```
 
 **Using `stash as` in the middle of a pipeline:**
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   stash as active_users
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 When `stash as` appears in the middle, it stashes everything before it as a CTE, then continues with the pipeline.
@@ -1440,8 +1440,8 @@ from sales
   where year(date) == 2025
   group by region ( sum(amount) as revenue )
   stash as use_this_later
-  sort -revenue
-  take 10;
+  order by -revenue
+  limit 10;
 
 from use_this_later
   where revenue > 1000
@@ -1470,7 +1470,7 @@ set by_country = from base
   group by country ( # as total_users )
 
 from by_country
-  sort -total_users
+  order by -total_users
 ```
 
 ---
@@ -1545,8 +1545,8 @@ Table functions transform entire tables. These are implemented as drop-in replac
 ```asql
 func top_n(table, n, key) =
   table
-    sort -{key}
-    take n
+    order by -{key}
+    limit n
 
 from sales
   top_n(10, amount)
@@ -1560,7 +1560,7 @@ Standard SQL functions are available:
 
 - `count()`, `sum()`, `avg()`, `min()`, `max()`
 - `distinct()`
-- `coalesce()` or `||` operator (JavaScript-style, also used in some SQL dialects like PostgreSQL for string concatenation, but ASQL uses it for COALESCE to match common usage)
+- `coalesce()` or `??` operator (JavaScript-style nullish coalescing)
 - `date_format()`, `year()`, `month()`, etc.
 - `years_between()`, `days_between()`, etc.
 
@@ -1677,7 +1677,7 @@ from users
 # You can write queries using any case style
 from Users
   select firstName, createdAt, user_id
-  where status == "active"
+  where status = "active"
 
 # ASQL resolves case-insensitively to actual database names
 # If database has: users table, first_name column, created_at column
@@ -1759,7 +1759,7 @@ select users.id as user_id, orders.id as order_id
 from sales
   where year(date) == 2025
   group by region ( sum(amount) as revenue )
-  sort -revenue
+  order by -revenue
 ```
 
 **Generated SQL:**
@@ -1780,7 +1780,7 @@ from opportunities
   join owners
   where owners.is_active
   group by owners.name ( sum(amount) as total_pipeline )
-  sort -total_pipeline
+  order by -total_pipeline
 ```
 
 ### Example 3: Time Series
@@ -1815,13 +1815,13 @@ from base
 
 ```asql
 from opportunities
-  where status == "open"
+  where status = "open"
   join owners
   where owners.is_active
   where org_type != "Non Profit"
   group by owner.name ( sum(amount) as total_pipeline )
-  sort -total_pipeline
-  take 10
+  order by -total_pipeline
+  limit 10
 ```
 
 ### Example 7: Date Grouping
@@ -1848,7 +1848,7 @@ from users
 -- Works regardless of database naming convention
 from Users
   select firstName, createdAt, user_id
-  where status == "active"
+  where status = "active"
 ```
 
 ### Example 10: Natural Language with "of"
@@ -2015,7 +2015,7 @@ from users
   where is_active
   -- cleaned users by country
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally.
@@ -2065,8 +2065,8 @@ operator := filter_op
           | group_by_op
           | join_op
           | select_op
-          | sort_op
-          | take_op
+          | order_op
+          | limit_op
           | set_op
 
 filter_op := 'where' expression
@@ -2078,9 +2078,9 @@ join_op := 'join' table_name ('on' expression)?
 
 select_op := 'select' column_list
 
-sort_op := 'sort' ('-'? (column_name | function_call))+
+order_op := 'order' 'by' ('-'? (column_name | function_call))+
 
-take_op := 'take' number
+limit_op := 'limit' number
 
 set_op := 'set' var_name '=' query
 
