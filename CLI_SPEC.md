@@ -130,6 +130,30 @@ When determining the final connection parameters, the precedence MUST be:
 5. Environment variables (`PG*`)
 6. Driver defaults
 
+### 4.5 Supported Backends (v0.1 target)
+
+For v0.1, the CLI SHOULD support multiple “mainstream” databases via a **single execution layer**.
+
+Recommended approach: **SQLAlchemy** as the primary connector interface (one execution path), with DB-specific drivers/dialects installed as CLI dependencies.
+
+Initial target list (requested):
+
+- PostgreSQL
+- MySQL
+- SQLite
+- DuckDB
+- Snowflake
+- BigQuery
+- Redshift
+- Databricks (SQL Warehouse)
+
+Notes:
+
+- Backend support is split into two aspects:
+  - **Execution**: connecting and running SQL
+  - **Introspection**: implementing `\d`, `\dt`, etc. (best-effort, may vary by backend)
+- Auth for cloud warehouses (BigQuery/Snowflake/Databricks) is typically the main integration work; the CLI should provide clear docs and error messages.
+
 ---
 
 ## 5. Interactive Shell
@@ -510,3 +534,45 @@ asql postgresql://me@localhost/mydb schema pull
 - The database layer can start with Postgres via a standard Python driver (e.g., `psycopg`/`psycopg2`) and expand later.
 - SQL compilation uses the existing `asql.compile()` API.
 - Schema providers (dbt/sqlmesh) should be adapters behind a common interface.
+
+---
+
+## 16. Packaging & Installation (Option A: One Distribution + Optional CLI Extra)
+
+This project ships as a **single Python distribution** (`asql`).
+
+### 16.1 Install as a library (no CLI dependencies)
+
+Installs the compiler API for embedding in Python (minimal dependencies):
+
+```bash
+pip install asql
+```
+
+### 16.2 Install with the CLI
+
+Installs the CLI dependencies (including SQLAlchemy and the requested set of database drivers/dialects) via a single extra:
+
+```bash
+pip install "asql[cli]"
+```
+
+### 16.3 Development installs
+
+```bash
+# library-only
+pip install -e .
+
+# with CLI deps
+pip install -e ".[cli]"
+```
+
+### 16.4 Entry-point behavior when CLI deps are missing
+
+Because Python packaging installs console entrypoints at the **distribution** level (not per-extra), the `asql` command MAY exist even when installed without `asql[cli]`.
+
+Recommended behavior:
+
+- If CLI dependencies are not present, the `asql` command should print a friendly error:
+  - “CLI dependencies not installed. Run: `pip install \"asql[cli]\"`”
+  - Exit with code `2` (usage/config error) or `1` (runtime error), consistently documented.
