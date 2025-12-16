@@ -344,7 +344,7 @@ WHERE status = 'active'
 from users
   where status == "active"
   group by country ( total_users as # )
-  sort -total_users
+  order by -total_users
   take 10
 ```
 

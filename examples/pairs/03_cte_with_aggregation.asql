@@ -16,5 +16,5 @@ from active_users
     avg(coalesce(user_orders.order_count, 0)) as avg_orders_per_user,
     sum(coalesce(user_orders.lifetime_value, 0)) as total_lifetime_value
   )
-  sort -active_user_count
+  order by -active_user_count
 

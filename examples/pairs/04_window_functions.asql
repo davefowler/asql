@@ -10,5 +10,5 @@ from orders
     row_number() over (partition by customer_id order by order_date desc) as order_rank,
     lag(amount) over (partition by customer_id order by order_date) as previous_order_amount,
     avg(amount) over (partition by customer_id order by order_date rows between 2 preceding and current row) as moving_avg_3_orders
-  sort customer_id, order_date
+  order by customer_id, order_date
 

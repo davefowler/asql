@@ -62,7 +62,7 @@ Type snippet prefixes and press `Tab`:
 - `from` → Basic FROM clause
 - `fromwhere` → FROM with WHERE
 - `groupby` → GROUP BY with aggregation
-- `sort` → Sort descending
+- `order by` → Sort descending
 - `query` → Complete query pipeline
 - `join` → JOIN clause
 - `with` → WITH variable (CTE) - supports both `=` and `as`
@@ -70,7 +70,7 @@ Type snippet prefixes and press `Tab`:
 ### Syntax Highlighting
 
 The extension highlights:
-- **Keywords**: `from`, `where`, `select`, `group by`, `sort`, `take`, `join`, `with`
+- **Keywords**: `from`, `where`, `select`, `group by`, `order by`, `take`, `join`, `with`
 - **Operators**: `==`, `!=`, `in`, `not in`, `and`, `or`
 - **Functions**: `sum()`, `avg()`, `count()`, `month()`, etc.
 - **Literals**: Strings, numbers, booleans
@@ -93,7 +93,7 @@ The extension supports smart indentation for ASQL's pipeline syntax:
 from users
   where status == "active"
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 ## Example ASQL File
@@ -105,7 +105,7 @@ Create a file `example.asql`:
 from users
   where status == "active"
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
   take 10
 ```
 

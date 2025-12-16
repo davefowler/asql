@@ -111,7 +111,6 @@ class ASQLPreParser:
         result = self._transform_pipeline(result)
         result = self._transform_stash_as(result)  # Early: split query at stash points before other transforms
         result = self._transform_count_shorthand(result)
-        result = self._transform_sort_keyword(result)  # Convert sort → ORDER BY before DESC prefix
         result = self._transform_take_keyword(result)  # Convert take → LIMIT
         result = self._transform_order_desc_prefix(result)
         result = self._transform_natural_aggregates(result)
@@ -1119,21 +1118,6 @@ class ASQLPreParser:
         # Transform qualify keyword to QUALIFY (SQL standard for some dialects)
         # Just uppercase it and fix the equality operator
         result = re.sub(r'\bqualify\s+', 'QUALIFY ', result, flags=re.IGNORECASE)
-        
-        return result
-    
-    def _transform_sort_keyword(self, text: str) -> str:
-        """
-        Transform ASQL 'sort' keyword to SQL 'ORDER BY'.
-        
-        from users sort name → from users ORDER BY name
-        from users sort -created_at → from users ORDER BY created_at DESC
-        """
-        result = text
-        
-        # Replace standalone 'sort' keyword with 'ORDER BY'
-        # Be careful not to replace 'sort' in function names or string literals
-        result = re.sub(r'\bsort\b(?!\s*\()', 'ORDER BY', result, flags=re.IGNORECASE)
         
         return result
     

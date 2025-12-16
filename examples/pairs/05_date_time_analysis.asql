@@ -7,5 +7,5 @@ from users
     count(case when last_login_date >= current_date - interval "30 days" then 1 end) as active_last_30_days,
     avg(days(last_login_date - signup_date)) as avg_days_to_first_login
   )
-  sort -month(signup_date)
+  order by -month(signup_date)
 

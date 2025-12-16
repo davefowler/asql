@@ -33,10 +33,10 @@ class TestErrorMessages:
         # Any error is acceptable - the query is clearly invalid
         assert exc_info.value is not None
     
-    def test_missing_sort_column_message(self) -> None:
-        """Test missing sort column error message."""
+    def test_missing_order_by_column_message(self) -> None:
+        """Test missing ORDER BY column error message."""
         with pytest.raises(ASQLSyntaxError) as exc_info:
-            compile("from users sort")
+            compile("from users order by")
         # Any error is acceptable - the query is clearly invalid
         assert exc_info.value is not None
     

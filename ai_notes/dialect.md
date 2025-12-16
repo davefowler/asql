@@ -466,7 +466,7 @@ class ASQL(Dialect):
 | `prior()` / `next()` | | | ✅ | Map to LAG/LEAD |
 | `running_sum/avg/count()` | | | ✅ | Cumulative window functions |
 | `rolling_avg/sum()` | | | ✅ | Moving window functions |
-| `arg_max()` / `arg_min()` | | | ✅ | First value by sort |
+| `arg_max()` / `arg_min()` | | | ✅ | First value by order by |
 | `first()` / `last()` in GROUP BY | | | ✅ | Ordered aggregates |
 | **Date Operations** | | | | |
 | `N days ago` | ✅ | | | Transform to `now() - INTERVAL` |
@@ -972,7 +972,7 @@ The following changes have been made to `docs/spec.md`:
 - SQL users already know `ORDER BY` and `LIMIT`
 - No value in learning `sort` and `take` aliases
 - Reduces cognitive load
-- `sort` would need `sort by` for consistency anyway
+- `sort` would need `order by by` for consistency anyway
 
 ---
 

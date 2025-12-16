@@ -35,7 +35,7 @@
     const ASQL_KEYWORDS = {
       keyword: [
         // Core query structure
-        'from', 'where', 'select', 'group', 'by', 'order', 'sort', 'take', 'limit', 'offset',
+        'from', 'where', 'select', 'group', 'by', 'order', 'take', 'limit', 'offset',
         'join', 'left', 'right', 'inner', 'outer', 'cross', 'full', 'on',
         'with', 'set', 'as', 'stash',
         // Logical operators

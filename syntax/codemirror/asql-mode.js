@@ -21,13 +21,13 @@
  *   </script>
  * 
  * Features:
- *   - Keywords: from, where, select, group by, sort, take, join, with, stash, etc.
+ *   - Keywords: from, where, select, group by, order by, take, join, with, stash, etc.
  *   - Functions: sum, avg, count, min, max, date functions, string functions
  *   - Operators: ==, !=, <=, >=, <, >, +, -, *, /, %, || (null coalescing), :: (type casting)
  *   - Strings: Single and double quoted strings
  *   - Numbers: Integers and floats
  *   - Comments: # to end of line
- *   - Special ASQL syntax: # (count shorthand), -column (descending sort), col::TYPE (type casting)
+ *   - Special ASQL syntax: # (count shorthand), -column (descending order), col::TYPE (type casting)
  *   - Multi-word keywords: group by, not in, is null, is not null, stash as
  * 
  * @version 1.1.0
@@ -77,7 +77,7 @@
     // Keywords
     const keywords = {
         "from": true, "where": true, "select": true, "project": true,
-        "group": true, "by": true, "sort": true, "order": true,
+        "group": true, "by": true, "order": true,
         "take": true, "limit": true, "join": true, "with": true,
         "let": true, "as": true, "on": true, "desc": true, "asc": true,
         "descending": true, "ascending": true, "store": true, "stash": true,
@@ -156,7 +156,7 @@
             return "keyword";
         }
         
-        // Handle descending sort prefix (-identifier)
+        // Handle descending order prefix (-identifier)
         if (stream.match(/^-\s*[a-zA-Z_][a-zA-Z0-9_]*/)) {
             return "variable";
         }

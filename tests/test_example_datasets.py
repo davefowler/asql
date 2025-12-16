@@ -78,7 +78,7 @@ class TestRealWorldScenarios:
 from users
 where status == "active" and age >= 18
 group by country ( # as total_users, avg(age) as avg_age )
-sort -total_users
+order by -total_users
 take 20
 """
         sql = compile(asql)
@@ -94,7 +94,7 @@ take 20
 from sales
 where status == "completed" and amount > 100
 group by region, month ( sum(amount) as revenue, # as orders )
-sort -revenue
+order by -revenue
 take 10
 """
         sql = compile(asql)
@@ -126,7 +126,7 @@ where status in ("active", "pending", "verified")
         """Test time-based analysis query."""
         # Note: GROUP BY with function calls requires aggregation
         # Use single-line format (multi-line not fully supported yet)
-        asql = "from users group by month(created_at) ( # as signups ) sort -signups"
+        asql = "from users group by month(created_at) ( # as signups ) order by -signups"
         sql = compile(asql)
         assert "GROUP BY" in sql.upper()
         assert "MONTH" in sql.upper() or "month" in sql.lower()
@@ -138,7 +138,7 @@ where status in ("active", "pending", "verified")
 from sales
 where status == "completed"
 group by user_id ( sum(amount) as total_spent )
-sort -total_spent
+order by -total_spent
 take 100
 """
         sql = compile(asql)
@@ -154,7 +154,7 @@ take 100
         asql = """
 from users
 group by status ( # as count )
-sort -count
+order by -count
 """
         sql = compile(asql)
         assert "GROUP BY" in sql.upper()
@@ -171,7 +171,7 @@ group by region (
     avg(amount) as avg_order,
     # as order_count
 )
-sort -revenue
+order by -revenue
 """
         sql = compile(asql)
         assert "WHERE" in sql.upper()

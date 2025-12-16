@@ -48,7 +48,7 @@ def test_reverse_compile_with_group_by() -> None:
     asql = reverse_compile(sql)
     assert "from users" in asql.lower()
     assert "group by" in asql.lower()
-    assert "sort" in asql.lower() or "order" in asql.lower()
+    assert "order" in asql.lower()
     assert "take" in asql.lower() or "limit" in asql.lower()
 
 
@@ -145,7 +145,7 @@ def test_reverse_compile_order_by() -> None:
     LIMIT 10
     """
     asql = reverse_compile(sql)
-    assert "sort" in asql.lower() or "order" in asql.lower()
+    assert "order" in asql.lower()
     assert "take" in asql.lower() or "limit" in asql.lower()
 
 

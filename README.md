@@ -63,7 +63,7 @@ asql = """
 from users
 where status == "active"
 group by country ( # as total_users )
-sort -total_users
+order by -total_users
 take 10
 """
 
@@ -211,7 +211,7 @@ where status == "active"      # Filter rows
 group by country (            # Group and aggregate
     # as total_users
 )
-sort -total_users            # Sort descending
+order by -total_users            # Sort descending
 take 10                      # Limit results
 ```
 
@@ -255,11 +255,11 @@ from sales group by region (
 
 ### Sorting
 
-- `sort column` - ascending
-- `sort -column` - descending (use `-` prefix)
+- `order by column` - ascending
+- `order by -column` - descending (use `-` prefix)
 
 ```asql
-from users sort -total_users, name
+from users order by -total_users, name
 ```
 
 ### Limiting

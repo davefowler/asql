@@ -7,7 +7,7 @@ Learn the syntax of Analytic SQL. This guide covers all the language features yo
 - [Basic Operations](#basic-operations)
 - [Filtering](#filtering)
 - [Aggregations](#aggregations)
-- [Sorting & Limiting](#sorting--limiting)
+- [Ordering & Limiting](#ordering--limiting)
 - [Date Functions](#date-functions)
 - [Joins](#joins)
 - [Window Functions](#window-functions)
@@ -119,25 +119,25 @@ group by product (
 - `min(column)` - minimum value
 - `max(column)` - maximum value
 
-## Sorting & Limiting
+## Ordering & Limiting
 
-### SORT
+### ORDER BY
 
-Sort results with `sort`:
+Order results with `order by`:
 
 ```asql
 from users
-sort name              # Ascending
+order by name              # Ascending
 
 from users
-sort -created_at        # Descending (use - prefix)
+order by -created_at        # Descending (use - prefix)
 ```
 
-### Multiple Sort Columns
+### Multiple Order Columns
 
 ```asql
 from orders
-sort -amount, created_at          # Sort by amount DESC, then created_at ASC
+order by -amount, created_at          # Order by amount DESC, then created_at ASC
 ```
 
 ### TAKE - Limit results
@@ -146,7 +146,7 @@ Use `take` to limit the number of rows:
 
 ```asql
 from users
-sort -created_at
+order by -created_at
 take 10
 ```
 
@@ -255,7 +255,7 @@ Get values from previous or next rows:
 
 ```asql
 from monthly_sales
-sort month
+order by month
 select 
     month,
     revenue,
@@ -270,7 +270,7 @@ Calculate cumulative totals:
 
 ```asql
 from transactions
-sort date
+order by date
 select 
     date,
     amount,
@@ -285,7 +285,7 @@ Calculate moving averages with a window size:
 
 ```asql
 from daily_sales
-sort date
+order by date
 select 
     date,
     revenue,
@@ -327,7 +327,7 @@ PostgreSQL-style deduplication:
 ```asql
 from orders
 distinct on (customer_id)
-sort customer_id, -order_date
+order by customer_id, -order_date
 ```
 
 See the [Window Functions](window_functions.md) guide for more details and patterns.
@@ -345,7 +345,7 @@ from sales
 group by category, product (
     sum(amount) as revenue
 )
-sort category, -revenue
+order by category, -revenue
 ```
 
 ### Time Series Analysis
@@ -359,7 +359,7 @@ group by date(date) (
     sum(amount) as daily_revenue,
     # as order_count
 )
-sort date
+order by date
 ```
 
 ### Cohort Analysis
@@ -371,7 +371,7 @@ from users
 group by year(created_at), month(created_at) (
     # as signups
 )
-sort year, month
+order by year, month
 ```
 
 ### Filtered Aggregations
@@ -384,7 +384,7 @@ where status == "active"
 group by country (
     # as active_users
 )
-sort -active_users
+order by -active_users
 ```
 
 ## Complete Example
@@ -401,7 +401,7 @@ from orders
       avg(orders.amount) as avg_order_value,
       # as order_count
   )
-  sort -revenue
+  order by -revenue
   take 10
 ```
 
