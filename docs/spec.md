@@ -262,79 +262,93 @@ The `||` operator has higher precedence than logical operators (`and`, `or`, `no
 - `not is_deleted || FALSE` parses as `NOT COALESCE(is_deleted, FALSE)` ✅
 - `status == "active" || "pending"` parses as `COALESCE(status == "active", "pending")` ✅
 
-### 4.7 Conditional Expressions (CASE)
+### 4.7 Conditional Expressions (`when`)
 
-ASQL uses DuckDB/Spark-style `CASE` syntax, which is cleaner and more concise than SQL-standard syntax:
+ASQL uses `when` for conditional expressions, replacing SQL's verbose `CASE` statement with cleaner, more natural syntax.
 
-**Simple CASE (DuckDB/Spark-style)**:
+**Basic syntax with `is` for equality:**
 ```asql
 from users
-  select 
-    case status
-      when "active" then 1
-      when "pending" then 0
-      else -1
-    end as status_code
+  select
+    name,
+    when status
+      is "active" then "Active User"
+      is "pending" then "Pending"
+      otherwise "Unknown"
+    as status_label
 ```
 
-**Searched CASE (when conditions are complex)**:
+**Implied equality (most concise):**
 ```asql
-from users
-  select 
-    case
-      when status == "active" and created_at > "2024-01-01" then 1
-      when status == "pending" then 0
-      else -1
-    end as status_code
+when status
+  "active" then 1
+  "pending" then 0
+  otherwise -1
 ```
 
-**Benefits of DuckDB/Spark-style**:
-- More concise - expression appears once at the top (for simple CASE)
-- More readable - avoids repeating the expression in each WHEN clause
-- Familiar to users of DuckDB and Spark SQL
-- Consistent indentation makes nested conditions easier to read
-
-**Reverse Compilation**: SQL `CASE` statements are automatically converted to this syntax when converting SQL to ASQL.
-
-**Examples from real queries**:
+**Comparison operators:**
 ```asql
-# Complex business logic
+when age
+  < 4 then "infant"
+  < 12 then "child"
+  < 18 then "teen"
+  otherwise "adult"
+```
+
+**Inequality with `is not`:**
+```asql
+when status
+  is not "deleted" then 1
+  otherwise 0
+```
+
+**Multiple values with `in`:**
+```asql
+when status
+  in ("active", "pending") then "open"
+  in ("completed", "shipped") then "done"
+  otherwise "unknown"
+```
+
+**Searched when (complex conditions):**
+```asql
+when
+  age < 18 and country = "US" then "US Minor"
+  age < 18 then "Minor"
+  otherwise "Adult"
+```
+
+**Complex business logic:**
+```asql
 from opportunity
-  select 
-    case
-      when is_won then "Won"
-      when NOT is_won and is_closed then "Lost"
-      when NOT is_closed and lower(forecast_category) in ("pipeline", "forecast", "bestcase") then "Pipeline"
-      else "Other"
-    end as status
+  select
+    when
+      is_won then "Won"
+      not is_won and is_closed then "Lost"
+      not is_closed and lower(forecast_category) in ("pipeline", "forecast", "bestcase") then "Pipeline"
+      otherwise "Other"
+    as status
 ```
 
-**Natural language alternatives** (future consideration):
-
-**Standard CASE syntax:**
+**In aggregations:**
 ```asql
-select status_label as case
-  when status == "active" then "Active User"
-  when status == "inactive" then "Inactive User"
-  else "Unknown"
-end
+from orders
+  group by customer_id
+  select
+    customer_id,
+    sum(when status is "completed" then 1 otherwise 0) as completed_count,
+    sum(when status is "returned" then amount otherwise 0) as returned_value
 ```
 
-**Natural language alternative:**
-```asql
-select status_label as 
-  if status == "active" then "Active User"
-  else if status == "inactive" then "Inactive User"
-  else "Unknown"
-```
+**Operators supported:**
+- `is` / `=` - equality
+- `is not` / `!=` - inequality
+- `<`, `>`, `<=`, `>=` - comparisons
+- `in (values)` - multiple value match
 
-**Simple if-then-else:**
-```asql
-select is_premium as if plan == "premium" then true else false
-select discount as if amount > 100 then amount * 0.1 else 0
-```
+**Default clause:** Both `else` and `otherwise` are supported (they are aliases).
 
-All three syntaxes compile to standard SQL `CASE` statements. Choose based on readability preference.
+All forms compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
 
 ### 4.8 Type Casting (`::`)
 
@@ -397,6 +411,130 @@ ASQL uses SQL-standard comment syntax:
 - It's the SQL standard (familiar to SQL users)
 - `#` is reserved for count aggregation syntax (see Section 5.2)
 - Better compatibility with SQL tooling and editors
+
+### 4.10 String Functions
+
+ASQL provides clean string manipulation functions.
+
+#### String Concatenation
+
+Use `concat()` for joining strings:
+
+```asql
+from users
+  select concat(first_name, " ", last_name) as full_name
+```
+
+For concatenating values across rows in a GROUP BY, use `string_agg()`:
+
+```asql
+from orders
+  group by customer_id (
+    string_agg(product_name, ", ") as products
+  )
+```
+
+**Note**: `string_agg()` is the standard name used in PostgreSQL, SQL Server, and DuckDB. ASQL compiles to the appropriate dialect (e.g., `GROUP_CONCAT` for MySQL, `LISTAGG` for Snowflake).
+
+#### Substring with Slice Syntax
+
+ASQL supports Python-style slice syntax for extracting substrings:
+
+```asql
+from users
+  select 
+    email[1:5] as email_prefix,        -- characters 1-5
+    email[1:] as from_start,           -- from position 1 to end
+    email[-5:] as last_five,           -- last 5 characters
+    email[3:8] as middle_part          -- characters 3-8
+```
+
+**Slice syntax:**
+- `string[start:end]` - characters from start to end (1-indexed)
+- `string[start:]` - from start to end of string
+- `string[:end]` - from beginning to end position
+- `string[-n:]` - last n characters
+
+The traditional `substring()` function is also supported:
+```asql
+substring(email, 1, 5) as email_prefix
+```
+
+#### String Replacement
+
+Use `replace()` for string substitution:
+
+```asql
+from products
+  select replace(description, "old", "new") as updated_desc
+```
+
+#### String Functions Reference
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `concat(a, b, ...)` | Concatenate strings | `concat(first, " ", last)` |
+| `string_agg(col, sep)` | Aggregate strings with separator | `string_agg(name, ", ")` |
+| `string[start:end]` | Slice substring | `email[1:5]` |
+| `substring(str, pos, len)` | Extract substring | `substring(email, 1, 5)` |
+| `replace(str, old, new)` | Replace occurrences | `replace(text, "a", "b")` |
+| `lower(str)` | Convert to lowercase | `lower(name)` |
+| `upper(str)` | Convert to uppercase | `upper(code)` |
+| `trim(str)` | Remove whitespace | `trim(input)` |
+| `length(str)` | String length | `length(name)` |
+
+### 4.11 Comparison Functions
+
+#### Multi-Value Min/Max
+
+Use `min()` and `max()` with multiple arguments to find the smallest or largest value:
+
+```asql
+from products
+  select 
+    max(price1, price2, price3) as highest_price,
+    min(start_date, end_date) as earliest_date
+```
+
+**SQL alternatives**: `greatest()` and `least()` are also supported for familiarity with SQL:
+
+```asql
+from products
+  select greatest(price1, price2, price3) as highest_price
+```
+
+**Recommendation**: Use `max()` and `min()` as they're more intuitive and consistent with aggregation functions.
+
+**Note**: This is configurable - if you prefer SQL-style `greatest()`/`least()` as the default, this can be adjusted in ASQL settings.
+
+### 4.12 NULL Handling
+
+#### NULLIF Alternative
+
+Instead of SQL's `NULLIF()` function, use the `when` conditional expression:
+
+```asql
+from transactions
+  select 
+    when amount == 0 then null else amount as safe_amount
+```
+
+This is clearer than `nullif(amount, 0)` and consistent with ASQL's conditional syntax.
+
+#### Ternary-Style Conditionals (Future Consideration)
+
+ASQL may add support for concise ternary expressions in the future:
+
+```asql
+-- Potential future syntax (not yet decided)
+amount == 0 ? null : amount           -- JS-style
+null if amount == 0 else amount       -- Python-style
+```
+
+For now, use the `when` syntax which is clear and readable:
+```asql
+when amount == 0 then null else amount
+```
 
 ---
 
@@ -522,6 +660,148 @@ from users
     avg(age) as avg_age
   )
 ```
+
+### 5.7 Window Functions
+
+ASQL provides intuitive syntax for common window function patterns, making operations like deduplication, ranking, and running totals much cleaner than SQL.
+
+#### The `per` Command (Pipeline Window Operations)
+
+The `per` command creates a window context for operations on partitions:
+
+**Syntax:**
+```
+per <partition_cols> <operation> by <order_cols> [as <alias>]
+```
+
+Or without partition (whole table):
+```
+<operation> by <order_cols> [as <alias>]
+```
+
+**Available Operations:**
+
+| Operation | What it does | Default alias | Row count |
+|-----------|--------------|---------------|-----------|
+| `first` | Keep first row per partition | (no column) | ↓ Reduces |
+| `last` | Keep last row per partition | (no column) | ↓ Reduces |
+| `number` | Add row number column | `row_num` | Same |
+| `rank` | Add rank column | `rank` | Same |
+| `dense rank` | Add dense rank column | `dense_rank` | Same |
+
+**Examples:**
+```asql
+# DEDUPLICATION: Keep most recent order per customer
+from orders
+  per customer_id first by -order_date
+
+# ADD ROW NUMBER: Number orders per customer (most recent = 1)
+from orders
+  per customer_id number by -order_date
+# Result: adds `row_num` column
+
+# ADD RANK: Rank employees by salary within department
+from employees
+  per department rank by -salary
+# Result: adds `rank` column
+
+# NO PARTITION: Number all rows
+from events
+  number by -timestamp
+# Result: adds `row_num` to all rows, ordered by timestamp desc
+```
+
+**Reading the syntax naturally:**
+- `per customer_id first by -order_date` → "Per customer, get the first by order date descending"
+- `per department rank by -salary` → "Per department, rank by salary descending"
+
+#### first() / last() in GROUP BY
+
+Use `first()` and `last()` as aggregates within GROUP BY to extract values:
+
+```asql
+from orders
+  group by customer_id (
+    first(order_id order by -order_date) as latest_order,
+    last(order_id order by order_date) as first_order,
+    count(*) as total_orders
+  )
+```
+
+**Comparison: `per ... first` vs `first()` in GROUP BY:**
+- Use `per ... first` when you want the **whole row** (deduplication)
+- Use `first()` in GROUP BY when you want **specific aggregated values**
+
+#### arg_max() / arg_min() (ClickHouse-inspired)
+
+Get the value of one column where another column is max/min:
+
+```asql
+from orders
+  group by customer_id (
+    arg_max(order_id, order_date) as latest_order_id,
+    arg_min(order_id, order_date) as earliest_order_id
+  )
+```
+
+#### prior() / next() (Simplified LAG/LEAD)
+
+```asql
+from monthly_sales
+  order by month
+  select
+    month,
+    revenue,
+    prior(revenue) as prior_revenue,       # LAG(revenue, 1)
+    prior(revenue, 3) as three_months_ago,
+    next(revenue) as next_revenue          # LEAD(revenue, 1)
+```
+
+#### Running Aggregates (Cumulative)
+
+```asql
+from transactions
+  order by date
+  select
+    date,
+    amount,
+    running_sum(amount) as cumulative_amount,
+    running_avg(amount) as avg_to_date,
+    running_count(*) as transaction_number
+```
+
+**Shorthand:** `running amount` is equivalent to `running_sum(amount)`.
+
+#### Rolling Window Aggregates
+
+Moving window with specified size:
+
+```asql
+from daily_sales
+  order by date
+  select
+    date,
+    revenue,
+    rolling_avg(revenue, 7) as seven_day_avg,
+    rolling_sum(revenue, 30) as monthly_total
+```
+
+#### Window Functions Quick Reference
+
+| Intent | ASQL Syntax |
+|--------|-------------|
+| Most recent row per group | `per group_col first by -date` |
+| Oldest row per group | `per group_col first by date` |
+| Add row numbers per group | `per group_col number by -date` |
+| Add rank per group | `per group_col rank by -value` |
+| Add dense rank per group | `per group_col dense rank by -value` |
+| Get column value at max | `arg_max(col, sort_col)` |
+| Previous row value | `prior(col)` |
+| Next row value | `next(col)` |
+| Cumulative sum | `running_sum(col)` |
+| Cumulative average | `running_avg(col)` |
+| 7-day moving average | `rolling_avg(col, 7)` |
+| First value in group | `first(col order by sort)` |
 
 ---
 
@@ -699,149 +979,280 @@ from accounts
 
 ## 8. Dates & Time
 
-### 8.1 Simple Time Functions (No More EXTRACT!)
+Dates are one of the most important features in analytics. ASQL provides a clean, intuitive, and portable date syntax that compiles to the right dialect-specific SQL.
 
-ASQL provides simple, intuitive date functions instead of verbose SQL date extraction:
+### 8.1 Date Literals
 
-**ASQL syntax:**
+ASQL uses the `@` prefix for date literals:
+
 ```asql
-year(created_at)      -- Returns: 2025 (full year)
-month(created_at)     -- Returns: 2025-01 (year-month for time series)
-week(created_at)      -- Returns: 2025-W01 (year-week for time series)
-day(created_at)       -- Returns: 2025-01-15 (full date for time series)
-hour(created_at)      -- Returns: 2025-01-15 14:00 (date-hour)
+from users
+  where signup_date >= @2024-01-01
+
+from orders
+  where order_date between @2024-01-01 and @2024-12-31
 ```
 
-**Clarification on time functions:**
-- `day(created_at)` returns the full date (e.g., `2025-01-15`) for time series analysis, not the day of week
-- For day of week, use `weekday(created_at)` which returns `Monday`, `Tuesday`, etc.
-- Alternative: `created_at.weekday` could return day of week, while `created_at.day` returns the date
-- All time functions return values suitable for time series (include year/month context to avoid sorting issues)
+The `@` prefix distinguishes dates from strings and is clean and unambiguous.
 
-**As opposed to SQL:**
+### 8.2 Time Truncation Functions
+
+ASQL provides simple time truncation functions for grouping and time series:
+
+```asql
+year(created_at)      -- Truncate to year start: 2025-01-01
+month(created_at)     -- Truncate to month start: 2025-01-01
+week(created_at)      -- Truncate to week start: 2025-01-06
+day(created_at)       -- Truncate to day: 2025-01-15
+hour(created_at)      -- Truncate to hour: 2025-01-15 14:00:00
+quarter(created_at)   -- Truncate to quarter start
+```
+
+**Natural language alternatives** (all equivalent):
+```asql
+year(created_at)      -- function style
+year created_at       -- space style
+year_created_at       -- underscore style (ASQL interprets as year(created_at))
+year of created_at    -- "of" style
+```
+
+These compile to `DATE_TRUNC()` and are ideal for time series grouping.
+
+### 8.3 Date Part Extraction
+
+Extracting date parts (day of week, week of year, etc.) uses natural language phrases:
+
+```asql
+day of week created_at        -- 1-7 (which day of the week)
+day of month created_at       -- 1-31 (which day of the month)
+day of year created_at        -- 1-366 (which day of the year)
+week of year created_at       -- 1-52 (which week of the year)
+month of year created_at      -- 1-12 (which month)
+quarter of year created_at    -- 1-4 (which quarter)
+```
+
+**Function equivalents** (same behavior):
+```asql
+day_of_week(created_at)
+week_of_year(created_at)
+month_of_year(created_at)
+```
+
+**Example usage:**
+```asql
+-- Weekend orders
+from orders
+  where day of week order_date in (6, 7)
+
+-- Sales by day of week
+from sales
+  group by day of week sale_date (
+    sum(amount) as revenue
+  )
+```
+
+**Distinction from truncation:**
+- `month(created_at)` → `2025-01-01` (truncated date, for time series)
+- `month of year created_at` → `1` (integer, for "all Januaries")
+
+### 8.4 Date Arithmetic
+
+Adding or subtracting from dates uses clean inline syntax:
+
+```asql
+order_date + 7 days
+order_date - 1 month
+order_date + 2 weeks
+created_at + 24 hours
+updated_at - 90 minutes
+```
+
+**Singular/plural both work:**
+```asql
+order_date + 1 day           -- singular
+order_date + 7 days          -- plural
+```
+
+**Compiles to** (dialect-specific):
 ```sql
--- PostgreSQL - need to extract and format
-EXTRACT(YEAR FROM created_at)
-DATE_TRUNC('month', created_at)
-DATE_TRUNC('day', created_at)
+-- PostgreSQL
+order_date + INTERVAL '7 days'
 
--- MySQL - inconsistent function names
-YEAR(created_at)
-DATE_FORMAT(created_at, '%Y-%m')
-DATE_FORMAT(created_at, '%Y-%m-%d')
+-- SQL Server  
+DATEADD(day, 7, order_date)
 
--- SQL Server - different syntax again
-YEAR(created_at)
-DATEPART(year, created_at)
-FORMAT(created_at, 'yyyy-MM')
+-- MySQL
+DATE_ADD(order_date, INTERVAL 7 DAY)
 ```
 
-**Natural language alternatives:**
+### 8.5 Date Difference
+
+Getting days/months/years between dates:
+
 ```asql
-year of created_at
-month of created_at
-day of created_at
+days(end_date - start_date)      -- Returns integer days
+months(end_date - start_date)    -- Returns integer months
+years(end_date - start_date)     -- Returns integer years
+hours(end_date - start_date)     -- Returns integer hours
+weeks(end_date - start_date)     -- Returns integer weeks
 ```
 
-**Method-style syntax (alternative, for day-of-week distinction):**
+**Alternative syntax:**
 ```asql
-created_at.year       -- Full year
-created_at.month      -- Year-month
-created_at.day        -- Full date (for time series)
-created_at.weekday    -- Day of week (Monday, Tuesday, etc.)
-created_at.hour       -- Date-hour
+days_between(start_date, end_date)
+months_between(start_date, end_date)
 ```
 
-All syntaxes are equivalent for the main time functions. Method-style syntax may be useful for distinguishing `day` (date) from `weekday` (day of week).
+**Example:**
+```asql
+from orders
+  select 
+    days(shipped_date - order_date) as fulfillment_days,
+    months(now() - customer_since) as customer_tenure_months
+```
 
-### 8.2 Time Bucketing
+### 8.6 Relative Dates (`ago` and `from now`)
+
+**Past dates with `ago`:**
+```asql
+from users
+  where last_login >= 7 days ago
+
+from orders
+  where created_at >= 30 days ago
+  where created_at >= 1 month ago
+  where created_at >= 3 hours ago
+```
+
+**Future dates with `from now`:**
+```asql
+from orders
+  where estimated_delivery <= 3 days from now
+
+from reminders
+  where remind_at <= 1 hour from now
+```
+
+**Compiles to:**
+```sql
+-- PostgreSQL
+WHERE last_login >= CURRENT_DATE - INTERVAL '7 days'
+WHERE estimated_delivery <= CURRENT_TIMESTAMP + INTERVAL '3 days'
+```
+
+### 8.7 Time Since/Until Patterns
+
+**`*_since_*` pattern** - time elapsed since a date:
+```asql
+days_since_created_at        -- → days(now() - created_at)
+weeks_since_signup_date      -- → weeks(now() - signup_date)
+months_since_last_login      -- → months(now() - last_login)
+years_since_birth_date       -- → years(now() - birth_date)
+```
+
+**`*_until_*` pattern** - time remaining until a future date:
+```asql
+days_until_due_date          -- → days(due_date - now())
+weeks_until_deadline         -- → weeks(deadline - now())
+months_until_renewal         -- → months(renewal_date - now())
+```
+
+**Example usage:**
+```asql
+from users
+  select
+    name,
+    days_since_last_login,
+    months_since_signup_date,
+    years_since_birth_date as age
+
+from tasks
+  where days_until_due_date < 7
+  -- Tasks due within a week
+```
+
+### 8.8 Week Start Configuration
+
+**Default**: ISO 8601 standard (Monday = day 1)
+
+```asql
+week(created_at)              -- Default: ISO (Monday start)
+week_monday(created_at)       -- Explicit Monday start
+week_sunday(created_at)       -- US-style Sunday start
+
+day of week created_at        -- Default: 1 = Monday, 7 = Sunday
+```
+
+**Rationale**: ISO 8601 is the international standard. Most analytics/business contexts expect Monday start.
+
+### 8.9 Timezone Handling
+
+Use cast-like syntax with `::` for timezone conversion:
+
+```asql
+-- Short timezone codes
+created_at::PST
+created_at::UTC
+created_at::EST
+
+-- Full IANA timezone names (quoted)
+created_at::"America/Los_Angeles"
+created_at::"Europe/London"
+
+-- Chained with other operations
+month(created_at::PST)
+created_at::UTC + 7 days
+```
+
+**Compiles to** (PostgreSQL):
+```sql
+created_at AT TIME ZONE 'PST'
+created_at AT TIME ZONE 'America/Los_Angeles'
+```
+
+### 8.10 Time Bucketing (Grouping)
 
 Time bucketing is simply grouping by a time function:
 
 ```asql
 from users
   group by month(created_at) ( # as signups )
+
+from sales
+  group by week(sale_date) ( sum(amount) as revenue )
 ```
 
-**As opposed to SQL:**
-```sql
--- PostgreSQL
-SELECT DATE_TRUNC('month', created_at) AS month, COUNT(*) AS signups
-FROM users
-GROUP BY DATE_TRUNC('month', created_at)
+### 8.11 Date Functions Quick Reference
 
--- MySQL
-SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS signups
-FROM users
-GROUP BY DATE_FORMAT(created_at, '%Y-%m')
-```
+| Operation | ASQL Syntax | Example |
+|-----------|-------------|---------|
+| Date literal | `@YYYY-MM-DD` | `@2025-01-15` |
+| Truncation | `unit(col)` | `month(created_at)` |
+| Extraction | `unit of period col` | `day of week created_at` |
+| Arithmetic | `date + N unit` | `order_date + 7 days` |
+| Difference | `unit(date1 - date2)` | `days(end - start)` |
+| Relative past | `N unit ago` | `7 days ago` |
+| Relative future | `N unit from now` | `3 days from now` |
+| Time since | `unit_since_col` | `days_since_created_at` |
+| Time until | `unit_until_col` | `days_until_due_date` |
+| Timezone | `col::TZ` | `created_at::PST` |
+| Week (Sunday) | `week_sunday(col)` | `week_sunday(created_at)` |
 
-This is standard SQL grouping - ASQL just makes the time functions simpler and more consistent.
+### 8.12 Default Time Fields & Conventions
 
-### 8.3 Natural Language Time Grouping
+ASQL follows a "convention over configuration" philosophy:
 
-```asql
-# of Users by month
-# of Sales by week
-Revenue by year
-```
-
-**⚠️ Warning**: These shortcuts assume a default time column has been set (see Section 8.4). Without explicit defaults, these can be ambiguous and potentially dangerous.
-
-### 8.4 Default Time Fields
-
-**dbt compatibility**: dbt does not have a standard `default_time` field in its schema files. ASQL can extend dbt's schema format with this metadata, or infer defaults from conventions.
-
-Model metadata can specify default time fields:
+1. **Standard naming**: Timestamp columns named `created_at`, `updated_at` enable automatic inference
+2. **Smart defaults**: If a table has `created_at`, it's assumed to be the primary time field
+3. **Configurable**: Override defaults in model metadata when needed
 
 ```yaml
 models:
   users:
-    default_time: created_at
+    default_time: signup_date  # Override convention
 ```
 
-Then `group by month` implicitly uses `created_at`:
-
-```asql
-from users
-  group by month ( # as signups )
-```
-
-**Note**: Ideally, ASQL doesn't create its own model format. It should use dbt's existing `schema.yml` files when available, or infer from database schema metadata and conventions.
-
-**Convention-based inference**: ASQL follows a "convention over configuration" philosophy:
-
-1. **Standard naming assumptions**: ASQL assumes you follow good modeling standards:
-   - Timestamp columns are named `created_at`, `updated_at` (not `dateCreated`, `lastModified`, etc.)
-   - Foreign keys follow patterns like `user_id`, `owner_id`, `account_id`
-   - Tables are properly pluralized or follow your team's convention
-
-2. **Smart defaults**: Based on these conventions, ASQL can infer:
-   - **Time fields**: If a table has `created_at`, it's assumed to be the primary time field for time-based aggregations. `updated_at` is secondary.
-   - **Foreign keys**: If `Accounts.user_id` exists and there's a `Users` table, ASQL infers the relationship `Accounts.user_id → Users.id`
-   - **Relationships**: Standard FK naming (`{table}_id`) enables automatic join inference
-
-3. **Configurable but opinionated**: All defaults can be overridden:
-   ```yaml
-   models:
-     users:
-       default_time: signup_date  # Override convention
-     accounts:
-       links:
-         owner: users.id  # Explicit relationship if naming doesn't match
-   ```
-
-4. **dbt compatibility**: ASQL works seamlessly with dbt projects that follow dbt's modeling standards. If you're using dbt, ASQL can read your `schema.yml` files and infer relationships automatically.
-
-**⚠️ Important Considerations**:
-
-1. **Standards matter**: ASQL works best when you follow modeling standards. If your schema is non-standard, you may need to configure relationships explicitly.
-2. **Explicit overrides**: While conventions are helpful, explicit configuration is always clearer. Use `group by month(created_at)` when clarity is important.
-3. **Migration path**: If you're migrating to ASQL, consider standardizing your schema first (e.g., renaming `dateCreated` → `created_at`) to unlock automatic inference.
-4. **Best practice**: Follow dbt-style modeling standards, and ASQL will "just work." Deviate from standards, and you'll need explicit configuration (which is fine, but more verbose).
-5. **dbt integration**: Ideally, ASQL will be built into dbt out of the gate. You'll be able to use ASQL even in raw cleaning stages. In those stages, you may need to be more explicit (or start with a `select` to rename columns to standards), but ASQL's pipelining and cleaner syntax will still be quite useful. A common pattern: start cleanup with a `select` command renaming things to standards, then continue with pipeline operations.
-
-**Philosophy**: We assume you're doing good modeling. If you follow standards, ASQL is magical. If you don't, you can still use ASQL, but you'll need to be more explicit. This encourages good practices while remaining flexible.
+**Best practice**: Follow dbt-style modeling standards, and ASQL's date features "just work."
 
 ---
 

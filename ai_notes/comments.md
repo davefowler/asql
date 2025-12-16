@@ -1,8 +1,32 @@
 # SQL Comments: Storage, Extraction, and Integration
 
+**Last Updated**: December 2025
+
+> **See also**: [dialect.md](dialect.md) - How comments fit into the SQLGlot dialect approach (Section 7)
+
 ## Overview
 
-This document explores how to store, extract, and leverage SQL/ASQL comments for documentation, metadata, and AI-assisted workflows. The goal is to make comments first-class citizens that flow from code to documentation to data catalogs.
+This document explores how ASQL handles comments—extracting them as structured metadata that consuming tools can use for documentation, data catalogs, and AI integration.
+
+### Key Insight: ASQL is a Library
+
+ASQL is a **transpiler/library**, not an execution engine. It:
+- Parses ASQL syntax into an AST
+- Compiles to SQL for various dialects
+- **Extracts comments as structured metadata via API**
+
+ASQL does NOT:
+- Execute queries or create tables
+- Directly write to databases or YAML files
+- Run as a standalone CLI tool (beyond basic transpilation)
+
+**Consuming tools** (dbt, SQLMesh, BI platforms, AI assistants) are responsible for:
+- Deciding what to do with extracted metadata
+- Persisting comments to databases (`COMMENT ON` statements)
+- Generating documentation files (`schema.yml`)
+- Displaying comments in UIs
+
+This separation of concerns means comments stay in code (single source of truth), and each tool uses ASQL's API to access them as needed.
 
 ## Current Landscape
 
@@ -154,11 +178,11 @@ from users
 order by created_at -- want older users first
 where created_at > (now() - 3 months) -- just the past 3 months
 group by 
-  month created_at, -- the signup month
-  user_id,          -- deduplicated user identifier  
-  age               -- age at signup
+  month(created_at), -- the signup month
+  user_id,           -- deduplicated user identifier  
+  age                -- age at signup
   (
-   # as user_count  -- count of users per group
+   # as user_count   -- count of users per group
   )
 ```
 
@@ -279,75 +303,129 @@ def _extract_inline_tags(comment: str) -> List[str]:
     return re.findall(r'#(\w+)', comment)
 ```
 
-### Integration with dbt/SQLMesh
+### Metadata Serialization Methods
 
-ASQL could generate the required YAML/Python metadata files:
+The `QueryMetadata` object provides convenience methods for common formats:
 
 ```python
-def generate_dbt_schema(metadata: QueryMetadata) -> str:
-    """Generate dbt schema.yml from extracted metadata."""
-    import yaml
+# After extracting metadata
+metadata = asql.extract_metadata(ast)
+
+# Convert to dbt schema.yml format (dict ready for yaml.dump)
+dbt_schema = metadata.to_dbt_schema()
+# Returns: {'name': 'monthly_signups', 'description': '...', 'columns': [...]}
+
+# Generate SQL COMMENT ON statements
+sql_comments = metadata.to_sql_comments(table_name="analytics.monthly_signups")
+# Returns:
+# COMMENT ON TABLE analytics.monthly_signups IS 'User signups...';
+# COMMENT ON COLUMN analytics.monthly_signups.user_count IS 'Count of users...';
+
+# Export as JSON for APIs or AI consumption
+json_data = metadata.to_json()
+# Returns: '{"name": "monthly_signups", "description": "...", ...}'
+
+# Raw dict access for custom integrations
+raw_dict = metadata.to_dict()
+```
+
+Example implementation:
+
+```python
+@dataclass
+class QueryMetadata:
+    name: Optional[str] = None
+    description: Optional[str] = None
+    author: Optional[str] = None
+    owner: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
+    columns: Dict[str, ColumnMetadata] = field(default_factory=dict)
+    general_notes: List[str] = field(default_factory=list)
     
-    schema = {
-        'version': 2,
-        'models': [{
-            'name': metadata.table_name or 'query',
-            'description': metadata.description or '',
+    def to_dbt_schema(self) -> dict:
+        """Convert to dbt schema.yml format."""
+        return {
+            'name': self.name or 'query',
+            'description': self.description or '',
+            'meta': {
+                k: v for k, v in [
+                    ('author', self.author),
+                    ('owner', self.owner),
+                    ('tags', self.tags if self.tags else None),
+                ] if v
+            },
             'columns': [
-                {
-                    'name': col.name,
-                    'description': col.description or ''
-                }
-                for col in metadata.columns.values()
+                {'name': col.name, 'description': col.description or ''}
+                for col in self.columns.values()
             ]
-        }]
-    }
+        }
     
-    return yaml.dump(schema, default_flow_style=False)
-
-def generate_sqlmesh_model(metadata: QueryMetadata, sql: str) -> str:
-    """Generate SQLMesh model with metadata."""
-    columns_dict = {
-        col.name: col.description 
-        for col in metadata.columns.values() 
-        if col.description
-    }
-    
-    return f'''
-MODEL (
-    name {metadata.table_name or 'query'},
-    description '{metadata.description or ''}',
-    columns (
-        {', '.join(f"{k} '{v}'" for k, v in columns_dict.items())}
-    )
-);
-
-{sql}
-'''
-
-def generate_sql_comments(metadata: QueryMetadata, table_name: str) -> str:
-    """Generate SQL COMMENT ON statements."""
-    statements = []
-    
-    if metadata.description:
-        statements.append(
-            f"COMMENT ON TABLE {table_name} IS '{metadata.description}';"
-        )
-    
-    for col in metadata.columns.values():
-        if col.description:
+    def to_sql_comments(self, table_name: str, dialect: str = "postgres") -> str:
+        """Generate SQL COMMENT ON statements."""
+        statements = []
+        
+        if self.description:
             statements.append(
-                f"COMMENT ON COLUMN {table_name}.{col.name} IS '{col.description}';"
+                f"COMMENT ON TABLE {table_name} IS '{self.description}';"
             )
+        
+        for col in self.columns.values():
+            if col.description:
+                statements.append(
+                    f"COMMENT ON COLUMN {table_name}.{col.name} IS '{col.description}';"
+                )
+        
+        return '\n'.join(statements)
     
-    return '\n'.join(statements)
+    def to_json(self) -> str:
+        """Export as JSON for API consumption."""
+        import json
+        return json.dumps(self.to_dict(), indent=2)
+    
+    def to_dict(self) -> dict:
+        """Convert to plain dictionary."""
+        return {
+            'name': self.name,
+            'description': self.description,
+            'author': self.author,
+            'owner': self.owner,
+            'tags': self.tags,
+            'columns': {
+                name: {'description': col.description, 'tags': col.tags}
+                for name, col in self.columns.items()
+            }
+        }
 ```
 
 ## Recommended Comment Format
 
-After researching various approaches, here's the recommended format for ASQL:
+ASQL supports both natural language comments and structured metadata tags. Natural comments work great for most cases, but when `@` tags are present, ASQL extracts them as structured metadata.
 
-### Simple Natural Comments (Preferred for Most Cases)
+### Recommended Format (Structured with Natural Fallback)
+
+```asql
+/**
+ * @name monthly_signups
+ * @description User signups grouped by month for retention analysis
+ * @author analytics-team
+ * @owner finance
+ * @tags retention, users, monthly
+ * @freshness daily
+ * @pii false
+ */
+from users
+where created_at > (now() - 3 months)  -- recent users only
+group by 
+  month created_at as signup_month,    -- the monthly cohort
+  age                                  -- user age at signup
+  (
+    # as user_count                    -- count of users in cohort
+  )
+```
+
+### Natural Comments (Also Fully Supported)
+
+When no `@` tags are present, the entire comment block becomes the description:
 
 ```asql
 /* User signups by month
@@ -369,30 +447,6 @@ select
   user_count               -- count of users
 ```
 
-### Structured Metadata (For Data Catalog Integration)
-
-When richer metadata is needed:
-
-```asql
-/**
- * @name monthly_signups
- * @description User signups grouped by month for retention analysis
- * @author analytics-team
- * @owner finance
- * @tags retention, users, monthly
- * @freshness daily
- * @pii false
- */
-from users
-where created_at > (now() - 3 months)  -- @filter: recent users only
-group by 
-  month created_at as signup_month,    -- @grain: monthly cohort
-  age                                  -- @dimension: user age
-  (
-    # as user_count                    -- @metric: user count
-  )
-```
-
 ### Inline Tag Vocabulary
 
 Suggested inline tags for structured extraction:
@@ -407,50 +461,259 @@ Suggested inline tags for structured extraction:
 | `@pii` | Mark PII columns | `-- @pii: Contains email` |
 | `@deprecated` | Mark deprecated | `-- @deprecated: Use new_col instead` |
 
+## ASQL as a Library: How Consuming Tools Access Comments
+
+ASQL is a **transpiler/library**, not an execution engine. It doesn't create tables or run queries directly. Instead, tools like dbt, SQLMesh, BI platforms, or custom applications use ASQL to:
+
+1. Parse ASQL syntax into an AST
+2. Compile to target SQL dialect
+3. **Access extracted metadata** (including comments)
+
+The consuming tool is responsible for deciding what to do with that metadata—persist it to the database, display it in a UI, store it in a data catalog, etc.
+
+### API for Accessing Comments
+
+ASQL exposes comments through the parsed AST and a dedicated metadata extraction API:
+
+```python
+import asql
+
+# Method 1: Access the raw AST with comments attached
+ast = asql.parse("""
+/**
+ * @name monthly_signups
+ * @description Track user signups by month
+ * @author data-team
+ */
+from users
+where created_at > (now() - 3 months)  -- recent users only
+group by month created_at (
+    # as user_count  -- count of users
+)
+""")
+
+# The AST nodes have .comments attributes (from SQLGlot)
+print(ast.comments)  # Table-level comment block
+
+# Method 2: Extract structured metadata
+metadata = asql.extract_metadata(ast)
+
+print(metadata.name)         # "monthly_signups"
+print(metadata.description)  # "Track user signups by month"
+print(metadata.author)       # "data-team"
+print(metadata.columns)      # {"user_count": ColumnMetadata(...)}
+
+# Method 3: Compile to SQL with comments preserved
+sql = asql.compile(ast, dialect="postgres", preserve_comments=True)
+```
+
+### How dbt Would Use ASQL Comments
+
+A dbt integration could use ASQL to auto-generate `schema.yml`:
+
+```python
+# In a dbt plugin or pre-commit hook
+import asql
+import yaml
+from pathlib import Path
+
+def generate_schema_from_asql(asql_file: Path) -> dict:
+    """Generate dbt schema.yml entries from ASQL comments."""
+    
+    ast = asql.parse(asql_file.read_text())
+    metadata = asql.extract_metadata(ast)
+    
+    return {
+        'name': metadata.name or asql_file.stem,
+        'description': metadata.description or '',
+        'meta': {
+            'author': metadata.author,
+            'tags': metadata.tags,
+            'owner': metadata.owner,
+        },
+        'columns': [
+            {
+                'name': col.name,
+                'description': col.description or '',
+                'meta': {'pii': col.pii} if col.pii else {}
+            }
+            for col in metadata.columns.values()
+        ]
+    }
+
+# dbt could then call this to populate schema.yml automatically
+# or a dbt adapter could read comments and call persist_docs internally
+```
+
+### How SQLMesh Would Use ASQL Comments
+
+SQLMesh could use ASQL's metadata to populate model definitions:
+
+```python
+# In SQLMesh model loader
+import asql
+
+def load_asql_model(model_path: str):
+    """Load an ASQL model with comment-based metadata."""
+    
+    source = Path(model_path).read_text()
+    ast = asql.parse(source)
+    metadata = asql.extract_metadata(ast)
+    sql = asql.compile(ast, dialect=context.dialect)
+    
+    # SQLMesh uses this metadata for:
+    # 1. Registering COMMENT ON statements to the database
+    # 2. Column-level lineage documentation  
+    # 3. Data catalog integration
+    
+    return Model(
+        name=metadata.name,
+        description=metadata.description,
+        columns={
+            col.name: col.description 
+            for col in metadata.columns.values()
+        },
+        query=sql
+    )
+```
+
+### How a BI Tool Would Use ASQL Comments
+
+A BI tool (like Metabase, Superset, or a custom dashboard) could display comments:
+
+```python
+# In a BI tool's query editor
+import asql
+
+def parse_query_with_docs(user_query: str):
+    """Parse user's ASQL query and extract documentation."""
+    
+    ast = asql.parse(user_query)
+    metadata = asql.extract_metadata(ast)
+    sql = asql.compile(ast, dialect="snowflake")
+    
+    return {
+        'sql': sql,
+        'documentation': {
+            'title': metadata.name,
+            'description': metadata.description,
+            'columns': {
+                col.name: {
+                    'description': col.description,
+                    'tags': col.tags,
+                    'is_pii': col.pii,
+                }
+                for col in metadata.columns.values()
+            }
+        }
+    }
+
+# The BI tool can then:
+# - Show column descriptions on hover
+# - Warn users about PII columns
+# - Display query purpose in dashboards
+# - Feed this to AI for natural language queries
+```
+
+### How an AI Assistant Would Use ASQL Comments
+
+An AI coding assistant or data analyst could use the metadata:
+
+```python
+# In an AI-powered data assistant
+import asql
+
+def analyze_query_for_ai(query: str) -> dict:
+    """Prepare query context for AI consumption."""
+    
+    ast = asql.parse(query)
+    metadata = asql.extract_metadata(ast)
+    
+    # Create rich context for the AI
+    return {
+        'query_intent': metadata.description,
+        'author': metadata.author,
+        'semantic_layer': {
+            col.name: {
+                'meaning': col.description,
+                'type': 'metric' if '@metric' in (col.tags or []) else 'dimension',
+                'sensitive': col.pii,
+            }
+            for col in metadata.columns.values()
+        },
+        'lineage_hints': metadata.depends,  # @depends tag
+        'business_tags': metadata.tags,
+    }
+
+# AI can now answer questions like:
+# "What does user_count mean in this query?"
+# "Which columns contain PII?"
+# "What team owns this analysis?"
+```
+
 ## Implementation Phases
 
 ### Phase 1: Comment Preservation (Low Effort)
-- Ensure ASQL parser preserves comments through to SQL output
+- Ensure ASQL parser preserves comments through to compiled SQL output
 - SQLGlot already handles this; verify it works through ASQL pipeline
+- Add `preserve_comments` flag to `asql.compile()`
 
-### Phase 2: Metadata Extraction (Medium Effort)
-- Build `extract_metadata()` function as described above
-- Create CLI command: `asql metadata query.asql`
-- Output JSON/YAML metadata
+### Phase 2: Metadata Extraction API (Medium Effort)
+- Build `asql.extract_metadata()` function as described above
+- Parse structured `@` tags when present
+- Fall back to natural language extraction when no tags
+- Return `QueryMetadata` dataclass with all extracted info
 
-### Phase 3: Integration Generators (Medium Effort)
-- `asql generate-dbt-schema query.asql` → `schema.yml`
-- `asql generate-sql-comments query.asql` → `COMMENT ON` statements
-- `asql generate-sqlmesh-model query.asql` → SQLMesh model file
+### Phase 3: Serialization Helpers (Low Effort)
+- `metadata.to_dbt_schema()` → Returns dict suitable for dbt schema.yml
+- `metadata.to_sql_comments(table_name)` → Returns COMMENT ON SQL
+- `metadata.to_json()` → Returns JSON for API consumption
+- These are convenience methods; consuming tools can also access raw metadata
 
-### Phase 4: Bidirectional Sync (Higher Effort)
-- Read existing dbt schema.yml and merge with extracted comments
-- Update comments in ASQL files from YAML changes
-- Git-friendly conflict resolution
+### Phase 4: Integration Examples (Documentation)
+- Document how dbt adapters can use ASQL metadata
+- Document SQLMesh integration pattern
+- Provide example BI tool integration
+- Create sample AI assistant integration
 
-### Phase 5: AI Integration (Future)
-- Store extracted metadata in vector database
-- Enable AI queries like "what columns contain PII?"
-- Auto-suggest comments based on column names and usage
+## Design Decisions
+
+### ✅ Decided: Comment Preservation Flag
+
+Comments are preserved by default, following SQLGlot/SQLMesh conventions. Add a `comments` parameter to control output:
+
+```python
+# Default: comments preserved (like SQLGlot)
+sql = asql.compile(query, dialect="postgres")
+# Output includes comments
+
+# Explicitly control comment preservation
+sql = asql.compile(query, dialect="postgres", comments=True)   # Include comments
+sql = asql.compile(query, dialect="postgres", comments=False)  # Strip comments
+
+# SQLGlot's pattern (which we follow):
+parsed.sql(dialect="postgres", comments=True)   # Default behavior
+parsed.sql(dialect="postgres", comments=False)  # Strip comments
+```
+
+This matches SQLGlot's API, so it's familiar to users and easy to implement—we just pass through to SQLGlot's `.sql()` method.
+
+### ✅ Decided: Multi-line Inline Comments
+
+SQLGlot already handles multi-line comments well:
+
+```asql
+group by 
+  user_id  /* This is a long comment
+             that spans multiple lines
+             explaining the deduplication logic */
+```
+
+ASQL inherits this from SQLGlot. Just need to ensure our parser doesn't interfere with comment tokens before passing to SQLGlot.
 
 ## Open Questions
 
-1. **Should we strip comments from compiled SQL?**
-   - Pro: Cleaner output, smaller queries
-   - Con: Loses documentation at execution time
-   - Recommendation: Make configurable with `preserve_comments=True/False`
-
-2. **How to handle multi-line inline comments?**
-   ```asql
-   group by 
-     user_id  /* This is a long comment
-                that spans multiple lines
-                explaining the deduplication logic */
-   ```
-   - SQLGlot handles this well
-   - Need to ensure ASQL parser doesn't break on them
-
-3. **Should unmatched comments become table-level notes?**
+1. **Should unmatched comments become table-level notes?**
    ```asql
    from users
    -- This comment isn't next to any column
@@ -458,31 +721,39 @@ Suggested inline tags for structured extraction:
    ```
    - Recommendation: Yes, add to `general_notes` in metadata
 
-4. **Comment format standardization vs flexibility?**
+2. **Comment format standardization vs flexibility?**
    - Strict JSDoc-style: Better for tooling, worse for adoption
    - Flexible natural language: Better UX, harder to parse
    - Recommendation: Support both; prefer natural, extract structured when present
 
 ## Comparison Summary
 
-| Feature | dbt | SQLMesh | ASQL (Proposed) |
-|---------|-----|---------|-----------------|
+| Feature | dbt | SQLMesh | ASQL (Library) |
+|---------|-----|---------|----------------|
 | Inline SQL comments preserved | ✅ | ✅ | ✅ |
-| Auto-extract to metadata | ❌ | ❌ | ✅ |
-| YAML documentation | ✅ | ✅ | ✅ (generated) |
-| Push to database | ✅ | ✅ | ✅ (via SQL) |
-| Column-level extraction | ❌ | ❌ | ✅ |
-| AI-friendly output | ⚠️ | ⚠️ | ✅ |
+| Auto-extract to structured metadata | ❌ | ❌ | ✅ |
+| Exposes metadata via API | ❌ | ⚠️ (limited) | ✅ |
+| Column-level comment extraction | ❌ | ❌ | ✅ |
+| Structured @tag support | ❌ | ❌ | ✅ |
+| Natural language fallback | N/A | N/A | ✅ |
+| AI-friendly metadata output | ⚠️ | ⚠️ | ✅ |
+
+**Note**: ASQL is a transpiler library. "Push to database" and "YAML generation" are responsibilities of the consuming tools (dbt, SQLMesh, BI platforms) that use ASQL's metadata API.
 
 ## Conclusion
 
-The key innovation ASQL can bring is **automatic extraction of inline comments to structured metadata**. This closes the gap between "comments in code" and "documentation in catalogs" that exists in dbt and SQLMesh.
+ASQL's key innovation is **automatic extraction of inline comments to structured metadata**, exposed through a clean API. This enables consuming tools to:
 
-By leveraging SQLGlot's comment preservation and building extraction tooling, we can:
-1. Reduce documentation burden (write once, propagate everywhere)
-2. Keep documentation close to code (single source of truth)
-3. Enable AI consumption of code knowledge
-4. Generate dbt/SQLMesh metadata automatically
+1. **dbt**: Auto-generate `schema.yml` from code comments, eliminating duplicate documentation
+2. **SQLMesh**: Populate model metadata for `COMMENT ON` registration
+3. **BI Tools**: Display column descriptions, warn about PII, enhance UX
+4. **AI Assistants**: Understand query intent, semantic meaning, and data lineage
 
-The recommended approach is natural language comments with optional structured tags, supporting both developer ergonomics and tooling needs.
+By keeping comments in the code (the single source of truth) and providing an extraction API, we:
+- Reduce documentation burden (write once in code, consume everywhere)
+- Keep documentation fresh (comments evolve with code)
+- Enable AI consumption of code knowledge
+- Let each consuming tool decide how to use the metadata
+
+The recommended format supports both natural language comments and structured `@` tags. Natural comments are parsed as descriptions; when `@` tags are present (like `@name`, `@author`, `@tags`), they're extracted as structured fields.
 

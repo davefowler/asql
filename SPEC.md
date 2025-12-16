@@ -63,17 +63,17 @@ Every ASQL query starts with a data source. Transformations can be chained using
 **Indentation-based (preferred, cleaner):**
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 **Pipeline operator (optional, explicit):**
 ```asql
 from users
-| where status == "active"
+| where status = "active"
 | group by country ( # as total_users )
-| sort -total_users
+| order by -total_users
 ```
 
 Both styles are equivalent. Choose based on preference or context.
@@ -114,14 +114,13 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 
 | Operator | Meaning | SQL Equivalent | Example |
 |----------|---------|----------------|---------|
-| `where` | Filter rows | `WHERE` | `where status == "active"` |
+| `where` | Filter rows | `WHERE` | `where status = "active"` |
 | `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
-| `join` | Join datasets | `JOIN` | `join owners on owner_id == owners.id` |
+| `join` | Join datasets | `JOIN` | `join owners on owner_id = owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
-| `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -updated_at` (descending column) |
-| `take` | Limit rows | `LIMIT` | `take 10` |
-| `with` | Define variable/fragment (CTE) | `WITH ... AS` | `with active = from users \| where is_active` or `with active as from users \| where is_active` |
-| `stash as` | Stash pipeline result as named CTE | `WITH ... AS` | `from users \| where is_active \| stash as active_users` |
+| `order by` | Sort rows | `ORDER BY` | `order by -users` (descending), `order by name` (ascending) |
+| `limit` | Limit rows | `LIMIT` | `limit 10` |
+| `stash as` | Save pipeline result as named CTE | `WITH ... AS` | `from users \| where is_active \| stash as active_users` |
 
 ---
 
@@ -129,7 +128,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 
 ### 4.1 Comparison Operators
 
-- `==` - equals
+- `=` - equals (standard SQL; `==` also accepted for programmers)
 - `!=` - not equals
 - `<`, `>`, `<=`, `>=` - comparison
 - `is`, `is not` - null checks
@@ -139,8 +138,6 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 
 - `and`, `or`, `not` - logical operations
 - `&&` - alternative syntax for `and`
-
-**Note**: `||` is **not** used for logical OR in ASQL. Use the `or` keyword instead. The `||` operator is reserved for COALESCE (see Section 4.6).
 
 ### 4.3 Arithmetic Operators
 
@@ -235,9 +232,9 @@ from users where phone matches "^\d{3}-\d{3}-\d{4}$"
 
 **Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim. Should be implemented after arithmetic operators and before advanced features.
 
-### 4.6 COALESCE Operator (`||`)
+### 4.6 Nullish Coalescing Operator (`??`)
 
-ASQL uses the `||` operator for COALESCE, providing a cleaner syntax than the function call. This is similar to JavaScript's nullish coalescing, but works with any falsy values (NULL, FALSE, empty strings, etc.).
+ASQL uses the `??` operator for COALESCE, matching JavaScript's nullish coalescing operator exactly.
 
 **Syntax:**
 ```asql
@@ -245,68 +242,115 @@ ASQL uses the `||` operator for COALESCE, providing a cleaner syntax than the fu
 coalesce(column, default_value)
 
 # Operator form (preferred)
-column || default_value
+column ?? default_value
 
 # Chained (multiple fallbacks)
-column || fallback1 || fallback2 || "default"
+column ?? fallback1 ?? fallback2 ?? "default"
 ```
 
 **Examples:**
 ```asql
 # Handle NULL values
-from users select name || "Unknown" as display_name
+from users select name ?? "Unknown" as display_name
 
 # Multiple fallbacks
-from products select price || sale_price || 0 as final_price
+from products select price ?? sale_price ?? 0 as final_price
 
 # In WHERE clauses
-from users where not is_deleted || FALSE
+from users where (is_deleted ?? false) = false
 
-# With boolean logic
-from orders where status || "pending" == "completed"
+# With comparisons
+from orders where (status ?? "pending") = "completed"
 ```
 
-**Why `||` for COALESCE?**
+**Why `??` for COALESCE?**
+- Matches JavaScript's nullish coalescing operator (`??`) exactly
+- Avoids confusion with `||` which is string concatenation in SQL
 - More concise than `coalesce()` function calls
-- Familiar to developers who use `||` for nullish coalescing in JavaScript/TypeScript
-- Chains naturally: `a || b || c` reads as "a, or b, or c"
-- Note: In ASQL, `||` is **not** used for logical OR (use `or` keyword instead) or string concatenation (use `concat()` function)
+- Chains naturally: `a ?? b ?? c` reads as "a, or if null b, or if null c"
+- Can also be used for safe casting: `col??int` (cast to int, return NULL on failure)
 
 **Precedence:**
-The `||` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`==`, `!=`, etc.). This means:
-- `not is_deleted || FALSE` parses as `NOT COALESCE(is_deleted, FALSE)` ✅
-- `status == "active" || "pending"` parses as `COALESCE(status == "active", "pending")` ✅
+The `??` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`=`, `!=`, etc.). This means:
+- `(is_deleted ?? false) = false` - explicit grouping recommended for clarity
 
-### 4.7 Conditional Expressions (CASE)
+### 4.7 Conditional Expressions (`when`)
 
-ASQL supports SQL's `CASE` statement with natural language alternatives:
+ASQL uses `when` for conditional expressions, replacing SQL's verbose `CASE` statement with cleaner, more natural syntax.
 
-**Standard CASE syntax:**
+**Basic syntax with `is` for equality:**
 ```asql
-select status_label as case
-  when status == "active" then "Active User"
-  when status == "inactive" then "Inactive User"
-  else "Unknown"
-end
+from users
+  select
+    name,
+    when status
+      is "active" then "Active User"
+      is "pending" then "Pending"
+      otherwise "Unknown"
+    as status_label
 ```
 
-**Natural language alternative:**
+**Implied equality (most concise):**
 ```asql
-select status_label as 
-  if status == "active" then "Active User"
-  else if status == "inactive" then "Inactive User"
-  else "Unknown"
+when status
+  "active" then 1
+  "pending" then 0
+  otherwise -1
 ```
 
-**Simple if-then-else:**
+**Comparison operators:**
 ```asql
-select is_premium as if plan == "premium" then true else false
-select discount as if amount > 100 then amount * 0.1 else 0
+when age
+  < 4 then "infant"
+  < 12 then "child"
+  < 18 then "teen"
+  otherwise "adult"
 ```
 
-All three syntaxes compile to standard SQL `CASE` statements. Choose based on readability preference.
+**Inequality with `is not`:**
+```asql
+when status
+  is not "deleted" then 1
+  otherwise 0
+```
 
-### 4.7 Comments
+**Multiple values with `in`:**
+```asql
+when status
+  in ("active", "pending") then "open"
+  in ("completed", "shipped") then "done"
+  otherwise "unknown"
+```
+
+**Searched when (complex conditions):**
+```asql
+when
+  age < 18 and country = "US" then "US Minor"
+  age < 18 then "Minor"
+  otherwise "Adult"
+```
+
+**In aggregations:**
+```asql
+from orders
+  group by customer_id
+  select
+    customer_id,
+    sum(when status is "completed" then 1 otherwise 0) as completed_count,
+    sum(when status is "returned" then amount otherwise 0) as returned_value
+```
+
+**Operators supported:**
+- `is` / `=` - equality
+- `is not` / `!=` - inequality
+- `<`, `>`, `<=`, `>=` - comparisons
+- `in (values)` - multiple value match
+
+**Default clause:** Both `else` and `otherwise` are supported (they are aliases).
+
+All forms compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
+
+### 4.8 Comments
 
 ASQL uses SQL-standard comment syntax:
 
@@ -457,7 +501,7 @@ ASQL encourages natural language expressions. The `of` keyword can replace paren
 
 ```asql
 # Instead of: count(*) from Users where country = 'US'
-# of Users where country == "US"
+# of Users where country = "US"
 
 # Instead of: sum(amount) from sales
 # Sum of amount from sales
@@ -532,7 +576,7 @@ Traditional explicit join syntax:
 
 ```asql
 from opportunities
-  join owners on owner_id == owners.id
+  join owners on owner_id = owners.id
   group by owners.name ( sum(amount) as total_pipeline )
 ```
 
@@ -566,7 +610,7 @@ from accounts.owner->users
 
 # Or using the FK name directly
 from accounts
-  join users on accounts.owner_id == users.id
+  join users on accounts.owner_id = users.id
   group by users.name ( sum(amount) as total )
 ```
 
@@ -646,7 +690,7 @@ from accounts
 # ASQL requires explicit join or model configuration
 
 from accounts
-  join users on accounts.ownerId == users.id
+  join users on accounts.ownerId = users.id
   group by users.name ( sum(amount) as total )
 ```
 
@@ -810,7 +854,7 @@ ASQL uses `where` instead of `filter` because it's more intuitive - "where" clea
 
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   where age >= 18
 ```
 
@@ -821,7 +865,7 @@ Multiple conditions can be written in several ways:
 **Separate where clauses:**
 ```asql
 from opportunities
-  where status == "open"
+  where status = "open"
   where owner.is_active
   where org_type != "Non Profit"
 ```
@@ -829,19 +873,19 @@ from opportunities
 **Using `and` on same line:**
 ```asql
 from opportunities
-  where status == "open" and owner.is_active and org_type != "Non Profit"
+  where status = "open" and owner.is_active and org_type != "Non Profit"
 ```
 
 **Using `&` operator:**
 ```asql
 from opportunities
-  where status == "open" & owner.is_active & org_type != "Non Profit"
+  where status = "open" & owner.is_active & org_type != "Non Profit"
 ```
 
 **Tabbed indentation (multi-line):**
 ```asql
 from opportunities
-  where status == "open"
+  where status = "open"
     and owner.is_active
     and org_type != "Non Profit"
 ```
@@ -849,7 +893,7 @@ from opportunities
 **Using `or` (with parentheses for grouping):**
 ```asql
 from opportunities
-  where (status == "open" or status == "pending")
+  where (status = "open" or status = "pending")
     and owner.is_active
 ```
 
@@ -860,7 +904,7 @@ All of these compile to SQL `WHERE` clauses. The pipeline approach makes complex
 ```asql
 from opportunities
   group by owner.name ( total as sum(amount) )
-  if status == "open"
+  if status = "open"
   if owner.is_active
 ```
 
@@ -868,147 +912,228 @@ from opportunities
 
 ---
 
-## 10. Sorting
+## 10. Ordering
 
-### 10.1 Basic Sorting
+### 10.1 Basic Ordering
 
-The `sort` clause orders rows by one or more columns:
+The `order by` clause orders rows by one or more columns:
 
 ```asql
-from users sort name
-from users sort -total_users
+from users order by name
+from users order by -total_users
 ```
 
-**Descending order**: Use the `-` prefix to sort in descending order:
-- `sort name` → ascending (A-Z)
-- `sort -name` → descending (Z-A)
+**Descending order**: Use the `-` prefix to order in descending order:
+- `order by name` → ascending (A-Z)
+- `order by -name` → descending (Z-A)
 
-### 10.2 Sorting by Function Calls
+### 10.2 Ordering by Function Calls
 
-You can sort by function calls using the `-` prefix for descending order:
+You can order by function calls using the `-` prefix for descending order:
 
 ```asql
-from users sort month(created_at)
-from users sort -updated_at
-from events sort -year(created_at), name
+from users order by month(created_at)
+from users order by -updated_at
+from events order by -year(created_at), name
 ```
 
 **Examples:**
-- `sort updated_at` → Sort by updated_at ascending
-- `sort -updated_at` → Sort by updated_at descending (newest first)
-- `sort -year(created_at), name` → Sort by year descending, then name ascending
+- `order by updated_at` → Sort by updated_at ascending
+- `order by -updated_at` → Sort by updated_at descending (newest first)
+- `order by -year(created_at), name` → Sort by year descending, then name ascending
 
-This syntax makes it easy to sort by computed values like date functions.
+This syntax makes it easy to order by computed values like date functions.
 
-### 10.3 Multiple Sort Columns
+### 10.3 Multiple Order Columns
 
-Multiple sort columns are separated by commas:
+Multiple order columns are separated by commas:
 
 ```asql
-from users sort -total_users, name
-from sales sort -revenue, region, -date
+from users order by -total_users, name
+from sales order by -revenue, region, -date
 ```
 
 The `-` prefix applies only to the column immediately following it.
 
 ---
 
-## 11. Variables & CTEs
+## 11. Window Functions
 
-### 11.1 Simple Variables & CTEs
+ASQL provides intuitive syntax for common window function patterns. All multi-word functions follow the underscore/space principle - `running_sum` and `running sum` are interchangeable.
 
-Variables in ASQL create CTEs (Common Table Expressions). The syntax is designed to make CTEs easier and less necessary:
+### 11.1 The `per` Command (Deduplication & Row Operations)
 
-**Using `with` (creates CTE):**
-```asql
-with active_users = from users
-  where is_active
+The `per` command creates a window context for operations on partitions:
 
-from active_users
-  group by country ( # as total_users )
+```
+per <partition_cols> <operation> by <order_cols> [as <alias>]
 ```
 
-**Alternative syntax using `as`:**
-```asql
-with active_users as from users
-  where is_active
-
-from active_users
-  group by country ( # as total_users )
+Or without partition (whole table):
+```
+<operation> by <order_cols> [as <alias>]
 ```
 
-Both `=` and `as` are supported - use whichever feels more natural. The `as` syntax matches SQL's `WITH ... AS` pattern more closely, while `=` is more concise.
+**Operations:**
 
-**Why `with`?**
-- **SQL familiarity**: `WITH ... AS` is the standard SQL syntax for CTEs
-- **Direct mapping**: Maps directly to SQL's `WITH ... AS` (Common Table Expression)
-- **Clear intent**: "With this variable defined as this query" reads naturally
-- **Not `set`**: `SET` in SQL is used for variables (`SET @var = 1`) and session settings (`SET timezone = 'UTC'`), not CTEs
-- **Not `let`**: `let` comes from functional programming (Lisp, ML, Haskell) and doesn't fit SQL's imperative style
+| Operation | What it does | Default alias | Row count |
+|-----------|--------------|---------------|-----------|
+| `first` | Keep first row per partition | (filters rows) | ↓ Reduces |
+| `last` | Keep last row per partition | (filters rows) | ↓ Reduces |
+| `number` | Add row number column | `row_num` | Same |
+| `rank` | Add rank column | `rank` | Same |
+| `dense rank` | Add dense rank column (no gaps) | `dense_rank` | Same |
 
-**Major benefit: Less need for CTEs**: Because ASQL uses pipelines, you often don't need CTEs at all. Instead of breaking into a CTE, you can just add a comment marking a logical stopping point:
+**Examples:**
+```asql
+# DEDUPLICATION: Keep most recent order per customer
+from orders
+  per customer_id first by -order_date
+
+# ADD ROW NUMBER: Number orders per customer (most recent = 1)
+from orders
+  per customer_id number by -order_date
+
+# ADD RANK: Rank employees by salary within department
+from employees
+  per department rank by -salary
+
+# NO PARTITION: Number all rows
+from events
+  number by -timestamp
+```
+
+### 11.2 `first()` / `last()` in GROUP BY
+
+Get the first or last value when sorted (as aggregates):
+
+```asql
+from orders
+  group by customer_id (
+    first(order_id order by -order_date) as latest_order,
+    last(order_id order by order_date) as earliest_order,
+    # as total_orders
+  )
+```
+
+**Note**: Use `per ... first by` for deduplication (keep whole row). Use `first()` in GROUP BY for extracting specific values with other aggregates.
+
+### 11.3 `arg_max()` / `arg_min()`
+
+Get the value of one column where another column is max/min (ClickHouse-inspired):
+
+```asql
+from orders
+  group by customer_id (
+    arg_max(order_id, order_date) as latest_order_id,
+    arg_min(order_id, order_date) as earliest_order_id
+  )
+```
+
+### 11.4 `prior()` / `next()` (LAG/LEAD)
+
+Access previous or next row values:
+
+```asql
+from monthly_sales
+  order by month
+  select
+    month,
+    revenue,
+    prior(revenue) as prior_revenue,       -- LAG(revenue, 1)
+    prior(revenue, 3) as three_months_ago, -- LAG(revenue, 3)
+    next(revenue) as next_revenue          -- LEAD(revenue, 1)
+```
+
+### 11.5 Running Aggregates (Cumulative)
+
+Cumulative aggregates over ordered data:
+
+```asql
+from transactions
+  order by date
+  select
+    date,
+    amount,
+    running_sum(amount) as cumulative_total,
+    running_avg(amount) as avg_to_date,
+    running_count(*) as transaction_number
+```
+
+**Shorthand**: `running amount` is equivalent to `running_sum(amount)`.
+
+### 11.6 Rolling Aggregates (Moving Window)
+
+Moving window aggregates with specified window size:
+
+```asql
+from daily_sales
+  order by date
+  select
+    date,
+    revenue,
+    rolling_avg(revenue, 7) as week_avg,    -- 7-day moving average
+    rolling_sum(revenue, 30) as month_total -- 30-day rolling sum
+```
+
+### 11.7 Quick Reference
+
+| Intent | ASQL Syntax |
+|--------|-------------|
+| Most recent row per group | `per group_col first by -date` |
+| Add row numbers per group | `per group_col number by -date` |
+| Add rank per group | `per group_col rank by -value` |
+| Get column value at max | `arg_max(col, sort_col)` |
+| Previous row value | `prior(col)` |
+| Next row value | `next(col)` |
+| Cumulative sum | `running_sum(col)` or `running col` |
+| 7-day moving average | `rolling_avg(col, 7)` |
+| First value in group | `first(col order by sort)` (in GROUP BY) |
+
+---
+
+## 12. CTEs with `stash as`
+
+### 11.1 Pipeline-First Philosophy
+
+ASQL uses pipelines, so you often don't need CTEs at all. Instead of breaking into a CTE, you can just add a comment marking a logical stopping point:
 
 ```asql
 from users
   where is_active
   -- cleaned users by country
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
-The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally. CTEs are still available when you need to reuse a subquery multiple times.
+The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally.
 
-### 11.2 Nested Variables
+### 11.2 Creating CTEs with `stash as`
 
-```asql
-with base = from users
-  where plan == "premium"
-
-with by_country = from base
-  group by country ( # as total_users )
-
-from by_country
-  sort -total_users
-```
-
-Or using `as` syntax:
-```asql
-with base as from users
-  where plan == "premium"
-
-with by_country as from base
-  group by country ( # as total_users )
-
-from by_country
-  sort -total_users
-```
-
-### 11.3 Stashing CTEs in Pipelines (`stash as`)
-
-Instead of defining CTEs at the top level with `with`, you can stash intermediate pipeline results directly within a pipeline using `stash as`. This keeps CTEs close to where they're used and makes chaining clearer. The key benefit is that you end with the name and use it right after, so your eyes don't have to jump around.
+When you need to reuse intermediate results, use `stash as` to save a pipeline step as a CTE. This keeps CTEs close to where they're defined and makes the data flow clear:
 
 **Basic usage:**
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   group by country ( # as total_users )
   select country, total_users
-  stash as revenue
+  stash as by_country
 
-from revenue
-  sort -total_users
+from by_country
+  order by -total_users
 ```
 
 **Multiple queries reusing a stashed CTE:**
 ```asql
 from sales
-  where year(date) == 2025
+  where year(date) = 2025
   group by region ( sum(amount) as revenue )
-  stash as use_this_later
-  sort -revenue
-  take 10;
+  stash as regional_revenue
+  order by -revenue
+  limit 10;
 
-from use_this_later
+from regional_revenue
   where revenue > 1000
   select region, revenue
 ```
@@ -1016,10 +1141,10 @@ from use_this_later
 **Using `stash as` in the middle of a pipeline:**
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   stash as active_users
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 When `stash as` appears in the middle, it stashes everything before it as a CTE, then continues with the pipeline.
@@ -1031,14 +1156,9 @@ When `stash as` appears in the middle, it stashes everything before it as a CTE,
 - ✅ **Natural flow**: Fits naturally into the pipeline syntax
 - ✅ **Better readability**: You end with the name and use it right after, so your eyes don't have to jump around
 
-**When to use `stash as` vs `with`:**
-- Use `stash as` when you want to stash an intermediate result within a pipeline (can be in the middle or at the end)
-- Use `with` when you want to define a CTE at the top level before any queries
-- Both compile to SQL `WITH ... AS` CTEs
-
 ---
 
-## 11. Functions
+## 13. Functions
 
 ### 11.1 User-Defined Scalar Functions
 
@@ -1108,8 +1228,8 @@ Table functions transform entire tables. These are implemented as drop-in replac
 ```asql
 func top_n(table, n, key) =
   table
-    sort -{key}
-    take n
+    order by -{key}
+    limit n
 
 from sales
   top_n(10, amount)
@@ -1123,7 +1243,7 @@ Standard SQL functions are available:
 
 - `count()`, `sum()`, `avg()`, `min()`, `max()`
 - `distinct()`
-- `coalesce()` or `||` operator - See Section 4.6 for details on the `||` COALESCE operator
+- `coalesce()` or `??` operator - See Section 4.6 for nullish coalescing
 - `date_format()`, `year()`, `month()`, etc.
 - `years_between()`, `days_between()`, etc.
 
@@ -1138,7 +1258,7 @@ from users
 
 ---
 
-## 12. Models (Optional Metadata)
+## 14. Models (Optional Metadata)
 
 **Philosophy**: Ideally, ASQL doesn't create its own model format. It should:
 1. Use dbt's existing `schema.yml` files when available
@@ -1187,7 +1307,7 @@ from users
 
 ---
 
-## 13. Nested Results (Optional)
+## 15. Nested Results (Optional)
 
 Inspired by EdgeQL, support nested result shapes:
 
@@ -1196,14 +1316,14 @@ from countries
 | select {
     name,
     users = from users 
-      | filter users.country == countries.code 
+      | filter users.country = countries.code 
       | select name, age
   }
 ```
 
 ---
 
-## 14. Indentation & Multi-line Queries
+## 16. Indentation & Multi-line Queries
 
 ### 14.1 Indentation Rules
 
@@ -1211,7 +1331,7 @@ Every line must return a new table. For multi-line operations, indent:
 
 ```asql
 from users
-  filter status == "active"
+  filter status = "active"
   filter age >= 18
   group by country ( count() as count )
 ```
@@ -1223,14 +1343,14 @@ from users
   select {
     name,
     orders = from orders
-      filter orders.user_id == users.id
+      filter orders.user_id = users.id
       select sum(amount) as total
   }
 ```
 
 ---
 
-## 15. Capitalization & Naming
+## 17. Capitalization & Naming
 
 ### 15.1 Case-Safe Design
 
@@ -1240,7 +1360,7 @@ from users
 # You can write queries using any case style
 from Users
   select firstName, createdAt, user_id
-  where status == "active"
+  where status = "active"
 
 # ASQL resolves case-insensitively to actual database names
 # If database has: users table, first_name column, created_at column
@@ -1314,15 +1434,15 @@ select users.id as user_id, orders.id as order_id
 
 ---
 
-## 16. Examples
+## 18. Examples
 
 ### Example 1: Simple Analytic Query
 
 ```asql
 from sales
-  where year(date) == 2025
+  where year(date) = 2025
   group by region ( sum(amount) as revenue )
-  sort -revenue
+  order by -revenue
 ```
 
 **Generated SQL:**
@@ -1343,7 +1463,7 @@ from opportunities
   join owners
   where owners.is_active
   group by owners.name ( sum(amount) as total_pipeline )
-  sort -total_pipeline
+  order by -total_pipeline
 ```
 
 ### Example 3: Time Series
@@ -1364,11 +1484,12 @@ Sum of revenue by region
 Avg Users.age by country
 ```
 
-### Example 5: Variables and Reuse
+### Example 5: CTEs with stash as
 
 ```asql
-with base = from users
-  where plan == "premium"
+from users
+  where plan = "premium"
+  stash as base
 
 from base
   group by country ( # as total_users )
@@ -1378,13 +1499,13 @@ from base
 
 ```asql
 from opportunities
-  where status == "open"
+  where status = "open"
   join owners
   where owners.is_active
   where org_type != "Non Profit"
   group by owner.name ( sum(amount) as total_pipeline )
-  sort -total_pipeline
-  take 10
+  order by -total_pipeline
+  limit 10
 ```
 
 ### Example 7: Date Grouping
@@ -1411,7 +1532,7 @@ from users
 -- Works regardless of database naming convention
 from Users
   select firstName, createdAt, user_id
-  where status == "active"
+  where status = "active"
 ```
 
 ### Example 10: Natural Language with "of"
@@ -1450,7 +1571,7 @@ Avg Users.age by country
 
 ---
 
-## 17. Compilation & Transpilation
+## 19. Compilation & Transpilation
 
 ### 17.1 Compilation Process
 
@@ -1465,7 +1586,7 @@ Each pipeline step becomes a CTE:
 
 ```asql
 from users
-  filter status == "active"
+  filter status = "active"
   group by country ( count() as count )
 ```
 
@@ -1494,7 +1615,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 18. Implementation Roadmap
+## 20. Implementation Roadmap
 
 | Stage | Milestone | Description |
 |-------|-----------|-------------|
@@ -1506,7 +1627,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 19. Design Decisions & Rationale
+## 21. Design Decisions & Rationale
 
 ### 19.1 Why Remove SELECT?
 
@@ -1542,7 +1663,7 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ---
 
-## 20. Future Considerations
+## 22. Future Considerations
 
 - **Visual SQL Editor**: ASQL's structure could enable a great visual query builder whose base could also be a text editor/IDE. Get the best of visual and text-based exploration.
 - **dbt Integration**: Building ASQL into dbt out of the gate would make it immediately useful for the dbt community
@@ -1553,7 +1674,7 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ---
 
-## 21. Major Benefits of ASQL
+## 23. Major Benefits of ASQL
 
 ### 21.1 Reduced Need for CTEs and Nested Queries
 
@@ -1578,7 +1699,7 @@ from users
   where is_active
   -- cleaned users by country
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally.
@@ -1641,11 +1762,11 @@ join_op := 'join' table_name ('on' expression)?
 
 select_op := 'select' column_list
 
-sort_op := 'sort' ('-'? (column_name | function_call))+
+order_op := 'order' 'by' ('-'? (column_name | function_call))+
 
-take_op := 'take' number
+limit_op := 'limit' number
 
-with_op := 'with' var_name ('=' | 'as') query
+stash_op := 'stash' 'as' var_name
 
 aggregate := var_name 'as' aggregate_func '(' expression ')'
            | natural_language_aggregate

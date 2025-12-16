@@ -4,6 +4,12 @@
 **Status**: Research/Planning  
 **Priority**: High (architectural decision)
 
+> **See also**:
+> - [comments.md](comments.md) - Comment extraction and metadata API (fits with this approach)
+> - [UNDERSCORE_SPACE_PRINCIPLE.md](UNDERSCORE_SPACE_PRINCIPLE.md) - Function name flexibility (pre-parse handling)
+> - [WINDOW_UTILS.md](WINDOW_UTILS.md) - Window function patterns (`per`, `running_sum`, etc.)
+> - [dates.md](dates.md) - Date handling, arithmetic, relative dates, timezone syntax
+
 ---
 
 ## 1. Executive Summary
@@ -74,10 +80,10 @@ These can be handled by extending SQLGlot's Tokenizer:
 | Feature | ASQL Syntax | Implementation |
 |---------|-------------|----------------|
 | `#` operator | `#`, `#(col)` | Add `#` to `SINGLE_TOKENS` → `TokenType.HASH` |
-| `==` equality | `x == y` | Map `==` to `TokenType.EQ` |
-| `||` coalesce | `a \|\| b` | Already exists, just change semantics |
+| `=` equality | `x = y` | Standard SQL equality (also support `==`) |
+| `??` coalesce | `a ?? b` | Add `??` token → COALESCE semantics |
 | Date literals | `@2025-01-10` | Add `@` recognition → parse as date |
-| Keywords | `take`, `stash`, `project` | Add to `KEYWORDS` mapping |
+| Keywords | `stash`, `project` | Add to `KEYWORDS` mapping |
 
 ```python
 class ASQLTokenizer(Tokenizer):
@@ -87,12 +93,13 @@ class ASQLTokenizer(Tokenizer):
         "@": TokenType.AT,    # Date literal prefix
     }
     
+    # Two-character tokens
+    _COMMENTS = Tokenizer._COMMENTS
+    
     KEYWORDS = {
         **Tokenizer.KEYWORDS,
-        "TAKE": TokenType.LIMIT,      # Alias for LIMIT
         "PROJECT": TokenType.SELECT,  # Alias for SELECT
-        "IF": TokenType.WHERE,        # Alias for WHERE
-        "STASH": TokenType.VAR,       # CTE syntax
+        "STASH": TokenType.VAR,       # CTE keyword
     }
 ```
 
@@ -103,10 +110,10 @@ These require extending SQLGlot's Parser:
 | Feature | ASQL Syntax | Implementation |
 |---------|-------------|----------------|
 | `#` as COUNT(*) | `group by x (#)` | Custom expression parser |
-| `sort -col` | `sort -amount` | Custom ORDER BY parser |
-| Natural aggregates | `sum amount` | Function parser with optional parens |
-| `first by/last by` | `first by -date per user` | Custom deduplication parser |
+| `order by -col` | `order by -amount` | DESC indicator in ORDER BY parser |
 | String matching | `contains`, `starts with` | Infix operator parser |
+
+**Note**: We use standard SQL keywords (`ORDER BY`, `LIMIT`) rather than aliases (`sort`, `take`). No benefit to adding mental overhead for SQL users.
 
 ```python
 class ASQLParser(Parser):
@@ -135,13 +142,20 @@ class ASQLParser(Parser):
 
 These features fundamentally differ from SQL structure and need transformation BEFORE parsing:
 
-| Feature | ASQL Syntax | Why Pre-Parse? |
-|---------|-------------|----------------|
-| FROM-first | `from users where...` | SQL expects `SELECT...FROM` |
-| Pipeline `\|` | `from x \| where \| sort` | Not valid SQL structure |
-| Implicit SELECT | `from users take 10` | SQL requires SELECT clause |
-| `group by (aggs)` | `group by x (sum y)` | Non-standard aggregate block |
-| `stash as name` | `... stash as foo` | Different CTE syntax |
+| Feature | ASQL Syntax | Why Pre-Parse? | Transform To |
+|---------|-------------|----------------|--------------|
+| FROM-first | `from users where...` | SQL expects `SELECT...FROM` | Add `SELECT *` at front |
+| Pipeline `\|` | `from x \| where \| order by` | Not valid SQL structure | Remove `\|` operators |
+| Implicit SELECT | `from users limit 10` | SQL requires SELECT clause | Add `SELECT *` at front |
+| `group by (aggs)` | `group by x (sum y)` | Non-standard aggregate block | Extract to SELECT + GROUP BY |
+| `stash as name` | `... stash as foo` | Different CTE syntax | Wrap in `WITH foo AS (...)` |
+| Natural aggregates | `sum amount`, `avg of x` | Not valid SQL | `sum(amount)`, `avg(x)` |
+| `first by/last by` | `first by -date per user` | Custom deduplication | Window function + filter |
+
+**Simple text transforms** (can be regex):
+- `sum amount` → `sum(amount)`
+- `avg of revenue` → `avg(revenue)` 
+- `# of users` → `count(*)`
 
 ---
 
@@ -178,7 +192,7 @@ def preparse_asql(asql: str) -> str:
     # from users where x → SELECT * FROM users WHERE x
     
     # 2. Handle pipeline syntax
-    # from x | where y | sort z → from x where y order by z
+    # from x | where y | order by z → from x where y order by z
     
     # 3. Expand aggregate blocks
     # group by x (sum y, avg z) → group by x ... sum(y), avg(z)
@@ -196,8 +210,8 @@ def transform_from_first(text: str) -> str:
     """
     Transform FROM-first syntax to SQL structure.
     
-    ASQL: from users where status == "active" take 10
-    SQL:  SELECT * FROM users WHERE status = "active" LIMIT 10
+    ASQL: from users where status = "active" limit 10
+    SQL:  SELECT * FROM users WHERE status = 'active' LIMIT 10
     
     ASQL: from users select name, email
     SQL:  SELECT name, email FROM users
@@ -214,11 +228,11 @@ def transform_pipeline(text: str) -> str:
     """
     Remove pipeline operators, normalize to SQL clause order.
     
-    ASQL: from users | where active | sort -created_at | take 10
+    ASQL: from users | where active | order by -created_at | limit 10
     SQL:  SELECT * FROM users WHERE active ORDER BY created_at DESC LIMIT 10
     """
     # 1. Split on | operators (outside strings/parens)
-    # 2. Identify clause types (where, sort, take, etc.)
+    # 2. Identify clause types (where, order by, limit, etc.)
     # 3. Reconstruct in SQL order
     pass
 ```
@@ -257,26 +271,37 @@ class ASQLTokenizer(Tokenizer):
         "#": TokenType.HASH,
     }
     
+    # Two-character tokens (need special handling)
+    # ?? → COALESCE (nullish coalescing, like JavaScript)
+    
     # Keyword mappings
     KEYWORDS = {
         **Tokenizer.KEYWORDS,
         # Aliases
-        "TAKE": TokenType.LIMIT,
         "PROJECT": TokenType.SELECT,
         # New keywords
         "STASH": TokenType.VAR,
-        "PER": TokenType.VAR,  # for first by ... per ...
+        "PER": TokenType.VAR,      # for first by ... per ...
         "CONTAINS": TokenType.VAR,
         "STARTS": TokenType.VAR,
         "ENDS": TokenType.VAR,
     }
     
-    # Date literal handling
-    def _scan_var(self):
-        """Override to handle @date literals."""
+    # Note: We use standard SQL keywords (ORDER BY, LIMIT) not aliases
+    
+    def _scan(self):
+        """Override to handle ?? operator and @date literals."""
+        # Handle ?? as COALESCE
+        if self._char == "?" and self._peek == "?":
+            self._advance()
+            self._advance()
+            return self._token(TokenType.COALESCE)
+        
+        # Handle @date literals
         if self._char == "@" and self._peek.isdigit():
             return self._scan_date_literal()
-        return super()._scan_var()
+        
+        return super()._scan()
     
     def _scan_date_literal(self):
         """Scan @YYYY-MM-DD as date literal."""
@@ -353,14 +378,14 @@ class ASQLParser(Parser):
     def _parse_order(self):
         """
         Override ORDER BY parsing to handle ASQL's -column for DESC.
-        
-        ASQL: sort -created_at, name
+
+        ASQL: order by -created_at, name
         SQL:  ORDER BY created_at DESC, name ASC
         """
-        if not self._match_set({TokenType.ORDER, TokenType.SORT}):
+        if not self._match(TokenType.ORDER):
             return None
-        
-        self._match(TokenType.BY)  # Optional 'BY'
+
+        self._match(TokenType.BY)  # 'BY' keyword
         
         expressions = []
         while True:
@@ -425,23 +450,152 @@ class ASQL(Dialect):
 | `group by (aggs)` block | ✅ | | | Extract to SELECT + GROUP BY |
 | `stash as name` | ✅ | | | Convert to WITH clause |
 | `#` count | | ✅ | ✅ | Token + expression parser |
-| `==` equality | | ✅ | | Map to EQ |
-| `\|\|` coalesce | | | ✅ | Change operator semantics |
-| `take N` | | ✅ | | Alias for LIMIT |
+| `=` / `==` equality | | ✅ | | Both map to EQ |
+| `??` coalesce | | ✅ | ✅ | Nullish coalescing operator |
 | `project` | | ✅ | | Alias for SELECT |
-| `sort -col` | | | ✅ | Custom ORDER BY parser |
+| `order by -col` | | | ✅ | DESC indicator parsing |
+| Natural aggregates | ✅ | | | `sum x` → `sum(x)` in pre-parse |
 | `@date` literals | | ✅ | | Scan as date literal |
-| `sum amount` (natural) | | | ✅ | Function parser |
 | `contains`, `starts with` | | ✅ | ✅ | Keyword + infix parser |
-| `first by/last by` | | ✅ | ✅ | Custom statement parser |
 | Underscore/space flexibility | ✅ | | | Normalize before parsing |
 | `if` (alias for where) | | ✅ | | Keyword alias |
+| **Window Utilities** | | | | |
+| `per ... first/last by` | ✅ | ✅ | ✅ | Transform to ROW_NUMBER + filter |
+| `per ... number/rank by` | ✅ | ✅ | ✅ | Transform to window function |
+| `prior()` / `next()` | | | ✅ | Map to LAG/LEAD |
+| `running_sum/avg/count()` | | | ✅ | Cumulative window functions |
+| `rolling_avg/sum()` | | | ✅ | Moving window functions |
+| `arg_max()` / `arg_min()` | | | ✅ | First value by sort |
+| `first()` / `last()` in GROUP BY | | | ✅ | Ordered aggregates |
+| **Date Operations** | | | | |
+| `N days ago` | ✅ | | | Transform to `now() - INTERVAL` |
+| `N days from now` | ✅ | | | Transform to `now() + INTERVAL` |
+| `date + N days` | ✅ | | | Inline interval arithmetic |
+| `days(end - start)` | | | ✅ | Date difference functions |
+| `days_since_col` | ✅ | | | Expand to `days(now() - col)` |
+| `days_until_col` | ✅ | | | Expand to `days(col - now())` |
+| `col::PST` timezone | | | ✅ | Map to AT TIME ZONE |
+| `day of week col` | ✅ | | | Natural language extraction |
+| `week_sunday()` | | | ✅ | Week start variant |
 
 ---
 
-## 7. Pre-Parser Specification
+## 7. Comment Handling
 
-### 7.1 Requirements
+### 7.1 SQLGlot's Built-in Comment Support
+
+**Good news**: SQLGlot already preserves comments on AST nodes. This means comment handling comes "for free" with the dialect approach:
+
+```python
+import sqlglot
+
+sql = '''
+/* Table: monthly_signups */
+SELECT 
+    user_id,  -- primary key
+    COUNT(*) AS user_count /* number of users */
+FROM users
+'''
+
+parsed = sqlglot.parse_one(sql)
+
+# Comments are attached to AST nodes
+print(parsed.comments)  # [' Table: monthly_signups ']
+
+# Walk AST to find all comments
+for expr in parsed.walk():
+    if hasattr(expr, 'comments') and expr.comments:
+        print(f'{type(expr).__name__}: {expr.comments}')
+```
+
+### 7.2 Where Comments Fit in the Pipeline
+
+```
+ASQL text → Pre-Parser → SQLGlot Parse (comments preserved) → AST with comments → SQL
+                                                                    ↓
+                                                          Metadata Extraction API
+```
+
+**Key insight**: Comment handling is done AFTER parsing, on the AST. This means:
+- Pre-parser: Must preserve comment tokens (not strip them)
+- Tokenizer: SQLGlot's tokenizer already handles `--` and `/* */`
+- Parser: SQLGlot attaches comments to nearest AST node
+- Metadata extraction: Separate API on the final AST
+
+### 7.3 Pre-Parser Comment Preservation
+
+The pre-parser must be careful not to break comments when doing transformations:
+
+```python
+def transform_from_first(text: str) -> str:
+    """Add SELECT * but preserve any leading comments."""
+    
+    # Find comments at start
+    leading_comments = []
+    rest = text.strip()
+    
+    while rest.startswith('--') or rest.startswith('/*'):
+        if rest.startswith('--'):
+            end = rest.find('\n')
+            leading_comments.append(rest[:end+1])
+            rest = rest[end+1:].strip()
+        elif rest.startswith('/*'):
+            end = rest.find('*/') + 2
+            leading_comments.append(rest[:end])
+            rest = rest[end:].strip()
+    
+    # Add SELECT * after comments
+    if rest.lower().startswith('from '):
+        return ''.join(leading_comments) + 'SELECT * ' + rest
+    
+    return text
+```
+
+### 7.4 Metadata Extraction (Post-Parse)
+
+After parsing, ASQL provides an API to extract structured metadata from comments:
+
+```python
+import asql
+
+# Parse ASQL (comments preserved in AST)
+ast = asql.parse("""
+/**
+ * @name monthly_signups
+ * @description Track user signups by month
+ */
+from users
+group by month(created_at) (
+    # as user_count  -- count of users
+)
+""")
+
+# Extract structured metadata
+metadata = asql.extract_metadata(ast)
+
+print(metadata.name)         # "monthly_signups"
+print(metadata.description)  # "Track user signups by month"
+print(metadata.columns)      # {"user_count": ColumnMetadata(description="count of users")}
+
+# Serialize to various formats
+dbt_schema = metadata.to_dbt_schema()  # For schema.yml
+sql_comments = metadata.to_sql_comments("analytics.signups")  # COMMENT ON statements
+```
+
+### 7.5 No Tokenizer/Parser Changes Needed
+
+Comments are handled entirely by:
+1. **SQLGlot's tokenizer** - Already recognizes `--` and `/* */`
+2. **SQLGlot's parser** - Already attaches comments to AST nodes
+3. **Our metadata API** - Post-parse extraction (see [comments.md](comments.md))
+
+**Conclusion**: Comment handling is orthogonal to the dialect implementation. We get it for free from SQLGlot and add value through our metadata extraction API.
+
+---
+
+## 8. Pre-Parser Specification
+
+### 8.1 Requirements
 
 The pre-parser should be:
 - **Minimal**: Only structural transformations, not expression parsing
@@ -449,12 +603,12 @@ The pre-parser should be:
 - **Line-preserving**: Keep line numbers for error reporting
 - **Fast**: Simple regex/string operations where possible
 
-### 7.2 Transformations
+### 8.2 Transformations
 
 #### T1: FROM-First to SELECT-FROM
 
 ```
-Input:  from users where active take 10
+Input:  from users where active limit 10
 Output: SELECT * FROM users WHERE active LIMIT 10
 
 Input:  from users select name, email where active
@@ -469,7 +623,7 @@ Output: SELECT name, email FROM users WHERE active
 #### T2: Pipeline Operators
 
 ```
-Input:  from users | where active | sort -date | take 10
+Input:  from users | where active | order by -date | limit 10
 Output: SELECT * FROM users WHERE active ORDER BY date DESC LIMIT 10
 ```
 
@@ -518,7 +672,31 @@ Output: sum(revenue)
 2. Scan for space-separated tokens
 3. If tokens match function pattern, normalize to function call
 
-### 7.3 Pre-Parser Implementation Sketch
+#### T6: Window Utility Transformations
+
+The `per` command and related window utilities need structural transformation:
+
+```
+Input:  per customer_id first by -order_date
+Output: SELECT * FROM (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) AS _rn
+          FROM _prev
+        ) WHERE _rn = 1
+
+Input:  per department number by -salary as rank_num
+Output: SELECT *, ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) AS rank_num
+        FROM _prev
+```
+
+**Algorithm:**
+1. Find `per <cols> <op> by <order>` pattern
+2. Generate appropriate window function (ROW_NUMBER, RANK, DENSE_RANK)
+3. For `first`/`last`, wrap in subquery with filter on row number
+4. For `number`/`rank`, just add the window column
+
+**Note**: `prior()`, `next()`, `running_sum()`, `rolling_avg()`, etc. can be handled by the Parser since they map directly to SQL window functions (LAG, LEAD, SUM OVER, etc.).
+
+### 8.3 Pre-Parser Implementation Sketch
 
 ```python
 import re
@@ -540,6 +718,7 @@ class ASQLPreParser:
         """Apply all transformations and return SQL-like text."""
         result = self.text
         result = self._transform_pipeline(result)
+        result = self._transform_per_commands(result)  # Window utilities
         result = self._transform_aggregate_blocks(result)
         result = self._transform_stash_as(result)
         result = self._transform_from_first(result)
@@ -639,23 +818,23 @@ class ASQLPreParser:
 
 ---
 
-## 8. Migration Path
+## 9. Migration Path
 
-### 8.1 Phase 1: Pre-Parser + Current System
+### 9.1 Phase 1: Pre-Parser + Current System
 
 1. Implement `ASQLPreParser` for structural transformations
 2. Feed transformed text to current custom parser
 3. Validate output matches current behavior
 4. **No risk**: Old parser still works as fallback
 
-### 8.2 Phase 2: ASQL Dialect for Expressions
+### 9.2 Phase 2: ASQL Dialect for Expressions
 
 1. Implement `ASQLTokenizer` for new tokens
 2. Implement `ASQLParser` for expression-level parsing
 3. Replace expression parsing in custom parser with SQLGlot calls
 4. **Gradual**: Replace one expression type at a time
 
-### 8.3 Phase 3: Full SQLGlot Integration
+### 9.3 Phase 3: Full SQLGlot Integration
 
 1. Pre-parser produces SQL-like text
 2. SQLGlot parses with ASQL dialect
@@ -664,9 +843,9 @@ class ASQLPreParser:
 
 ---
 
-## 9. Benefits of This Approach
+## 10. Benefits of This Approach
 
-### 9.1 Code Reduction
+### 10.1 Code Reduction
 
 | Component | Current | Proposed |
 |-----------|---------|----------|
@@ -675,7 +854,7 @@ class ASQLPreParser:
 | Dialect extensions | 0 | ~200-300 lines |
 | **Total** | ~2000 lines | ~400-600 lines |
 
-### 9.2 Leveraged SQLGlot Features
+### 10.2 Leveraged SQLGlot Features
 
 - **Expression parsing**: Arithmetic, comparisons, function calls
 - **Precedence handling**: Operator precedence rules
@@ -684,7 +863,7 @@ class ASQLPreParser:
 - **Error messages**: SQLGlot's parsing error infrastructure
 - **AST manipulation**: Transform, walk, find methods
 
-### 9.3 Maintenance Benefits
+### 10.3 Maintenance Benefits
 
 - SQLGlot updates automatically improve ASQL
 - New SQL features available with minimal work
@@ -693,9 +872,9 @@ class ASQLPreParser:
 
 ---
 
-## 10. Risks and Mitigations
+## 11. Risks and Mitigations
 
-### 10.1 Risks
+### 11.1 Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
@@ -704,7 +883,7 @@ class ASQLPreParser:
 | Performance regression | Low | Low | Pre-parser is simple string ops |
 | Feature gaps | Medium | Medium | Fallback to custom parsing for edge cases |
 
-### 10.2 Decision Points
+### 11.2 Decision Points
 
 Before full commitment, validate:
 1. Can `group by (aggs)` be cleanly transformed?
@@ -713,7 +892,7 @@ Before full commitment, validate:
 
 ---
 
-## 11. Appendix: SQLGlot Dialect Examples
+## 12. Appendix: SQLGlot Dialect Examples
 
 ### BigQuery Dialect (for reference)
 
@@ -756,18 +935,50 @@ class ClickHouse(Dialect):
 
 ---
 
-## 12. Next Steps
+## 13. SPEC.md Updates ✅ COMPLETED
 
-1. **Prototype pre-parser** for FROM-first and pipeline syntax
+The following changes have been made to SPEC.md:
+
+| Change | Status |
+|--------|--------|
+| `==` → `=` (also accept `==`) | ✅ Done |
+| `\|\|` → `??` for COALESCE | ✅ Done |
+| Remove `with x = ...` CTE syntax | ✅ Done |
+| Remove `with x as ...` CTE syntax | ✅ Done |
+| Remove `sort`, use `order by` | ✅ Done |
+| Remove `take`, use `limit` | ✅ Done |
+
+**Rationale for `??` over `||`:**
+- JavaScript uses `??` for nullish coalescing (not `||`)
+- `||` in SQL is string concatenation in most dialects
+- `??` can also be used for safe casting: `col??int` (cast, return NULL on failure)
+- Avoids confusion with logical OR
+
+**Rationale for standard SQL keywords:**
+- SQL users already know `ORDER BY` and `LIMIT`
+- No value in learning `sort` and `take` aliases
+- Reduces cognitive load
+- `sort` would need `sort by` for consistency anyway
+
+---
+
+## 14. Next Steps
+
+1. **Prototype pre-parser** for:
+   - FROM-first → `SELECT * FROM ...`
+   - Pipeline `|` removal
+   - Natural aggregates: `sum amount` → `sum(amount)`
+   - `group by (aggs)` extraction
+   - `stash as` → CTE wrapping
 2. **Test with existing ASQL examples** to validate transformation correctness
-3. **Implement ASQLTokenizer** for `#`, `@`, and keyword aliases
-4. **Implement ASQLParser** for `sort -col` and natural aggregates
+3. **Implement ASQLTokenizer** for `#`, `@`, `??`
+4. **Implement ASQLParser** for `order by -col` DESC indicator
 5. **Benchmark** against current parser for performance
 6. **Gradual migration** following the phase plan
 
 ---
 
-## 13. Open Questions
+## 15. Open Questions
 
 1. **Error mapping**: How to report errors in terms of original ASQL line numbers?
 2. **Round-trip**: Should we support ASQL → SQL → ASQL conversion?
