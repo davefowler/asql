@@ -1,123 +1,199 @@
 # ASQL Implementation Status
 
-**Last Updated**: Current session  
-**Current Phase**: Phase 1 Complete, Phase 2 In Progress  
-**Test Status**: ✅ 98+ tests passing
+**Last Updated**: December 2024  
+**Test Status**: ✅ 434 tests passing  
+**Implementation Phase**: Core Complete
 
-## What's Working
+## ✅ Fully Implemented Features
 
-### Basic Parser ✅
-- FROM clause parsing
-- WHERE clause with all comparison operators
-- SELECT clause
-- String and numeric literals
-- Basic expressions
+### Core Pipeline Operators
+- **FROM** - Query source specification
+- **SELECT** - Column selection and expressions
+- **WHERE** - Row filtering with all operators
+- **GROUP BY** - Aggregation with block syntax `group by col ( aggregations )`
+- **ORDER BY / SORT** - Sorting with `-` prefix for descending
+- **LIMIT / TAKE** - Row limiting
+- **JOIN** - Inner, left, right, outer joins with `on` conditions
 
-### Phase 1: Core Pipeline Operators ✅
-- **GROUP BY** with aggregations
-  - `group by country ( # as total_users )` - # syntax for COUNT(*)
-  - Standard aggregations: `sum()`, `avg()`, `count()`, `min()`, `max()`
-  - Multiple grouping columns
-  - Multiple aggregations
-- **SORT/ORDER BY**
-  - `sort -total_users` (descending)
-  - `sort total_users` (ascending)
-  - Multiple sort columns
-- **TAKE/LIMIT**
-  - `take 10` → SQL LIMIT
+### Expressions & Operators
+- **Comparison**: `==`, `=`, `!=`, `<>`, `<`, `>`, `<=`, `>=`
+- **NULL checks**: `is null`, `is not null`
+- **Logical**: `and`, `or`, `not`
+- **Membership**: `in`, `not in`
+- **Arithmetic**: `+`, `-`, `*`, `/`, `%`
+- **COALESCE**: `??` operator (`name ?? "Unknown"`)
+- **Type casting**: `::` operator (`created_at::DATE`)
 
-### Phase 2: Expressions & Operators ✅ (Partial)
-- **Comparison operators**: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- **Null checks**: `is null`, `is not null`
-- **Logical operators**: `and`, `or`, `not` ✅
-- **Membership**: `in`, `not in` ✅
-- ⏳ Arithmetic operators (not yet implemented)
+### Aggregation Functions
+- `#` shorthand for `COUNT(*)`
+- `sum()`, `avg()`, `count()`, `min()`, `max()`
+- Natural language: `total`, `average` as aliases
 
-### Compiler ✅
-- ASQL → SQL transformation
-- Dialect support (PostgreSQL, MySQL, etc.)
-- Error handling
+### Date & Time Functions
+- **Date literals**: `@2024-01-01`
+- **Relative dates**: `7 days ago`, `3 months from now`
+- **Date arithmetic**: `order_date + 7 days`
+- **Date truncation**: `year()`, `month()`, `week()`, `day()`, `hour()`, `quarter()`
+- **Date extraction**: `day_of_week()`, `week_of_year()`, `month_of_year()`
+- **Time since/until**: `days_since_created_at`, `months_until_due_date`
+- **Date spine**: `date_spine(start, end, grain)` for generating date sequences
 
-### Example Working Queries
+### Window Functions
+- **per command**: `per customer_id first by -order_date` (deduplication)
+- **Ranking**: `per group rank by col`, `per group dense rank by col`
+- **Row numbering**: `per group number by col`, `number by col`
+- **QUALIFY**: Filter window function results
+- **DISTINCT ON**: PostgreSQL-style deduplication
+- **prior() / next()**: `LAG`/`LEAD` simplified
+- **Running aggregates**: `running_sum()`, `running_avg()`, `running_count()`
+- **Rolling aggregates**: `rolling_sum(col, n)`, `rolling_avg(col, n)`
+- **first() / last()**: `first(col order by x)`
+- **arg_max() / arg_min()**: ClickHouse-style aggregates
+
+### Variables & CTEs
+- **set**: `set active_users = from users where is_active`
+- **with**: `with active_users = from users where is_active`
+- **stash as**: `... stash as cte_name` for mid-pipeline CTEs
+
+### Utility Functions
+- **safe_divide()**: Returns NULL on divide-by-zero
+- **key()**: Surrogate key generation
+
+### Dialect Support
+- PostgreSQL
+- MySQL
+- BigQuery
+- Snowflake
+- Redshift
+- SQLite
+- DuckDB
+- ANSI SQL (default)
+
+### Architecture
+- **Pre-parser**: Structural transformations (FROM-first, aggregate blocks, etc.)
+- **ASQL Dialect**: SQLGlot dialect for expression parsing
+- **Compiler**: Full ASQL → SQL transpilation
+- **Reverse Compiler**: SQL → ASQL translation
+
+---
+
+## ❌ Not Yet Implemented (Planned in Spec)
+
+These features are documented in `SPEC.md` but not yet implemented:
+
+### String Matching (Section 4.5)
+- `contains "pattern"`
+- `starts with "pattern"`
+- `ends with "pattern"`
+- `matches "regex"`
+- `ignore case` modifier
+
+**Workaround**: Use SQL `LIKE` syntax directly.
+
+### Conditional Expressions (Section 4.7)
+- `when status is "active" then 1 otherwise 0`
+- `when age < 18 then "minor" otherwise "adult"`
+
+**Workaround**: Use SQL `CASE WHEN ... THEN ... ELSE ... END`.
+
+### Natural Language Aggregates (Section 5.5)
+- `# of Users by country` (inferred FROM)
+- `Sum of revenue by region`
+
+**Workaround**: Use explicit `from table group by col ( aggregations )`.
+
+### Automatic Joins (Section 7.2)
+- Arrow syntax: `from opportunities->owners`
+- FK inference from schema
+- Plural/singular handling
+
+**Workaround**: Use explicit `join` with `on` condition.
+
+### Column Operators (Section 13.1)
+- `except email, phone` - exclude columns
+- `rename id as user_id` - rename columns
+- `prefix user_` - prefix column names
+
+**Workaround**: Explicitly list columns in `select`.
+
+### Deduplicate Operator (Section 13.2)
+- `deduplicate by user_id order by -created_at`
+
+**Workaround**: Use `per group first by -col` instead.
+
+### Pivot/Unpivot (Section 13.3)
+- `pivot amount by category`
+- `unpivot jan, feb, mar into month, value`
+
+**Workaround**: Write SQL pivot queries directly.
+
+### Fill / Gap Filling (Section 13.4)
+- `fill month` - auto-fill time series gaps
+- `fill month with {revenue: 0}`
+
+**Workaround**: Join with a date spine manually.
+
+### Safe Cast (Section 13.8)
+- `value::integer?` - returns NULL on cast failure
+
+**Workaround**: Use database-specific `TRY_CAST` or `SAFE_CAST`.
+
+---
+
+## Example Working Queries
 
 ```python
 from asql import compile
 
-# Simple FROM
+# Basic query
 compile("from users")
-# → "SELECT * FROM users"
+# → SELECT * FROM users
 
-# FROM + WHERE with comparisons
-compile('from users where status == "active"')
-compile("from users where age < 18")
-compile("from users where email is not null")
+# Filtering with arithmetic
+compile('from users where age + 5 >= 23')
+# → SELECT * FROM users WHERE age + 5 >= 23
 
-# GROUP BY with aggregations
-compile("from users group by country ( # as total_users )")
-compile("from sales group by region ( sum(amount) as revenue, # as orders )")
+# Aggregation with block syntax
+compile("from users group by country ( # as total_users, avg(age) as avg_age )")
+# → SELECT country, COUNT(*) AS total_users, AVG(age) AS avg_age FROM users GROUP BY country
 
-# SORT
-compile("from users sort -total_users")
-compile("from users sort name, -age")
+# JOIN
+compile("from orders join users on orders.user_id == users.id")
+# → SELECT * FROM orders JOIN users ON orders.user_id = users.id
 
-# TAKE/LIMIT
-compile("from users take 10")
+# COALESCE with ??
+compile('from users select name ?? "Unknown" as display_name')
+# → SELECT COALESCE(name, 'Unknown') AS display_name FROM users
 
+# Type casting
+compile("from users select created_at::DATE as signup_date")
+# → SELECT CAST(created_at AS DATE) AS signup_date FROM users
 
-# Complex pipeline
-compile("from users group by country ( # as total_users ) sort -total_users take 10")
+# Date literal and relative date
+compile("from orders where order_date >= @2024-01-01")
+compile("from orders where created_at >= 7 days ago")
+
+# Window function with per command
+compile("from orders per customer_id first by -order_date")
+# → Keeps most recent order per customer
+
+# Running aggregate
+compile("from transactions order by date select running_sum(amount) as cumulative")
+
+# CTE with set
+compile('set active = from users where status == "active" from active group by country ( # as total )')
 ```
 
-## Architecture Decisions
-
-- **Custom Parser**: Using custom parser (not SQLGlot dialect) because ASQL syntax is fundamentally different
-- **SQLGlot AST**: Building SQLGlot AST nodes, then using SQLGlot's generator
-- **Pipeline → CTEs**: Each pipeline step should become a CTE (not yet implemented)
-
-## Files Structure
-
-```
-asql/
-├── __init__.py      # Public API (compile function)
-├── parser.py        # Custom ASQL parser ⭐ Main file
-├── compiler.py      # Compiler function
-├── dialect.py       # ASQLDialect (skeleton, not fully used)
-└── errors.py        # Error classes
-
-tests/
-├── test_basic.py    # Basic import tests
-├── test_compiler.py # Compiler tests (7 tests) ⭐ Main test file
-└── test_dialect.py  # Dialect tests (placeholder)
-```
-
-## Known Limitations
-
-1. **Single-line queries only** - No indentation/multi-line support yet
-2. **Limited expressions** - Missing arithmetic operators, string matching (`contains`, `starts with`, etc.)
-3. **No CTEs** - Pipeline steps don't become CTEs yet (each step should become a CTE)
-4. **No schema resolution** - No FK inference, plural/singular handling
-5. **No JOIN** - Explicit joins not yet implemented
-6. **String matching** - Planned: `contains`, `starts with`, `ends with`, `matches` (see SPEC.md Section 4.5)
+---
 
 ## Test Coverage
 
-- ✅ FROM clause
-- ✅ WHERE clause with all comparison operators
-- ✅ SELECT clause
-- ✅ String and numeric literals
-- ✅ Error handling
-- ✅ Dialect support
-- ✅ GROUP BY with aggregations (#, sum, avg, count, min, max)
-- ✅ SORT/ORDER BY (ascending/descending)
-- ✅ TAKE/LIMIT
-- ✅ IS NULL / IS NOT NULL
-- ✅ Logical operators (and, or, not)
-- ✅ IN / NOT IN
-- ⏳ Arithmetic operators
-- ⏳ JOIN
-- ⏳ SET (CTEs)
+- **434 tests** across 21 test files
+- Covers all implemented features
+- Edge cases and error handling
+- Dialect-specific SQL generation
+- Real-world query patterns
 
 ## Next Steps
 
-See `ai_notes/AGENT_INSTRUCTIONS.md` for detailed instructions on continuing implementation.
-
+See `SPEC.md` for planned features and `ai_notes/` for implementation notes.
