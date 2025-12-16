@@ -18,7 +18,7 @@ asql_query = """
 from users
 where status == "active"
 group by country ( # as total_users )
-sort -total_users
+order by -total_users
 take 10
 """
 
@@ -612,7 +612,7 @@ results = pipeline.execute_query("""
 from users
 where status == 'active'
 group by country ( # as total_users )
-sort -total_users
+order by -total_users
 take 10
 """)
 

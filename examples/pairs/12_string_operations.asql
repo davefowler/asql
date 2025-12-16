@@ -8,5 +8,5 @@ from users
     count(case when verified == true then 1 end) as verified_users
   )
   where user_count >= 10
-  sort -user_count
+  order by -user_count
 

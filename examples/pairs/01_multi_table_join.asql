@@ -14,5 +14,5 @@ from orders
     order_items.quantity,
     order_items.price,
     (order_items.quantity * order_items.price) as line_total
-  sort -orders.order_date
+  order by -orders.order_date
 

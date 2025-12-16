@@ -28,7 +28,7 @@ The key insight is that ASQL's pipeline syntax is transformed into SQL Common Ta
 The `ASQLParser` class handles parsing ASQL syntax into an internal representation that can be converted to SQLGlot AST.
 
 **Key Responsibilities:**
-- Parse pipeline syntax (`from`, `where`, `group by`, `sort`, `take`)
+- Parse pipeline syntax (`from`, `where`, `group by`, `order by`, `take`)
 - Handle ASQL-specific operators (`==`, `!=`, `#` for count)
 - Parse expressions and aggregations
 - Handle `with` statements for CTEs

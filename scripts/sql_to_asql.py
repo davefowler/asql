@@ -180,7 +180,7 @@ def _select_to_asql(select_expr: exp.Select) -> str:
                     item = f"-{_expression_to_asql(item_expr)}"
             order_items.append(item)
         if order_items:
-            lines.append(f"  sort {', '.join(order_items)}")
+            lines.append(f"  order by {', '.join(order_items)}")
     
     # LIMIT
     limit_clause = select_expr.args.get("limit")

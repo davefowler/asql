@@ -17,6 +17,6 @@ from product_revenue
     order_count,
     rank() over (order by total_revenue desc) as revenue_rank,
     rank() over (partition by category order by total_revenue desc) as category_rank
-  sort -total_revenue
+  order by -total_revenue
   take 50
 

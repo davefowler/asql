@@ -113,18 +113,18 @@ def test_compile_group_by_avg() -> None:
     assert "AVG" in sql_upper
 
 
-def test_compile_sort_ascending() -> None:
-    """Test compiling SORT in ascending order."""
-    asql = "from users sort name"
+def test_compile_order_by_ascending() -> None:
+    """Test compiling ORDER BY in ascending order."""
+    asql = "from users order by name"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "ORDER BY" in sql_upper
     assert "NAME" in sql_upper
 
 
-def test_compile_sort_descending() -> None:
-    """Test compiling SORT with descending order (using - prefix)."""
-    asql = "from users sort -total_users"
+def test_compile_order_by_descending() -> None:
+    """Test compiling ORDER BY with descending order (using - prefix)."""
+    asql = "from users order by -total_users"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "ORDER BY" in sql_upper
@@ -132,9 +132,9 @@ def test_compile_sort_descending() -> None:
     assert "DESC" in sql_upper
 
 
-def test_compile_sort_multiple_columns() -> None:
-    """Test compiling SORT with multiple columns."""
-    asql = "from users sort -total_users, name"
+def test_compile_order_by_multiple_columns() -> None:
+    """Test compiling ORDER BY with multiple columns."""
+    asql = "from users order by -total_users, name"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "ORDER BY" in sql_upper
@@ -142,18 +142,18 @@ def test_compile_sort_multiple_columns() -> None:
     assert "NAME" in sql_upper
 
 
-def test_compile_group_by_sort() -> None:
-    """Test compiling GROUP BY followed by SORT."""
-    asql = "from users group by country ( # as total_users ) sort -total_users"
+def test_compile_group_by_order_by() -> None:
+    """Test compiling GROUP BY followed by ORDER BY."""
+    asql = "from users group by country ( # as total_users ) order by -total_users"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "GROUP BY" in sql_upper
     assert "ORDER BY" in sql_upper
 
 
-def test_compile_sort_by_count_hash() -> None:
-    """Test compiling SORT by # (COUNT) directly without alias."""
-    asql = "from users group by country ( # ) sort -#"
+def test_compile_order_by_count_hash() -> None:
+    """Test compiling ORDER BY # (COUNT) directly without alias."""
+    asql = "from users group by country ( # ) order by -#"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "GROUP BY" in sql_upper
@@ -162,9 +162,9 @@ def test_compile_sort_by_count_hash() -> None:
     assert "DESC" in sql_upper
 
 
-def test_compile_sort_function_call() -> None:
-    """Test compiling SORT with function call."""
-    asql = "from users sort month(updated_at)"
+def test_compile_order_by_function_call() -> None:
+    """Test compiling ORDER BY with function call."""
+    asql = "from users order by month(updated_at)"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "ORDER BY" in sql_upper
@@ -172,9 +172,9 @@ def test_compile_sort_function_call() -> None:
     assert "UPDATED_AT" in sql_upper or "updated_at" in sql.lower()
 
 
-def test_compile_sort_column_descending() -> None:
-    """Test compiling SORT with descending column using - prefix."""
-    asql = "from users sort -updated_at"
+def test_compile_order_by_column_descending() -> None:
+    """Test compiling ORDER BY with descending column using - prefix."""
+    asql = "from users order by -updated_at"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "ORDER BY" in sql_upper
@@ -182,9 +182,9 @@ def test_compile_sort_column_descending() -> None:
     assert "UPDATED_AT" in sql_upper or "updated_at" in sql.lower()
 
 
-def test_compile_sort_column_multiple() -> None:
-    """Test compiling SORT with column and multiple columns."""
-    asql = "from users sort -updated_at, name"
+def test_compile_order_by_column_multiple() -> None:
+    """Test compiling ORDER BY with column and multiple columns."""
+    asql = "from users order by -updated_at, name"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "ORDER BY" in sql_upper
@@ -202,9 +202,9 @@ def test_compile_take() -> None:
     assert "10" in sql
 
 
-def test_compile_take_with_sort() -> None:
-    """Test compiling TAKE with SORT."""
-    asql = "from users sort -total_users take 10"
+def test_compile_take_with_order_by() -> None:
+    """Test compiling TAKE with ORDER BY."""
+    asql = "from users order by -total_users take 10"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "ORDER BY" in sql_upper
@@ -212,9 +212,9 @@ def test_compile_take_with_sort() -> None:
     assert "10" in sql
 
 
-def test_compile_group_by_sort_take() -> None:
-    """Test compiling GROUP BY, SORT, and TAKE together."""
-    asql = "from users group by country ( # as total_users ) sort -total_users take 10"
+def test_compile_group_by_order_by_take() -> None:
+    """Test compiling GROUP BY, ORDER BY, and TAKE together."""
+    asql = "from users group by country ( # as total_users ) order by -total_users take 10"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "GROUP BY" in sql_upper

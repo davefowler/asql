@@ -18,5 +18,5 @@ from user_cohorts
     count(distinct monthly_activity.user_id) as active_users,
     round(count(distinct monthly_activity.user_id)::numeric / count(distinct user_cohorts.user_id) * 100, 2) as retention_rate
   )
-  sort -user_cohorts.cohort_month
+  order by -user_cohorts.cohort_month
 

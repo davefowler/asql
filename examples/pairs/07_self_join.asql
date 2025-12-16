@@ -8,5 +8,5 @@ from employees as e1
     e1.department,
     e2.employee_name as manager_name,
     e2.department as manager_department
-  sort e1.department, e1.employee_name
+  order by e1.department, e1.employee_name
 

@@ -309,7 +309,7 @@ def _select_to_asql(select_expr: exp.Select) -> str:
                 order_parts.append(f"-{expr_str}")
             else:
                 order_parts.append(expr_str)
-        parts.append(f"sort {', '.join(order_parts)}")
+        parts.append(f"order by {', '.join(order_parts)}")
     
     # LIMIT clause
     limit_expr = select_expr.args.get("limit")

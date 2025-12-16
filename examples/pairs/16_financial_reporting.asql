@@ -11,5 +11,5 @@ from financial_transactions
     lag(sum(case when transaction_type == "revenue" then amount else 0 end)) 
       over (order by month(transaction_date)) as prev_month_revenue
   )
-  sort -month(transaction_date)
+  order by -month(transaction_date)
 

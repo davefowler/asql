@@ -23,5 +23,5 @@ from customer_stats
       when total_orders >= 10 then "Medium Frequency"
       else "Low Frequency"
     end as order_frequency
-  sort -total_spent
+  order by -total_spent
 

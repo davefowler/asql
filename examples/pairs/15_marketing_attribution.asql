@@ -25,5 +25,5 @@ from campaigns
     count(distinct last_touch.customer_id) as last_touch_customers,
     sum(orders.total_amount) as attributed_revenue
   )
-  sort -attributed_revenue
+  order by -attributed_revenue
 
