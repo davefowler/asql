@@ -463,11 +463,11 @@ def _expression_to_asql(expr: exp.Expression) -> str:
         return _aggregation_to_asql(expr)
     
     elif isinstance(expr, exp.Coalesce):
-        # Convert COALESCE to || operator
-        # COALESCE(a, b, c) becomes a || b || c
+        # Convert COALESCE to ?? operator (ASQL nullish coalescing)
+        # COALESCE(a, b, c) becomes a ?? b ?? c
         args = [expr.this] + (expr.expressions if expr.expressions else [])
         arg_strs = [_expression_to_asql(arg) for arg in args]
-        return " || ".join(arg_strs)
+        return " ?? ".join(arg_strs)
     
     elif isinstance(expr, exp.Case):
         # Convert CASE statement to DuckDB/Spark-style syntax
@@ -516,7 +516,7 @@ def _expression_to_asql(expr: exp.Expression) -> str:
         
         # Check if it's COALESCE function call
         if func_name_upper == "COALESCE":
-            # Convert COALESCE(a, b, c) to a || b || c
+            # Convert COALESCE(a, b, c) to a ?? b ?? c (ASQL nullish coalescing)
             # Anonymous COALESCE might have first arg in expr.this or expr.expressions
             args = []
             if hasattr(expr, 'this') and expr.this:
@@ -527,7 +527,7 @@ def _expression_to_asql(expr: exp.Expression) -> str:
             if not args and expr.expressions:
                 args = expr.expressions
             arg_strs = [_expression_to_asql(arg) for arg in args]
-            return " || ".join(arg_strs) if arg_strs else "COALESCE()"
+            return " ?? ".join(arg_strs) if arg_strs else "COALESCE()"
         
         # Check if it's CAST function call (CAST(expr AS type))
         # Note: SQLGlot usually parses CAST as exp.Cast, but some dialects might parse as Anonymous
