@@ -1,9 +1,9 @@
 -- Multi-table join: Orders with customers and products
 from orders
-  join customers on orders.customer_id == customers.customer_id
-  join order_items on orders.order_id == order_items.order_id
-  join products on order_items.product_id == products.product_id
-  where orders.status == "completed"
+  & customers on orders.customer_id = customers.customer_id
+  & order_items on orders.order_id = order_items.order_id
+  & products on order_items.product_id = products.product_id
+  where orders.status = "completed"
   select 
     orders.order_id,
     orders.order_date,

@@ -5,7 +5,7 @@ with first_touch = from marketing_touchpoints
     campaign_id,
     touchpoint_date,
     row_number() over (partition by customer_id order by touchpoint_date asc) as rn
-  where rn == 1
+  where rn = 1
 
 with last_touch = from marketing_touchpoints
   select 
@@ -13,13 +13,13 @@ with last_touch = from marketing_touchpoints
     campaign_id,
     touchpoint_date,
     row_number() over (partition by customer_id order by touchpoint_date desc) as rn
-  where rn == 1
+  where rn = 1
 
 from campaigns
-  left join first_touch on campaigns.campaign_id == first_touch.campaign_id
-  left join last_touch on campaigns.campaign_id == last_touch.campaign_id
-  left join orders on (orders.customer_id == first_touch.customer_id or orders.customer_id == last_touch.customer_id)
-    and orders.status == "completed"
+  &? first_touch on campaigns.campaign_id = first_touch.campaign_id
+  &? last_touch on campaigns.campaign_id = last_touch.campaign_id
+  &? orders on (orders.customer_id = first_touch.customer_id or orders.customer_id = last_touch.customer_id)
+    and orders.status = "completed"
   group by campaigns.campaign_id, campaigns.campaign_name (
     count(distinct first_touch.customer_id) as first_touch_customers,
     count(distinct last_touch.customer_id) as last_touch_customers,
