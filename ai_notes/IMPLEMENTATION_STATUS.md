@@ -1,292 +1,305 @@
-# ASQL Implementation Status - Detailed Breakdown
+# ASQL Implementation Status - Detailed
 
-**Last Updated**: Current session  
-**Test Status**: ✅ 182+ tests (all passing ✅)
-
----
-
-## ✅ COMPLETE FEATURES
-
-### Phase 1: Core Pipeline Operators ✅
-
-#### FROM Clause ✅
-- ✅ Basic `from table` syntax
-- ✅ Table name parsing
-- ✅ Required first clause
-- ✅ Error if missing
-
-#### WHERE Clause ✅
-- ✅ Basic filtering
-- ✅ All comparison operators (`==`, `!=`, `<`, `>`, `<=`, `>=`)
-- ✅ NULL checks (`is null`, `is not null`)
-- ✅ Logical operators (`and`, `or`, `not`)
-- ✅ Membership (`in`, `not in`)
-- ✅ Parentheses for grouping
-- ✅ String literals (single/double quotes)
-- ✅ Numeric literals (integers, floats, negative)
-- ✅ Multiple conditions
-
-#### SELECT Clause ✅
-- ✅ Column selection
-- ✅ Star selection (implicit)
-- ✅ Multiple columns
-
-#### GROUP BY ✅
-- ✅ Basic grouping
-- ✅ Multiple grouping columns
-- ✅ Aggregation block syntax
-- ✅ COUNT shorthand (`#`)
-- ✅ All aggregation functions (`sum`, `avg`, `count`, `min`, `max`)
-- ✅ Multiple aggregations
-- ✅ Aggregation aliases
-
-#### SORT/ORDER BY ✅
-- ✅ Ascending sort
-- ✅ Descending sort (`-` prefix)
-- ✅ Multiple sort columns
-- ✅ Function calls in sort
-- ✅ Descending function calls
-
-#### TAKE/LIMIT ✅
-- ✅ Basic limit
-- ✅ Large numbers
-- ⚠️ Edge case: `take 0` works but unusual
-
-### Phase 2: Expressions & Operators ✅ (Partial)
-
-#### Comparison Operators ✅
-- ✅ `==`, `!=`, `<`, `>`, `<=`, `>=`
-
-#### NULL Checks ✅
-- ✅ `is null`, `is not null`
-
-#### Logical Operators ✅
-- ✅ `and`, `or`, `not`
-- ✅ Correct precedence
-- ✅ Parentheses support
-
-#### Membership Operators ✅
-- ✅ `in (values)`
-- ✅ `not in (values)`
-- ✅ String and numeric values
-- ✅ Empty list detection
-
-### Compiler ✅
-- ✅ ASQL → SQLGlot AST
-- ✅ SQLGlot AST → SQL
-- ✅ Multiple dialect support
-- ✅ Error handling
-- ✅ Clear error messages
+**Last Updated**: December 2024  
+**Test Status**: ✅ 434 tests (all passing)
 
 ---
 
-## ❌ INCOMPLETE FEATURES
+## Architecture
 
-### Phase 2: Expressions & Operators (Partial)
+The ASQL compiler uses a two-stage approach:
 
-#### Arithmetic Operators ❌
-- **Status**: ❌ Not Implemented
-- **Missing**: `+`, `-`, `*`, `/`, `%`
-- **Priority**: HIGH
-- **Impact**: Can't do calculations in WHERE or SELECT
-- **Workaround**: Use SQL functions or pre-calculate
+### 1. Pre-Parser (`asql/preparser.py`)
+Handles structural transformations that differ from SQL:
+- FROM-first → SELECT-FROM transformation
+- Pipeline operators (`|`) removal
+- Aggregate blocks `group by x (...)` → standard SQL
+- `stash as` / `set` / `with` → SQL CTEs
+- Natural aggregates (`sum amount` → `sum(amount)`)
+- Underscore/space normalization (`day of week` → `day_of_week`)
+- Window utilities (`per` command, `running_sum`, etc.)
+- Date expressions (`N days ago`, `date + N days`, `@2024-01-01`)
+- Count shorthand (`#` → `COUNT(*)`)
+- Order by `-col` → `col DESC`
+- COALESCE operator (`??`)
 
-#### String Matching ❌
-- **Status**: ❌ Not Implemented (Design Complete)
-- **Missing**: `contains`, `starts with`, `ends with`, `matches`
-- **Priority**: MEDIUM
-- **Design**: ✅ Complete in SPEC.md Section 4.5
-- **Plan**: ✅ Complete in docs/STRING_MATCHING_PLAN.md
-- **Workaround**: Use SQL `LIKE` syntax
+### 2. ASQL Dialect (`asql/dialect.py`)
+SQLGlot dialect extension for expression parsing:
+- Tokenizer rules for ASQL-specific tokens
+- Parser rules for ASQL expressions
+- Generator for SQL output
 
-### Phase 3: Advanced Features ❌
+### 3. Compiler (`asql/compiler.py`)
+Main entry point:
+- Orchestrates pre-parser and SQLGlot
+- Dialect-specific SQL generation
+- Error handling and reporting
 
-#### JOIN ❌
-- **Status**: ❌ Not Implemented
-- **Missing**: 
-  - Explicit joins: `join table on condition`
-  - Automatic joins (requires schema resolver)
-- **Priority**: MEDIUM
-- **Impact**: Can't query multiple tables
-- **Workaround**: Use SQL subqueries or CTEs
-
-#### SET/CTEs ❌
-- **Status**: ❌ Not Implemented
-- **Missing**:
-  - `set variable = query` syntax
-  - Variable resolution
-  - SQL `WITH ... AS` generation
-- **Priority**: MEDIUM
-- **Impact**: Can't reuse query parts
-- **Workaround**: Use SQL CTEs directly or repeat queries
-
-#### Indentation-Based Syntax ❌
-- **Status**: ❌ Not Implemented
-- **Missing**: Multi-line query support
-- **Current**: Single-line queries only
-- **Priority**: LOW
-- **Impact**: Queries must be on one line
-- **Workaround**: Write queries on single line
-
-#### Schema Resolution ❌
-- **Status**: ❌ Not Implemented
-- **Missing**:
-  - FK inference
-  - Plural/singular handling
-  - Automatic joins
-  - Default time fields
-- **Priority**: LOW
-- **Dependencies**: Model metadata system
-- **Impact**: Must specify all relationships explicitly
+### 4. Reverse Compiler (`asql/reverse_compiler.py`)
+SQL → ASQL translation:
+- Converts SQL back to ASQL syntax
+- Useful for migration and learning
 
 ---
 
-## 📊 Feature Completion Matrix
+## Implemented Features
 
-| Feature | Status | Tests | Priority | Notes |
-|---------|--------|-------|----------|-------|
-| FROM | ✅ Complete | ✅ | - | Foundation |
-| WHERE | ✅ Complete | ✅ | - | All operators working |
-| SELECT | ✅ Complete | ✅ | - | Basic selection |
-| GROUP BY | ✅ Complete | ✅ | - | All aggregations |
-| SORT | ✅ Complete | ✅ | - | With function calls |
-| TAKE | ✅ Complete | ✅ | - | Basic limiting |
-| Comparison Ops | ✅ Complete | ✅ | - | All 6 operators |
-| NULL Checks | ✅ Complete | ✅ | - | `is null`, `is not null` |
-| Logical Ops | ✅ Complete | ✅ | - | `and`, `or`, `not` |
-| IN/NOT IN | ✅ Complete | ✅ | - | Membership |
-| Parentheses | ✅ Complete | ✅ | - | Expression grouping |
-| Arithmetic Ops | ❌ Missing | ❌ | HIGH | `+`, `-`, `*`, `/`, `%` |
-| String Matching | ❌ Missing | ❌ | MEDIUM | Design ready |
-| JOIN | ❌ Missing | ❌ | MEDIUM | Explicit joins |
-| SET/CTEs | ❌ Missing | ❌ | MEDIUM | Variable support |
-| Multi-line | ❌ Missing | ❌ | LOW | Indentation syntax |
-| Schema Res | ❌ Missing | ❌ | LOW | FK inference |
+### Core Pipeline Operators ✅
 
----
-
-## 🎯 Implementation Roadmap
-
-### Immediate Next Steps (High Priority)
-1. **Arithmetic Operators** - Enable calculations
-   - Estimated effort: Medium
-   - Dependencies: Expression parser enhancement
-   - Tests needed: ~10-15 tests
-
-### Short Term (Medium Priority)
-2. **String Matching** - Intuitive LIKE replacement
-   - Estimated effort: Medium
-   - Dependencies: None (design ready)
-   - Tests needed: ~10-15 tests
-
-3. **JOIN** - Multi-table queries
-   - Estimated effort: High
-   - Dependencies: Expression parser for ON conditions
-   - Tests needed: ~15-20 tests
-
-4. **SET/CTEs** - Variable support
-   - Estimated effort: High
-   - Dependencies: Query parsing, variable resolution
-   - Tests needed: ~10-15 tests
-
-### Long Term (Low Priority)
-5. **Multi-line Syntax** - Indentation support
-6. **Schema Resolution** - Automatic FK inference
-7. **Advanced Features** - Functions, nested queries
-
----
-
-## 📈 Progress Summary
-
-### By Phase
-- **Phase 1**: ✅ 100% Complete (6/6 features)
-- **Phase 2**: ⚠️ 80% Complete (4/5 features) - Missing arithmetic
-- **Phase 3**: ❌ 0% Complete (0/4 features)
-
-### By Category
-- **Core Operators**: ✅ 100% (6/6)
-- **Expressions**: ⚠️ 80% (4/5) - Missing arithmetic
-- **Advanced**: ❌ 0% (0/4)
-
-### Overall
-- **Implemented**: 10 major features
-- **Missing**: 5 major features
-- **Completion**: ~67% of planned features
-
----
-
-## 🔍 Detailed Feature Status
-
-### ✅ Working Examples
-
-```asql
-# All of these work:
+```python
+# FROM
 from users
+
+# WHERE
 from users where status == "active"
 from users where age >= 18 and email is not null
-from users where status in ("active", "pending")
-from users where (status == "active" or status == "pending") and age >= 18
-from users group by country ( # as total_users )
-from sales group by region ( sum(amount) as revenue, # as orders )
-from users sort -updated_at
-from users sort -month(created_at), name
+
+# SELECT
+from users select name, email, created_at
+
+# GROUP BY with block syntax
+from users group by country ( # as total, avg(age) as avg_age )
+
+# JOIN
+from orders join users on orders.user_id == users.id
+from users left join orders on users.id == orders.user_id
+
+# ORDER BY / SORT
+from users sort -created_at, name
+from users order by -total_users
+
+# LIMIT / TAKE
 from users take 10
+from users limit 100
 ```
 
-### ❌ Not Working Examples
+### Expressions ✅
 
-```asql
-# Arithmetic - NOT IMPLEMENTED
-from users where age + 5 >= 18
-from sales select amount * quantity as total
+```python
+# Arithmetic
+from sales where amount * quantity > 100
+from users select age + 5 as adjusted_age
 
-# String matching - NOT IMPLEMENTED
+# COALESCE (??)
+from users select name ?? "Unknown" as display_name
+from users select a ?? b ?? c ?? "default" as value
+
+# Type casting (::)
+from users select created_at::DATE as signup_date
+from events select timestamp::TIMESTAMP as event_time
+
+# Comparison
+from users where age >= 18 and status != "inactive"
+from users where email is not null
+from users where status in ("active", "pending")
+```
+
+### Date & Time ✅
+
+```python
+# Date literals
+from orders where order_date >= @2024-01-01
+
+# Relative dates
+from orders where created_at >= 7 days ago
+from tasks where due_date <= 3 days from now
+
+# Date arithmetic
+from orders select order_date + 7 days as estimated_delivery
+
+# Date functions
+from events group by year(created_at), month(created_at) ( # as count )
+from users select day_of_week(created_at) as dow
+
+# Time since/until patterns
+from users select days_since_created_at as account_age
+from tasks select days_until_due_date as days_remaining
+
+# Date spine
+from date_spine(start = "2024-01-01", end = today(), grain = day)
+```
+
+### Window Functions ✅
+
+```python
+# per command - deduplication
+from orders per customer_id first by -order_date  # Most recent per customer
+from orders per customer_id last by order_date    # First order per customer
+
+# per command - ranking
+from employees per department rank by -salary
+from employees per department dense rank by -salary
+from orders per customer_id number by -order_date as order_num
+
+# Standalone ranking (no partition)
+from events number by -timestamp
+from scores rank by -score
+
+# QUALIFY
+from orders select *, row_number() over (partition by customer_id order by -order_date) as rn qualify rn == 1
+
+# DISTINCT ON
+from orders distinct on (customer_id) sort customer_id, -order_date
+
+# prior() / next()
+from sales sort month select month, revenue, prior(revenue) as prev_month
+
+# Running aggregates
+from transactions sort date select running_sum(amount) as cumulative
+
+# Rolling aggregates
+from daily_sales sort date select rolling_avg(revenue, 7) as seven_day_avg
+
+# first() / last() with order
+from orders select first(order_id order by order_date) as first_order
+
+# arg_max / arg_min
+from orders select arg_max(order_id, order_date) as latest_order_id
+```
+
+### CTEs & Variables ✅
+
+```python
+# set
+set active_users = from users where status == "active"
+from active_users group by country ( # as total )
+
+# with
+with active_users = from users where status == "active"
+from active_users select *
+
+# stash as (mid-pipeline)
+from users
+where status == "active"
+stash as active_users
+group by country ( # as total )
+
+# Multiple CTEs
+set base = from users where is_premium
+set by_country = from base group by country ( # as total )
+from by_country sort -total take 10
+```
+
+### Utility Functions ✅
+
+```python
+# safe_divide - returns NULL on divide-by-zero
+from metrics select safe_divide(revenue, users) as revenue_per_user
+
+# key - surrogate key generation
+from orders select key(user_id, order_id) as order_key
+```
+
+---
+
+## Not Implemented
+
+### String Matching
+```python
+# NOT WORKING
 from users where email contains "@gmail.com"
 from users where name starts with "John"
-
-# JOIN - NOT IMPLEMENTED
-from users join orders on users.id == orders.user_id
-
-# CTEs - NOT IMPLEMENTED
-set active = from users where status == "active"
-from active group by country ( # as total_users )
+from users where email ends with ".com"
 ```
+**Workaround**: Use SQL LIKE directly: `where email like '%@gmail.com%'`
+
+### Conditional Expressions (when)
+```python
+# NOT WORKING
+from users select when status is "active" then 1 otherwise 0 as active_flag
+```
+**Workaround**: Use SQL CASE: `case when status = 'active' then 1 else 0 end`
+
+### Natural Language Aggregates
+```python
+# NOT WORKING
+# of Users by country
+Sum of revenue by region
+```
+**Workaround**: Use explicit: `from users group by country ( # as total )`
+
+### Column Operators
+```python
+# NOT WORKING
+from users except email, phone
+from users rename id as user_id
+from users prefix user_
+```
+**Workaround**: Explicitly list columns in SELECT
+
+### Deduplicate Operator
+```python
+# NOT WORKING
+from events deduplicate by user_id order by -created_at
+```
+**Workaround**: Use `per user_id first by -created_at`
+
+### Pivot/Unpivot
+```python
+# NOT WORKING
+from sales pivot amount by category
+```
+**Workaround**: Write SQL pivot queries directly
+
+### Fill/Gap Filling
+```python
+# NOT WORKING
+from orders group by month(created_at) ( sum(amount) as revenue ) fill month
+```
+**Workaround**: Join with date_spine manually
+
+### Safe Cast
+```python
+# NOT WORKING
+from users select value::integer? as safe_value
+```
+**Workaround**: Use database-specific TRY_CAST/SAFE_CAST
 
 ---
 
-## 🐛 Known Issues
+## Test Files
 
-1. **Edge Cases** (2 failing tests):
-   - `take 0` - Generates valid SQL but unusual
-   - Empty aggregation block - Needs better error or allow empty
+| File | Tests | Coverage |
+|------|-------|----------|
+| test_arithmetic.py | 16 | Arithmetic operators |
+| test_basic.py | 2 | Import and setup |
+| test_cast.py | 14 | Type casting |
+| test_coalesce.py | 6 | COALESCE operator |
+| test_code_quality.py | 7 | Code quality checks |
+| test_compiler.py | 37 | Core compilation |
+| test_comprehensive.py | 55 | Comprehensive queries |
+| test_dialect.py | 36 | ASQL dialect |
+| test_edge_cases.py | 30 | Boundary conditions |
+| test_error_messages.py | 10 | Error handling |
+| test_example_datasets.py | 18 | Real-world patterns |
+| test_fivetran_examples.py | 10 | Fivetran query patterns |
+| test_fivetran_examples_compilation.py | 38 | Compilation tests |
+| test_integration.py | 14 | SQLGlot integration |
+| test_join.py | 12 | JOIN operations |
+| test_pipeline_cte.py | 8 | Pipeline/CTE handling |
+| test_preparser.py | 43 | Pre-parser transformations |
+| test_reverse_translation.py | 14 | SQL→ASQL |
+| test_store_as.py | 8 | stash as functionality |
+| test_window_utils.py | 41 | Window functions |
+| test_with_cte.py | 7 | WITH CTEs |
 
-2. **Limitations**:
-   - Single-line queries only
-   - No arithmetic operations
-   - No string matching (use SQL LIKE)
-   - No JOINs
-   - No CTEs/variables
+**Total**: 434 tests
 
 ---
 
-## 📝 Test Coverage
+## File Structure
 
-- **Total Tests**: 182+
-- **Passing**: 182+
-- **Failing**: 0 ✅
-- **Coverage Areas**:
-  - ✅ All implemented features
-  - ✅ Edge cases
-  - ✅ Error handling
-  - ✅ SQL generation quality
-  - ✅ Dialect support
-  - ✅ Real-world scenarios
+```
+asql/
+├── __init__.py          # Public API (compile, reverse_compile)
+├── preparser.py         # ASQL structural transformations (~1200 lines)
+├── dialect.py           # SQLGlot ASQL dialect (~100 lines)
+├── compiler.py          # Main compiler (~150 lines)
+├── reverse_compiler.py  # SQL→ASQL translation (~200 lines)
+└── errors.py            # Error classes (~50 lines)
 
----
-
-## 🚀 Next Implementation Priority
-
-1. **Arithmetic Operators** (HIGH) - Most requested missing feature
-2. **String Matching** (MEDIUM) - Design ready, common use case
-3. **JOIN** (MEDIUM) - Essential for multi-table queries
-4. **SET/CTEs** (MEDIUM) - Useful for complex queries
+tests/
+├── __init__.py
+├── fixtures.py          # Shared test data
+└── test_*.py           # 21 test files
+```
