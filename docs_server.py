@@ -627,7 +627,8 @@ if __name__ == '__main__':
     static_dir.mkdir(exist_ok=True)
     
     # Get port from environment variable or use default
-    port = int(os.environ.get('DOCS_PORT', 8000))
+    # Using 73137 (approximate SELECT on phone keypad: 7=S, 3=E, 1=L, 3=E, 7=T) - if it conflicts, we'll find an alternative
+    port = int(os.environ.get('DOCS_PORT', 73137))
     
     # Try to find an available port if default is in use
     def find_free_port(start_port):
@@ -650,7 +651,7 @@ if __name__ == '__main__':
         except OSError:
             # Port is in use, find alternative
             print(f"Port {port} is already in use. Looking for alternative port...")
-            alt_port = find_free_port(8001)
+            alt_port = find_free_port(73138)
             if alt_port:
                 port = alt_port
                 print(f"Using port {port} instead.")
