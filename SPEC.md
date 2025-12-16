@@ -23,8 +23,34 @@ ASQL (Analytic SQL, pronounced "Ask-el") is a modern, pipeline-based query langu
 - **Standards-based inference**: Smart behaviors are convention-driven, not magical. We assume standardized naming (e.g., `created_at` for timestamps), proper foreign keys, and good modeling practices.
 - **Readable and composable**: Short, expressive, indentation-based pipelines
 - **Case-safe**: Works seamlessly with camelCase, snake_case, PascalCase, and any naming convention
+- **Flexible syntax**: Spaces and underscores are interchangeable in function/keyword contexts (see below)
 - **Portable**: Transpiles to ANSI SQL or specific dialects via SQLGlot
 - **Inspectable**: Every ASQL query can show its generated SQL, plan, and metrics
+
+### Syntactic Flexibility: Underscores and Spaces
+
+In function and keyword contexts, **underscores and spaces are interchangeable**. This allows users to write in whatever style feels natural - from explicit function calls to natural language.
+
+```asql
+-- All of these are EQUIVALENT:
+day_of_week(created_at)     -- Explicit function call
+day_of_week_created_at      -- Shorthand pattern
+day of week created_at      -- Natural language
+```
+
+**Important**: This applies to function names and keywords, NOT to column names. Column names must match exactly:
+- ✅ `created_at` matches column `created_at`
+- ❌ `created at` does NOT match (column names are literal)
+
+This creates a spectrum from "programmer style" to "analyst style":
+
+| Style | Example | Audience |
+|-------|---------|----------|
+| Explicit | `sum(revenue)` | Developers |
+| Shorthand | `sum_revenue` | Power users |
+| Natural | `sum revenue` | Business analysts |
+
+All three produce identical SQL output.
 
 ---
 
@@ -360,22 +386,36 @@ Total of amount as revenue
 Sum amount as revenue
 Total amount as revenue
 
+# Shorthand patterns (all equivalent, produce column total_revenue):
+sum(revenue)
+sum_revenue
+sum revenue
+total(revenue)
+total_revenue
+total revenue
+
 # In group by
 from sales
   group by region (
-    total amount as revenue
-    -- or: sum of amount as revenue
+    total revenue
+    -- or: sum revenue
   )
 ```
 
 ### 5.4 Average Aggregation
 
-Multiple natural language forms for averages:
+`avg` and `average` are interchangeable (both compile to `AVG()`):
 
 ```asql
 # Standard syntax
 avg(Users.age) as avg_age
 average(Users.age) as avg_age
+
+# Shorthand patterns (all equivalent):
+avg(price)
+avg_price
+average(price)
+average_price
 
 # Natural language syntax
 Avg Users.age as avg_age
@@ -388,7 +428,30 @@ Avg(Users.age + 3) as adjusted_age
 Average of Users.age + 3 as adjusted_age
 ```
 
-### 5.5 Natural Language Philosophy
+### 5.5 Function Aliases
+
+ASQL provides natural language aliases for common functions:
+
+| Alias | SQL Function | Example |
+|-------|--------------|---------|
+| `total` | `SUM` | `total revenue` → `SUM(revenue)` |
+| `average` | `AVG` | `average price` → `AVG(price)` |
+| `maximum` | `MAX` | `maximum amount` → `MAX(amount)` |
+| `minimum` | `MIN` | `minimum amount` → `MIN(amount)` |
+
+These work with all syntax styles:
+```asql
+# All equivalent:
+total(revenue)
+total_revenue
+total revenue
+
+maximum(sale_date)
+maximum_sale_date
+maximum sale_date
+```
+
+### 5.6 Natural Language Philosophy
 
 ASQL encourages natural language expressions. The `of` keyword can replace parentheses, making queries read like questions:
 
@@ -405,7 +468,7 @@ ASQL encourages natural language expressions. The `of` keyword can replace paren
 
 This makes ASQL queries feel like asking questions rather than writing code.
 
-### 5.6 Contextual Aggregates
+### 5.7 Contextual Aggregates
 
 When grouping, aggregates are computed per group:
 
