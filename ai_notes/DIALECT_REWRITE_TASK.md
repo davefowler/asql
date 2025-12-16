@@ -1,8 +1,53 @@
 # Task: Implement ASQL as SQLGlot Dialect
 
 **Created**: December 2025  
-**Status**: Ready for implementation  
-**Priority**: High
+**Status**: Core implementation complete (403/434 tests passing)  
+**Priority**: Medium (window utilities remaining)
+
+---
+
+## Implementation Status (December 2025)
+
+### Completed ✓
+- Pre-parser (`asql/preparser.py`) - ~800 lines
+  - FROM-first transformation
+  - Pipeline operators
+  - Aggregate blocks with function calls in GROUP BY
+  - Stash as (CTEs) with continuation support
+  - Natural aggregates (sum amount, avg of price, etc.)
+  - Date expressions (N days ago, date arithmetic)
+  - Sort → ORDER BY, Take → LIMIT
+  - Coalesce operator (??)
+  - DESC prefix (-column)
+  - Count shorthand (#)
+  - WITH/SET CTE syntax
+  - Comment preservation
+  - Underscore/space normalization for functions
+
+- ASQL Dialect (`asql/dialect.py`) - ~200 lines
+  - Custom tokenizer for ASQL keywords
+  - Parser extensions for ASQL functions
+  - Generator stub (uses target dialect)
+
+- Updated compiler (`asql/compiler.py`)
+  - Three-stage pipeline: preparse → SQLGlot parse → generate
+  - Error handling with context
+
+- New tests
+  - `tests/test_preparser.py` - 40 tests
+  - `tests/test_dialect.py` - 37 tests
+
+### Remaining (Window Utilities)
+- Prior/Next functions
+- Running aggregates (running_sum, running_avg)
+- Rolling aggregates (rolling_avg, rolling_sum)
+- First/Last functions with ORDER BY
+- arg_max/arg_min functions
+- Window functions with OVER clause
+
+### Test Results
+- **403 passed, 31 failed**
+- All failures in `test_window_utils.py` (advanced window functions)
 
 ---
 
