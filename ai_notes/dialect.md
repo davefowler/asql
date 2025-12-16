@@ -937,16 +937,15 @@ class ClickHouse(Dialect):
 
 ## 13. SPEC.md Updates ✅ COMPLETED
 
-The following changes have been made to SPEC.md:
+The following changes have been made to `docs/spec.md`:
 
 | Change | Status |
 |--------|--------|
-| `==` → `=` (also accept `==`) | ✅ Done |
-| `\|\|` → `??` for COALESCE | ✅ Done |
-| Remove `with x = ...` CTE syntax | ✅ Done |
-| Remove `with x as ...` CTE syntax | ✅ Done |
-| Remove `sort`, use `order by` | ✅ Done |
-| Remove `take`, use `limit` | ✅ Done |
+| `=` as primary equality (also accept `==`) | ✅ Done |
+| `??` for COALESCE (not `\|\|`) | ✅ Done |
+| `set` for CTEs (not `with x = ...`) | ✅ Done |
+| `order by` (not `sort`) | ✅ Done |
+| `limit` (not `take`) | ✅ Done |
 
 **Rationale for `??` over `||`:**
 - JavaScript uses `??` for nullish coalescing (not `||`)
