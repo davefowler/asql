@@ -121,7 +121,11 @@ class ASQLPreParser:
         result = self._transform_since_until_patterns(result)
         result = self._transform_per_commands(result)
         result = self._transform_aggregate_blocks(result)
+        result = self._transform_multiple_where(result)  # Combine multiple WHERE clauses
         result = self._transform_from_first(result)
+        result = self._transform_distinct_on(result)  # Move DISTINCT ON to after SELECT
+        result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
+        result = self._transform_qualify_clause(result)  # qualify rn == 1
         result = self._transform_coalesce_operator(result)  # After FROM-first for proper structure
         result = self._normalize_function_spaces(result)
         result = self._transform_equality_operators(result)
@@ -412,37 +416,67 @@ class ASQLPreParser:
         
         order by -created_at → order by created_at DESC
         order by -amount, name → order by amount DESC, name
+        
+        Note: Only transforms ORDER BY clauses that are NOT inside parentheses
+        (to avoid transforming ORDER BY inside OVER clauses).
         """
         result = text
         
-        # Find ORDER BY clause
+        # Find all ORDER BY clauses and check if they're inside parentheses
         pattern = r'\border\s+by\s+'
-        match = re.search(pattern, result, re.IGNORECASE)
         
-        if not match:
-            return result
+        # Track parenthesis depth at each position
+        paren_depth = 0
+        paren_depths = []
+        for char in result:
+            if char == '(':
+                paren_depth += 1
+            elif char == ')':
+                paren_depth -= 1
+            paren_depths.append(paren_depth)
         
-        start = match.end()
+        # Find ORDER BY that is NOT inside parentheses
+        for match in re.finditer(pattern, result, re.IGNORECASE):
+            # Check if this ORDER BY is inside parentheses
+            if paren_depths[match.start()] > 0:
+                # Inside parens (e.g., OVER clause) - transform the -col there too
+                # but only within the parenthesis
+                continue
+            
+            start = match.end()
+            
+            # Find end of ORDER BY clause (before LIMIT, another clause, or end)
+            remaining = result[start:]
+            clause_end = len(remaining)
+            for kw in ['limit', 'offset', 'having', 'union', 'except', 'intersect', 'qualify']:
+                kw_match = re.search(rf'\b{kw}\b', remaining, re.IGNORECASE)
+                if kw_match and kw_match.start() < clause_end:
+                    clause_end = kw_match.start()
+            
+            order_clause = remaining[:clause_end]
+            
+            # Transform -col to col DESC
+            def transform_col(col_match: re.Match) -> str:
+                col = col_match.group(1)
+                return f"{col} DESC"
+            
+            transformed = re.sub(r'-\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)', transform_col, order_clause)
+            
+            # Rebuild result
+            result = result[:match.start()] + match.group(0) + transformed + remaining[clause_end:]
+            
+            # Only process one ORDER BY at the top level
+            break
         
-        # Find end of ORDER BY clause (before LIMIT, another clause, or end)
-        remaining = result[start:]
-        clause_end = len(remaining)
-        for kw in ['limit', 'offset', 'having', 'union', 'except', 'intersect', 'qualify']:
-            kw_match = re.search(rf'\b{kw}\b', remaining, re.IGNORECASE)
-            if kw_match and kw_match.start() < clause_end:
-                clause_end = kw_match.start()
+        # Now handle ORDER BY inside OVER clauses - transform -col to col DESC
+        # Pattern: OVER (...ORDER BY -col...)
+        def transform_over_order(match: re.Match) -> str:
+            over_content = match.group(1)
+            # Transform -col to col DESC inside the OVER clause
+            transformed = re.sub(r'-\s*([a-zA-Z_][a-zA-Z0-9_]*)', r'\1 DESC', over_content)
+            return f"OVER ({transformed})"
         
-        order_clause = remaining[:clause_end]
-        
-        # Transform -col to col DESC
-        def transform_col(col_match: re.Match) -> str:
-            col = col_match.group(1)
-            return f"{col} DESC"
-        
-        transformed = re.sub(r'-\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)', transform_col, order_clause)
-        
-        # Rebuild result
-        result = result[:match.start()] + match.group(0) + transformed + remaining[clause_end:]
+        result = re.sub(r'\bover\s*\(([^)]+)\)', transform_over_order, result, flags=re.IGNORECASE)
         
         return result
     
@@ -607,8 +641,22 @@ class ASQLPreParser:
         
         result = re.sub(pattern, transform_per_first_last, result, flags=re.IGNORECASE)
         
-        # per col number by ... [as alias] → adds ROW_NUMBER() column
-        pattern = r'\bper\s+([a-zA-Z_][a-zA-Z0-9_,\s]*)\s+(number|rank|dense_rank|dense\s+rank)\s+by\s+(-?)([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
+        # per col dense rank by ... [as alias] → DENSE_RANK() - check for "dense rank" FIRST
+        pattern = r'\bper\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)\s+dense\s+rank\s+by\s+(-?)([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
+        
+        def transform_per_dense_rank(match: re.Match) -> str:
+            partition = match.group(1).strip()
+            desc_prefix = match.group(2)
+            order_col = match.group(3)
+            alias = match.group(4) or 'dense_rank'
+            
+            order_dir = "DESC" if desc_prefix else "ASC"
+            return f", DENSE_RANK() OVER (PARTITION BY {partition} ORDER BY {order_col} {order_dir}) AS {alias}"
+        
+        result = re.sub(pattern, transform_per_dense_rank, result, flags=re.IGNORECASE)
+        
+        # per col number/rank by ... [as alias] → adds window function column
+        pattern = r'\bper\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)*)\s+(number|rank|dense_rank)\s+by\s+(-?)([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
         
         def transform_per_number(match: re.Match) -> str:
             partition = match.group(1).strip()
@@ -647,6 +695,78 @@ class ASQLPreParser:
             return f", ROW_NUMBER() OVER (ORDER BY {order_col} {order_dir}) AS {alias}"
         
         result = re.sub(pattern, transform_standalone_number, result, flags=re.IGNORECASE)
+        
+        # Standalone: dense rank by ... [as alias] (no partition) - MUST COME BEFORE "rank by"
+        pattern = r'\bdense\s+rank\s+by\s+(-?)([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
+        
+        def transform_standalone_dense_rank(match: re.Match) -> str:
+            desc_prefix = match.group(1)
+            order_col = match.group(2)
+            alias = match.group(3) or 'dense_rank'
+            
+            order_dir = "DESC" if desc_prefix else "ASC"
+            return f", DENSE_RANK() OVER (ORDER BY {order_col} {order_dir}) AS {alias}"
+        
+        result = re.sub(pattern, transform_standalone_dense_rank, result, flags=re.IGNORECASE)
+        
+        # Standalone: rank by ... [as alias] (no partition) - AFTER dense rank
+        pattern = r'\brank\s+by\s+(-?)([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
+        
+        def transform_standalone_rank(match: re.Match) -> str:
+            desc_prefix = match.group(1)
+            order_col = match.group(2)
+            alias = match.group(3) or 'rank'
+            
+            order_dir = "DESC" if desc_prefix else "ASC"
+            return f", RANK() OVER (ORDER BY {order_col} {order_dir}) AS {alias}"
+        
+        result = re.sub(pattern, transform_standalone_rank, result, flags=re.IGNORECASE)
+        
+        # first(col order by expr) → FIRST_VALUE(col) OVER (ORDER BY expr ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+        pattern = r'\bfirst\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+order\s+by\s+(-?)([a-zA-Z_][a-zA-Z0-9_]*)\s*\)'
+        
+        def transform_first(match: re.Match) -> str:
+            col = match.group(1)
+            desc_prefix = match.group(2)
+            order_col = match.group(3)
+            order_dir = "DESC" if desc_prefix else "ASC"
+            return f"FIRST_VALUE({col}) OVER (ORDER BY {order_col} {order_dir} ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)"
+        
+        result = re.sub(pattern, transform_first, result, flags=re.IGNORECASE)
+        
+        # last(col order by expr) → FIRST_VALUE(col) OVER (ORDER BY expr DESC/ASC ROWS ...)
+        pattern = r'\blast\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+order\s+by\s+(-?)([a-zA-Z_][a-zA-Z0-9_]*)\s*\)'
+        
+        def transform_last(match: re.Match) -> str:
+            col = match.group(1)
+            desc_prefix = match.group(2)
+            order_col = match.group(3)
+            # Reverse the order for last
+            order_dir = "ASC" if desc_prefix else "DESC"
+            return f"FIRST_VALUE({col}) OVER (ORDER BY {order_col} {order_dir} ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)"
+        
+        result = re.sub(pattern, transform_last, result, flags=re.IGNORECASE)
+        
+        # arg_max(return_col, value_col) → value at max - complex window function
+        # Simplified: becomes FIRST_VALUE with ORDER BY value_col DESC
+        pattern = r'\barg_max\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*,\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)'
+        
+        def transform_arg_max(match: re.Match) -> str:
+            return_col = match.group(1)
+            value_col = match.group(2)
+            return f"FIRST_VALUE({return_col}) OVER (ORDER BY {value_col} DESC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)"
+        
+        result = re.sub(pattern, transform_arg_max, result, flags=re.IGNORECASE)
+        
+        # arg_min(return_col, value_col) → value at min
+        pattern = r'\barg_min\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*,\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\)'
+        
+        def transform_arg_min(match: re.Match) -> str:
+            return_col = match.group(1)
+            value_col = match.group(2)
+            return f"FIRST_VALUE({return_col}) OVER (ORDER BY {value_col} ASC ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)"
+        
+        result = re.sub(pattern, transform_arg_min, result, flags=re.IGNORECASE)
         
         return result
     
@@ -794,6 +914,30 @@ class ASQLPreParser:
         
         return result
     
+    def _transform_multiple_where(self, text: str) -> str:
+        """
+        Combine multiple WHERE clauses into a single WHERE with AND.
+        
+        from users where status == "active" where age >= 18
+        → from users where status == "active" AND age >= 18
+        """
+        result = text
+        
+        # Find all WHERE clauses and combine them
+        # Pattern: where <condition1> where <condition2>
+        while True:
+            # Find two consecutive WHERE clauses
+            pattern = r'\bwhere\s+(.+?)\s+where\s+'
+            match = re.search(pattern, result, re.IGNORECASE)
+            if not match:
+                break
+            
+            first_condition = match.group(1).strip()
+            # Replace "where X where Y" with "where X AND Y"
+            result = result[:match.start()] + f"where {first_condition} AND " + result[match.end():]
+        
+        return result
+    
     def _transform_from_first(self, text: str) -> str:
         """
         Add SELECT * if needed for FROM-first queries.
@@ -807,18 +951,174 @@ class ASQLPreParser:
         if not re.match(r'^\s*(select|with|insert|update|delete|create|alter|drop)\b', result, re.IGNORECASE):
             if re.match(r'^\s*from\b', result, re.IGNORECASE):
                 # Check if SELECT appears later (for "from x select y" syntax)
-                # Use word boundary \b to ensure we only match "order" not "orders"
-                select_match = re.search(r'\bselect\s+(.+?)(?:\s+(?:where|group\s+by|order\s+by|limit|having)\b|\s*$)', result, re.IGNORECASE)
+                select_match = re.search(r'\bselect\s+', result, re.IGNORECASE)
                 if select_match:
-                    # Move SELECT to front
-                    select_clause = select_match.group(1).strip()
-                    # Remove the select from its current position
+                    # Find the extent of the SELECT clause
+                    # We need to find where the SELECT clause ends, which is at
+                    # a keyword like WHERE, GROUP BY, LIMIT, QUALIFY, etc.
+                    # But we need to skip keywords inside parentheses (like in OVER clauses)
+                    select_start = select_match.end()
+                    select_end = len(result)
+                    
+                    paren_depth = 0
+                    i = select_start
+                    while i < len(result):
+                        char = result[i]
+                        if char == '(':
+                            paren_depth += 1
+                        elif char == ')':
+                            paren_depth -= 1
+                        elif paren_depth == 0:
+                            # Check for clause keywords at this position
+                            remaining = result[i:].lower()
+                            for kw in ['where ', 'group by ', 'order by ', 'limit ', 'having ', 'qualify ']:
+                                if remaining.startswith(kw):
+                                    select_end = i
+                                    break
+                            if select_end != len(result):
+                                break
+                        i += 1
+                    
+                    select_clause = result[select_start:select_end].strip()
                     before_select = result[:select_match.start()]
-                    after_select = result[select_match.end():]
+                    after_select = result[select_end:]
                     result = f"SELECT {select_clause} {before_select}{after_select}"
                 else:
                     # Add SELECT * at front
                     result = "SELECT * " + result
+        
+        return result
+    
+    def _transform_distinct_on(self, text: str) -> str:
+        """
+        Transform ASQL distinct on (cols) to SQL DISTINCT ON.
+        
+        The distinct on clause should be moved to after SELECT.
+        """
+        result = text
+        
+        # Pattern: distinct on (cols) anywhere in query
+        pattern = r'\bdistinct\s+on\s*\(([^)]+)\)'
+        match = re.search(pattern, result, re.IGNORECASE)
+        
+        if match:
+            cols = match.group(1).strip()
+            # Remove distinct on from its current position
+            before = result[:match.start()]
+            after = result[match.end():]
+            result = before.strip() + " " + after.strip()
+            
+            # Add DISTINCT ON after SELECT
+            result = re.sub(r'\bSELECT\s+', f'SELECT DISTINCT ON ({cols}) ', result, count=1, flags=re.IGNORECASE)
+        
+        return result
+    
+    def _transform_window_functions(self, text: str) -> str:
+        """
+        Transform ASQL window functions to SQL window functions.
+        
+        prior(col) → LAG(col, 1) OVER (ORDER BY ...)
+        prior(col, n) → LAG(col, n) OVER (ORDER BY ...)
+        next(col) → LEAD(col, 1) OVER (ORDER BY ...)
+        next(col, n) → LEAD(col, n) OVER (ORDER BY ...)
+        running_sum(col) → SUM(col) OVER (ORDER BY ... ROWS UNBOUNDED PRECEDING)
+        running_avg(col) → AVG(col) OVER (ORDER BY ... ROWS UNBOUNDED PRECEDING)
+        running_count(*) → COUNT(*) OVER (ORDER BY ... ROWS UNBOUNDED PRECEDING)
+        rolling_avg(col, n) → AVG(col) OVER (ORDER BY ... ROWS BETWEEN n-1 PRECEDING AND CURRENT ROW)
+        rolling_sum(col, n) → SUM(col) OVER (ORDER BY ... ROWS BETWEEN n-1 PRECEDING AND CURRENT ROW)
+        """
+        result = text
+        
+        # Extract ORDER BY clause for window frame
+        order_match = re.search(r'\bORDER\s+BY\s+([^,\s]+(?:\s+(?:ASC|DESC))?)', result, re.IGNORECASE)
+        order_clause = order_match.group(0) if order_match else 'ORDER BY 1'
+        
+        # Transform prior(col) and prior(col, n) to LAG
+        def replace_prior(match: re.Match) -> str:
+            args = match.group(1).strip()
+            if ',' in args:
+                col, offset = [a.strip() for a in args.split(',', 1)]
+                return f"LAG({col}, {offset}) OVER ({order_clause})"
+            else:
+                return f"LAG({args}, 1) OVER ({order_clause})"
+        
+        result = re.sub(r'\bprior\s*\(\s*([^)]+)\s*\)', replace_prior, result, flags=re.IGNORECASE)
+        
+        # Transform next(col) and next(col, n) to LEAD
+        def replace_next(match: re.Match) -> str:
+            args = match.group(1).strip()
+            if ',' in args:
+                col, offset = [a.strip() for a in args.split(',', 1)]
+                return f"LEAD({col}, {offset}) OVER ({order_clause})"
+            else:
+                return f"LEAD({args}, 1) OVER ({order_clause})"
+        
+        result = re.sub(r'\bnext\s*\(\s*([^)]+)\s*\)', replace_next, result, flags=re.IGNORECASE)
+        
+        # Transform running_sum(col) to SUM with window frame
+        def replace_running_sum(match: re.Match) -> str:
+            col = match.group(1).strip()
+            return f"SUM({col}) OVER ({order_clause} ROWS UNBOUNDED PRECEDING)"
+        
+        result = re.sub(r'\brunning_sum\s*\(\s*([^)]+)\s*\)', replace_running_sum, result, flags=re.IGNORECASE)
+        
+        # Transform running_avg(col) to AVG with window frame
+        def replace_running_avg(match: re.Match) -> str:
+            col = match.group(1).strip()
+            return f"AVG({col}) OVER ({order_clause} ROWS UNBOUNDED PRECEDING)"
+        
+        result = re.sub(r'\brunning_avg\s*\(\s*([^)]+)\s*\)', replace_running_avg, result, flags=re.IGNORECASE)
+        
+        # Transform running_count(*) to COUNT with window frame
+        def replace_running_count(match: re.Match) -> str:
+            col = match.group(1).strip()
+            return f"COUNT({col}) OVER ({order_clause} ROWS UNBOUNDED PRECEDING)"
+        
+        result = re.sub(r'\brunning_count\s*\(\s*([^)]+)\s*\)', replace_running_count, result, flags=re.IGNORECASE)
+        
+        # Transform rolling_avg(col, n) to AVG with window frame
+        def replace_rolling_avg(match: re.Match) -> str:
+            args = match.group(1).strip()
+            if ',' in args:
+                col, window = [a.strip() for a in args.split(',', 1)]
+                try:
+                    window_size = int(window) - 1
+                except ValueError:
+                    window_size = f"{window} - 1"
+                return f"AVG({col}) OVER ({order_clause} ROWS BETWEEN {window_size} PRECEDING AND CURRENT ROW)"
+            else:
+                return f"AVG({args}) OVER ({order_clause} ROWS UNBOUNDED PRECEDING)"
+        
+        result = re.sub(r'\brolling_avg\s*\(\s*([^)]+)\s*\)', replace_rolling_avg, result, flags=re.IGNORECASE)
+        
+        # Transform rolling_sum(col, n) to SUM with window frame
+        def replace_rolling_sum(match: re.Match) -> str:
+            args = match.group(1).strip()
+            if ',' in args:
+                col, window = [a.strip() for a in args.split(',', 1)]
+                try:
+                    window_size = int(window) - 1
+                except ValueError:
+                    window_size = f"{window} - 1"
+                return f"SUM({col}) OVER ({order_clause} ROWS BETWEEN {window_size} PRECEDING AND CURRENT ROW)"
+            else:
+                return f"SUM({args}) OVER ({order_clause} ROWS UNBOUNDED PRECEDING)"
+        
+        result = re.sub(r'\brolling_sum\s*\(\s*([^)]+)\s*\)', replace_rolling_sum, result, flags=re.IGNORECASE)
+        
+        return result
+    
+    def _transform_qualify_clause(self, text: str) -> str:
+        """
+        Transform ASQL qualify clause to SQL QUALIFY or subquery.
+        
+        qualify rn == 1 → QUALIFY rn = 1
+        """
+        result = text
+        
+        # Transform qualify keyword to QUALIFY (SQL standard for some dialects)
+        # Just uppercase it and fix the equality operator
+        result = re.sub(r'\bqualify\s+', 'QUALIFY ', result, flags=re.IGNORECASE)
         
         return result
     

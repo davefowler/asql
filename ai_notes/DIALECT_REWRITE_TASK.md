@@ -1,53 +1,58 @@
 # Task: Implement ASQL as SQLGlot Dialect
 
 **Created**: December 2025  
-**Status**: Core implementation complete (403/434 tests passing)  
-**Priority**: Medium (window utilities remaining)
+**Status**: ✅ COMPLETE (434/434 tests passing)  
+**Priority**: Done
 
 ---
 
 ## Implementation Status (December 2025)
 
-### Completed ✓
-- Pre-parser (`asql/preparser.py`) - ~800 lines
-  - FROM-first transformation
-  - Pipeline operators
-  - Aggregate blocks with function calls in GROUP BY
-  - Stash as (CTEs) with continuation support
-  - Natural aggregates (sum amount, avg of price, etc.)
-  - Date expressions (N days ago, date arithmetic)
-  - Sort → ORDER BY, Take → LIMIT
-  - Coalesce operator (??)
-  - DESC prefix (-column)
-  - Count shorthand (#)
-  - WITH/SET CTE syntax
-  - Comment preservation
-  - Underscore/space normalization for functions
+### All Features Complete ✓
 
-- ASQL Dialect (`asql/dialect.py`) - ~200 lines
-  - Custom tokenizer for ASQL keywords
-  - Parser extensions for ASQL functions
-  - Generator stub (uses target dialect)
+**Pre-parser (`asql/preparser.py`)** - ~1000 lines
+- FROM-first transformation
+- Pipeline operators (|)
+- Aggregate blocks with function calls in GROUP BY
+- Stash as (CTEs) with continuation support
+- Natural aggregates (sum amount, avg of price, etc.)
+- Date expressions (N days ago, date arithmetic)
+- Sort → ORDER BY, Take → LIMIT
+- Coalesce operator (??)
+- DESC prefix (-column)
+- Count shorthand (#)
+- WITH/SET CTE syntax
+- Comment preservation
+- Underscore/space normalization for functions
+- Multiple WHERE clause combination
+- DISTINCT ON support
+- QUALIFY clause support
+- Window functions:
+  - prior(col) / prior(col, n) → LAG
+  - next(col) / next(col, n) → LEAD
+  - running_sum, running_avg, running_count
+  - rolling_avg, rolling_sum with window size
+  - first(col order by ...) / last(col order by ...)
+  - arg_max / arg_min
+  - per ... first/last/number/rank/dense rank by
+  - Standalone rank by, dense rank by, number by
 
-- Updated compiler (`asql/compiler.py`)
-  - Three-stage pipeline: preparse → SQLGlot parse → generate
-  - Error handling with context
+**ASQL Dialect (`asql/dialect.py`)** - ~200 lines
+- Custom tokenizer for ASQL keywords
+- Parser extensions for ASQL functions
+- Generator stub (uses target dialect)
 
-- New tests
-  - `tests/test_preparser.py` - 40 tests
-  - `tests/test_dialect.py` - 37 tests
+**Updated compiler (`asql/compiler.py`)**
+- Three-stage pipeline: preparse → SQLGlot parse → generate
+- Error handling with context
 
-### Remaining (Window Utilities)
-- Prior/Next functions
-- Running aggregates (running_sum, running_avg)
-- Rolling aggregates (rolling_avg, rolling_sum)
-- First/Last functions with ORDER BY
-- arg_max/arg_min functions
-- Window functions with OVER clause
+**New tests**
+- `tests/test_preparser.py` - 40 tests
+- `tests/test_dialect.py` - 37 tests
 
 ### Test Results
-- **403 passed, 31 failed**
-- All failures in `test_window_utils.py` (advanced window functions)
+- **434 passed, 0 failed**
+- All test suites passing
 
 ---
 
