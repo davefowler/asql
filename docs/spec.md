@@ -49,17 +49,17 @@ Every ASQL query starts with a data source. Transformations can be chained using
 **Indentation-based (preferred, cleaner):**
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 **Pipeline operator (optional, explicit):**
 ```asql
 from users
-| where status == "active"
+| where status = "active"
 | group by country ( # as total_users )
-| sort -total_users
+| order by -total_users
 ```
 
 Both styles are equivalent. Choose based on preference or context.
@@ -100,12 +100,12 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 
 | Operator | Meaning | SQL Equivalent | Example |
 |----------|---------|----------------|---------|
-| `where` | Filter rows | `WHERE` | `where status == "active"` |
+| `where` | Filter rows | `WHERE` | `where status = "active"` |
 | `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
-| `join` | Join datasets | `JOIN` | `join owners on owner_id == owners.id` |
+| `join` | Join datasets | `JOIN` | `join owners on owner_id = owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
-| `sort` | Sort rows | `ORDER BY` | `sort -users` (descending), `sort -updated_at` (descending column) |
-| `take` | Limit rows | `LIMIT` | `take 10` |
+| `order by` | Sort rows | `ORDER BY` | `order by -users` (descending) |
+| `limit` | Limit rows | `LIMIT` | `limit 10` |
 | `set` | Define variable/fragment (CTE) | `WITH ... AS` | `set active = from users \| where is_active` |
 
 ---
@@ -114,18 +114,20 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 
 ### 4.1 Comparison Operators
 
-- `==` - equals
+- `=` - equals (also accepts `==`)
 - `!=` - not equals
 - `<`, `>`, `<=`, `>=` - comparison
 - `is`, `is not` - null checks
 - `in`, `not in` - membership
+
+**Note**: Both `=` and `==` work for equality. `=` is preferred as it's standard SQL, but `==` is accepted for those coming from programming languages.
 
 ### 4.2 Logical Operators
 
 - `and`, `or`, `not` - logical operations
 - `&&` - alternative syntax for `and`
 
-**Note**: `||` is **not** used for logical OR in ASQL. Use the `or` keyword instead. The `||` operator is reserved for COALESCE (see Section 4.6).
+**Note**: Use the `or` keyword for logical OR (not `||`). The `??` operator is used for COALESCE (see Section 4.6).
 
 ### 4.3 Arithmetic Operators
 
@@ -220,9 +222,9 @@ from users where phone matches "^\d{3}-\d{3}-\d{4}$"
 
 **Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim. Should be implemented after arithmetic operators and before advanced features.
 
-### 4.6 COALESCE Operator (`||`)
+### 4.6 COALESCE Operator (`??`)
 
-ASQL uses the `||` operator for COALESCE, providing a cleaner syntax than the function call. This is similar to JavaScript's nullish coalescing, but works with any falsy values (NULL, FALSE, empty strings, etc.).
+ASQL uses the `??` operator for COALESCE (nullish coalescing), providing a cleaner syntax than the function call.
 
 **Syntax:**
 ```asql
@@ -230,111 +232,123 @@ ASQL uses the `||` operator for COALESCE, providing a cleaner syntax than the fu
 coalesce(column, default_value)
 
 # Operator form (preferred)
-column || default_value
+column ?? default_value
 
 # Chained (multiple fallbacks)
-column || fallback1 || fallback2 || "default"
+column ?? fallback1 ?? fallback2 ?? "default"
 ```
 
 **Examples:**
 ```asql
 # Handle NULL values
-from users select name || "Unknown" as display_name
+from users select name ?? "Unknown" as display_name
 
 # Multiple fallbacks
-from products select price || sale_price || 0 as final_price
+from products select price ?? sale_price ?? 0 as final_price
 
 # In WHERE clauses
-from users where not is_deleted || FALSE
+from users where not (is_deleted ?? false)
 
 # With boolean logic
-from orders where status || "pending" == "completed"
+from orders where (status ?? "pending") = "completed"
 ```
 
-**Why `||` for COALESCE?**
+**Why `??` for COALESCE?**
+- JavaScript uses `??` for nullish coalescing (not `||`)
+- `||` in SQL is string concatenation in most dialects - avoids confusion
 - More concise than `coalesce()` function calls
-- Familiar to developers who use `||` for nullish coalescing in JavaScript/TypeScript
-- Chains naturally: `a || b || c` reads as "a, or b, or c"
-- Note: In ASQL, `||` is **not** used for logical OR (use `or` keyword instead) or string concatenation (use `concat()` function)
+- Chains naturally: `a ?? b ?? c` reads as "a, or if null b, or if null c"
 
 **Precedence:**
-The `||` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`==`, `!=`, etc.). This means:
-- `not is_deleted || FALSE` parses as `NOT COALESCE(is_deleted, FALSE)` ✅
-- `status == "active" || "pending"` parses as `COALESCE(status == "active", "pending")` ✅
+The `??` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`=`, `!=`, etc.). Use parentheses for clarity in complex expressions.
 
-### 4.7 Conditional Expressions (CASE)
+### 4.7 Conditional Expressions (`when`)
 
-ASQL uses DuckDB/Spark-style `CASE` syntax, which is cleaner and more concise than SQL-standard syntax:
+ASQL uses `when` for conditional expressions, replacing SQL's verbose `CASE` statement with cleaner, more natural syntax.
 
-**Simple CASE (DuckDB/Spark-style)**:
+**Basic syntax with `is` for equality:**
 ```asql
 from users
-  select 
-    case status
-      when "active" then 1
-      when "pending" then 0
-      else -1
-    end as status_code
+  select
+    name,
+    when status
+      is "active" then "Active User"
+      is "pending" then "Pending"
+      otherwise "Unknown"
+    as status_label
 ```
 
-**Searched CASE (when conditions are complex)**:
+**Implied equality (most concise):**
 ```asql
-from users
-  select 
-    case
-      when status == "active" and created_at > "2024-01-01" then 1
-      when status == "pending" then 0
-      else -1
-    end as status_code
+when status
+  "active" then 1
+  "pending" then 0
+  otherwise -1
 ```
 
-**Benefits of DuckDB/Spark-style**:
-- More concise - expression appears once at the top (for simple CASE)
-- More readable - avoids repeating the expression in each WHEN clause
-- Familiar to users of DuckDB and Spark SQL
-- Consistent indentation makes nested conditions easier to read
-
-**Reverse Compilation**: SQL `CASE` statements are automatically converted to this syntax when converting SQL to ASQL.
-
-**Examples from real queries**:
+**Comparison operators:**
 ```asql
-# Complex business logic
+when age
+  < 4 then "infant"
+  < 12 then "child"
+  < 18 then "teen"
+  otherwise "adult"
+```
+
+**Inequality with `is not`:**
+```asql
+when status
+  is not "deleted" then 1
+  otherwise 0
+```
+
+**Multiple values with `in`:**
+```asql
+when status
+  in ("active", "pending") then "open"
+  in ("completed", "shipped") then "done"
+  otherwise "unknown"
+```
+
+**Searched when (complex conditions):**
+```asql
+when
+  age < 18 and country = "US" then "US Minor"
+  age < 18 then "Minor"
+  otherwise "Adult"
+```
+
+**Complex business logic:**
+```asql
 from opportunity
-  select 
-    case
-      when is_won then "Won"
-      when NOT is_won and is_closed then "Lost"
-      when NOT is_closed and lower(forecast_category) in ("pipeline", "forecast", "bestcase") then "Pipeline"
-      else "Other"
-    end as status
+  select
+    when
+      is_won then "Won"
+      not is_won and is_closed then "Lost"
+      not is_closed and lower(forecast_category) in ("pipeline", "forecast", "bestcase") then "Pipeline"
+      otherwise "Other"
+    as status
 ```
 
-**Natural language alternatives** (future consideration):
-
-**Standard CASE syntax:**
+**In aggregations:**
 ```asql
-select status_label as case
-  when status == "active" then "Active User"
-  when status == "inactive" then "Inactive User"
-  else "Unknown"
-end
+from orders
+  group by customer_id
+  select
+    customer_id,
+    sum(when status is "completed" then 1 otherwise 0) as completed_count,
+    sum(when status is "returned" then amount otherwise 0) as returned_value
 ```
 
-**Natural language alternative:**
-```asql
-select status_label as 
-  if status == "active" then "Active User"
-  else if status == "inactive" then "Inactive User"
-  else "Unknown"
-```
+**Operators supported:**
+- `is` / `=` - equality
+- `is not` / `!=` - inequality
+- `<`, `>`, `<=`, `>=` - comparisons
+- `in (values)` - multiple value match
 
-**Simple if-then-else:**
-```asql
-select is_premium as if plan == "premium" then true else false
-select discount as if amount > 100 then amount * 0.1 else 0
-```
+**Default clause:** Both `else` and `otherwise` are supported (they are aliases).
 
-All three syntaxes compile to standard SQL `CASE` statements. Choose based on readability preference.
+All forms compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
 
 ### 4.8 Type Casting (`::`)
 
@@ -398,6 +412,227 @@ ASQL uses SQL-standard comment syntax:
 - `#` is reserved for count aggregation syntax (see Section 5.2)
 - Better compatibility with SQL tooling and editors
 
+### 4.10 String Functions
+
+ASQL provides clean string manipulation functions.
+
+#### String Concatenation
+
+Use `concat()` for joining strings:
+
+```asql
+from users
+  select concat(first_name, " ", last_name) as full_name
+```
+
+For concatenating values across rows in a GROUP BY, use `string_agg()`:
+
+```asql
+from orders
+  group by customer_id (
+    string_agg(product_name, ", ") as products
+  )
+```
+
+**Note**: `string_agg()` is the standard name used in PostgreSQL, SQL Server, and DuckDB. ASQL compiles to the appropriate dialect (e.g., `GROUP_CONCAT` for MySQL, `LISTAGG` for Snowflake).
+
+#### Substring with Slice Syntax
+
+ASQL supports Python-style slice syntax for extracting substrings:
+
+```asql
+from users
+  select 
+    email[1:5] as email_prefix,        -- characters 1-5
+    email[1:] as from_start,           -- from position 1 to end
+    email[-5:] as last_five,           -- last 5 characters
+    email[3:8] as middle_part          -- characters 3-8
+```
+
+**Slice syntax:**
+- `string[start:end]` - characters from start to end (1-indexed)
+- `string[start:]` - from start to end of string
+- `string[:end]` - from beginning to end position
+- `string[-n:]` - last n characters
+
+The traditional `substring()` function is also supported:
+```asql
+substring(email, 1, 5) as email_prefix
+```
+
+#### String Replacement
+
+Use `replace()` for string substitution:
+
+```asql
+from products
+  select replace(description, "old", "new") as updated_desc
+```
+
+#### String Functions Reference
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `concat(a, b, ...)` | Concatenate strings | `concat(first, " ", last)` |
+| `string_agg(col, sep)` | Aggregate strings with separator | `string_agg(name, ", ")` |
+| `string[start:end]` | Slice substring | `email[1:5]` |
+| `substring(str, pos, len)` | Extract substring | `substring(email, 1, 5)` |
+| `replace(str, old, new)` | Replace occurrences | `replace(text, "a", "b")` |
+| `lower(str)` | Convert to lowercase | `lower(name)` |
+| `upper(str)` | Convert to uppercase | `upper(code)` |
+| `trim(str)` | Remove whitespace | `trim(input)` |
+| `length(str)` | String length | `length(name)` |
+
+### 4.11 Comparison Functions
+
+#### Multi-Value Min/Max
+
+Use `min()` and `max()` with multiple arguments to find the smallest or largest value:
+
+```asql
+from products
+  select 
+    max(price1, price2, price3) as highest_price,
+    min(start_date, end_date) as earliest_date
+```
+
+**SQL alternatives**: `greatest()` and `least()` are also supported for familiarity with SQL:
+
+```asql
+from products
+  select greatest(price1, price2, price3) as highest_price
+```
+
+**Recommendation**: Use `max()` and `min()` as they're more intuitive and consistent with aggregation functions.
+
+**Note**: This is configurable - if you prefer SQL-style `greatest()`/`least()` as the default, this can be adjusted in ASQL settings.
+
+### 4.12 NULL Handling
+
+#### NULLIF Alternative
+
+Instead of SQL's `NULLIF()` function, use the `when` conditional expression:
+
+```asql
+from transactions
+  select 
+    when amount == 0 then null else amount as safe_amount
+```
+
+This is clearer than `nullif(amount, 0)` and consistent with ASQL's conditional syntax.
+
+#### Ternary-Style Conditionals (Future Consideration)
+
+ASQL may add support for concise ternary expressions in the future:
+
+```asql
+-- Potential future syntax (not yet decided)
+amount == 0 ? null : amount           -- JS-style
+null if amount == 0 else amount       -- Python-style
+```
+
+For now, use the `when` syntax which is clear and readable:
+```asql
+when amount == 0 then null else amount
+```
+
+### 4.13 Function Shorthand (Underscore/Space Principle)
+
+ASQL provides flexible syntax for function calls where **underscores and spaces are interchangeable**. This makes queries more natural to write and read.
+
+#### The Core Principle
+
+All of these are equivalent and produce the same result:
+
+```asql
+-- Function call styles (all equivalent):
+sum(amount)           -- explicit function call
+sum_amount            -- underscore shorthand
+sum amount            -- space shorthand
+sum of amount         -- "of" style (natural language)
+```
+
+All produce a column named `sum_amount`.
+
+#### Applies to All Functions
+
+This principle applies universally to:
+
+**Aggregations:**
+```asql
+sum_revenue           -- → sum(revenue)
+avg_price             -- → avg(price)
+count_orders          -- → count(orders)
+max_amount            -- → max(amount)
+```
+
+**Date functions:**
+```asql
+year_created_at       -- → year(created_at)
+month_signup_date     -- → month(signup_date)
+day_of_week_order_date -- → day_of_week(order_date)
+```
+
+**Multi-word functions:**
+```asql
+day_of_week(created_at)     -- explicit
+day_of_week_created_at      -- underscore shorthand
+day of week created_at      -- space shorthand (most natural)
+```
+
+#### Auto-Generated Column Names
+
+When using function shorthand, column names are auto-generated:
+
+```asql
+from sales
+  select sum_amount, avg_price, month_created_at
+  
+-- Equivalent to:
+from sales
+  select 
+    sum(amount) as sum_amount,
+    avg(price) as avg_price,
+    month(created_at) as month_created_at
+```
+
+#### Where This Applies
+
+| Context | Applies? | Example |
+|---------|----------|---------|
+| SELECT expressions | ✅ Yes | `select sum_amount` |
+| GROUP BY | ✅ Yes | `group by month_created_at` |
+| ORDER BY | ✅ Yes | `order by -sum_amount` |
+| WHERE conditions | ✅ Yes | `where days_since_created_at > 30` |
+| Column names (literals) | ❌ No | `created_at` stays as-is |
+| Table names | ❌ No | `user_accounts` stays as-is |
+| String literals | ❌ No | `"hello_world"` stays as-is |
+
+#### Ambiguity Resolution
+
+If an actual column name matches a potential function pattern, the **column takes precedence**:
+
+```asql
+-- If table has actual column "sum_revenue":
+select sum_revenue    -- Uses the column, not sum(revenue)
+
+-- To force function interpretation, use explicit syntax:
+select sum(revenue) as sum_revenue
+```
+
+#### Extended Patterns
+
+Some patterns expand to more complex expressions:
+
+```asql
+-- Time since patterns
+days_since_created_at     -- → days(now() - created_at)
+months_since_signup_date  -- → months(now() - signup_date)
+
+-- Time until patterns  
+days_until_due_date       -- → days(due_date - now())
+```
+
 ---
 
 ## 5. Aggregations
@@ -460,6 +695,10 @@ from Users
 sum(amount) as revenue
 total(amount) as revenue
 
+# Shorthand syntax (see Section 4.13)
+sum_amount              -- → sum(amount) as sum_amount
+total_revenue           -- → sum(revenue) as total_revenue
+
 # Natural language syntax
 Sum of amount as revenue
 Total of amount as revenue
@@ -469,8 +708,8 @@ Total amount as revenue
 # In group by
 from sales
   group by region (
+    sum_amount,         -- shorthand
     total amount as revenue
-    -- or: sum of amount as revenue
   )
 ```
 
@@ -522,6 +761,148 @@ from users
     avg(age) as avg_age
   )
 ```
+
+### 5.7 Window Functions
+
+ASQL provides intuitive syntax for common window function patterns, making operations like deduplication, ranking, and running totals much cleaner than SQL.
+
+#### The `per` Command (Pipeline Window Operations)
+
+The `per` command creates a window context for operations on partitions:
+
+**Syntax:**
+```
+per <partition_cols> <operation> by <order_cols> [as <alias>]
+```
+
+Or without partition (whole table):
+```
+<operation> by <order_cols> [as <alias>]
+```
+
+**Available Operations:**
+
+| Operation | What it does | Default alias | Row count |
+|-----------|--------------|---------------|-----------|
+| `first` | Keep first row per partition | (no column) | ↓ Reduces |
+| `last` | Keep last row per partition | (no column) | ↓ Reduces |
+| `number` | Add row number column | `row_num` | Same |
+| `rank` | Add rank column | `rank` | Same |
+| `dense rank` | Add dense rank column | `dense_rank` | Same |
+
+**Examples:**
+```asql
+# DEDUPLICATION: Keep most recent order per customer
+from orders
+  per customer_id first by -order_date
+
+# ADD ROW NUMBER: Number orders per customer (most recent = 1)
+from orders
+  per customer_id number by -order_date
+# Result: adds `row_num` column
+
+# ADD RANK: Rank employees by salary within department
+from employees
+  per department rank by -salary
+# Result: adds `rank` column
+
+# NO PARTITION: Number all rows
+from events
+  number by -timestamp
+# Result: adds `row_num` to all rows, ordered by timestamp desc
+```
+
+**Reading the syntax naturally:**
+- `per customer_id first by -order_date` → "Per customer, get the first by order date descending"
+- `per department rank by -salary` → "Per department, rank by salary descending"
+
+#### first() / last() in GROUP BY
+
+Use `first()` and `last()` as aggregates within GROUP BY to extract values:
+
+```asql
+from orders
+  group by customer_id (
+    first(order_id order by -order_date) as latest_order,
+    last(order_id order by order_date) as first_order,
+    count(*) as total_orders
+  )
+```
+
+**Comparison: `per ... first` vs `first()` in GROUP BY:**
+- Use `per ... first` when you want the **whole row** (deduplication)
+- Use `first()` in GROUP BY when you want **specific aggregated values**
+
+#### arg_max() / arg_min() (ClickHouse-inspired)
+
+Get the value of one column where another column is max/min:
+
+```asql
+from orders
+  group by customer_id (
+    arg_max(order_id, order_date) as latest_order_id,
+    arg_min(order_id, order_date) as earliest_order_id
+  )
+```
+
+#### prior() / next() (Simplified LAG/LEAD)
+
+```asql
+from monthly_sales
+  order by month
+  select
+    month,
+    revenue,
+    prior(revenue) as prior_revenue,       # LAG(revenue, 1)
+    prior(revenue, 3) as three_months_ago,
+    next(revenue) as next_revenue          # LEAD(revenue, 1)
+```
+
+#### Running Aggregates (Cumulative)
+
+```asql
+from transactions
+  order by date
+  select
+    date,
+    amount,
+    running_sum(amount) as cumulative_amount,
+    running_avg(amount) as avg_to_date,
+    running_count(*) as transaction_number
+```
+
+**Shorthand:** `running amount` is equivalent to `running_sum(amount)`.
+
+#### Rolling Window Aggregates
+
+Moving window with specified size:
+
+```asql
+from daily_sales
+  order by date
+  select
+    date,
+    revenue,
+    rolling_avg(revenue, 7) as seven_day_avg,
+    rolling_sum(revenue, 30) as monthly_total
+```
+
+#### Window Functions Quick Reference
+
+| Intent | ASQL Syntax |
+|--------|-------------|
+| Most recent row per group | `per group_col first by -date` |
+| Oldest row per group | `per group_col first by date` |
+| Add row numbers per group | `per group_col number by -date` |
+| Add rank per group | `per group_col rank by -value` |
+| Add dense rank per group | `per group_col dense rank by -value` |
+| Get column value at max | `arg_max(col, sort_col)` |
+| Previous row value | `prior(col)` |
+| Next row value | `next(col)` |
+| Cumulative sum | `running_sum(col)` |
+| Cumulative average | `running_avg(col)` |
+| 7-day moving average | `rolling_avg(col, 7)` |
+| First value in group | `first(col order by ...)` |
 
 ---
 
@@ -699,149 +1080,280 @@ from accounts
 
 ## 8. Dates & Time
 
-### 8.1 Simple Time Functions (No More EXTRACT!)
+Dates are one of the most important features in analytics. ASQL provides a clean, intuitive, and portable date syntax that compiles to the right dialect-specific SQL.
 
-ASQL provides simple, intuitive date functions instead of verbose SQL date extraction:
+### 8.1 Date Literals
 
-**ASQL syntax:**
+ASQL uses the `@` prefix for date literals:
+
 ```asql
-year(created_at)      -- Returns: 2025 (full year)
-month(created_at)     -- Returns: 2025-01 (year-month for time series)
-week(created_at)      -- Returns: 2025-W01 (year-week for time series)
-day(created_at)       -- Returns: 2025-01-15 (full date for time series)
-hour(created_at)      -- Returns: 2025-01-15 14:00 (date-hour)
+from users
+  where signup_date >= @2024-01-01
+
+from orders
+  where order_date between @2024-01-01 and @2024-12-31
 ```
 
-**Clarification on time functions:**
-- `day(created_at)` returns the full date (e.g., `2025-01-15`) for time series analysis, not the day of week
-- For day of week, use `weekday(created_at)` which returns `Monday`, `Tuesday`, etc.
-- Alternative: `created_at.weekday` could return day of week, while `created_at.day` returns the date
-- All time functions return values suitable for time series (include year/month context to avoid sorting issues)
+The `@` prefix distinguishes dates from strings and is clean and unambiguous.
 
-**As opposed to SQL:**
+### 8.2 Time Truncation Functions
+
+ASQL provides simple time truncation functions for grouping and time series:
+
+```asql
+year(created_at)      -- Truncate to year start: 2025-01-01
+month(created_at)     -- Truncate to month start: 2025-01-01
+week(created_at)      -- Truncate to week start: 2025-01-06
+day(created_at)       -- Truncate to day: 2025-01-15
+hour(created_at)      -- Truncate to hour: 2025-01-15 14:00:00
+quarter(created_at)   -- Truncate to quarter start
+```
+
+**Natural language alternatives** (all equivalent):
+```asql
+year(created_at)      -- function style
+year created_at       -- space style
+year_created_at       -- underscore style (ASQL interprets as year(created_at))
+year of created_at    -- "of" style
+```
+
+These compile to `DATE_TRUNC()` and are ideal for time series grouping.
+
+### 8.3 Date Part Extraction
+
+Extracting date parts (day of week, week of year, etc.) uses natural language phrases:
+
+```asql
+day of week created_at        -- 1-7 (which day of the week)
+day of month created_at       -- 1-31 (which day of the month)
+day of year created_at        -- 1-366 (which day of the year)
+week of year created_at       -- 1-52 (which week of the year)
+month of year created_at      -- 1-12 (which month)
+quarter of year created_at    -- 1-4 (which quarter)
+```
+
+**Function equivalents** (same behavior):
+```asql
+day_of_week(created_at)
+week_of_year(created_at)
+month_of_year(created_at)
+```
+
+**Example usage:**
+```asql
+-- Weekend orders
+from orders
+  where day of week order_date in (6, 7)
+
+-- Sales by day of week
+from sales
+  group by day of week sale_date (
+    sum(amount) as revenue
+  )
+```
+
+**Distinction from truncation:**
+- `month(created_at)` → `2025-01-01` (truncated date, for time series)
+- `month of year created_at` → `1` (integer, for "all Januaries")
+
+### 8.4 Date Arithmetic
+
+Adding or subtracting from dates uses clean inline syntax:
+
+```asql
+order_date + 7 days
+order_date - 1 month
+order_date + 2 weeks
+created_at + 24 hours
+updated_at - 90 minutes
+```
+
+**Singular/plural both work:**
+```asql
+order_date + 1 day           -- singular
+order_date + 7 days          -- plural
+```
+
+**Compiles to** (dialect-specific):
 ```sql
--- PostgreSQL - need to extract and format
-EXTRACT(YEAR FROM created_at)
-DATE_TRUNC('month', created_at)
-DATE_TRUNC('day', created_at)
+-- PostgreSQL
+order_date + INTERVAL '7 days'
 
--- MySQL - inconsistent function names
-YEAR(created_at)
-DATE_FORMAT(created_at, '%Y-%m')
-DATE_FORMAT(created_at, '%Y-%m-%d')
+-- SQL Server  
+DATEADD(day, 7, order_date)
 
--- SQL Server - different syntax again
-YEAR(created_at)
-DATEPART(year, created_at)
-FORMAT(created_at, 'yyyy-MM')
+-- MySQL
+DATE_ADD(order_date, INTERVAL 7 DAY)
 ```
 
-**Natural language alternatives:**
+### 8.5 Date Difference
+
+Getting days/months/years between dates:
+
 ```asql
-year of created_at
-month of created_at
-day of created_at
+days(end_date - start_date)      -- Returns integer days
+months(end_date - start_date)    -- Returns integer months
+years(end_date - start_date)     -- Returns integer years
+hours(end_date - start_date)     -- Returns integer hours
+weeks(end_date - start_date)     -- Returns integer weeks
 ```
 
-**Method-style syntax (alternative, for day-of-week distinction):**
+**Alternative syntax:**
 ```asql
-created_at.year       -- Full year
-created_at.month      -- Year-month
-created_at.day        -- Full date (for time series)
-created_at.weekday    -- Day of week (Monday, Tuesday, etc.)
-created_at.hour       -- Date-hour
+days_between(start_date, end_date)
+months_between(start_date, end_date)
 ```
 
-All syntaxes are equivalent for the main time functions. Method-style syntax may be useful for distinguishing `day` (date) from `weekday` (day of week).
+**Example:**
+```asql
+from orders
+  select 
+    days(shipped_date - order_date) as fulfillment_days,
+    months(now() - customer_since) as customer_tenure_months
+```
 
-### 8.2 Time Bucketing
+### 8.6 Relative Dates (`ago` and `from now`)
+
+**Past dates with `ago`:**
+```asql
+from users
+  where last_login >= 7 days ago
+
+from orders
+  where created_at >= 30 days ago
+  where created_at >= 1 month ago
+  where created_at >= 3 hours ago
+```
+
+**Future dates with `from now`:**
+```asql
+from orders
+  where estimated_delivery <= 3 days from now
+
+from reminders
+  where remind_at <= 1 hour from now
+```
+
+**Compiles to:**
+```sql
+-- PostgreSQL
+WHERE last_login >= CURRENT_DATE - INTERVAL '7 days'
+WHERE estimated_delivery <= CURRENT_TIMESTAMP + INTERVAL '3 days'
+```
+
+### 8.7 Time Since/Until Patterns
+
+**`*_since_*` pattern** - time elapsed since a date:
+```asql
+days_since_created_at        -- → days(now() - created_at)
+weeks_since_signup_date      -- → weeks(now() - signup_date)
+months_since_last_login      -- → months(now() - last_login)
+years_since_birth_date       -- → years(now() - birth_date)
+```
+
+**`*_until_*` pattern** - time remaining until a future date:
+```asql
+days_until_due_date          -- → days(due_date - now())
+weeks_until_deadline         -- → weeks(deadline - now())
+months_until_renewal         -- → months(renewal_date - now())
+```
+
+**Example usage:**
+```asql
+from users
+  select
+    name,
+    days_since_last_login,
+    months_since_signup_date,
+    years_since_birth_date as age
+
+from tasks
+  where days_until_due_date < 7
+  -- Tasks due within a week
+```
+
+### 8.8 Week Start Configuration
+
+**Default**: ISO 8601 standard (Monday = day 1)
+
+```asql
+week(created_at)              -- Default: ISO (Monday start)
+week_monday(created_at)       -- Explicit Monday start
+week_sunday(created_at)       -- US-style Sunday start
+
+day of week created_at        -- Default: 1 = Monday, 7 = Sunday
+```
+
+**Rationale**: ISO 8601 is the international standard. Most analytics/business contexts expect Monday start.
+
+### 8.9 Timezone Handling
+
+Use cast-like syntax with `::` for timezone conversion:
+
+```asql
+-- Short timezone codes
+created_at::PST
+created_at::UTC
+created_at::EST
+
+-- Full IANA timezone names (quoted)
+created_at::"America/Los_Angeles"
+created_at::"Europe/London"
+
+-- Chained with other operations
+month(created_at::PST)
+created_at::UTC + 7 days
+```
+
+**Compiles to** (PostgreSQL):
+```sql
+created_at AT TIME ZONE 'PST'
+created_at AT TIME ZONE 'America/Los_Angeles'
+```
+
+### 8.10 Time Bucketing (Grouping)
 
 Time bucketing is simply grouping by a time function:
 
 ```asql
 from users
   group by month(created_at) ( # as signups )
+
+from sales
+  group by week(sale_date) ( sum(amount) as revenue )
 ```
 
-**As opposed to SQL:**
-```sql
--- PostgreSQL
-SELECT DATE_TRUNC('month', created_at) AS month, COUNT(*) AS signups
-FROM users
-GROUP BY DATE_TRUNC('month', created_at)
+### 8.11 Date Functions Quick Reference
 
--- MySQL
-SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, COUNT(*) AS signups
-FROM users
-GROUP BY DATE_FORMAT(created_at, '%Y-%m')
-```
+| Operation | ASQL Syntax | Example |
+|-----------|-------------|---------|
+| Date literal | `@YYYY-MM-DD` | `@2025-01-15` |
+| Truncation | `unit(col)` | `month(created_at)` |
+| Extraction | `unit of period col` | `day of week created_at` |
+| Arithmetic | `date + N unit` | `order_date + 7 days` |
+| Difference | `unit(date1 - date2)` | `days(end - start)` |
+| Relative past | `N unit ago` | `7 days ago` |
+| Relative future | `N unit from now` | `3 days from now` |
+| Time since | `unit_since_col` | `days_since_created_at` |
+| Time until | `unit_until_col` | `days_until_due_date` |
+| Timezone | `col::TZ` | `created_at::PST` |
+| Week (Sunday) | `week_sunday(col)` | `week_sunday(created_at)` |
 
-This is standard SQL grouping - ASQL just makes the time functions simpler and more consistent.
+### 8.12 Default Time Fields & Conventions
 
-### 8.3 Natural Language Time Grouping
+ASQL follows a "convention over configuration" philosophy:
 
-```asql
-# of Users by month
-# of Sales by week
-Revenue by year
-```
-
-**⚠️ Warning**: These shortcuts assume a default time column has been set (see Section 8.4). Without explicit defaults, these can be ambiguous and potentially dangerous.
-
-### 8.4 Default Time Fields
-
-**dbt compatibility**: dbt does not have a standard `default_time` field in its schema files. ASQL can extend dbt's schema format with this metadata, or infer defaults from conventions.
-
-Model metadata can specify default time fields:
+1. **Standard naming**: Timestamp columns named `created_at`, `updated_at` enable automatic inference
+2. **Smart defaults**: If a table has `created_at`, it's assumed to be the primary time field
+3. **Configurable**: Override defaults in model metadata when needed
 
 ```yaml
 models:
   users:
-    default_time: created_at
+    default_time: signup_date  # Override convention
 ```
 
-Then `group by month` implicitly uses `created_at`:
-
-```asql
-from users
-  group by month ( # as signups )
-```
-
-**Note**: Ideally, ASQL doesn't create its own model format. It should use dbt's existing `schema.yml` files when available, or infer from database schema metadata and conventions.
-
-**Convention-based inference**: ASQL follows a "convention over configuration" philosophy:
-
-1. **Standard naming assumptions**: ASQL assumes you follow good modeling standards:
-   - Timestamp columns are named `created_at`, `updated_at` (not `dateCreated`, `lastModified`, etc.)
-   - Foreign keys follow patterns like `user_id`, `owner_id`, `account_id`
-   - Tables are properly pluralized or follow your team's convention
-
-2. **Smart defaults**: Based on these conventions, ASQL can infer:
-   - **Time fields**: If a table has `created_at`, it's assumed to be the primary time field for time-based aggregations. `updated_at` is secondary.
-   - **Foreign keys**: If `Accounts.user_id` exists and there's a `Users` table, ASQL infers the relationship `Accounts.user_id → Users.id`
-   - **Relationships**: Standard FK naming (`{table}_id`) enables automatic join inference
-
-3. **Configurable but opinionated**: All defaults can be overridden:
-   ```yaml
-   models:
-     users:
-       default_time: signup_date  # Override convention
-     accounts:
-       links:
-         owner: users.id  # Explicit relationship if naming doesn't match
-   ```
-
-4. **dbt compatibility**: ASQL works seamlessly with dbt projects that follow dbt's modeling standards. If you're using dbt, ASQL can read your `schema.yml` files and infer relationships automatically.
-
-**⚠️ Important Considerations**:
-
-1. **Standards matter**: ASQL works best when you follow modeling standards. If your schema is non-standard, you may need to configure relationships explicitly.
-2. **Explicit overrides**: While conventions are helpful, explicit configuration is always clearer. Use `group by month(created_at)` when clarity is important.
-3. **Migration path**: If you're migrating to ASQL, consider standardizing your schema first (e.g., renaming `dateCreated` → `created_at`) to unlock automatic inference.
-4. **Best practice**: Follow dbt-style modeling standards, and ASQL will "just work." Deviate from standards, and you'll need explicit configuration (which is fine, but more verbose).
-5. **dbt integration**: Ideally, ASQL will be built into dbt out of the gate. You'll be able to use ASQL even in raw cleaning stages. In those stages, you may need to be more explicit (or start with a `select` to rename columns to standards), but ASQL's pipelining and cleaner syntax will still be quite useful. A common pattern: start cleanup with a `select` command renaming things to standards, then continue with pipeline operations.
-
-**Philosophy**: We assume you're doing good modeling. If you follow standards, ASQL is magical. If you don't, you can still use ASQL, but you'll need to be more explicit. This encourages good practices while remaining flexible.
+**Best practice**: Follow dbt-style modeling standards, and ASQL's date features "just work."
 
 ---
 
@@ -853,7 +1365,7 @@ ASQL uses `where` instead of `filter` because it's more intuitive - "where" clea
 
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   where age >= 18
 ```
 
@@ -864,7 +1376,7 @@ Multiple conditions can be written in several ways:
 **Separate where clauses:**
 ```asql
 from opportunities
-  where status == "open"
+  where status = "open"
   where owner.is_active
   where org_type != "Non Profit"
 ```
@@ -872,19 +1384,19 @@ from opportunities
 **Using `and` on same line:**
 ```asql
 from opportunities
-  where status == "open" and owner.is_active and org_type != "Non Profit"
+  where status = "open" and owner.is_active and org_type != "Non Profit"
 ```
 
 **Using `&` operator:**
 ```asql
 from opportunities
-  where status == "open" & owner.is_active & org_type != "Non Profit"
+  where status = "open" & owner.is_active & org_type != "Non Profit"
 ```
 
 **Tabbed indentation (multi-line):**
 ```asql
 from opportunities
-  where status == "open"
+  where status = "open"
     and owner.is_active
     and org_type != "Non Profit"
 ```
@@ -911,45 +1423,45 @@ from opportunities
 
 ---
 
-## 10. Sorting
+## 10. Ordering
 
-### 10.1 Basic Sorting
+### 10.1 Basic Ordering
 
-The `sort` clause orders rows by one or more columns:
+The `order by` clause sorts rows by one or more columns:
 
 ```asql
-from users sort name
-from users sort -total_users
+from users order by name
+from users order by -total_users
 ```
 
-**Descending order**: Use the `-` prefix to sort in descending order:
-- `sort name` → ascending (A-Z)
-- `sort -name` → descending (Z-A)
+**Descending order**: Use the `-` prefix for descending order:
+- `order by name` → ascending (A-Z)
+- `order by -name` → descending (Z-A)
 
-### 10.2 Sorting by Function Calls
+### 10.2 Ordering by Function Calls
 
-You can sort by function calls using the `-` prefix for descending order:
+You can order by function calls using the `-` prefix for descending order:
 
 ```asql
-from users sort month(created_at)
-from users sort -updated_at
-from events sort -year(created_at), name
+from users order by month(created_at)
+from users order by -updated_at
+from events order by -year(created_at), name
 ```
 
 **Examples:**
-- `sort updated_at` → Sort by updated_at ascending
-- `sort -updated_at` → Sort by updated_at descending (newest first)
-- `sort -year(created_at), name` → Sort by year descending, then name ascending
+- `order by updated_at` → Sort by updated_at ascending
+- `order by -updated_at` → Sort by updated_at descending (newest first)
+- `order by -year(created_at), name` → Sort by year descending, then name ascending
 
-This syntax makes it easy to sort by computed values like date functions.
+This syntax makes it easy to order by computed values like date functions.
 
-### 10.3 Multiple Sort Columns
+### 10.3 Multiple Order Columns
 
-Multiple sort columns are separated by commas:
+Multiple order columns are separated by commas:
 
 ```asql
-from users sort -total_users, name
-from sales sort -revenue, region, -date
+from users order by -total_users, name
+from sales order by -revenue, region, -date
 ```
 
 The `-` prefix applies only to the column immediately following it.
@@ -991,7 +1503,7 @@ from users
   where is_active
   -- cleaned users by country
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally. CTEs are still available when you need to reuse a subquery multiple times.
@@ -1003,22 +1515,22 @@ Instead of defining CTEs at the top level with `set`, you can stash intermediate
 **Basic usage (at the end):**
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   group by country ( # as total_users )
   select country, total_users
   stash as revenue
 
 from revenue
-  sort -total_users
+  order by -total_users
 ```
 
 **Using `stash as` in the middle of a pipeline:**
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   stash as active_users
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 When `stash as` appears in the middle, it stashes everything before it as a CTE, then continues with the pipeline.
@@ -1029,8 +1541,8 @@ from sales
   where year(date) == 2025
   group by region ( sum(amount) as revenue )
   stash as use_this_later
-  sort -revenue
-  take 10;
+  order by -revenue
+  limit 10;
 
 from use_this_later
   where revenue > 1000
@@ -1059,7 +1571,7 @@ set by_country = from base
   group by country ( # as total_users )
 
 from by_country
-  sort -total_users
+  order by -total_users
 ```
 
 ---
@@ -1134,8 +1646,8 @@ Table functions transform entire tables. These are implemented as drop-in replac
 ```asql
 func top_n(table, n, key) =
   table
-    sort -{key}
-    take n
+    order by -{key}
+    limit n
 
 from sales
   top_n(10, amount)
@@ -1149,7 +1661,7 @@ Standard SQL functions are available:
 
 - `count()`, `sum()`, `avg()`, `min()`, `max()`
 - `distinct()`
-- `coalesce()` or `||` operator (JavaScript-style, also used in some SQL dialects like PostgreSQL for string concatenation, but ASQL uses it for COALESCE to match common usage)
+- `coalesce()` or `??` operator (JavaScript-style nullish coalescing)
 - `date_format()`, `year()`, `month()`, etc.
 - `years_between()`, `days_between()`, etc.
 
@@ -1164,7 +1676,306 @@ from users
 
 ---
 
-## 13. Models (Optional Metadata)
+## 13. Data Transformation Operators
+
+ASQL provides built-in operators that replace common dbt macro patterns, making queries cleaner and more portable.
+
+### 13.1 Column Set Operators
+
+These operators manipulate column sets without needing to list every column.
+
+#### `except` - Exclude Columns
+
+Exclude specific columns from the result:
+
+```asql
+# Exclude sensitive columns
+from users
+  except email, phone, ssn
+
+# After a join, exclude from specific tables
+from users
+  join orders on users.id = orders.user_id
+  except users.password_hash, orders.internal_notes
+```
+
+**Compiles to**: Explicit `SELECT` with all columns except those listed (uses schema metadata).
+
+#### `rename` - Rename Columns
+
+Rename columns inline:
+
+```asql
+from users
+  rename id as user_id, name as user_name
+
+# Rename with table prefix after join
+from users
+  join orders on users.id = orders.user_id
+  rename users.id as user_id
+```
+
+**Compiles to**: `SELECT id AS user_id, name AS user_name, ...`
+
+#### `prefix` - Prefix Column Names
+
+Add a prefix to column names (especially useful after joins):
+
+```asql
+from users
+  prefix user_
+
+# Prefix specific table's columns
+from users
+  join orders on users.id = orders.user_id
+  prefix orders.* with order_
+```
+
+**Compiles to**: `SELECT id AS user_id, name AS user_name, ...`
+
+#### Combining Column Operators
+
+```asql
+from users
+  join orders on users.id = orders.user_id
+  except users.password_hash, orders.internal_notes
+  rename users.id as user_id
+  prefix orders.* with order_
+```
+
+### 13.2 Deduplicate
+
+Remove duplicate rows based on specified columns, keeping one row per group:
+
+```asql
+# Keep most recent per user/event combination
+from events
+  deduplicate by user_id, event_type
+  order by -created_at
+
+# Keep first occurrence
+from events
+  deduplicate by user_id, event_type
+  order by created_at
+```
+
+The `order by` determines which row to keep when duplicates exist.
+
+**Compiles to**:
+```sql
+-- On warehouses with QUALIFY:
+SELECT * FROM events
+QUALIFY ROW_NUMBER() OVER (PARTITION BY user_id, event_type ORDER BY created_at DESC) = 1
+
+-- Fallback:
+WITH ranked AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY user_id, event_type ORDER BY created_at DESC) AS rn
+  FROM events
+)
+SELECT * FROM ranked WHERE rn = 1
+```
+
+### 13.3 Pivot / Unpivot
+
+#### `pivot` - Rows to Columns
+
+Transform row values into columns:
+
+```asql
+# Basic pivot
+from sales
+  pivot amount by category
+
+# Pivot with aggregation
+from sales
+  pivot sum(amount) by category
+
+# Dynamic pivot (values from subquery)
+from sales
+  pivot amount by category from (select distinct category from products)
+```
+
+**Example use case - denormalizing custom fields:**
+
+Many SaaS platforms store custom fields in EAV (Entity-Attribute-Value) tables:
+
+```asql
+# Jira custom fields table:
+# | issue_id | field_name   | field_value |
+# | PROJ-123 | priority     | High        |
+# | PROJ-123 | sprint       | Sprint 5    |
+
+from issue_custom_fields
+  pivot field_value by field_name
+
+# Result:
+# | issue_id | priority | sprint   |
+# | PROJ-123 | High     | Sprint 5 |
+```
+
+#### `unpivot` - Columns to Rows
+
+Transform columns into rows:
+
+```asql
+from monthly_metrics
+  unpivot jan, feb, mar, apr into month, value
+```
+
+**Compiles to**: Native `PIVOT`/`UNPIVOT` where supported (Snowflake, BigQuery), `CASE`/`WHEN` + `GROUP BY` fallback elsewhere.
+
+### 13.4 Fill (Gap Filling)
+
+Fill gaps in time series data after grouping:
+
+```asql
+# Auto-detect range from data, NULL for missing values
+from orders
+  group by month(created_at) as month (
+    sum(amount) as revenue
+  )
+  fill month
+
+# Specify default values for filled rows
+from orders
+  group by month(created_at) as month (
+    sum(amount) as revenue
+  )
+  fill month with {revenue: 0}
+
+# Explicit range bounds (both inclusive)
+from orders
+  group by month(created_at) as month (
+    sum(amount) as revenue
+  )
+  fill month start '2024-01-01' stop '2024-12-01'
+
+# Combined: explicit range with defaults
+from orders
+  group by month(created_at) as month (
+    sum(amount) as revenue
+  )
+  fill month with {revenue: 0} start '2024-01-01' stop today()
+```
+
+**Range detection**: By default, `fill` auto-detects the range using `MIN()`/`MAX()` of the grouped column. Use `start`/`stop` for explicit bounds (e.g., always show full year).
+
+**Why `start`/`stop`?** We use these instead of `from`/`to` to avoid confusion with the `from` clause.
+
+### 13.5 Date Spine / Series
+
+Generate sequences as table sources:
+
+```asql
+# Date spine - one row per day/week/month
+from date_spine(start = '2020-01-01', end = today(), grain = day)
+
+# Numeric series
+from series(1, 100)
+
+# Join with actual data to fill gaps
+from date_spine(start = '2024-01-01', end = '2024-12-31', grain = month) as dates
+  left join (
+    from orders
+      group by month(created_at) as month (
+        sum(amount) as revenue
+      )
+  ) as sales on dates.date = sales.month
+```
+
+**Compilation**: Uses native `generate_series()` where available, numbers table or recursive CTE fallback elsewhere.
+
+### 13.6 Union with Schema Alignment
+
+Union tables with automatic column alignment:
+
+```asql
+# Union multiple tables, aligning columns
+from union(users_2022, users_2023, users_2024)
+
+# With options
+from union(users_2022, users_2023, fill_missing = null)
+```
+
+**Compilation**: Reads schemas, produces aligned `SELECT` lists with missing columns filled as `NULL`, then `UNION ALL`.
+
+### 13.7 Surrogate Keys
+
+Generate consistent surrogate keys:
+
+```asql
+select key(user_id, order_id) as order_key
+```
+
+**Semantics**:
+- Stable hashing algorithm across runs
+- Consistent NULL handling (NULLs hash consistently)
+- Type normalization before hashing
+
+**Compiles to**: Warehouse-appropriate hash function with delimiter injection and null handling.
+
+### 13.8 Safe Casting
+
+ASQL supports safe type casting that returns `NULL` on failure instead of erroring:
+
+```asql
+# Strict cast - errors on failure (default, SQL-compatible)
+select value::integer
+
+# Safe cast - returns NULL on failure (? suffix)
+select value::integer?
+
+# Safe cast with default (using ?? coalescing)
+select value::integer? ?? 0
+```
+
+**Why this matters**: Real-world data is messy. Columns may contain `"N/A"`, empty strings, or invalid formats. Safe casting handles this gracefully:
+
+```asql
+# Form submission with user input
+from form_submissions
+  select 
+    response_id,
+    age_input::integer? ?? 0 as age,     -- "N/A" becomes 0
+    amount_input::decimal? as amount     -- Invalid becomes NULL
+```
+
+**Compilation**:
+- `value::integer` → `CAST(value AS INTEGER)`
+- `value::integer?` → `TRY_CAST(value AS INTEGER)` (or `SAFE_CAST` on BigQuery)
+- `value::integer? ?? 0` → `COALESCE(TRY_CAST(value AS INTEGER), 0)`
+
+### 13.9 Safe Divide
+
+Avoid divide-by-zero errors:
+
+```asql
+select safe_divide(revenue, users) as revenue_per_user
+```
+
+**Compiles to**: `CASE WHEN users = 0 THEN NULL ELSE revenue / users END` (or native `SAFE_DIVIDE` on BigQuery).
+
+### 13.10 Operator Quick Reference
+
+| Operator | Purpose | Example |
+|----------|---------|---------|
+| `except` | Exclude columns | `except email, phone` |
+| `rename` | Rename columns | `rename id as user_id` |
+| `prefix` | Prefix column names | `prefix user_` |
+| `deduplicate by` | Remove duplicates | `deduplicate by user_id order by -date` |
+| `pivot ... by` | Rows to columns | `pivot amount by category` |
+| `unpivot ... into` | Columns to rows | `unpivot jan, feb into month, value` |
+| `fill` | Gap fill time series | `fill month with {revenue: 0}` |
+| `date_spine()` | Generate date sequence | `from date_spine(start='2024-01-01', end=today(), grain=day)` |
+| `series()` | Generate number sequence | `from series(1, 100)` |
+| `union()` | Union with alignment | `from union(t1, t2, t3)` |
+| `key()` | Surrogate key | `key(user_id, order_id)` |
+| `::type?` | Safe cast | `value::integer?` |
+| `safe_divide()` | Null on divide-by-zero | `safe_divide(a, b)` |
+
+---
+
+## 14. Models (Optional Metadata)
 
 **Philosophy**: Ideally, ASQL doesn't create its own model format. It should:
 1. Use dbt's existing `schema.yml` files when available
@@ -1213,7 +2024,7 @@ from users
 
 ---
 
-## 14. Nested Results (Optional)
+## 15. Nested Results (Optional)
 
 Inspired by EdgeQL, support nested result shapes:
 
@@ -1229,7 +2040,7 @@ from countries
 
 ---
 
-## 15. Indentation & Multi-line Queries
+## 16. Indentation & Multi-line Queries
 
 ### 14.1 Indentation Rules
 
@@ -1256,7 +2067,7 @@ from users
 
 ---
 
-## 16. Capitalization & Naming
+## 17. Capitalization & Naming
 
 ### 15.1 Case-Safe Design
 
@@ -1266,7 +2077,7 @@ from users
 # You can write queries using any case style
 from Users
   select firstName, createdAt, user_id
-  where status == "active"
+  where status = "active"
 
 # ASQL resolves case-insensitively to actual database names
 # If database has: users table, first_name column, created_at column
@@ -1340,7 +2151,7 @@ select users.id as user_id, orders.id as order_id
 
 ---
 
-## 17. Examples
+## 18. Examples
 
 ### Example 1: Simple Analytic Query
 
@@ -1348,7 +2159,7 @@ select users.id as user_id, orders.id as order_id
 from sales
   where year(date) == 2025
   group by region ( sum(amount) as revenue )
-  sort -revenue
+  order by -revenue
 ```
 
 **Generated SQL:**
@@ -1369,7 +2180,7 @@ from opportunities
   join owners
   where owners.is_active
   group by owners.name ( sum(amount) as total_pipeline )
-  sort -total_pipeline
+  order by -total_pipeline
 ```
 
 ### Example 3: Time Series
@@ -1404,13 +2215,13 @@ from base
 
 ```asql
 from opportunities
-  where status == "open"
+  where status = "open"
   join owners
   where owners.is_active
   where org_type != "Non Profit"
   group by owner.name ( sum(amount) as total_pipeline )
-  sort -total_pipeline
-  take 10
+  order by -total_pipeline
+  limit 10
 ```
 
 ### Example 7: Date Grouping
@@ -1437,7 +2248,7 @@ from users
 -- Works regardless of database naming convention
 from Users
   select firstName, createdAt, user_id
-  where status == "active"
+  where status = "active"
 ```
 
 ### Example 10: Natural Language with "of"
@@ -1476,7 +2287,7 @@ Avg Users.age by country
 
 ---
 
-## 18. Compilation & Transpilation
+## 19. Compilation & Transpilation
 
 ### 17.1 Compilation Process
 
@@ -1520,7 +2331,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 19. Implementation Roadmap
+## 20. Implementation Roadmap
 
 | Stage | Milestone | Description |
 |-------|-----------|-------------|
@@ -1532,7 +2343,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 20. Design Decisions & Rationale
+## 21. Design Decisions & Rationale
 
 ### 19.1 Why Remove SELECT?
 
@@ -1568,7 +2379,7 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ---
 
-## 21. Future Considerations
+## 22. Future Considerations
 
 - **Visual SQL Editor**: ASQL's structure could enable a great visual query builder whose base could also be a text editor/IDE. Get the best of visual and text-based exploration.
 - **dbt Integration**: Building ASQL into dbt out of the gate would make it immediately useful for the dbt community
@@ -1579,7 +2390,7 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ---
 
-## 22. Major Benefits of ASQL
+## 23. Major Benefits of ASQL
 
 ### 21.1 Reduced Need for CTEs and Nested Queries
 
@@ -1604,7 +2415,7 @@ from users
   where is_active
   -- cleaned users by country
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally.
@@ -1654,8 +2465,8 @@ operator := filter_op
           | group_by_op
           | join_op
           | select_op
-          | sort_op
-          | take_op
+          | order_op
+          | limit_op
           | set_op
 
 filter_op := 'where' expression
@@ -1667,9 +2478,9 @@ join_op := 'join' table_name ('on' expression)?
 
 select_op := 'select' column_list
 
-sort_op := 'sort' ('-'? (column_name | function_call))+
+order_op := 'order' 'by' ('-'? (column_name | function_call))+
 
-take_op := 'take' number
+limit_op := 'limit' number
 
 set_op := 'set' var_name '=' query
 
