@@ -184,6 +184,18 @@ FUNCTION_ALIASES = {
     'minimum': 'min',    # minimum_amount → min(amount)
 }
 
+# Extended patterns - special compound patterns
+EXTENDED_PATTERNS = {
+    # {unit}_since_{column} → {unit}(now() - column)
+    'days_since': lambda col: f'days(now() - {col})',
+    'weeks_since': lambda col: f'weeks(now() - {col})',
+    'months_since': lambda col: f'months(now() - {col})',
+    'years_since': lambda col: f'years(now() - {col})',
+    'hours_since': lambda col: f'hours(now() - {col})',
+    'minutes_since': lambda col: f'minutes(now() - {col})',
+    'seconds_since': lambda col: f'seconds(now() - {col})',
+}
+
 # Normalized form (underscores) for matching
 def normalize_function_name(name: str) -> str:
     """Convert 'day of week' to 'day_of_week'"""
