@@ -1,245 +1,39 @@
 # Window Function Utilities for ASQL
 
-This document explores ideas for making common window function patterns easier and more intuitive in ASQL.
+This document covers window function patterns in ASQL - how to make common operations intuitive and concise.
 
 **Last Updated**: December 2024
 
----
-
-## The Problem
-
-Window functions are extremely powerful but have notoriously verbose syntax. The most common pattern — "get the first/last row per group" — requires a subquery with `ROW_NUMBER()`:
-
-```sql
--- Standard SQL: Get most recent order per customer
-SELECT * FROM (
-    SELECT *, 
-           ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) as rn
-    FROM orders
-) WHERE rn = 1
-```
-
-This is:
-- 5 lines for a simple concept
-- Requires a subquery
-- Uses magic number `rn = 1`
-- Easy to mess up the `ORDER BY` direction
+**Key Principle**: All multi-word functions follow the [underscore/space principle](UNDERSCORE_SPACE_PRINCIPLE.md) - `dense_rank` and `dense rank` are interchangeable, `running_sum` and `running sum` are equivalent, etc.
 
 ---
 
-## Part 1: Innovations in Other SQL Dialects
+## ✅ Implementation Status
 
-### 1.1 QUALIFY Clause (BigQuery, Snowflake, DuckDB, Databricks)
+| Feature | Status | Example |
+|---------|--------|---------|
+| `per ... first by ...` | ✅ Implemented | `per customer_id first by -order_date` |
+| `per ... last by ...` | ✅ Implemented | `per customer_id last by order_date` |
+| `per ... number by ...` | ✅ Implemented | `per customer_id number by -order_date` |
+| `per ... rank by ...` | ✅ Implemented | `per customer_id rank by -salary` |
+| `per ... dense rank by ...` | ✅ Implemented | `per department dense rank by -salary` |
+| `number by ...` (no partition) | ✅ Implemented | `number by -timestamp` |
+| `rank by ...` (no partition) | ✅ Implemented | `rank by -score` |
+| first() / last() in GROUP BY | ✅ Implemented | `first(order_id order by -order_date)` |
+| arg_max() / arg_min() | ✅ Implemented | `arg_max(order_id, order_date)` |
+| prior() / next() | ✅ Implemented | `prior(revenue)`, `next(revenue, 2)` |
+| running_sum/avg/count() | ✅ Implemented | `running_sum(amount)` |
+| rolling_avg/sum() | ✅ Implemented | `rolling_avg(revenue, 7)` |
 
-The `QUALIFY` clause filters on window function results without a subquery:
-
-```sql
--- BigQuery/Snowflake/DuckDB syntax
-SELECT *
-FROM orders
-QUALIFY ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) = 1
-```
-
-**Benefits**: No subquery needed, much cleaner
-**ASQL Opportunity**: Support `qualify` as a clause
-
-```asql
-# Proposed ASQL
-from orders
-  qualify row_number() over (partition by customer_id order by -order_date) == 1
-```
-
-### 1.2 ClickHouse's argMax/argMin Functions
-
-ClickHouse has brilliant aggregate functions that return the value of one column where another column is max/min:
-
-```sql
--- ClickHouse: Get the order_id with the max order_date per customer
-SELECT 
-    customer_id,
-    argMax(order_id, order_date) as latest_order_id,
-    argMax(amount, order_date) as latest_order_amount
-FROM orders
-GROUP BY customer_id
-```
-
-**Benefits**: No window function needed at all! Works as a simple aggregate.
-**ASQL Opportunity**: Add `arg_max()` and `arg_min()` functions
-
-```asql
-# Proposed ASQL
-from orders
-  group by customer_id (
-    arg_max(order_id, order_date) as latest_order_id,
-    arg_max(amount, order_date) as latest_amount
-  )
-```
-
-### 1.3 PRQL's Window Syntax
-
-PRQL uses a cleaner window function syntax with `window`:
-
-```prql
-# PRQL syntax
-from orders
-sort order_date
-window customer_id (
-  derive row_num = row_number
-)
-filter row_num == 1
-```
-
-**Benefits**: Separates partitioning from the function, more readable
-**ASQL Opportunity**: Consider similar `partition` or `window` block syntax
-
-### 1.4 DuckDB's FIRST/LAST Aggregates (with ORDER BY)
-
-DuckDB supports `FIRST()` and `LAST()` as aggregate functions with an optional `ORDER BY`:
-
-```sql
--- DuckDB syntax
-SELECT 
-    customer_id,
-    FIRST(order_id ORDER BY order_date DESC) as latest_order_id
-FROM orders
-GROUP BY customer_id
-```
-
-**Benefits**: Clean, simple, intuitive
-**ASQL Opportunity**: Add `first()` and `last()` aggregates with ordering
-
-```asql
-# Proposed ASQL
-from orders
-  group by customer_id (
-    first(order_id, order by -order_date) as latest_order_id
-  )
-```
-
-### 1.5 Databricks/Spark's first() Aggregate
-
-Databricks has `first()` as an aggregate that returns the first value encountered:
-
-```sql
--- Databricks
-SELECT customer_id, first(order_id)
-FROM orders
-GROUP BY customer_id
-```
-
-**Note**: This doesn't guarantee ordering without a preceding ORDER BY, but it's still useful.
+**Note**: `first`/`last` require a partition - use `per ... first by ...` for deduplication, or `first()` / `last()` as aggregates in GROUP BY.
 
 ---
 
-## Part 2: Common dbt Patterns & Macros
+## Design Philosophy
 
-### 2.1 dbt_utils.deduplicate (Proposed/Common Pattern)
+### Two Contexts for Window-like Operations
 
-Many teams create a `deduplicate` macro:
-
-```sql
--- Common dbt pattern
-{% macro deduplicate(relation, partition_by, order_by) %}
-    SELECT * FROM (
-        SELECT *,
-            ROW_NUMBER() OVER (PARTITION BY {{ partition_by }} ORDER BY {{ order_by }}) as _rn
-        FROM {{ relation }}
-    )
-    WHERE _rn = 1
-{% endmacro %}
-```
-
-Usage:
-```sql
-{{ deduplicate('orders', 'customer_id', 'order_date DESC') }}
-```
-
-**ASQL Opportunity**: Make deduplication a first-class operation
-
-```asql
-# Proposed ASQL: "distinct on" syntax (PostgreSQL-inspired)
-from orders
-  distinct on customer_id (order by -order_date)
-  
-# Or even simpler with a "first" operator
-from orders
-  first per customer_id (order by -order_date)
-```
-
-### 2.2 dbt_metrics Secondary Calculations
-
-The dbt_metrics package provides window-based calculations:
-- `period_over_period` - Compare to previous period
-- `rolling` - Rolling window aggregations
-- `prior` - Get prior period value
-
-```sql
--- These become window functions under the hood
-{{ metrics.calculate(
-    metric('revenue'),
-    secondary_calculations=[
-        metrics.period_over_period(comparison_strategy="difference"),
-        metrics.rolling(aggregate="average", interval=7)
-    ]
-) }}
-```
-
-**ASQL Opportunity**: Built-in period comparison functions
-
-```asql
-# Proposed ASQL
-from monthly_revenue
-  order by month
-  select 
-    month,
-    revenue,
-    prior(revenue) as prev_month_revenue,
-    revenue - prior(revenue) as mom_change,
-    rolling_avg(revenue, 3) as three_month_avg
-```
-
----
-
-## Part 3: Proposed ASQL Enhancements
-
-### Priority 1: High-Impact, Low-Complexity
-
-#### 3.1 QUALIFY Clause Support
-
-Add `qualify` as a filter that runs after window functions:
-
-```asql
-from orders
-  select *, row_number() over (partition by customer_id order by -order_date) as rn
-  qualify rn == 1
-```
-
-**Implementation**: Relatively straightforward - just a new clause type that compiles to a subquery wrapper in dialects that don't support QUALIFY natively.
-
-#### 3.2 DISTINCT ON Support (PostgreSQL-style)
-
-PostgreSQL's `DISTINCT ON` is the cleanest way to deduplicate:
-
-```sql
--- PostgreSQL
-SELECT DISTINCT ON (customer_id) *
-FROM orders
-ORDER BY customer_id, order_date DESC
-```
-
-```asql
-# Proposed ASQL
-from orders
-  distinct on (customer_id)
-  order by customer_id, -order_date
-```
-
-**Implementation**: Compile to DISTINCT ON for Postgres, ROW_NUMBER() subquery for others.
-
-### Priority 2: New Aggregate Functions
-
-#### 3.3 first() / last() with Ordering
-
+**1. GROUP BY aggregates** - collapse rows, extract values:
 ```asql
 from orders
   group by customer_id (
@@ -247,162 +41,294 @@ from orders
     last(order_id order by order_date) as first_order
   )
 ```
+→ One row per customer, specific columns extracted
 
-Compiles to:
-- DuckDB: Native `FIRST(... ORDER BY ...)`
-- Others: Subquery with `ROW_NUMBER()`
+**2. Pipeline steps** - transform row set, keep all columns:
+```asql
+from orders
+  per customer_id first by -order_date
+```
+→ One row per customer, ALL columns preserved
 
-#### 3.4 arg_max() / arg_min() (ClickHouse-inspired)
+Both are useful! The GROUP BY version is for when you want specific aggregated values. The pipeline version is for deduplication while keeping the full row.
 
-"Get the value of X where Y is max/min"
+---
+
+## The `per` Command (Pipeline Window Operations)
+
+The `per` command creates a window context for operations that work on partitions:
+
+### Syntax
+
+```
+per <partition_cols> <operation> by <order_cols> [as <alias>]
+```
+
+Or without partition (whole table):
+```
+<operation> by <order_cols> [as <alias>]
+```
+
+### Operations
+
+| Operation | Aliases | What it does | Default alias | Row count |
+|-----------|---------|--------------|---------------|-----------|
+| `first` | | Keep first row per partition | (no column) | ↓ Reduces |
+| `last` | | Keep last row per partition | (no column) | ↓ Reduces |
+| `number` | | Add row number column | `row_num` | Same |
+| `rank` | | Add rank column | `rank` | Same |
+| `dense rank` | `dense_rank` | Add dense rank column | `dense_rank` | Same |
+
+**Note**: Following the [underscore/space principle](UNDERSCORE_SPACE_PRINCIPLE.md), `dense rank` and `dense_rank` are interchangeable.
+
+### Examples
+
+```asql
+# DEDUPLICATION: Keep most recent order per customer
+from orders
+  per customer_id first by -order_date
+
+# DEDUPLICATION: Keep earliest order per customer  
+from orders
+  per customer_id first by order_date
+
+# DEDUPLICATION: Keep last (equivalent to first with reversed order)
+from orders
+  per customer_id last by order_date
+
+# ADD ROW NUMBER: Number orders per customer (most recent = 1)
+from orders
+  per customer_id number by -order_date
+# Result: adds `row_num` column
+
+# ADD ROW NUMBER: With custom alias
+from orders
+  per customer_id number by -order_date as order_num
+
+# ADD RANK: Rank employees by salary within department
+from employees
+  per department rank by -salary
+# Result: adds `rank` column
+
+# ADD DENSE RANK: Dense rank (no gaps)
+from employees
+  per department dense rank by -salary
+# Result: adds `dense_rank` column
+
+# NO PARTITION: Number all rows
+from events
+  number by -timestamp
+# Result: adds `row_num` to all rows, ordered by timestamp desc
+
+# NO PARTITION: Rank all rows
+from scores
+  rank by -score
+# Result: adds `rank` to all rows
+```
+
+**Note**: Standalone `first by` / `last by` are NOT supported - they require a partition. Use `per ... first by ...` for deduplication.
+
+### Reading the Syntax
+
+The `per` prefix reads naturally in English:
+- `per customer_id first by -order_date` → "Per customer, get the first by order date descending"
+- `per department rank by -salary` → "Per department, rank by salary descending"
+- `number by -timestamp` → "Number by timestamp descending"
+
+---
+
+## Comparison: `per ... first` vs `first()` in GROUP BY
+
+These serve different purposes:
+
+### `per ... first by` (Pipeline - Deduplication)
+
+```asql
+from orders
+  per customer_id first by -order_date
+```
+
+**Result**: One row per customer with ALL columns from the original row
+```
+| customer_id | order_id | order_date | amount | status |
+|-------------|----------|------------|--------|--------|
+| 1           | 105      | 2024-03-15 | 99.00  | shipped|
+| 2           | 203      | 2024-03-14 | 150.00 | pending|
+```
+
+### `first()` in GROUP BY (Aggregate - Value Extraction)
 
 ```asql
 from orders
   group by customer_id (
-    arg_max(order_id, order_date) as latest_order_id,
-    max(order_date) as latest_order_date
+    first(order_id order by -order_date) as latest_order,
+    first(amount order by -order_date) as latest_amount,
+    count(*) as total_orders
   )
 ```
 
-Compiles to:
-- ClickHouse: Native `argMax()`
-- Others: Subquery with `ROW_NUMBER()`
+**Result**: One row per customer with SPECIFIC aggregated columns
+```
+| customer_id | latest_order | latest_amount | total_orders |
+|-------------|--------------|---------------|--------------|
+| 1           | 105          | 99.00         | 5            |
+| 2           | 203          | 150.00        | 3            |
+```
 
-### Priority 3: Convenience Functions
+**Use `per ... first`** when you want the whole row (deduplication).
+**Use `first()` in GROUP BY** when you want specific values plus other aggregations.
 
-#### 3.5 prior() / next() (Simplified LAG/LEAD)
+---
+
+## Default Column Names
+
+All operations generate sensible default aliases:
+
+| Operation | Equivalent Forms | Default Alias |
+|-----------|------------------|---------------|
+| `number by ...` | | `row_num` |
+| `rank by ...` | | `rank` |
+| `dense rank by ...` | `dense_rank by ...` | `dense_rank` |
+| `first by ...` | | (no column - filters rows) |
+| `last by ...` | | (no column - filters rows) |
+| `prior(col)` | | `prior_<col>` |
+| `next(col)` | | `next_<col>` |
+| `running col` | `running_col`, `running_sum(col)`, `running sum(col)` | `running_<col>` |
+| `running avg(col)` | `running_avg(col)` | `running_avg_<col>` |
+| `rolling avg(col, n)` | `rolling_avg(col, n)` | `<col>_<n>_avg` |
+| `rolling sum(col, n)` | `rolling_sum(col, n)` | `<col>_<n>_sum` |
+
+**Note**: All multi-word functions follow the [underscore/space principle](UNDERSCORE_SPACE_PRINCIPLE.md) - underscores and spaces are interchangeable.
+
+---
+
+## Other Window Utilities
+
+### arg_max() / arg_min() (ClickHouse-inspired)
+
+Get the value of one column where another column is max/min:
+
+```asql
+# All equivalent:
+arg_max(order_id, order_date)
+arg max(order_id, order_date)
+
+# Full example
+from orders
+  group by customer_id (
+    arg max(order_id, order_date) as latest_order_id,
+    arg min(order_id, order_date) as earliest_order_id
+  )
+```
+
+### first() / last() in GROUP BY (DuckDB-style)
+
+Get the first or last value when sorted (within a GROUP BY):
+
+```asql
+from orders
+  group by customer_id (
+    first(order_id order by -order_date) as latest_order,
+    last(order_id order by -order_date) as earliest_order,
+    count(*) as total_orders
+  )
+```
+
+### prior() / next() (Simplified LAG/LEAD)
 
 ```asql
 from monthly_sales
-  order by month
+  sort month
   select
     month,
     revenue,
-    prior(revenue) as prev_month,           # LAG(revenue, 1)
-    prior(revenue, 3) as three_months_ago,  # LAG(revenue, 3)
-    next(revenue) as next_month             # LEAD(revenue, 1)
+    prior(revenue) as prior_revenue,      # LAG(revenue, 1) → default alias
+    prior(revenue, 3) as three_months_ago,
+    next(revenue) as next_revenue         # LEAD(revenue, 1)
 ```
 
-#### 3.6 running_sum() / running_avg() / running_count()
+### running / running_sum() / running_avg() / running_count()
+
+Cumulative aggregates. Following the underscore/space principle, all these are equivalent:
 
 ```asql
+# All equivalent ways to write running sum:
+running_sum(amount)
+running sum(amount)
+running_amount        # shorthand: running_<col>
+running amount        # shorthand with space
+
+# Full example
 from transactions
-  order by date
+  sort date
   select
     date,
     amount,
-    running_sum(amount) as cumulative_total,
-    running_avg(amount) as avg_to_date,
-    running_count(*) as transaction_number
+    running amount,                    # → running_amount (default alias)
+    running avg(amount) as avg_to_date,
+    running count(*) as transaction_number
 ```
 
-Compiles to:
-```sql
-SELECT 
-    date,
-    amount,
-    SUM(amount) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING) as cumulative_total,
-    AVG(amount) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING) as avg_to_date,
-    COUNT(*) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING) as transaction_number
-```
+### rolling / rolling_avg() / rolling_sum() with Window Size
 
-#### 3.7 rolling_avg() / rolling_sum() with Window Size
+Moving window aggregates:
 
 ```asql
+# All equivalent:
+rolling_avg(revenue, 7)
+rolling avg(revenue, 7)
+
+# Full example
 from daily_sales
-  order by date
+  sort date
   select
     date,
     revenue,
-    rolling_avg(revenue, 7) as seven_day_avg,
-    rolling_sum(revenue, 30) as thirty_day_total
+    rolling avg(revenue, 7),           # → revenue_7_avg (default alias)
+    rolling sum(revenue, 30) as monthly_total
 ```
 
 ---
 
-## Part 4: Radical Ideas (Explore Later)
-
-### 4.1 Implicit Window Context
-
-What if `order by` and `group by` automatically applied to subsequent window functions?
+## Full Example: Customer Order Analysis
 
 ```asql
-# Current verbose
+# Get each customer's most recent order with running totals
 from orders
-  select 
-    customer_id,
-    order_date,
-    row_number() over (partition by customer_id order by order_date) as rn
-
-# Proposed implicit context
-from orders
-  partition by customer_id
-  order by order_date
+  per customer_id number by -order_date    # Adds row_num
+  sort customer_id, -order_date
   select
     customer_id,
+    order_id,
     order_date,
-    row_number() as rn  # Automatically uses context
-```
+    amount,
+    row_num,
+    running_sum(amount) as cumulative_spend,
+    prior(amount) as prev_order_amount
 
-**Concern**: Could be confusing if you want different partitions for different functions.
-
-### 4.2 "dedupe" as a First-Class Operation
-
-```asql
-# Get first row per group - very common pattern
+# Or just get the most recent order per customer
 from orders
-  dedupe by customer_id (order by -order_date)
-  
-# Or with "keep first/last" semantics
-from orders
-  keep first per customer_id (order by -order_date)
-```
-
-### 4.3 "rank" / "number" as Operators
-
-```asql
-from orders
-  number by customer_id (order by -order_date) as rn
-  
-from employees
-  rank by department (order by -salary) as salary_rank
+  per customer_id first by -order_date
 ```
 
 ---
 
-## Part 5: Implementation Roadmap
+## Quick Reference
 
-### Phase 1: Quick Wins
-1. **QUALIFY clause** - Add support, compile to subquery for non-supporting dialects
-2. **DISTINCT ON** - PostgreSQL-style, compile to ROW_NUMBER for others
-
-### Phase 2: New Functions
-3. **first() / last()** - Aggregates with ORDER BY
-4. **arg_max() / arg_min()** - ClickHouse-style
-5. **prior() / next()** - Simplified LAG/LEAD
-
-### Phase 3: Convenience
-6. **running_sum/avg/count()** - Running aggregates
-7. **rolling_avg/sum()** - Moving window aggregates
-
-### Phase 4: Advanced
-8. **Window context blocks** - Explore implicit partition/order
-9. **dedupe operator** - First-class deduplication
-
----
-
-## Appendix: Frequency Analysis
-
-From analyzing Fivetran dbt examples:
-
-| Pattern | Occurrences | Current ASQL | Proposed |
-|---------|-------------|--------------|----------|
-| ROW_NUMBER for dedup | ~13 | Pass-through | `dedupe by` or `qualify` |
-| LAG for prior value | ~8 | Pass-through | `prior()` |
-| LEAD for next value | ~3 | Pass-through | `next()` |
-| Running totals | ~5 | Pass-through | `running_sum()` |
-| Rolling averages | ~4 | Pass-through | `rolling_avg()` |
-| RANK for ranking | ~5 | Pass-through | Consider `rank by` |
+| Intent | ASQL Syntax | Also works as |
+|--------|-------------|---------------|
+| Most recent row per group | `per group_col first by -date` | |
+| Oldest row per group | `per group_col first by date` | |
+| Add row numbers per group | `per group_col number by -date` | |
+| Add rank per group | `per group_col rank by -value` | |
+| Add dense rank per group | `per group_col dense rank by -value` | `dense_rank by` |
+| Get column value at max | `arg_max(col, sort_col)` | `arg max(...)` |
+| Previous row value | `prior(col)` | |
+| Next row value | `next(col)` | |
+| Cumulative sum | `running col` | `running_sum(col)`, `running sum(col)` |
+| Cumulative average | `running avg(col)` | `running_avg(col)` |
+| 7-day moving average | `rolling avg(col, 7)` | `rolling_avg(col, 7)` |
+| First value in group | `first(col order by sort)` | GROUP BY context |
 
 ---
 
@@ -413,5 +339,3 @@ From analyzing Fivetran dbt examples:
 - [ClickHouse argMax](https://clickhouse.com/docs/en/sql-reference/aggregate-functions/reference/argmax)
 - [PostgreSQL DISTINCT ON](https://www.postgresql.org/docs/current/sql-select.html#SQL-DISTINCT)
 - [PRQL Window Functions](https://prql-lang.org/book/reference/stdlib/transforms/window.html)
-- [dbt_metrics Package](https://github.com/dbt-labs/dbt_metrics)
-

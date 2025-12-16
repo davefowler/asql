@@ -7,6 +7,7 @@ These are reference documents that may be useful for understanding implementatio
 ## Contents
 
 - **AGENT_INSTRUCTIONS.md** - Instructions for AI agents working on ASQL implementation
+- **case.md** - Design exploration for `when` conditional expressions (replacing SQL CASE)
 - **CODE_QUALITY.md** - Code quality standards and cleanup tasks checklist
 - **CRITICAL_REVIEW.md** - Critical review of the ASQL specification with design concerns and recommendations
 - **FEATURE_STATUS.md** - Detailed feature status breakdown with test statistics
