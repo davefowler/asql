@@ -1,6 +1,6 @@
-# ASQL: A Pipeline Syntax for SQL
+# ASQL: A Pipeline Syntax for Analytic SQL
 
-ASQL is a query language that transpiles to SQL. It reorders SQL's syntax to flow top-to-bottom (like a pipeline) and adds shorthand for common analytics patterns. Think of it like CoffeeScript for SQL—you write ASQL, it outputs standard SQL for any dialect.
+Analytic SQL (ASQL) is a query language that transpiles to SQL. It reorders SQL's syntax to flow top-to-bottom (like a pipeline) and adds shorthand for common analytics patterns. Think of it like CoffeeScript for SQL—you write ASQL, it outputs standard SQL for any dialect.
 
 **Status**: Experimental. [GitHub](https://github.com/davefowler/asql)
 
@@ -209,7 +209,7 @@ from users
 
 ```asql
 from users
-  join orders on users.id = orders.user_id
+  & orders on users.id == orders.user_id
   prefix orders.* with order_
 ```
 

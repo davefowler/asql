@@ -1014,6 +1014,133 @@ take 25`
             },
         ];
         
+        const cohortExamples = [
+            {
+                title: "User Cohorts with first()",
+                desc: "Assign users to cohorts by their first activity",
+                query: `from events
+group by user_id (
+    first(event_date order by event_date) as first_activity,
+    month(first(event_date order by event_date)) as cohort_month,
+    # as total_events
+)`
+            },
+            {
+                title: "First Purchase Cohort",
+                desc: "Customer cohorts by first order date",
+                query: `from orders
+group by customer_id (
+    first(order_date order by order_date) as first_order_date,
+    month(first(order_date order by order_date)) as cohort_month,
+    first(order_id order by order_date) as first_order_id,
+    sum(total) as lifetime_value
+)`
+            },
+            {
+                title: "Cohort Size by Month",
+                desc: "Count users in each signup cohort",
+                query: `from users
+group by month(signup_date) as cohort_month (
+    # as cohort_size,
+    avg(age) as avg_age
+)
+sort cohort_month`
+            },
+            {
+                title: "Cumulative LTV (Lifetime Value)",
+                desc: "Running sum of revenue per cohort",
+                query: `from orders
+join customers on orders.customer_id == customers.id
+group by month(customers.signup_date) as cohort_month, month(orders.order_date) as order_month (
+    sum(orders.total) as revenue,
+    # as orders
+)
+sort cohort_month, order_month
+select 
+    cohort_month,
+    order_month,
+    revenue,
+    running_sum(revenue) as cumulative_revenue`
+            },
+            {
+                title: "Period-over-Period Retention",
+                desc: "Compare activity to prior period using prior()",
+                query: `from events
+join users on events.user_id == users.id
+group by month(users.signup_date) as cohort_month, month(events.event_date) as activity_month (
+    count(distinct events.user_id) as active_users
+)
+sort cohort_month, activity_month
+select
+    cohort_month,
+    activity_month,
+    active_users,
+    prior(active_users) as prev_month_active,
+    active_users - prior(active_users) as change`
+            },
+            {
+                title: "First Event per User",
+                desc: "Deduplicate to first activity using per...first by",
+                query: `from events
+per user_id first by event_date
+select user_id, event_date as first_event_date, event_type`
+            },
+            {
+                title: "Revenue by Cohort and Period",
+                desc: "Track how each cohort spends over time",
+                query: `from orders
+join customers on orders.customer_id == customers.id
+group by 
+    month(customers.first_order_date) as cohort_month,
+    month(orders.order_date) as order_month (
+    sum(orders.total) as revenue,
+    count(distinct orders.customer_id) as buyers,
+    avg(orders.total) as avg_order_value
+)
+sort cohort_month, order_month`
+            },
+            {
+                title: "Rolling Average Retention",
+                desc: "Smooth retention curve with rolling_avg()",
+                query: `from events
+join users on events.user_id == users.id  
+group by month(users.signup_date) as cohort_month, week(events.event_date) as activity_week (
+    count(distinct events.user_id) as active_users
+)
+sort cohort_month, activity_week
+select
+    cohort_month,
+    activity_week,
+    active_users,
+    rolling_avg(active_users, 4) as four_week_avg`
+            },
+            {
+                title: "Cohort with Channel Segment",
+                desc: "Segment cohorts by acquisition channel",
+                query: `from events
+join users on events.user_id == users.id
+group by users.channel, month(users.signup_date) as cohort_month (
+    count(distinct events.user_id) as active_users,
+    # as total_events
+)
+sort users.channel, cohort_month`
+            },
+            {
+                title: "Feature Adoption Cohort",
+                desc: "Track when users first adopted a feature",
+                query: `from events
+where event_type == "feature_used"
+group by user_id (
+    first(event_date order by event_date) as first_feature_use,
+    month(first(event_date order by event_date)) as adoption_month
+)
+group by adoption_month (
+    # as users_adopted
+)
+sort adoption_month`
+            },
+        ];
+        
         const sqlExamples = [];
         
         // Wait for DOM and ensure ASQL mode is loaded
@@ -1387,6 +1514,57 @@ take 25`
                             }, 1000);
                         };
                         pipelineExamplesDiv.appendChild(btn);
+                        });
+                    }
+                    
+                    // Cohort Analysis Examples section
+                    const cohortSection = document.createElement('div');
+                    cohortSection.className = 'example-section';
+                    const cohortH3 = document.createElement('h3');
+                    cohortH3.textContent = 'Cohort Analysis Examples';
+                    cohortSection.appendChild(cohortH3);
+                    const cohortP = document.createElement('p');
+                    cohortP.style.color = '#666';
+                    cohortP.style.marginBottom = '15px';
+                    cohortP.style.fontSize = '13px';
+                    cohortP.textContent = 'Cohort analysis patterns using first(), running_sum(), prior(), and other window functions. These showcase how to build retention, LTV, and user segmentation queries.';
+                    cohortSection.appendChild(cohortP);
+                    const cohortExamplesDiv = document.createElement('div');
+                    cohortExamplesDiv.className = 'example-list';
+                    cohortExamplesDiv.id = 'cohort-examples';
+                    cohortSection.appendChild(cohortExamplesDiv);
+                    container.appendChild(cohortSection);
+                    
+                    if (!cohortExamples || !Array.isArray(cohortExamples)) {
+                        console.error('cohortExamples array is not defined or is not an array');
+                        cohortExamplesDiv.innerHTML = '<p style="color: #c5221f; padding: 20px;">Error: Cohort examples data not available.</p>';
+                    } else {
+                        cohortExamples.forEach(example => {
+                        const btn = document.createElement('button');
+                        btn.className = 'example-btn';
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'example-title';
+                        titleDiv.textContent = example.title;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'example-desc';
+                        descDiv.textContent = example.desc;
+                        btn.appendChild(titleDiv);
+                        btn.appendChild(descDiv);
+                        btn.onclick = () => {
+                            // Set "from" to ASQL if not already set
+                            const fromDialect = document.getElementById('from-dialect').value;
+                            if (fromDialect !== 'asql') {
+                                document.getElementById('from-dialect').value = 'asql';
+                                updateUITitles();
+                            }
+                            inputEditor.setValue(example.query);
+                            translateQuery();
+                            // Update URL after a short delay to allow translation to complete
+                            setTimeout(() => {
+                                updateURL();
+                            }, 1000);
+                        };
+                        cohortExamplesDiv.appendChild(btn);
                         });
                     }
                 } else {
