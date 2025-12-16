@@ -17,9 +17,14 @@ Dates are one of the most important and commonly-used features in analytics SQL.
 - ✅ Basic date functions: `month()`, `year()`, `week()`, `day()`, `hour()`
 - ⚠️ `date_trunc()` passes through as function call
 - ⚠️ `INTERVAL` passes through (SQL syntax)
-- ❌ `DATEDIFF` / date arithmetic not cleanly handled
-- ❌ `DATEADD` not cleanly handled
-- ❌ No relative date literals (e.g., "7 days ago")
+
+**Decided (see Section 11)**:
+- ✅ Date arithmetic: `order_date + 7 days`
+- ✅ Date difference: `days(end - start)`
+- ✅ Relative dates: `7 days ago`
+- ✅ Time since: `days_since_created_at`
+- ✅ Timezone: `created_at::PST`
+- ✅ Week start: ISO Monday default with `week_sunday()` alternative
 
 ---
 
@@ -608,10 +613,15 @@ is_last_30_days(created_at)
 |-----------|-------------|---------|
 | Date literal | `@YYYY-MM-DD` | `@2025-01-15` |
 | Relative past | `N unit ago` | `7 days ago`, `1 month ago` |
+| Relative future | `N unit from now` | `7 days from now` |
 | Date arithmetic | `date + N unit` | `order_date + 7 days` |
 | Date difference | `unit(date1 - date2)` | `days(end - start)` |
+| Time since now | `unit_since_col` | `days_since_created_at` |
+| Time until future | `unit_until_col` | `days_until_due_date` |
 | Truncation | `unit(col)` / `unit col` / `unit_col` | `month(created_at)` |
 | "of" style | `unit of col` | `year of created_at` → `year_of_created_at` |
+| Timezone cast | `col::TZ` | `created_at::PST`, `created_at::"America/LA"` |
+| Week variants | `week_monday()` / `week_sunday()` | `week_sunday(created_at)` |
 
 ### Date Part Extraction (Syntax TBD - See Section 1.2.1)
 
@@ -649,8 +659,10 @@ Recommended: Natural language phrases with optional function equivalents:
 
 ### Phase 3: Nice to Have
 10. **Boolean date checks**: `is_today()`, `is_this_month()`
-11. **Timezone handling**: `at_timezone(timestamp, "America/New_York")`
+11. **Timezone cast syntax**: `created_at::PST`, `created_at::"America/New_York"`
 12. **Natural language dates**: `"last Monday"`, `"first day of month"`
+13. **Future dates**: `7 days from now`, `next_month()`
+14. **Until pattern**: `days_until_due_date`
 
 ---
 
@@ -753,7 +765,7 @@ from orders
 
 ## 7. Inspiration from Other Languages
 
-### 6.1 KQL (Kusto)
+### 7.1 KQL (Kusto)
 ```kql
 // Relative time - very clean
 | where timestamp > ago(7d)
@@ -769,7 +781,7 @@ from orders
 
 **Takeaways**: The `ago()` function and `7d` duration literals are very intuitive.
 
-### 6.2 DuckDB
+### 7.2 DuckDB
 ```sql
 -- Simple interval syntax
 SELECT date + INTERVAL 7 DAY
@@ -786,7 +798,7 @@ SELECT INTERVAL '1 year 2 months 3 days'
 
 **Takeaways**: DuckDB's flexible interval syntax and `age()` function are nice.
 
-### 6.3 PRQL
+### 7.3 PRQL
 ```prql
 from users
 filter signup_date >= @2024-01-01
@@ -828,7 +840,7 @@ Current ASQL uses `@2025-01-15` which is good. Consider supporting:
 
 ## 9. Implementation Notes
 
-### 8.1 SQLGlot Integration
+### 9.1 SQLGlot Integration
 
 SQLGlot already handles date function translation between dialects. Key classes:
 - `exp.DateTrunc` - for truncation
@@ -841,7 +853,7 @@ ASQL should:
 1. Parse ASQL date syntax into these SQLGlot expressions
 2. Let SQLGlot handle dialect-specific SQL generation
 
-### 8.2 Parser Changes Needed (Date-Specific)
+### 9.2 Parser Changes Needed (Date-Specific)
 
 1. **Inline interval expressions**: Parse `7 days`, `1 month` after `+` or `-` operators
 2. **`ago` keyword**: Parse `N units ago` as `now() - INTERVAL 'N units'`
@@ -852,7 +864,7 @@ ASQL should:
 
 > **Note**: Universal function shorthand implementation details are in [universal_function_shorthand.md](universal_function_shorthand.md).
 
-### 8.3 Backward Compatibility
+### 9.3 Backward Compatibility
 
 - Keep supporting `interval "7 days"` syntax
 - Keep `date_trunc()`, `datediff()`, `dateadd()` pass-through
@@ -873,24 +885,342 @@ ASQL should:
 
 ---
 
-## 11. Open Questions
+## 11. Decisions Made
 
-1. **`ago` precedence**: How does `7 days ago` interact with other operators?
-   - `created_at >= 7 days ago and status == "active"` - should work naturally
-   - Need to ensure parser handles this correctly
+### 11.1 `ago` Precedence ✅ DECIDED
 
-2. **Week start**: Should `week()` start on Sunday or Monday?
-   - Proposal: Configurable, default to ISO (Monday)
-   - Alternative: `week_sunday()`, `week_monday()`
+`7 days ago` should work naturally with other operators:
+```asql
+created_at >= 7 days ago and status == "active"
+```
 
-3. **Timezone handling**: How explicit should timezone support be?
-   - Minimal: Just pass through `AT TIME ZONE`
-   - Enhanced: `at_timezone(timestamp, "America/New_York")`
+The parser must ensure `7 days ago` binds correctly - it's a single expression that evaluates to a timestamp, then participates in the comparison. Not an open question - just requires careful parser implementation.
 
-4. **Extended patterns**: Could we support `days_since_created_at` → `days(now() - created_at)`?
-   - Recommendation: Start with basic patterns, expand based on user feedback
+### 11.2 Week Start ✅ DECIDED
+
+**Default**: ISO 8601 standard (Monday = day 1)
+
+**Rationale**: 
+- ISO 8601 is the international standard
+- PostgreSQL's `ISODOW` uses Monday = 1
+- Most analytics/business contexts expect Monday start
+- US Sunday-start is the exception, not the rule
+
+**Implementation**:
+```asql
+week(created_at)              -- Default: ISO (Monday start)
+week_monday(created_at)       -- Explicit Monday start
+week_sunday(created_at)       -- US-style Sunday start
+
+day of week created_at        -- Default: 1 = Monday, 7 = Sunday
+day_of_week_monday(created_at)  -- Same as default
+day_of_week_sunday(created_at)  -- 1 = Sunday, 7 = Saturday
+```
+
+**Configuration**: Allow global config to change default week start if needed.
+
+### 11.3 Timezone Handling ✅ DECIDED
+
+**Use cast-like syntax** with `::` operator - consistent with existing type casting:
+
+```asql
+-- Short timezone codes
+created_at::PST
+created_at::UTC
+created_at::EST
+
+-- Full IANA timezone names (quoted)
+created_at::"America/Los_Angeles"
+created_at::"Europe/London"
+created_at::"Asia/Tokyo"
+
+-- Chained with other operations
+month(created_at::PST)
+created_at::UTC + 7 days
+```
+
+**Why this syntax**:
+- ✅ Consistent with ASQL's existing `::` cast operator
+- ✅ Reads naturally: "created_at as PST" 
+- ✅ Short and clean
+- ✅ Familiar to PostgreSQL users
+- ✅ Works with both short codes and IANA names
+
+**Compiles to** (PostgreSQL):
+```sql
+created_at AT TIME ZONE 'PST'
+created_at AT TIME ZONE 'America/Los_Angeles'
+```
+
+**Configuration**: Default timezone can be configured (follows database default if not set).
+
+**For explicit function syntax** (also supported):
+```asql
+in_timezone(created_at, "America/Los_Angeles")
+-- or
+at_timezone(created_at, "PST")
+```
+
+---
+
+### 11.4 `*_since_*` Pattern ✅ DECIDED
+
+Support the pattern `{unit}_since_{column}` which expands to `{unit}(now() - column)`:
+
+```asql
+-- All of these work:
+days_since_created_at        → days(now() - created_at)
+weeks_since_signup_date      → weeks(now() - signup_date)
+months_since_last_login      → months(now() - last_login)
+years_since_birth_date       → years(now() - birth_date)
+hours_since_updated_at       → hours(now() - updated_at)
+minutes_since_last_action    → minutes(now() - last_action)
+seconds_since_timestamp      → seconds(now() - timestamp)
+```
+
+**Natural language syntax also works**:
+```asql
+days since created_at
+weeks since signup_date
+months since last_login
+years since birth_date
+```
+
+**Usage examples**:
+```asql
+from users
+  select
+    name,
+    days_since_last_login,
+    months_since_signup_date,
+    years_since_birth_date as age
+
+from orders
+  where days_since_created_at > 30
+  -- Orders older than 30 days
+
+from sessions
+  where minutes_since_last_action > 30
+  -- Inactive sessions
+```
+
+**Compiles to** (PostgreSQL):
+```sql
+SELECT 
+    name,
+    EXTRACT(DAY FROM NOW() - last_login) AS days_since_last_login,
+    EXTRACT(MONTH FROM AGE(NOW(), signup_date)) AS months_since_signup_date,
+    EXTRACT(YEAR FROM AGE(NOW(), birth_date)) AS age
+FROM users
+```
+
+**Supported units**:
+- `seconds_since_*`
+- `minutes_since_*`
+- `hours_since_*`
+- `days_since_*`
+- `weeks_since_*`
+- `months_since_*`
+- `years_since_*`
+
+### 11.5 `*_until_*` Pattern ✅ DECIDED
+
+The opposite of `*_since_*` - for future dates:
+
+```asql
+days_until_due_date          → days(due_date - now())
+weeks_until_deadline         → weeks(deadline - now())
+months_until_renewal         → months(renewal_date - now())
+hours_until_expiry           → hours(expiry_time - now())
+```
+
+**Natural language**:
+```asql
+days until due_date
+weeks until deadline
+```
+
+**Usage**:
+```asql
+from tasks
+  where days_until_due_date < 7
+  -- Tasks due within a week
+
+from subscriptions
+  where months_until_renewal <= 1
+  -- Subscriptions expiring soon
+```
+
+### 11.6 Function Context Disambiguation ✅ DECIDED
+
+Unit functions (`days`, `months`, etc.) have **context-dependent behavior**:
+
+| Context | Example | Behavior |
+|---------|---------|----------|
+| Truncation | `day(created_at)` | Returns date truncated to day |
+| Difference | `days(end - start)` | Returns integer count of days |
+| Interval | `+ 7 days` | Creates interval for arithmetic |
+
+**How parser determines context**:
+1. If argument is a date subtraction → difference (returns integer)
+2. If argument is a single column → truncation (returns date)
+3. If preceded by `+` or `-` → interval (for arithmetic)
+
+This is unambiguous because:
+- `days(a - b)` - subtraction expression = difference
+- `day(a)` - single column = truncation
+- `a + 7 days` - arithmetic context = interval
+
+---
+
+### 11.7 `from now` Syntax ✅ DECIDED
+
+Future date expressions using `from now`:
+
+```asql
+7 days from now
+1 month from now
+2 weeks from now
+24 hours from now
+```
+
+**Compiles to**: `now() + INTERVAL '7 days'`
+
+**Usage**:
+```asql
+from orders
+  where estimated_delivery <= 3 days from now
+  -- Orders arriving in the next 3 days
+
+from reminders
+  where remind_at == 1 hour from now
+```
+
+---
+
+## 12. Remaining Open Questions
+
+1. **Timezone abbreviation ambiguity**: `PST` vs `PDT` - should ASQL handle daylight saving automatically?
+   - Recommendation: Use IANA names for precision, short codes are convenience only
+
+2. **Fiscal year support**: Should we add `fiscal_year()`, `fiscal_quarter()`?
+   - Common in business analytics
+   - Would need configurable fiscal year start month
+
+3. **Date formatting**: Should we add a `format()` function?
+   - e.g., `format(created_at, "YYYY-MM-DD")`
+   - Or use cast syntax: `created_at::"YYYY-MM-DD"`?
 
 > **Note**: Open questions about function shorthand (column conflicts, multi-word columns, two-argument functions) are in [Universal Function Shorthand](universal_function_shorthand.md).
+
+---
+
+## 13. Documentation Requirements
+
+When implementing date features, ensure proper documentation is added:
+
+### 13.1 For Each New Feature
+
+1. **SPEC.md** - Add to Section 8 (Dates & Time):
+   - Syntax definition
+   - Examples
+   - Edge cases
+
+2. **docs/spec.md** - User-facing documentation:
+   - Clear explanation with examples
+   - Common use cases
+   - Gotchas and tips
+
+3. **docs/examples.md** - Add practical examples:
+   - Real-world analytics queries using the feature
+   - Before/after comparisons with SQL
+
+4. **examples/pairs/** - Create example files:
+   - `XX_date_feature.asql` - ASQL example
+   - `XX_date_feature.sql` - Equivalent SQL
+
+### 13.2 Documentation Checklist
+
+For each date feature, document:
+
+| Item | Location | Description |
+|------|----------|-------------|
+| Syntax | SPEC.md | Formal syntax definition |
+| Examples | docs/spec.md | 2-3 usage examples |
+| Edge cases | SPEC.md | What happens with nulls, invalid dates, etc. |
+| Dialect differences | SPEC.md | How it compiles to different SQL dialects |
+| Error messages | Code | Clear errors for invalid syntax |
+| Tests | tests/ | Unit tests covering happy path and edge cases |
+
+### 13.3 Specific Documentation Needed
+
+| Feature | Docs Needed |
+|---------|-------------|
+| `N days ago` | Syntax, precedence rules, singular/plural |
+| `date + N days` | Syntax, supported units, negative values |
+| `days(end - start)` | Difference vs truncation disambiguation |
+| `days_since_col` | Pattern matching, auto-column naming |
+| `days_until_col` | Pattern matching, auto-column naming |
+| `day of week col` | Week start (Mon/Sun), value ranges |
+| `col::PST` | Timezone codes, IANA names, DST handling |
+| `week_sunday()` | When to use vs default `week()` |
+| `from now` | Syntax, use cases |
+
+### 13.4 Example Documentation Template
+
+For each feature, use this template in docs:
+
+```markdown
+## Feature Name
+
+**Syntax**: `syntax here`
+
+**Description**: One-line explanation.
+
+**Examples**:
+```asql
+-- Example 1: Basic usage
+from orders where created_at >= 7 days ago
+
+-- Example 2: In select
+from users select days_since_last_login
+```
+
+**Compiles to** (PostgreSQL):
+```sql
+SELECT ... FROM orders WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+```
+
+**Notes**:
+- Singular/plural both work: `1 day ago` = `1 days ago`
+- Works with: days, weeks, months, years, hours, minutes, seconds
+```
+
+### 13.5 Test Coverage Requirements
+
+Each feature needs tests for:
+
+1. **Happy path** - Basic functionality works
+2. **Edge cases** - Nulls, zeros, negative values
+3. **All dialects** - PostgreSQL, MySQL, BigQuery, Snowflake, etc.
+4. **Error cases** - Invalid syntax produces clear errors
+5. **Integration** - Works with other ASQL features (joins, group by, etc.)
+
+Example test file: `tests/test_date_features.py`
+
+```python
+class TestRelativeDates:
+    def test_days_ago(self):
+        assert compile("from t where d >= 7 days ago") == ...
+    
+    def test_singular_plural(self):
+        # Both should produce same output
+        assert compile("1 day ago") == compile("1 days ago")
+    
+    def test_with_other_conditions(self):
+        # Precedence should work correctly
+        assert compile("d >= 7 days ago and x == 1") == ...
+```
 
 ---
 
