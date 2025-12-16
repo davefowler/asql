@@ -7,43 +7,26 @@
 
 ---
 
-## Philosophy & Purpose
+## The Problem
 
-SQL was designed in the 1970s for transactional databases. It's powerful, but its syntax often works against how we naturally think about data transformations. ASQL was created with a few core principles:
+SQL was designed in the 1970s for transactional databases and has seen limited usability upgrades since. Many tools like python notebooks, dbt macros, ORMs, semantic models, visual explorers, etc have been built to aid with the complexity and verbosity of using SQL for data transformation and analytics. 
 
-### 🎯 Read Like You Think
+ASQL takes the learnings from these tools and recreates a new SQL dialect that transpiles into any other dialect.
 
-Queries should flow naturally, top to bottom, in the order you reason about data:
-
-1. Start with your data source
-2. Filter to what you care about
-3. Transform and aggregate
-4. Order and limit the results
-
-Not: define output columns → specify source → add filters → remember to group → finally order.
-
-### 📐 Convention Over Configuration
-
-If you follow good modeling practices (like dbt's naming conventions), ASQL makes smart inferences. Foreign keys like `user_id` automatically link to `users.id`. Date columns like `created_at` work with natural date functions. Everything is configurable, but sensible defaults mean less boilerplate.
-
-### 🔤 Familiarity Over Novelty
-
-ASQL keeps SQL's vocabulary—`from`, `where`, `group by`, `join`. We improve the grammar, not replace the language. Your SQL knowledge transfers directly.
-
-### 🌐 Portable By Design
-
-ASQL compiles to any SQL dialect via [SQLGlot](https://github.com/tobymao/sqlglot). Write once, run on PostgreSQL, MySQL, BigQuery, Snowflake, Redshift, DuckDB, and more. SQLGlot handles the dialect differences so you don't have to.
+In 2010 CoffeeScript was released to make writing JavaScript more pleasant and safe to write. Its example prompted and influenced great improvements to the core JavaScript language we have today. ASQL aims to do the same for SQL.
 
 ---
 
-## The Pipeline Revolution
+## Queries that Flow Like Pipelines
 
-The biggest change in ASQL is **pipeline syntax**. Inspired by Python notebooks, dplyr, and data transformation tools, ASQL lets you chain operations in the order you think about them.
+One of the main reasons Python notebooks are great for data analysis is that SQL isn't a pipeline—you have to write queries inside-out, with the output (`SELECT`) before the input (`FROM`). Notebooks let you build up transformations step-by-step.
 
-### The Problem with SQL
+**Inspired by**: [Python notebooks](https://jupyter.org/), [dplyr](https://dplyr.tidyverse.org/), [PRQL](https://prql-lang.org/), [Kusto/KQL](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/)
+
+### The SQL Way
 
 ```sql
--- SQL: Read from bottom to top, inside out
+-- Read from bottom to top, inside out
 SELECT 
     region, 
     SUM(amount) AS revenue
@@ -61,7 +44,7 @@ You start with `SELECT` before you know what columns you need. Filters come afte
 ### The ASQL Way
 
 ```asql
--- ASQL: Read top to bottom, like a notebook
+-- Read top to bottom, like a notebook
 from sales
   where year(date) = 2025
   group by region ( sum(amount) as revenue )
@@ -115,11 +98,133 @@ Just keep building the pipeline. When you need to reuse a step, CTEs are still a
 
 ---
 
-## dbt Macros, Built In
+## Intuitive Window Functions
+
+Window functions are SQL's most powerful feature—and its most confusing syntax. ASQL makes common patterns readable with helpers inspired by [ClickHouse](https://clickhouse.com/docs/en/sql-reference/aggregate-functions/reference/argmax)'s clean aggregation syntax and [Kusto's](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/) pipeline-native approach.
+
+### First/Last Per Group
+
+The dreaded "get most recent record per customer" pattern:
+
+<div class="grid-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+<div>
+
+**SQL (8 lines)**
+```sql
+SELECT * FROM (
+    SELECT *, 
+        ROW_NUMBER() OVER (
+            PARTITION BY customer_id 
+            ORDER BY order_date DESC
+        ) as rn
+    FROM orders
+) sub WHERE rn = 1;
+```
+
+</div>
+<div>
+
+**ASQL (2 lines)**
+```asql
+from orders
+  per customer_id first by -order_date
+```
+
+Reads naturally: "per customer, get the first by order date descending."
+
+</div>
+</div>
+
+### Previous/Next Row Values
+
+<div class="grid-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+<div>
+
+**SQL**
+```sql
+SELECT 
+    month,
+    revenue,
+    LAG(revenue, 1) OVER (ORDER BY month) as prev,
+    revenue - LAG(revenue, 1) OVER (ORDER BY month) as growth
+FROM monthly_sales;
+```
+
+</div>
+<div>
+
+**ASQL**
+```asql
+from monthly_sales
+  order by month
+  select month, revenue,
+    prior(revenue) as prev,
+    revenue - prior(revenue) as growth
+```
+
+</div>
+</div>
+
+### Running Totals & Moving Averages
+
+```asql
+from daily_sales
+  order by date
+  select date, revenue,
+    running_sum(revenue) as cumulative,
+    rolling_avg(revenue, 7) as week_avg
+```
+
+No more `SUM() OVER (ROWS UNBOUNDED PRECEDING)` gymnastics.
+
+### Window Function Reference
+
+| ASQL | SQL Equivalent | Example |
+|------|---------------|---------|
+| `per ... first by` | ROW_NUMBER() + filter | `per customer_id first by -date` |
+| `per ... number by` | ROW_NUMBER() | `per customer_id number by -date` |
+| `prior(col)` | `LAG(col, 1)` | `prior(revenue)` |
+| `next(col)` | `LEAD(col, 1)` | `next(revenue)` |
+| `running_sum(col)` | `SUM() OVER (ROWS UNBOUNDED PRECEDING)` | `running_sum(amount)` |
+| `running_avg(col)` | `AVG() OVER (ROWS UNBOUNDED PRECEDING)` | `running_avg(score)` |
+| `rolling_avg(col, n)` | `AVG() OVER (ROWS n-1 PRECEDING)` | `rolling_avg(revenue, 7)` |
+
+[Learn more about Window Functions →](window_functions.md)
+
+---
+
+## Built-in Analytics Utilities
 
 [dbt](https://www.getdbt.com/) revolutionized analytics engineering, and their macro ecosystem filled critical gaps in SQL. ASQL pays tribute to this work by **building many of these patterns directly into the language**.
 
-No more Jinja templating for common operations. No more `dbt_utils.star()` or `dbt_utils.surrogate_key()`. These are now first-class syntax:
+No more Jinja templating for common operations. No more `dbt_utils.star()` or `dbt_utils.surrogate_key()`. These are now first-class syntax.
+
+### Deduplication (No More ROW_NUMBER Gymnastics)
+
+<div class="grid-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+<div>
+
+**dbt (Jinja macro)**
+```sql
+{{ dbt_utils.dedupe(
+    relation=ref('stg_orders'),
+    partition_by='customer_id',
+    order_by='order_date desc'
+) }}
+```
+
+</div>
+<div>
+
+**ASQL**
+```asql
+from orders
+  deduplicate by customer_id
+  order by -order_date
+```
+
+</div>
+</div>
 
 ### Column Operations
 
@@ -131,25 +236,15 @@ from users
   prefix orders.* with order_                         -- prefix after join
 ```
 
-### Deduplication
-
-```asql
--- Keep most recent order per customer
-from orders
-  deduplicate by customer_id
-  order by -order_date
-```
-
-No more `ROW_NUMBER() OVER (PARTITION BY ... ORDER BY ...) = 1` gymnastics.
-
 ### Pivot & Unpivot
 
+Transform Jira-style EAV tables to columns:
+
 ```asql
--- Transform Jira custom fields from EAV to columns
+-- From: issue_id | field_name | field_value
+-- To:   issue_id | priority | sprint | story_points
 from issue_custom_fields
   pivot field_value by field_name
-
--- Result: issue_id | priority | sprint | story_points
 ```
 
 ### Gap Filling for Time Series
@@ -181,104 +276,38 @@ select value::integer? ?? 0 as amount  -- safe cast with default
 
 ---
 
-## Intuitive Window Functions
+## Universal Date Functions
 
-Window functions are SQL's most powerful feature—and its most confusing syntax. ASQL makes common patterns intuitive:
-
-### First/Last Per Group
-
-<div class="grid-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
-<div>
-
-**SQL (8 lines)**
-```sql
-SELECT * FROM (
-    SELECT *, 
-        ROW_NUMBER() OVER (
-            PARTITION BY customer_id 
-            ORDER BY order_date DESC
-        ) as rn
-    FROM orders
-) sub WHERE rn = 1;
-```
-
-</div>
-<div>
-
-**ASQL (2 lines)**
-```asql
-from orders
-  per customer_id first by -order_date
-```
-
-</div>
-</div>
-
-### Previous/Next Row Values
-
-<div class="grid-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
-<div>
-
-**SQL**
-```sql
-SELECT 
-    month,
-    revenue,
-    LAG(revenue, 1) OVER (ORDER BY month) as prev_month,
-    revenue - LAG(revenue, 1) OVER (ORDER BY month) as growth
-FROM monthly_sales;
-```
-
-</div>
-<div>
-
-**ASQL**
-```asql
-from monthly_sales
-  order by month
-  select month, revenue,
-    prior(revenue) as prev_month,
-    revenue - prior(revenue) as growth
-```
-
-</div>
-</div>
-
-### Running Totals & Moving Averages
-
-```asql
-from daily_sales
-  order by date
-  select date, revenue,
-    running_sum(revenue) as cumulative,
-    rolling_avg(revenue, 7) as week_avg
-```
-
-### Window Function Reference
-
-| ASQL | SQL Equivalent | Example |
-|------|---------------|---------|
-| `per ... first by` | ROW_NUMBER() + filter | `per customer_id first by -date` |
-| `per ... number by` | ROW_NUMBER() | `per customer_id number by -date` |
-| `prior(col)` | `LAG(col, 1)` | `prior(revenue)` |
-| `next(col)` | `LEAD(col, 1)` | `next(revenue)` |
-| `running_sum(col)` | `SUM() OVER (ROWS UNBOUNDED PRECEDING)` | `running_sum(amount)` |
-| `running_avg(col)` | `AVG() OVER (ROWS UNBOUNDED PRECEDING)` | `running_avg(score)` |
-| `rolling_avg(col, n)` | `AVG() OVER (ROWS n-1 PRECEDING)` | `rolling_avg(revenue, 7)` |
-
----
-
-## Cleaner Date Functions
-
-Date handling in SQL is a dialect minefield. `EXTRACT`, `DATE_TRUNC`, `DATEADD`, `DATEDIFF`—each database does it differently. ASQL provides **one syntax that works everywhere**:
+Date handling in SQL is a dialect minefield. `EXTRACT`, `DATE_TRUNC`, `DATEADD`, `DATEDIFF`—each database does it differently. ASQL provides **one syntax that works everywhere**, inspired by how analysts actually talk about dates.
 
 ### Date Truncation
 
+<div class="grid-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+<div>
+
+**SQL (varies by dialect)**
+```sql
+-- PostgreSQL
+DATE_TRUNC('month', created_at)
+
+-- MySQL
+DATE_FORMAT(created_at, '%Y-%m-01')
+
+-- BigQuery
+DATE_TRUNC(created_at, MONTH)
+```
+
+</div>
+<div>
+
+**ASQL (works everywhere)**
 ```asql
 from events
   group by month(created_at) ( # as count )
-  -- Works on Postgres, MySQL, BigQuery, Snowflake...
 ```
+
+</div>
+</div>
 
 ### Natural Date Arithmetic
 
@@ -313,7 +342,47 @@ where birthday = @1990-06-15
 
 ---
 
-## Auto-Generated Aliases & Function Shorthand
+## Cohorts as Easy as Group Bys
+
+Cohort analysis—grouping users by signup date and tracking behavior over time—is notoriously complex in SQL. A basic retention query typically requires **40+ lines and 4-5 CTEs**.
+
+**Inspired by**: [Amplitude](https://amplitude.com/), [Mixpanel](https://mixpanel.com/), and every analytics team that's built cohort rollup tables because the queries were too painful.
+
+With ASQL's building blocks, cohorts become dramatically simpler:
+
+```asql
+-- Get cohort assignment using first()
+set user_cohorts = from events
+  group by user_id (
+    month(first(event_date order by event_date)) as cohort_month
+  )
+
+-- Calculate retention by period
+from events
+  join user_cohorts on user_id
+  select
+    cohort_month,
+    months(event_date - cohort_month) as period
+  group by cohort_month, period (
+    count(distinct user_id) as active_users
+  )
+  order by cohort_month, period
+  select *, 
+    running_sum(active_users) as cumulative,
+    prior(active_users) as prev_period
+```
+
+**Features that make this possible:**
+
+- `first(col order by ...)` for cohort membership
+- `months(date1 - date2)` for period calculation
+- `running_sum()` for cumulative metrics
+- `prior()` for period-over-period comparison
+- Pipeline syntax eliminates CTE nesting
+
+---
+
+## Function Shorthand & Auto-Aliases
 
 ASQL auto-generates clear column names for all expressions, and goes a step further with **underscore/space flexibility**.
 
@@ -341,7 +410,7 @@ from sales
 
 ### Function Shorthand
 
-But we go further—**underscores and spaces are interchangeable** in function contexts:
+**Underscores and spaces are interchangeable** in function contexts:
 
 ```asql
 -- All of these are equivalent:
@@ -369,64 +438,6 @@ days_since_created_at     -- → days(now() - created_at)
 months_until_due_date     -- → months(due_date - now())
 day_of_week_order_date    -- → day_of_week(order_date)
 ```
-
----
-
-## Simplified Cohort Analysis
-
-Cohort analysis—grouping users by signup date and tracking behavior over time—is notoriously complex in SQL. A basic retention query typically requires 40+ lines and 4-5 CTEs.
-
-With ASQL's building blocks, cohorts become dramatically simpler:
-
-```asql
--- Get cohort assignment using first()
-set user_cohorts = from events
-  group by user_id (
-    month(first(event_date order by event_date)) as cohort_month
-  )
-
--- Calculate retention by period
-from events
-  join user_cohorts on user_id
-  select
-    cohort_month,
-    months(event_date - cohort_month) as period
-  group by cohort_month, period (
-    count(distinct user_id) as active_users
-  )
-  order by cohort_month, period
-  select *, 
-    running_sum(active_users) as cumulative,
-    prior(active_users) as prev_period
-```
-
-Features that make this possible:
-- `first(col order by ...)` for cohort membership
-- `months(date1 - date2)` for period calculation
-- `running_sum()` for cumulative metrics
-- `prior()` for period-over-period comparison
-- Pipeline syntax eliminates CTE nesting
-
----
-
-## Smart Comment Handling
-
-ASQL preserves your comments and can extract metadata from them. Powered by [SQLGlot's](https://github.com/tobymao/sqlglot) robust parsing:
-
-```asql
--- @description: Monthly revenue by region
--- @owner: analytics-team
-from sales
-  where year(date) = 2025      -- Current year only
-  group by region (
-    sum(amount) as revenue     -- Total revenue
-  )
-```
-
-Comments can be:
-- Preserved in compiled SQL
-- Extracted as metadata for documentation
-- Used for query annotation and lineage
 
 ---
 
@@ -494,15 +505,9 @@ Write once, run anywhere. ASQL transpiles to any SQL dialect via [SQLGlot](https
 </div>
 
 <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px;">
-<h3 style="margin-top: 0;">📅 Date Functions</h3>
-<p>Universal date handling that works on any database.</p>
-<a href="dates/">Date Functions →</a>
-</div>
-
-<div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px;">
-<h3 style="margin-top: 0;">🔧 Data Transformations</h3>
-<p>Built-in pivot, deduplicate, fill, and more.</p>
-<a href="transformations/">Transformations →</a>
+<h3 style="margin-top: 0;">🎯 Design Principles</h3>
+<p>The philosophy behind ASQL's design decisions.</p>
+<a href="design/">Design Principles →</a>
 </div>
 
 <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px;">
@@ -536,7 +541,9 @@ ASQL stands on the shoulders of giants:
 - **[dbt](https://www.getdbt.com/)** — Pioneered analytics engineering; many ASQL features are built-in versions of dbt macros
 - **[PRQL](https://prql-lang.org/)** — Inspired the pipeline-first approach to SQL
 - **[Kusto/KQL](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/)** — Proved pipeline syntax works at scale
-- **Python & Notebooks** — Influenced the top-to-bottom, iterative workflow
+- **[ClickHouse](https://clickhouse.com/)** — Inspired clean aggregation patterns like `arg_max`
+- **[Python & Notebooks](https://jupyter.org/)** — Influenced the top-to-bottom, iterative workflow
+- **[Amplitude](https://amplitude.com/) & [Mixpanel](https://mixpanel.com/)** — Showed how cohort analysis should feel
 
 ---
 
