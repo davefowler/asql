@@ -536,6 +536,103 @@ For now, use the `when` syntax which is clear and readable:
 when amount == 0 then null else amount
 ```
 
+### 4.13 Function Shorthand (Underscore/Space Principle)
+
+ASQL provides flexible syntax for function calls where **underscores and spaces are interchangeable**. This makes queries more natural to write and read.
+
+#### The Core Principle
+
+All of these are equivalent and produce the same result:
+
+```asql
+-- Function call styles (all equivalent):
+sum(amount)           -- explicit function call
+sum_amount            -- underscore shorthand
+sum amount            -- space shorthand
+sum of amount         -- "of" style (natural language)
+```
+
+All produce a column named `sum_amount`.
+
+#### Applies to All Functions
+
+This principle applies universally to:
+
+**Aggregations:**
+```asql
+sum_revenue           -- → sum(revenue)
+avg_price             -- → avg(price)
+count_orders          -- → count(orders)
+max_amount            -- → max(amount)
+```
+
+**Date functions:**
+```asql
+year_created_at       -- → year(created_at)
+month_signup_date     -- → month(signup_date)
+day_of_week_order_date -- → day_of_week(order_date)
+```
+
+**Multi-word functions:**
+```asql
+day_of_week(created_at)     -- explicit
+day_of_week_created_at      -- underscore shorthand
+day of week created_at      -- space shorthand (most natural)
+```
+
+#### Auto-Generated Column Names
+
+When using function shorthand, column names are auto-generated:
+
+```asql
+from sales
+  select sum_amount, avg_price, month_created_at
+  
+-- Equivalent to:
+from sales
+  select 
+    sum(amount) as sum_amount,
+    avg(price) as avg_price,
+    month(created_at) as month_created_at
+```
+
+#### Where This Applies
+
+| Context | Applies? | Example |
+|---------|----------|---------|
+| SELECT expressions | ✅ Yes | `select sum_amount` |
+| GROUP BY | ✅ Yes | `group by month_created_at` |
+| ORDER BY | ✅ Yes | `order by -sum_amount` |
+| WHERE conditions | ✅ Yes | `where days_since_created_at > 30` |
+| Column names (literals) | ❌ No | `created_at` stays as-is |
+| Table names | ❌ No | `user_accounts` stays as-is |
+| String literals | ❌ No | `"hello_world"` stays as-is |
+
+#### Ambiguity Resolution
+
+If an actual column name matches a potential function pattern, the **column takes precedence**:
+
+```asql
+-- If table has actual column "sum_revenue":
+select sum_revenue    -- Uses the column, not sum(revenue)
+
+-- To force function interpretation, use explicit syntax:
+select sum(revenue) as sum_revenue
+```
+
+#### Extended Patterns
+
+Some patterns expand to more complex expressions:
+
+```asql
+-- Time since patterns
+days_since_created_at     -- → days(now() - created_at)
+months_since_signup_date  -- → months(now() - signup_date)
+
+-- Time until patterns  
+days_until_due_date       -- → days(due_date - now())
+```
+
 ---
 
 ## 5. Aggregations
@@ -598,6 +695,10 @@ from Users
 sum(amount) as revenue
 total(amount) as revenue
 
+# Shorthand syntax (see Section 4.13)
+sum_amount              -- → sum(amount) as sum_amount
+total_revenue           -- → sum(revenue) as total_revenue
+
 # Natural language syntax
 Sum of amount as revenue
 Total of amount as revenue
@@ -607,8 +708,8 @@ Total amount as revenue
 # In group by
 from sales
   group by region (
+    sum_amount,         -- shorthand
     total amount as revenue
-    -- or: sum of amount as revenue
   )
 ```
 
@@ -1575,7 +1676,306 @@ from users
 
 ---
 
-## 13. Models (Optional Metadata)
+## 13. Data Transformation Operators
+
+ASQL provides built-in operators that replace common dbt macro patterns, making queries cleaner and more portable.
+
+### 13.1 Column Set Operators
+
+These operators manipulate column sets without needing to list every column.
+
+#### `except` - Exclude Columns
+
+Exclude specific columns from the result:
+
+```asql
+# Exclude sensitive columns
+from users
+  except email, phone, ssn
+
+# After a join, exclude from specific tables
+from users
+  join orders on users.id = orders.user_id
+  except users.password_hash, orders.internal_notes
+```
+
+**Compiles to**: Explicit `SELECT` with all columns except those listed (uses schema metadata).
+
+#### `rename` - Rename Columns
+
+Rename columns inline:
+
+```asql
+from users
+  rename id as user_id, name as user_name
+
+# Rename with table prefix after join
+from users
+  join orders on users.id = orders.user_id
+  rename users.id as user_id
+```
+
+**Compiles to**: `SELECT id AS user_id, name AS user_name, ...`
+
+#### `prefix` - Prefix Column Names
+
+Add a prefix to column names (especially useful after joins):
+
+```asql
+from users
+  prefix user_
+
+# Prefix specific table's columns
+from users
+  join orders on users.id = orders.user_id
+  prefix orders.* with order_
+```
+
+**Compiles to**: `SELECT id AS user_id, name AS user_name, ...`
+
+#### Combining Column Operators
+
+```asql
+from users
+  join orders on users.id = orders.user_id
+  except users.password_hash, orders.internal_notes
+  rename users.id as user_id
+  prefix orders.* with order_
+```
+
+### 13.2 Deduplicate
+
+Remove duplicate rows based on specified columns, keeping one row per group:
+
+```asql
+# Keep most recent per user/event combination
+from events
+  deduplicate by user_id, event_type
+  order by -created_at
+
+# Keep first occurrence
+from events
+  deduplicate by user_id, event_type
+  order by created_at
+```
+
+The `order by` determines which row to keep when duplicates exist.
+
+**Compiles to**:
+```sql
+-- On warehouses with QUALIFY:
+SELECT * FROM events
+QUALIFY ROW_NUMBER() OVER (PARTITION BY user_id, event_type ORDER BY created_at DESC) = 1
+
+-- Fallback:
+WITH ranked AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY user_id, event_type ORDER BY created_at DESC) AS rn
+  FROM events
+)
+SELECT * FROM ranked WHERE rn = 1
+```
+
+### 13.3 Pivot / Unpivot
+
+#### `pivot` - Rows to Columns
+
+Transform row values into columns:
+
+```asql
+# Basic pivot
+from sales
+  pivot amount by category
+
+# Pivot with aggregation
+from sales
+  pivot sum(amount) by category
+
+# Dynamic pivot (values from subquery)
+from sales
+  pivot amount by category from (select distinct category from products)
+```
+
+**Example use case - denormalizing custom fields:**
+
+Many SaaS platforms store custom fields in EAV (Entity-Attribute-Value) tables:
+
+```asql
+# Jira custom fields table:
+# | issue_id | field_name   | field_value |
+# | PROJ-123 | priority     | High        |
+# | PROJ-123 | sprint       | Sprint 5    |
+
+from issue_custom_fields
+  pivot field_value by field_name
+
+# Result:
+# | issue_id | priority | sprint   |
+# | PROJ-123 | High     | Sprint 5 |
+```
+
+#### `unpivot` - Columns to Rows
+
+Transform columns into rows:
+
+```asql
+from monthly_metrics
+  unpivot jan, feb, mar, apr into month, value
+```
+
+**Compiles to**: Native `PIVOT`/`UNPIVOT` where supported (Snowflake, BigQuery), `CASE`/`WHEN` + `GROUP BY` fallback elsewhere.
+
+### 13.4 Fill (Gap Filling)
+
+Fill gaps in time series data after grouping:
+
+```asql
+# Auto-detect range from data, NULL for missing values
+from orders
+  group by month(created_at) as month (
+    sum(amount) as revenue
+  )
+  fill month
+
+# Specify default values for filled rows
+from orders
+  group by month(created_at) as month (
+    sum(amount) as revenue
+  )
+  fill month with {revenue: 0}
+
+# Explicit range bounds (both inclusive)
+from orders
+  group by month(created_at) as month (
+    sum(amount) as revenue
+  )
+  fill month start '2024-01-01' stop '2024-12-01'
+
+# Combined: explicit range with defaults
+from orders
+  group by month(created_at) as month (
+    sum(amount) as revenue
+  )
+  fill month with {revenue: 0} start '2024-01-01' stop today()
+```
+
+**Range detection**: By default, `fill` auto-detects the range using `MIN()`/`MAX()` of the grouped column. Use `start`/`stop` for explicit bounds (e.g., always show full year).
+
+**Why `start`/`stop`?** We use these instead of `from`/`to` to avoid confusion with the `from` clause.
+
+### 13.5 Date Spine / Series
+
+Generate sequences as table sources:
+
+```asql
+# Date spine - one row per day/week/month
+from date_spine(start = '2020-01-01', end = today(), grain = day)
+
+# Numeric series
+from series(1, 100)
+
+# Join with actual data to fill gaps
+from date_spine(start = '2024-01-01', end = '2024-12-31', grain = month) as dates
+  left join (
+    from orders
+      group by month(created_at) as month (
+        sum(amount) as revenue
+      )
+  ) as sales on dates.date = sales.month
+```
+
+**Compilation**: Uses native `generate_series()` where available, numbers table or recursive CTE fallback elsewhere.
+
+### 13.6 Union with Schema Alignment
+
+Union tables with automatic column alignment:
+
+```asql
+# Union multiple tables, aligning columns
+from union(users_2022, users_2023, users_2024)
+
+# With options
+from union(users_2022, users_2023, fill_missing = null)
+```
+
+**Compilation**: Reads schemas, produces aligned `SELECT` lists with missing columns filled as `NULL`, then `UNION ALL`.
+
+### 13.7 Surrogate Keys
+
+Generate consistent surrogate keys:
+
+```asql
+select key(user_id, order_id) as order_key
+```
+
+**Semantics**:
+- Stable hashing algorithm across runs
+- Consistent NULL handling (NULLs hash consistently)
+- Type normalization before hashing
+
+**Compiles to**: Warehouse-appropriate hash function with delimiter injection and null handling.
+
+### 13.8 Safe Casting
+
+ASQL supports safe type casting that returns `NULL` on failure instead of erroring:
+
+```asql
+# Strict cast - errors on failure (default, SQL-compatible)
+select value::integer
+
+# Safe cast - returns NULL on failure (? suffix)
+select value::integer?
+
+# Safe cast with default (using ?? coalescing)
+select value::integer? ?? 0
+```
+
+**Why this matters**: Real-world data is messy. Columns may contain `"N/A"`, empty strings, or invalid formats. Safe casting handles this gracefully:
+
+```asql
+# Form submission with user input
+from form_submissions
+  select 
+    response_id,
+    age_input::integer? ?? 0 as age,     -- "N/A" becomes 0
+    amount_input::decimal? as amount     -- Invalid becomes NULL
+```
+
+**Compilation**:
+- `value::integer` → `CAST(value AS INTEGER)`
+- `value::integer?` → `TRY_CAST(value AS INTEGER)` (or `SAFE_CAST` on BigQuery)
+- `value::integer? ?? 0` → `COALESCE(TRY_CAST(value AS INTEGER), 0)`
+
+### 13.9 Safe Divide
+
+Avoid divide-by-zero errors:
+
+```asql
+select safe_divide(revenue, users) as revenue_per_user
+```
+
+**Compiles to**: `CASE WHEN users = 0 THEN NULL ELSE revenue / users END` (or native `SAFE_DIVIDE` on BigQuery).
+
+### 13.10 Operator Quick Reference
+
+| Operator | Purpose | Example |
+|----------|---------|---------|
+| `except` | Exclude columns | `except email, phone` |
+| `rename` | Rename columns | `rename id as user_id` |
+| `prefix` | Prefix column names | `prefix user_` |
+| `deduplicate by` | Remove duplicates | `deduplicate by user_id order by -date` |
+| `pivot ... by` | Rows to columns | `pivot amount by category` |
+| `unpivot ... into` | Columns to rows | `unpivot jan, feb into month, value` |
+| `fill` | Gap fill time series | `fill month with {revenue: 0}` |
+| `date_spine()` | Generate date sequence | `from date_spine(start='2024-01-01', end=today(), grain=day)` |
+| `series()` | Generate number sequence | `from series(1, 100)` |
+| `union()` | Union with alignment | `from union(t1, t2, t3)` |
+| `key()` | Surrogate key | `key(user_id, order_id)` |
+| `::type?` | Safe cast | `value::integer?` |
+| `safe_divide()` | Null on divide-by-zero | `safe_divide(a, b)` |
+
+---
+
+## 14. Models (Optional Metadata)
 
 **Philosophy**: Ideally, ASQL doesn't create its own model format. It should:
 1. Use dbt's existing `schema.yml` files when available
@@ -1624,7 +2024,7 @@ from users
 
 ---
 
-## 14. Nested Results (Optional)
+## 15. Nested Results (Optional)
 
 Inspired by EdgeQL, support nested result shapes:
 
@@ -1640,7 +2040,7 @@ from countries
 
 ---
 
-## 15. Indentation & Multi-line Queries
+## 16. Indentation & Multi-line Queries
 
 ### 14.1 Indentation Rules
 
@@ -1667,7 +2067,7 @@ from users
 
 ---
 
-## 16. Capitalization & Naming
+## 17. Capitalization & Naming
 
 ### 15.1 Case-Safe Design
 
@@ -1751,7 +2151,7 @@ select users.id as user_id, orders.id as order_id
 
 ---
 
-## 17. Examples
+## 18. Examples
 
 ### Example 1: Simple Analytic Query
 
@@ -1887,7 +2287,7 @@ Avg Users.age by country
 
 ---
 
-## 18. Compilation & Transpilation
+## 19. Compilation & Transpilation
 
 ### 17.1 Compilation Process
 
@@ -1931,7 +2331,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 19. Implementation Roadmap
+## 20. Implementation Roadmap
 
 | Stage | Milestone | Description |
 |-------|-----------|-------------|
@@ -1943,7 +2343,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 20. Design Decisions & Rationale
+## 21. Design Decisions & Rationale
 
 ### 19.1 Why Remove SELECT?
 
@@ -1979,7 +2379,7 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ---
 
-## 21. Future Considerations
+## 22. Future Considerations
 
 - **Visual SQL Editor**: ASQL's structure could enable a great visual query builder whose base could also be a text editor/IDE. Get the best of visual and text-based exploration.
 - **dbt Integration**: Building ASQL into dbt out of the gate would make it immediately useful for the dbt community
@@ -1990,7 +2390,7 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ---
 
-## 22. Major Benefits of ASQL
+## 23. Major Benefits of ASQL
 
 ### 21.1 Reduced Need for CTEs and Nested Queries
 
