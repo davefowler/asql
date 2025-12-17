@@ -11,6 +11,7 @@ This section provides detailed documentation on ASQL syntax. Each page covers a 
 - **[Dates & Time](dates.md)** — Date literals, truncation, arithmetic, relative dates
 - **[Window Functions](window-functions.md)** — Ranking, running totals, prior/next, deduplication
 - **[CTEs & Variables](ctes.md)** — `stash as`, `set`, named CTEs, query composition
+- **[Cohort Analysis](cohorts.md)** — Cohort assignment, retention calculations, period-over-period comparisons
 
 ## Data Manipulation
 
@@ -36,6 +37,7 @@ This section provides detailed documentation on ASQL syntax. Each page covers a 
 | Exclude column | `except password_hash` | `SELECT * EXCEPT(password_hash)` |
 | Pivot | `pivot sum(x) by cat values (...)` | `CASE WHEN ... GROUP BY` |
 | Explode array | `explode tags as tag` | `CROSS JOIN UNNEST(tags)` |
+| Cohort analysis | `cohort by month(users.signup_date)` | Multiple CTEs with joins and period calculation |
 
 ## Syntax Flexibility
 

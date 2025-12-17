@@ -59,23 +59,22 @@ pivot sum(amount) by status values (from orders select distinct status)
 ---
 
 ### 3. Cohort Analysis Features
-**Status**: Not Implemented  
+**Status**: ✅ Implemented (December 2025)  
 **GitHub Issue**: [#38](https://github.com/davefowler/asql/issues/38)  
-**Spec Source**: `ai_notes/COHORT_ANALYSIS.md`
+**Spec Section**: 14 (Cohort Analysis)
 
-**Note**: Cohort examples have been temporarily removed from `playground/examples.py`. See issue #38 for details on adding them back when implemented.
+**Implementation**: The `cohort by` operator is now available, simplifying cohort queries from 50+ lines of SQL to 3-5 lines of ASQL.
 
-**What it is**: High-level cohort analysis operators that simplify complex cohort queries from 50+ lines of SQL to 5-10 lines of ASQL.
+**Documentation**:
+- [Spec: Cohort Analysis](../spec.md#14-cohort-analysis)
+- [Syntax Guide: Cohorts](../syntax/cohorts.md)
 
-**Key Features**:
-- Cohort assignment operators
-- Retention calculation helpers
-- Period-over-period comparisons
-- Cohort rollup syntax
-
-**Note**: Many building blocks are already implemented (`first()`, `prior()`, `running_sum()`, etc.), but high-level cohort operators are not.
-
-**Workaround**: Use existing window functions and manual cohort logic.
+**Example**:
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+```
 
 ---
 
