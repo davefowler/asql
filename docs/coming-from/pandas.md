@@ -258,7 +258,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
 === "ASQL"
     ```asql
     from orders
-    pivot sum(amount) by category
+    pivot sum(amount) by category values ('Electronics', 'Clothing', 'Home')
     ```
 
 ---

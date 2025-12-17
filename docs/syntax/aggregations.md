@@ -140,7 +140,7 @@ Group by computed values like date truncations:
 
 ```asql
 from orders
-  group by month(created_at) as month (
+  group by month(created_at) (
     sum(amount) as revenue
   )
 ```
@@ -161,7 +161,7 @@ Use `as` to alias group columns:
 
 ```asql
 from orders
-  group by month(created_at) as month (
+  group by month(created_at) (
     sum(amount) as revenue
   )
 ```
@@ -215,7 +215,7 @@ By default, ASQL ensures all expected dimension values appear in grouped results
 -- All months from Jan-Jun will appear, even with zero revenue
 from orders
   where order_date >= @2024-01-01 and order_date < @2024-07-01
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -253,7 +253,7 @@ from orders
 ```asql
 from orders
   where year(created_at) = 2024
-  group by month(created_at) as month (
+  group by month(created_at) (
     sum(amount) as revenue,
     # as orders,
     avg(amount) as avg_order

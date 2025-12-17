@@ -66,6 +66,7 @@ class ASQLPreParser(
         result = self._transform_set_statements(result)
         result = self._transform_pipeline(result)
         result = self._transform_join_operators(result)  # Early: transform join operators before other processing
+        result = self._normalize_where_before_joins(result)  # Ensure WHEREs move after JOINs (pipeline semantics)
         result = self._transform_stash_as(result)  # Early: split query at stash points before other transforms
         result = self._transform_count_shorthand(result)
         result = self._transform_deduplicate_by(result)  # Transform deduplicate by to per ... first by
@@ -87,6 +88,7 @@ class ASQLPreParser(
         result = self._transform_pivot_marker(result)  # Expand __PIVOT_COLS__ markers after from_first
         result = self._transform_distinct_on(result)  # Move DISTINCT ON to after SELECT
         result = self._transform_star_column_override(result)  # select *, col as name → select * EXCEPT(name), col as name
+        result = self._transform_implicit_function_aliases(result)  # sum_amount → sum(amount) as sum_amount (SELECT only)
         result = self._transform_cohort_by(result)  # cohort by - transforms to CTEs and joins (after FROM-first)
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
         result = self._transform_qualify_clause(result)  # qualify rn == 1

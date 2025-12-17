@@ -137,8 +137,24 @@ class TestNaturalAggregates:
     def test_total_column(self):
         """total amount becomes sum(amount)."""
         result = preparse_asql("from sales select total amount")
-        # 'total' is an alias for 'sum'
+        assert "SUM(" in result.upper()
         assert "AMOUNT" in result.upper()
+
+
+class TestImplicitFunctionAlias:
+    """Test implicit function alias expansion (func_col → func(col) as func_col)."""
+
+    def test_select_sum_amount(self) -> None:
+        result = preparse_asql("from sales select sum_amount")
+        assert "SUM(amount) AS sum_amount".upper() in result.upper()
+
+    def test_select_year_created_at(self) -> None:
+        result = preparse_asql("from users select year_created_at")
+        assert "YEAR(created_at) AS year_created_at".upper() in result.upper()
+
+    def test_select_total_amount_alias_maps_to_sum(self) -> None:
+        result = preparse_asql("from sales select total_amount")
+        assert "SUM(amount) AS total_amount".upper() in result.upper()
 
 
 class TestDateLiterals:

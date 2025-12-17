@@ -91,7 +91,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
 === "ASQL"
     ```asql
     from orders
-    group by region, month(date) as month (
+    group by region, month(date) (
         sum(amount) as revenue,
         count(*) as orders,
         count(distinct customer_id) as customers
