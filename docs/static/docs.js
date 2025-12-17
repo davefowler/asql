@@ -247,8 +247,10 @@ function addPlaygroundButton() {
     // Check if button already exists
     if (document.querySelector('.playground-btn')) return;
     
-    // Find the header topic/title area
+    // Try to find the header inner container first (better for flexbox layout)
+    const headerInner = document.querySelector('.md-header__inner');
     const headerTitle = document.querySelector('.md-header__title');
+    
     if (!headerTitle) return;
     
     // Create playground button
@@ -263,8 +265,13 @@ function addPlaygroundButton() {
         Playground
     `;
     
-    // Insert after the header title
-    headerTitle.parentNode.insertBefore(btn, headerTitle.nextSibling);
+    // Insert after the header title, but ensure proper spacing
+    const parent = headerTitle.parentNode;
+    if (parent && headerTitle.nextSibling) {
+        parent.insertBefore(btn, headerTitle.nextSibling);
+    } else if (parent) {
+        parent.appendChild(btn);
+    }
 }
 
 // Initialize all code blocks on page load

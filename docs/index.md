@@ -86,7 +86,8 @@ ASQL adds shorthand for patterns that are verbose in SQL.
 
 ```asql
 #                    -- COUNT(*)
-#(distinct user_id)  -- COUNT(DISTINCT user_id)
+# users              -- COUNT(DISTINCT user_id) - infers primary key
+#(distinct user_id)  -- COUNT(DISTINCT user_id) - explicit
 order by -revenue    -- ORDER BY revenue DESC
 ```
 
@@ -218,6 +219,46 @@ Compiles to: `SELECT * EXCEPT(name, salary), upper(name) AS name, round(salary, 
 
 ---
 
+## Sampling
+
+Get random subsets of your data:
+
+```asql
+-- Fixed sample size
+from orders
+  sample 100
+
+-- Percentage sample
+from orders
+  sample 10%
+
+-- Stratified sampling (N per group)
+from orders
+  sample 100 per category
+```
+
+---
+
+## Pivot & Unpivot
+
+Reshape data between wide and long formats:
+
+```asql
+-- Rows to columns
+from sales
+  pivot sum(amount) by category values ('Electronics', 'Clothing')
+
+-- Columns to rows
+from metrics
+  unpivot jan, feb, mar into month, value
+
+-- Expand arrays
+from posts
+  explode tags as tag
+```
+
+---
+
 ## Date Handling
 
 SQL date functions vary by dialect. ASQL normalizes them:
@@ -317,11 +358,46 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 
 ## Getting Started
 
-- [Syntax Guide](quick_start.md) — Core syntax reference
+- [Quick Start](quick_start.md) — Get up and running quickly
+- [Tutorial](tutorial.md) — Hands-on, step-by-step learning guide
 - [Grouping & Aggregation](group_by.md) — Guaranteed groups, aggregates
 - [Window Functions](window_functions.md) — Running totals, ranking, prior/next
-- [Language Specification](spec.md) — Complete reference
 - [Examples](examples.md) — Real queries with SQL output
+
+## Documentation
+
+### Syntax Guide
+
+Detailed documentation on ASQL syntax:
+
+- [Syntax Overview](syntax/index.md) — All syntax documentation
+- [Pipeline Basics](syntax/pipeline.md) — FROM-first queries, chaining
+- [Expressions & Operators](syntax/expressions.md) — Comparisons, conditionals
+- [Aggregations](syntax/aggregations.md) — GROUP BY deep dive
+- [Joins](syntax/joins.md) — Join operators, FK inference
+- [Dates & Time](syntax/dates.md) — Date functions, arithmetic
+- [Window Functions](syntax/window-functions.md) — Ranking, running totals
+- [CTEs & Variables](syntax/ctes.md) — stash as, set
+- [Sampling](syntax/sampling.md) — Random, percentage, stratified sampling
+- [Pivot, Unpivot & Explode](syntax/pivot-unpivot.md) — Data reshaping, array expansion
+
+### Concepts
+
+Understanding ASQL's design:
+
+- [Pipeline Semantics](concepts/pipelines.md) — Why FROM-first matters
+- [Guaranteed Groups](concepts/guaranteed-groups.md) — Automatic gap-filling
+- [Convention Over Configuration](concepts/conventions.md) — Smart defaults
+- [Function Shorthand](concepts/shorthand.md) — Underscore/space flexibility
+
+### Reference
+
+Quick lookup:
+
+- [Functions Reference](reference/functions.md) — All built-in functions
+- [Operators Reference](reference/operators.md) — All operators
+- [Keywords Reference](reference/keywords.md) — Reserved keywords
+- [Language Specification](spec.md) — Complete language reference
 
 ---
 

@@ -19,9 +19,15 @@ theme:
     primary: blue
     accent: blue
   features:
-    - navigation.sections
-    - navigation.expand
-    - navigation.top
+    - navigation.tabs           # Top-level sections as horizontal tabs
+    - navigation.tabs.sticky    # Tabs stay visible when scrolling
+    - navigation.sections       # Group items in sidebar by section
+    - navigation.expand         # Auto-expand sidebar sections
+    - navigation.indexes        # Section index pages become clickable headers
+    - navigation.top            # Back-to-top button
+    - navigation.instant        # Faster page loads (SPA-like)
+    - navigation.tracking       # URL updates as you scroll
+    - toc.integrate             # Table of contents in left sidebar
     - search.suggest
     - search.highlight
     - content.code.annotate
@@ -76,19 +82,46 @@ plugins:
   #     minify_html: true
 
 # Navigation
+# With navigation.indexes, use index.md directly for clickable section headers
 nav:
   - Home: index.md
-  - Design Principles: design.md
-  - Language Specification: spec.md
-  - Syntax: quick_start.md
-  - Coming from...:
-    - Overview: coming-from/index.md
+  - Getting Started:
+    - Quick Start: quick_start.md
+    - Tutorial: tutorial.md
+    - Examples: examples.md
+  - Syntax:
+    - syntax/index.md
+    - Pipeline Basics: syntax/pipeline.md
+    - Expressions & Operators: syntax/expressions.md
+    - Aggregations: syntax/aggregations.md
+    - Joins: syntax/joins.md
+    - Dates & Time: syntax/dates.md
+    - Window Functions: syntax/window-functions.md
+    - CTEs & Variables: syntax/ctes.md
+    - Sampling: syntax/sampling.md
+    - Pivot, Unpivot & Explode: syntax/pivot-unpivot.md
+  - Concepts:
+    - concepts/index.md
+    - Pipeline Semantics: concepts/pipelines.md
+    - Guaranteed Groups: concepts/guaranteed-groups.md
+    - Convention Over Configuration: concepts/conventions.md
+    - Function Shorthand: concepts/shorthand.md
+  - Reference:
+    - reference/index.md
+    - Functions: reference/functions.md
+    - Operators: reference/operators.md
+    - Keywords: reference/keywords.md
+    - Full Specification: spec.md
+  - Coming From:
+    - coming-from/index.md
     - pandas: coming-from/pandas.md
     - dbt: coming-from/dbt.md
     - R / dplyr: coming-from/r.md
     - SQL: coming-from/sql.md
-  - Window Functions: window_functions.md
-  - Examples: examples.md
-  - Integrating: integrating.md
-  - Architecture: architecture.md
+  - Learn More:
+    - Grouping Guide: group_by.md
+    - Window Functions Deep Dive: window_functions.md
+    - Design Principles: design.md
+    - Integrating ASQL: integrating.md
+    - Architecture: architecture.md
 
