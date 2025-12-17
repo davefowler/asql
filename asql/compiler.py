@@ -63,6 +63,9 @@ def _detect_rollup_cube(stmt: exp.Expression) -> Tuple[bool, bool, List[str]]:
     Note: ASQL doesn't have native ROLLUP/CUBE syntax - this only handles raw SQL
     passthrough. If SQL passthrough is ever removed, this ROLLUP/CUBE handling
     (and the related NULL spine logic) can be deleted.
+    
+    TODO: GROUPING SETS support - requires parsing the specific sets and building
+    a custom filter that matches each set's NULL pattern. See GitHub issue.
     """
     has_rollup = False
     has_cube = False
