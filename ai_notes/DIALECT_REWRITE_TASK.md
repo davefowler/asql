@@ -299,3 +299,4 @@ tests/
 
 The full implementation plan with code examples is in `ai_notes/dialect.md`. Follow that document closely - it has working code snippets for most components.
 
+

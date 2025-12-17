@@ -345,3 +345,4 @@ The default has shifted from "data-driven completeness" to "schema-driven comple
 | `fill` keyword | Was planned | Removed, redundant |
 
 The net effect: simpler queries, fewer bugs, less infrastructure.
+

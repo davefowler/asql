@@ -333,3 +333,4 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
         day of week date as day_of_week,
         days_since_date as days_ago
     ```
+

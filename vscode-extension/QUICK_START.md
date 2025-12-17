@@ -6,7 +6,7 @@ Get up and running with ASQL syntax highlighting in VS Code in under 2 minutes!
 
 ### Option 1: Install from VSIX (Easiest)
 
-1. Download `asql-vscode-0.1.0.vsix` from [releases](https://github.com/asql-lang/asql/releases)
+1. Download the latest `.vsix` from [releases](https://github.com/asql-lang/asql/releases) (look for `asql-vscode-*.vsix`). If there isn't a `.vsix` asset, build it from source (see [INSTALLATION.md](INSTALLATION.md) → "Build from Source").
 2. Open VS Code
 3. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (macOS)
 4. Type "Extensions: Install from VSIX..."
