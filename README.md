@@ -99,42 +99,17 @@ The ASQL documentation is served via a web server that includes:
 
 ### Serving the Documentation
 
-#### Option 1: Start Both Docs and Playground (Recommended)
-
 ```bash
-# Install dependencies (includes Flask, markdown, and requests)
+# Install dependencies
 pip install -e ".[docs,playground]"
 
-# Start both servers at once
-python start_servers.py
+# Start both MkDocs and Playground
+./serve.sh
 ```
 
 This starts:
-- **Documentation Server**: http://localhost:5000
+- **Documentation (MkDocs)**: http://localhost:8000
 - **Playground**: http://localhost:5001
-
-The playground is embedded in the docs at http://localhost:5000/playground and accessible standalone at http://localhost:5001.
-
-#### Option 2: Start Servers Separately
-
-```bash
-# Terminal 1: Start documentation server
-python docs_server.py
-# Opens at http://localhost:5000
-
-# Terminal 2: Start playground (required for embedded playground)
-python playground.py
-# Opens at http://localhost:5001
-```
-
-#### Option 3: Using Docker
-
-```bash
-# Start both services with Docker Compose
-docker-compose up
-
-# Access at http://localhost:5000 (docs) and http://localhost:5001 (playground)
-```
 
 ### Documentation Features
 
