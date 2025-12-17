@@ -27,7 +27,9 @@ theme:
     - navigation.top            # Back-to-top button
     - navigation.instant        # Faster page loads (SPA-like)
     - navigation.tracking       # URL updates as you scroll
+    - navigation.sidebar        # Sticky sidebar navigation
     - toc.integrate             # Table of contents in left sidebar
+    - toc.follow                # TOC follows scroll position
     - search.suggest
     - search.highlight
     - content.code.annotate

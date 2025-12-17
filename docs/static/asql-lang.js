@@ -8,28 +8,17 @@
 (function() {
   'use strict';
   
-  // Get hljs from global scope (loaded via script tag)
-  const hljs = window.hljs;
-  
-  if (!hljs || !hljs.registerLanguage) {
-    // If hljs isn't loaded yet, wait for it
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function() {
-        setTimeout(registerASQLLanguage, 100);
-      });
-    } else {
-      setTimeout(registerASQLLanguage, 100);
-    }
-    return;
-  }
-  
-  registerASQLLanguage();
-  
   function registerASQLLanguage() {
     const hljs = window.hljs;
     if (!hljs || !hljs.registerLanguage) {
       console.warn('Highlight.js not available. ASQL syntax highlighting will not work.');
-      return;
+      return false;
+    }
+    
+    // Check if already registered
+    if (hljs.getLanguage && hljs.getLanguage('asql')) {
+      console.log('ASQL language already registered');
+      return true;
     }
 
     const ASQL_KEYWORDS = {
@@ -108,25 +97,55 @@
       relevance: 0
     };
 
-    hljs.registerLanguage('asql', function(hljs) {
-      return {
-        name: 'ASQL',
-        aliases: ['asql'],
-        case_insensitive: true,
-        keywords: ASQL_KEYWORDS,
-        contains: [
-          ASQL_COMMENT,
-          ASQL_STRING,
-          ASQL_NUMBER,
-          ASQL_MULTIWORD_KEYWORDS,
-          ASQL_COUNT_SHORTHAND,
-          ASQL_DESCENDING_SORT,
-          ASQL_FUNCTION,
-          ASQL_OPERATORS,
-          ASQL_IDENTIFIER
-        ]
-      };
-    });
+    try {
+      hljs.registerLanguage('asql', function(hljs) {
+        return {
+          name: 'ASQL',
+          aliases: ['asql'],
+          case_insensitive: true,
+          keywords: ASQL_KEYWORDS,
+          contains: [
+            ASQL_COMMENT,
+            ASQL_STRING,
+            ASQL_NUMBER,
+            ASQL_MULTIWORD_KEYWORDS,
+            ASQL_COUNT_SHORTHAND,
+            ASQL_DESCENDING_SORT,
+            ASQL_FUNCTION,
+            ASQL_OPERATORS,
+            ASQL_IDENTIFIER
+          ]
+        };
+      });
+      console.log('ASQL language registered successfully with highlight.js');
+      return true;
+    } catch (e) {
+      console.error('Error registering ASQL language:', e);
+      return false;
+    }
   }
+  
+  // Try to register immediately if hljs is available
+  if (window.hljs && window.hljs.registerLanguage) {
+    registerASQLLanguage();
+  } else {
+    // Wait for hljs to load
+    function waitForHljs() {
+      if (window.hljs && window.hljs.registerLanguage) {
+        registerASQLLanguage();
+      } else {
+        setTimeout(waitForHljs, 100);
+      }
+    }
+    
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', waitForHljs);
+    } else {
+      waitForHljs();
+    }
+  }
+  
+  // Export registration function for manual calls if needed
+  window.registerASQLLanguage = registerASQLLanguage;
 })();
 

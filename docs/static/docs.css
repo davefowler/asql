@@ -86,6 +86,32 @@
 
 .md-sidebar--secondary .md-nav__link--active {
     color: var(--asql-red) !important;
+    font-weight: 600;
+    border-left: 2px solid var(--asql-red);
+    padding-left: calc(0.6rem - 2px);
+}
+
+/* Improve TOC sidebar styling */
+.md-sidebar--secondary {
+    width: 14rem;
+}
+
+.md-sidebar--secondary .md-nav {
+    font-size: 0.85rem;
+}
+
+.md-sidebar--secondary .md-nav__item {
+    margin-bottom: 0.2rem;
+}
+
+.md-sidebar--secondary .md-nav__link {
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.md-sidebar--secondary .md-nav__link:hover {
+    background-color: rgba(197, 48, 48, 0.05);
 }
 
 /* Navigation sidebar - left (light mode) */
@@ -100,6 +126,58 @@
 .md-nav__item--active > .md-nav__link {
     color: var(--asql-red);
     font-weight: 600;
+    background-color: rgba(197, 48, 48, 0.08);
+    border-left: 3px solid var(--asql-red);
+    padding-left: calc(1rem - 3px);
+}
+
+/* Improve sidebar visibility and width - only for primary nav */
+.md-sidebar--primary {
+    width: 14rem;
+    border-right: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+/* Make navigation sections more prominent */
+.md-nav__title {
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #666;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.md-nav__item {
+    margin-bottom: 0.25rem;
+}
+
+.md-nav__link {
+    border-radius: 4px;
+    padding: 0.4rem 0.8rem;
+    transition: all 0.2s;
+}
+
+.md-nav__link:hover {
+    background-color: rgba(197, 48, 48, 0.05);
+}
+
+/* Wider content area for better readability */
+@media (min-width: 76.25em) {
+    .md-content {
+        max-width: 50rem;
+    }
+}
+
+/* Better spacing for wide screens */
+@media (min-width: 89.9375em) {
+    .md-sidebar--primary {
+        width: 15rem;
+    }
+    
+    .md-content {
+        max-width: 55rem;
+    }
 }
 
 /* Code blocks - light mode */
@@ -180,6 +258,30 @@
     border-color: var(--asql-red);
 }
 
+/* Top navigation tabs styling */
+.md-tabs {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+    background-color: #fafafa;
+}
+
+.md-tabs__link {
+    color: #666;
+    font-weight: 500;
+    padding: 0.6rem 1rem;
+    transition: all 0.2s;
+}
+
+.md-tabs__link:hover {
+    color: var(--asql-red);
+    background-color: rgba(197, 48, 48, 0.05);
+}
+
+.md-tabs__link--active {
+    color: var(--asql-red);
+    border-bottom: 2px solid var(--asql-red);
+    font-weight: 600;
+}
+
 /* Playground button in header */
 .playground-btn {
     display: inline-flex;
@@ -193,15 +295,42 @@
     font-size: 13px;
     text-decoration: none !important;
     margin-left: 16px;
+    margin-right: 16px;
     transition: all 0.2s;
     border: 1px solid rgba(255, 255, 255, 0.3);
     white-space: nowrap;
     flex-shrink: 0;
+    position: relative;
+    z-index: 1;
 }
 
 .playground-btn:hover {
     background: rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Ensure proper spacing in header to prevent overlap */
+.md-header__inner {
+    gap: 16px;
+}
+
+/* Ensure search box has proper spacing and doesn't overlap */
+.md-header__inner > .md-search {
+    margin-left: auto;
+}
+
+/* Ensure title container has proper spacing */
+.md-header__topic {
+    margin-right: 0;
+}
+
+/* Fix main content container to use available space properly */
+.md-main {
+    flex: 1;
+}
+
+.md-main__inner {
+    max-width: 100%;
 }
 
 .playground-btn svg {
