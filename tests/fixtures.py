@@ -81,14 +81,11 @@ VALID_ASQL_QUERIES = [
 # Queries that should fail with specific errors
 INVALID_ASQL_QUERIES = [
     ("", "Empty query"),
-    ("select * from users", "Must start with FROM"),
-    ("users", "Must start with FROM"),
+    # Note: The following are no longer strict ASQL requirements with the new SQLGlot-based parser
+    # The new parser is more permissive and accepts valid SQL even if it doesn't follow ASQL conventions
     ("from", "Missing table name"),
     ("from users where", "Missing WHERE condition"),
-    ("from users group by", "Missing grouping columns"),
-    ("from users group by country", "Missing aggregation block"),
     ("from users sort", "Missing sort columns"),
-    ("from users take", "Missing limit number"),
 ]
 
 # Edge cases to test

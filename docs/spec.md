@@ -102,7 +102,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 |----------|---------|----------------|---------|
 | `where` | Filter rows | `WHERE` | `where status = "active"` |
 | `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
-| `join` | Join datasets | `JOIN` | `join owners on owner_id = owners.id` |
+| `&`, `&?`, `?&`, `*` | Join datasets | `JOIN` | `& owners on owner_id = owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
 | `order by` | Sort rows | `ORDER BY` | `order by -users` (descending) |
 | `limit` | Limit rows | `LIMIT` | `limit 10` |
@@ -950,131 +950,210 @@ Avg Users.age by country
 
 ## 7. Joins & Relationships
 
-### 7.1 Explicit Joins
+ASQL uses symbolic operators for joins, making the join type visually clear. The `&` represents the join point, and `?` marks optional (nullable) sides.
 
-Traditional explicit join syntax:
+### 7.1 Join Operators
+
+| Operator | Join Type | SQL Equivalent | Meaning |
+|----------|-----------|----------------|---------|
+| `&` | INNER JOIN | `INNER JOIN` | Both sides must match |
+| `&?` | LEFT JOIN | `LEFT JOIN` | Right side is optional (can be NULL) |
+| `?&` | RIGHT JOIN | `RIGHT JOIN` | Left side is optional (can be NULL) |
+| `?&?` | FULL OUTER JOIN | `FULL OUTER JOIN` | Both sides are optional |
+| `*` | CROSS JOIN | `CROSS JOIN` | Cartesian product |
+
+**Mnemonic**: "The `?` marks the side that might be NULL"
+
+### 7.2 Basic Join Syntax
 
 ```asql
+-- INNER JOIN: only matching rows
+from opportunities & owners
+  select opportunities.amount, owners.name
+
+-- LEFT JOIN: all opportunities, owners may be NULL
+from opportunities &? owners
+  select opportunities.amount, owners.name
+
+-- RIGHT JOIN: all owners, opportunities may be NULL  
+from opportunities ?& owners
+  select opportunities.amount, owners.name
+
+-- FULL OUTER JOIN: all rows from both sides
+from opportunities ?&? owners
+  select opportunities.amount, owners.name
+
+-- CROSS JOIN: every combination
+from opportunities * owners
+  select opportunities.amount, owners.name
+```
+
+### 7.3 Table Aliasing
+
+Use `as` to alias joined tables:
+
+```asql
+from opportunities &? users as owner
+  select opportunities.amount, owner.name, owner.email
+```
+
+### 7.4 Explicit Join Conditions
+
+When automatic FK inference isn't desired or possible, specify the join condition with `on`:
+
+```asql
+from opportunities &? owners on opportunities.owner_id == owners.id
+  select opportunities.amount, owners.name
+
+-- With alias
+from opportunities &? users as owner on opportunities.owner_id == owner.id
+  select opportunities.amount, owner.name
+```
+
+### 7.5 Dot Notation for FK Traversal
+
+**This works WITHOUT a model file** - ASQL recognizes FK naming conventions.
+
+If a column follows the pattern `{name}_id`, you can traverse it using `.{name}.`:
+
+```asql
+-- opportunities has owner_id column (FK to users table)
 from opportunities
-  join owners on owner_id == owners.id
-  group by owners.name ( sum(amount) as total_pipeline )
+  select 
+    opportunities.amount,
+    opportunities.owner.name,      -- Auto-joins via owner_id
+    opportunities.owner.email      -- Same join, different column
 ```
 
-### 7.2 Automatic Joins (Preferred)
-
-If a foreign key relationship exists between tables, ASQL can automatically infer the join:
-
-**Single FK relationship:**
-```asql
-# If opportunities.owner_id → owners.id is the only FK
-from opportunities, owners
-  group by owners.name ( sum(amount) as total_pipeline )
+Compiles to:
+```sql
+SELECT 
+  opportunities.amount,
+  owner_1.name,
+  owner_1.email
+FROM opportunities
+LEFT JOIN users AS owner_1 ON opportunities.owner_id = owner_1.id
 ```
 
-**Arrow syntax (explicit relationship):**
-```asql
-# Explicitly specify the relationship direction
-from opportunities->owners
-  group by owners.name ( sum(amount) as total_pipeline )
+**Key points:**
+- The FK column `owner_id` enables `.owner.` traversal
+- ASQL finds the target table by checking: `owners` table, then `users` table (singularization)
+- Dot traversal defaults to LEFT JOIN (the FK might be NULL)
+- Multiple references to same FK reuse the same join (no duplicate joins)
 
-# Or reverse direction
-from owners<-opportunities
-  group by owners.name ( sum(amount) as total_pipeline )
+### 7.6 Chained FK Traversal
+
+Navigate through multiple relationships:
+
+```asql
+-- order_items.order_id → orders.user_id → users
+from order_items
+  select 
+    order_items.quantity,
+    order_items.order.total,           -- → orders
+    order_items.order.user.name        -- → orders → users
 ```
 
-**Multiple FKs - specify which one:**
-```asql
-# If accounts has both owner_id and creator_id pointing to users
-from accounts.owner->users
-  group by users.name ( sum(amount) as total )
+### 7.7 Multiple FKs to Same Table
 
-# Or using the FK name directly
+When a table has multiple FKs to the same table, use the `<alias>_<table>_id` convention:
+
+```asql
+-- accounts has owner_user_id, manager_user_id, support_rep_user_id all → users
 from accounts
-  join users on accounts.owner_id == users.id
-  group by users.name ( sum(amount) as total )
+  select 
+    accounts.owner.name as owner_name,           -- via owner_user_id
+    accounts.manager.name as manager_name,       -- via manager_user_id  
+    accounts.support_rep.name as support_name    -- via support_rep_user_id
 ```
 
-### 7.3 Smart Joins via Dot Notation (Model Metadata)
+The FK naming pattern `<alias>_user_id` enables `.alias.` dot traversal to the `users` table.
 
-If relationships are defined in a model file (compatible with dbt's relationship syntax):
-
-```yaml
-models:
-  opportunities:
-    links:
-      owner: owners.id
-    # dbt-style relationships also supported:
-    relationships:
-      - to: owners
-        field: owner_id
-```
-
-Then you can use dot notation without explicit joins:
-
+Or with explicit joins:
 ```asql
-from opportunities
-  group by owner.name ( sum(amount) as total_pipeline )
+from accounts 
+  &? users as owner on accounts.owner_user_id == owner.id
+  &? users as manager on accounts.manager_user_id == manager.id
+  select owner.name, manager.name
 ```
 
-**dbt Compatibility**: ASQL model files are compatible with dbt's `relationships` syntax. If you're using dbt, ASQL can read your existing `schema.yml` files to infer relationships automatically.
+### 7.8 Convention-Based Inference
 
-### 7.4 Join Strategy & Convention-Based Inference
+ASQL uses naming conventions to auto-detect joins:
 
-ASQL uses a convention-based approach to infer joins:
+**FK Naming Patterns:**
+
+| FK Column | Alias | Target Table | Dot Traversal |
+|-----------|-------|--------------|---------------|
+| `user_id` | `user` | `users` | `.user.` |
+| `account_id` | `account` | `accounts` | `.account.` |
+| `owner_user_id` | `owner` | `users` | `.owner.` |
+| `manager_user_id` | `manager` | `users` | `.manager.` |
+| `parent_account_id` | `parent_account` | `accounts` | `.parent_account.` |
+
+**Pattern**: `<alias>_<table_name>_id` → alias is `<alias>`, traverses to `<table_name>` table
 
 **Inference priority:**
-1. **Model metadata** - If relationships are explicitly defined in model files, use them
-2. **Naming convention inference** - If `Accounts.user_id` exists and there's a `Users` table, infer `Accounts.user_id → Users.id`
-3. **Single FK check** - If only one FK exists between tables, auto-join
-4. **Require explicit specification** - If multiple FKs exist or conventions don't match, require explicit syntax
-5. **Fall back to explicit join** - Always allow traditional `join ... on ...` syntax
+1. **Explicit `on` clause** - Always wins
+2. **Model metadata** - If relationships are explicitly defined in model files
+3. **Naming convention inference** - `{name}_id` enables `.{name}.` traversal
+4. **Single FK check** - If only one FK exists between tables, auto-join
+5. **Error with suggestions** - If ambiguous or no match found
 
-**Convention assumptions:**
-- Foreign keys follow the pattern `{referenced_table}_id` (e.g., `user_id`, `owner_id`, `account_id`)
-- **Multiple FKs**: When a table has multiple foreign keys to the same table, they should end with `{table}_id` format:
-  - ✅ `owner_user_id`, `manager_user_id`, `support_rep_user_id` (all point to Users)
-  - ✅ `billing_account_id`, `shipping_account_id` (both point to Accounts)
-  - ❌ `ownerId`, `managerRef` (non-standard, requires explicit configuration)
-  This convention makes it clear what each FK points to and enables automatic inference.
-- Primary keys are typically `id`, but also support `{table}_id` (e.g., `Users.user_id`) and `pk` patterns
-- Primary key patterns are configurable in compiler/linter settings
-- Table names are pluralized or follow your team's standard
+### 7.9 Self-Joins (Hierarchies)
 
-**Example of convention-based inference:**
 ```asql
-# Schema: Accounts table has user_id column, Users table exists
-# ASQL infers: Accounts.user_id → Users.id
+-- Employees and their managers (explicit)
+from employees &? employees as manager on employees.manager_id == manager.id
+  select employees.name, manager.name as manager_name
 
-from accounts
-  group by user.name ( sum(amount) as total )
-# Automatically joins: accounts JOIN users ON accounts.user_id = users.id
+-- Or with dot notation (uses manager_id FK automatically)
+from employees
+  select 
+    employees.name, 
+    employees.manager.name as manager_name,
+    employees.manager.manager.name as skip_level_manager
 ```
 
-**Multiple FKs to same table:**
-```asql
-# Schema: Accounts has owner_user_id, manager_user_id, support_rep_user_id
-# All end in _user_id, so ASQL can infer which one based on context
+### 7.10 Optional Model Metadata
 
-from accounts
-  group by owner.name ( total as sum(amount) )
-# Automatically uses owner_user_id
+While not required, you can define relationships explicitly for non-standard FK names:
 
-from accounts
-  group by manager.name ( sum(amount) as total )
-# Automatically uses manager_user_id
+```yaml
+# asql_schema.yml
+relationships:
+  - from: opportunities.owner_id
+    to: users.id
+    alias: owner
+    
+  - from: accounts.primary_contact
+    to: contacts.id  # Non-standard name, needs explicit mapping
 ```
 
-**When conventions don't match:**
-```asql
-# Schema: Accounts table has ownerId (non-standard name, doesn't end in _user_id)
-# ASQL requires explicit join or model configuration
+**dbt Compatibility**: ASQL can read dbt's `schema.yml` files to infer relationships from `relationships` tests.
 
-from accounts
-  join users on accounts.ownerId == users.id
-  group by users.name ( sum(amount) as total )
-```
+### 7.11 Join Quick Reference
 
-**Philosophy**: Follow standard naming conventions (especially ending multiple FKs with `{table}_id`), and joins happen automatically. Use non-standard names, and you'll need to be explicit (which encourages standardization).
+| SQL | ASQL Operator | ASQL with ON clause |
+|-----|---------------|---------------------|
+| `INNER JOIN` | `&` | `& users on ...` |
+| `LEFT JOIN` | `&?` | `&? users on ...` |
+| `RIGHT JOIN` | `?&` | `?& users on ...` |
+| `FULL OUTER JOIN` | `?&?` | `?&? users on ...` |
+| `CROSS JOIN` | `*` | `* users` |
+
+| Feature | Syntax | Example |
+|---------|--------|---------|
+| Aliasing | `as` | `&? users as owner` |
+| Explicit condition | `on` | `&? users on orders.user_id == users.id` |
+| FK traversal | `.fk.` | `orders.user.name` (via `user_id`) |
+
+**Key principles:**
+1. **`?` marks the optional/nullable side**: Easy to remember
+2. **FK inference via naming convention**: `{name}_id` enables `.{name}.` traversal
+3. **No model file required**: Convention-based inference works out of the box
+4. **Explicit always works**: Full `on` clause syntax never fails
+5. **Smart deduplication**: Dot traversal reuses explicit joins when FK matches
 
 ---
 
@@ -1695,7 +1774,7 @@ from users
 
 # After a join, exclude from specific tables
 from users
-  join orders on users.id = orders.user_id
+  & orders on users.id = orders.user_id
   except users.password_hash, orders.internal_notes
 ```
 
@@ -1711,7 +1790,7 @@ from users
 
 # Rename with table prefix after join
 from users
-  join orders on users.id = orders.user_id
+  & orders on users.id = orders.user_id
   rename users.id as user_id
 ```
 
@@ -1727,7 +1806,7 @@ from users
 
 # Prefix specific table's columns
 from users
-  join orders on users.id = orders.user_id
+  & orders on users.id = orders.user_id
   prefix orders.* with order_
 ```
 
@@ -1737,7 +1816,7 @@ from users
 
 ```asql
 from users
-  join orders on users.id = orders.user_id
+  & orders on users.id = orders.user_id
   except users.password_hash, orders.internal_notes
   rename users.id as user_id
   prefix orders.* with order_
@@ -2128,7 +2207,7 @@ SELECT first_name, created_at FROM users
 
 ```asql
 from users
-  join orders
+  & orders
 -- If both have 'id', you should explicitly qualify:
 select users.id as user_id, orders.id as order_id
 ```
@@ -2177,7 +2256,7 @@ ORDER BY revenue DESC;
 
 ```asql
 from opportunities
-  join owners
+  & owners
   where owners.is_active
   group by owners.name ( sum(amount) as total_pipeline )
   order by -total_pipeline
@@ -2216,7 +2295,7 @@ from base
 ```asql
 from opportunities
   where status = "open"
-  join owners
+  & owners
   where owners.is_active
   where org_type != "Non Profit"
   group by owner.name ( sum(amount) as total_pipeline )

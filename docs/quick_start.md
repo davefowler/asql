@@ -189,30 +189,60 @@ select
 
 ## Joins
 
+ASQL uses symbolic operators for joins where `&` represents the join point and `?` marks optional (nullable) sides.
+
+### Join Operators
+
+| Operator | Join Type | Meaning |
+|----------|-----------|---------|
+| `&` | INNER JOIN | Both sides must match |
+| `&?` | LEFT JOIN | Right side is optional |
+| `?&` | RIGHT JOIN | Left side is optional |
+| `?&?` | FULL OUTER | Both sides are optional |
+| `*` | CROSS JOIN | Cartesian product |
+
 ### INNER JOIN
 
 ```asql
-from orders
-join users on orders.user_id == users.id
+from orders & users on orders.user_id == users.id
 ```
 
 ### LEFT JOIN
 
 ```asql
-from users
-left join orders on users.id == orders.user_id
+from users &? orders on users.id == orders.user_id
 ```
 
 ### Multiple Joins
 
 ```asql
-from orders
-join users on orders.user_id == users.id
-join products on orders.product_id == products.id
+from orders 
+  & users on orders.user_id == users.id
+  & products on orders.product_id == products.id
 select 
     users.name,
     products.name as product_name,
     orders.amount
+```
+
+### FK Dot Notation (Auto-Joins)
+
+If your columns follow the `{name}_id` pattern, you can use dot notation for automatic joins:
+
+```asql
+-- orders has user_id column → auto-joins to users
+from orders
+select 
+    orders.amount,
+    orders.user.name,      -- Auto LEFT JOIN via user_id
+    orders.user.email
+```
+
+This compiles to:
+```sql
+SELECT orders.amount, user_1.name, user_1.email
+FROM orders
+LEFT JOIN users AS user_1 ON orders.user_id = user_1.id
 ```
 
 ## Window Functions
@@ -363,22 +393,22 @@ Here's a complete query that demonstrates multiple features:
 
 ```asql
 from orders
-where date >= "2024-01-01"
-  and status == "completed"
-join products on orders.product_id == products.id
-group by products.category (
-    sum(orders.amount) as revenue,
-    avg(orders.amount) as avg_order_value,
-    # as order_count
-)
-sort -revenue
-take 10
+  where date >= "2024-01-01"
+    and status == "completed"
+  & products on orders.product_id == products.id
+  group by products.category (
+      sum(orders.amount) as revenue,
+      avg(orders.amount) as avg_order_value,
+      # as order_count
+  )
+  sort -revenue
+  take 10
 ```
 
 This query:
 1. Starts with orders
 2. Filters to completed orders from 2024
-3. Joins with products
+3. Inner joins with products using `&`
 4. Groups by product category
 5. Computes revenue, average order value, and order count
 6. Sorts by revenue descending

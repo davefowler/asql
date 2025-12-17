@@ -321,13 +321,13 @@ from orders
 
 ```asql
 from monthly_revenue
-  sort month
   select 
     month,
     revenue,
     prior(revenue) as prev_month,
     revenue - prior(revenue) as mom_change,
     (revenue - prior(revenue)) / prior(revenue) * 100 as mom_pct_change
+  sort month
 ```
 
 ### Rolling 7-Day Average
