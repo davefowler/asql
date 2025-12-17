@@ -202,8 +202,8 @@ Use `when` inside aggregates for conditional counting/summing:
 from orders
   group by customer_id (
     count(*) as total_orders,
-    sum(when status is "completed" then 1 otherwise 0) as completed_orders,
-    sum(when status is "returned" then amount otherwise 0) as returned_amount
+    sum(status == "completed" ? 1 : 0) as completed_orders,
+    sum(status == "returned" ? amount : 0) as returned_amount
   )
 ```
 

@@ -140,13 +140,19 @@ sort by -revenue
 
 These are syntax choices that aren't configurable settings, but represent preferred ASQL patterns over SQL alternatives.
 
-### Conditional Expressions: `when` over `CASE WHEN`
+### Conditional Expressions: Ternary vs `when` vs `CASE WHEN`
 
-**Preferred**: `when` expressions  
-**Avoid**: `CASE WHEN ... THEN ... ELSE ... END`
+**Preferred for simple binary conditions**: Ternary `? :` operator  
+**Preferred for multi-branch conditions**: `when` expressions  
+**Avoid**: `CASE WHEN ... THEN ... ELSE ... END` (SQL style)
 
 ```asql
--- Preferred
+-- Preferred: Ternary for simple binary conditions
+select
+  amount > 1000 ? "high" : "low" as tier,
+  status == "active" ? 1 : 0 as is_active
+
+-- Preferred: when for multi-branch conditions
 select
   when status
     is "active" then "Active User"
@@ -163,7 +169,10 @@ select
   END as status_label
 ```
 
-**Rationale**: `when` is more concise, reads naturally, and is ASQL's primary conditional syntax.
+**Rationale**: 
+- Ternary (`? :`) is the most concise for simple binary conditions (condition ? true : false)
+- `when` is better for multi-branch conditions and reads more naturally
+- Both compile to SQL `CASE WHEN`, but ASQL syntax is preferred
 
 ---
 
@@ -333,7 +342,7 @@ group by region ( sum(revenue) as total_revenue )
 | **Cast** | `::` | `CAST(...)` | PostgreSQL style |
 | **Quotes** | `"` | `'` | Double quotes |
 | **Sort** | `order by` | N/A | Standard keyword |
-| **Conditionals** | `when` | `CASE WHEN` | ASQL syntax |
+| **Conditionals** | Ternary `? :` (simple) / `when` (multi-branch) | `CASE WHEN` | ASQL syntax |
 | **Equality in when** | `is` | `=` | More readable |
 | **Default clause** | `otherwise` | `else` | More explicit |
 | **CTEs** | `stash as` | `WITH ... AS` | Inline style |
