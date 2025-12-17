@@ -224,120 +224,109 @@ limit 25"""
 # Cohort analysis examples
 COHORT_EXAMPLES: list[Example] = [
     {
-        "title": "User Cohorts with first()",
-        "desc": "Assign users to cohorts by their first activity",
-        "query": """from events
-group by user_id (
-    first(event_date order by event_date) as first_activity,
-    month(first(event_date order by event_date)) as cohort_month,
-    # as total_events
-)"""
-    },
-    {
-        "title": "First Purchase Cohort",
-        "desc": "Customer cohorts by first order date",
-        "query": """from orders
-group by customer_id (
-    first(order_date order by order_date) as first_order_date,
-    month(first(order_date order by order_date)) as cohort_month,
-    first(order_id order by order_date) as first_order_id,
-    sum(total) as lifetime_value
-)"""
-    },
-    {
-        "title": "Cohort Size by Month",
-        "desc": "Count users in each signup cohort",
-        "query": """from users
-group by month(signup_date) (
-    month(signup_date) as cohort_month,
-    # as cohort_size,
-    avg(age) as avg_age
-)
-order by cohort_month"""
-    },
-    {
-        "title": "Revenue by Signup Cohort",
-        "desc": "Total revenue grouped by customer signup month",
-        "query": """from orders
-join customers on orders.customer_id == customers.id
-group by month(customers.signup_date) (
-    month(customers.signup_date) as cohort_month,
-    sum(orders.total) as total_revenue,
-    # as order_count,
-    count(distinct orders.customer_id) as customers
-)
-order by cohort_month"""
-    },
-    {
-        "title": "Monthly Active by Cohort",
-        "desc": "Track active users by signup cohort and activity month",
+        "title": "User Retention by Cohort",
+        "desc": "Track monthly active users by signup cohort over time periods",
         "query": """from events
 join users on events.user_id == users.id
-group by month(users.signup_date), month(events.event_date) (
+group by month(users.signup_date), months(month(events.event_date) - month(users.signup_date)) (
     month(users.signup_date) as cohort_month,
-    month(events.event_date) as activity_month,
-    count(distinct events.user_id) as active_users,
-    # as total_events
+    months(month(events.event_date) - month(users.signup_date)) as period,
+    count(distinct events.user_id) as active_users
 )
-order by cohort_month, activity_month"""
+order by cohort_month, period"""
     },
     {
-        "title": "First Event per User",
-        "desc": "Deduplicate to first activity using per...first by",
-        "query": """from events
-per user_id first by event_date
-select user_id, event_date as first_event_date, event_type"""
-    },
-    {
-        "title": "Revenue by Cohort and Period",
-        "desc": "Track how each cohort spends over time",
-        "query": """from orders
-join customers on orders.customer_id == customers.id
-group by month(customers.first_order_date), month(orders.order_date) (
-    month(customers.first_order_date) as cohort_month,
-    month(orders.order_date) as order_month,
+        "title": "Revenue Cohort Analysis",
+        "desc": "Track revenue by first purchase cohort over time periods",
+        "query": """with customer_cohorts = from orders
+group by customer_id (
+    month(first(order_date order by order_date)) as cohort_month
+)
+from orders
+join customer_cohorts on orders.customer_id == customer_cohorts.customer_id
+group by customer_cohorts.cohort_month, months(month(orders.order_date) - customer_cohorts.cohort_month) (
+    customer_cohorts.cohort_month as cohort_month,
+    months(month(orders.order_date) - customer_cohorts.cohort_month) as period,
     sum(orders.total) as revenue,
-    count(distinct orders.customer_id) as buyers,
-    avg(orders.total) as avg_order_value
+    count(distinct orders.customer_id) as buyers
 )
-order by cohort_month, order_month"""
+order by cohort_month, period"""
+    },
+    {
+        "title": "Cohort Retention with Percentage",
+        "desc": "Calculate retention rate (% active) by cohort and period",
+        "query": """with cohort_sizes = from users
+group by month(signup_date) (
+    month(signup_date) as cohort_month,
+    count(distinct id) as cohort_size
+)
+from events
+join users on events.user_id == users.id
+join cohort_sizes on month(users.signup_date) == cohort_sizes.cohort_month
+group by month(users.signup_date), months(month(events.event_date) - month(users.signup_date)) (
+    month(users.signup_date) as cohort_month,
+    months(month(events.event_date) - month(users.signup_date)) as period,
+    count(distinct events.user_id) as active_users,
+    first(cohort_sizes.cohort_size) as cohort_size,
+    round(100.0 * count(distinct events.user_id) / first(cohort_sizes.cohort_size), 2) as retention_pct
+)
+order by cohort_month, period"""
+    },
+    {
+        "title": "Cumulative LTV by Cohort",
+        "desc": "Track lifetime value accumulation over time for each cohort",
+        "query": """with customer_cohorts = from orders
+group by customer_id (
+    month(first(order_date order by order_date)) as cohort_month
+)
+from orders
+join customer_cohorts on orders.customer_id == customer_cohorts.customer_id
+group by customer_cohorts.cohort_month, months(month(orders.order_date) - customer_cohorts.cohort_month) (
+    customer_cohorts.cohort_month as cohort_month,
+    months(month(orders.order_date) - customer_cohorts.cohort_month) as period,
+    sum(orders.total) as period_revenue,
+    running_sum(sum(orders.total)) as cumulative_ltv
+)
+order by cohort_month, period"""
     },
     {
         "title": "Weekly Activity by Cohort",
-        "desc": "Track weekly active users by signup cohort",
-        "query": """from events
-join users on events.user_id == users.id  
-group by month(users.signup_date), week(events.event_date) (
-    month(users.signup_date) as cohort_month,
-    week(events.event_date) as activity_week,
-    count(distinct events.user_id) as active_users,
-    # as total_events
-)
-order by cohort_month, activity_week"""
-    },
-    {
-        "title": "Cohort with Channel Segment",
-        "desc": "Segment cohorts by acquisition channel",
+        "desc": "Track weekly active users by signup cohort over time",
         "query": """from events
 join users on events.user_id == users.id
-group by users.channel, month(users.signup_date) (
-    users.channel,
+group by month(users.signup_date), weeks(week(events.event_date) - week(month(users.signup_date))) (
     month(users.signup_date) as cohort_month,
-    count(distinct events.user_id) as active_users,
-    # as total_events
+    weeks(week(events.event_date) - week(month(users.signup_date))) as period,
+    count(distinct events.user_id) as active_users
 )
-order by users.channel, cohort_month"""
+order by cohort_month, period"""
     },
     {
-        "title": "Feature Adoption Cohort",
-        "desc": "Find when each user first adopted a feature",
+        "title": "Segmented Cohorts by Channel",
+        "desc": "Track retention by acquisition channel and cohort",
         "query": """from events
-where event_type == "feature_used"
-group by user_id (
-    first(event_date order by event_date) as first_feature_use,
-    month(first(event_date order by event_date)) as adoption_month,
-    # as times_used
-)"""
+join users on events.user_id == users.id
+group by users.channel, month(users.signup_date), months(month(events.event_date) - month(users.signup_date)) (
+    users.channel,
+    month(users.signup_date) as cohort_month,
+    months(month(events.event_date) - month(users.signup_date)) as period,
+    count(distinct events.user_id) as active_users
+)
+order by users.channel, cohort_month, period"""
+    },
+    {
+        "title": "Period-over-Period Change",
+        "desc": "Compare retention between consecutive periods",
+        "query": """from events
+join users on events.user_id == users.id
+group by month(users.signup_date), months(month(events.event_date) - month(users.signup_date)) (
+    month(users.signup_date) as cohort_month,
+    months(month(events.event_date) - month(users.signup_date)) as period,
+    count(distinct events.user_id) as active_users,
+    prior(count(distinct events.user_id)) as prev_period_active,
+    count(distinct events.user_id) - prior(count(distinct events.user_id)) as change
+)
+order by cohort_month, period"""
     },
 ]
 
