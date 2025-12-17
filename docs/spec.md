@@ -2144,16 +2144,26 @@ SELECT first_name, created_at FROM users
 
 ### 15.3 Column Name Conflicts
 
-When column names conflict across joined tables, you must explicitly qualify them:
+When column names conflict across joined tables, ASQL automatically expands `SELECT *` to table-qualified columns:
 
 ```asql
 from users
   & orders
--- If both have 'id', you must explicitly qualify:
+-- SELECT * automatically becomes:
+-- SELECT users.*, orders.*
+-- Columns can be referenced as users.id, orders.id, etc.
+```
+
+**Automatic Expansion**: When `SELECT *` is used with joins, it's automatically expanded to `table.*` for each joined table. This allows columns to be referenced with table qualification (e.g., `users.id`, `orders.id`), avoiding conflicts.
+
+**Explicit Qualification**: You can still explicitly qualify columns when needed:
+
+```asql
+from users & orders
 select users.id as user_id, orders.id as order_id
 ```
 
-**Note**: Automatic namespace resolution (renaming conflicting columns with table context) is not implemented. Explicit qualification is required and is clearer and safer. See `spec_future.md` for potential future support.
+**Note**: Without schema information, ASQL cannot automatically rename conflicting columns (e.g., `users_id`, `orders_id`). The expansion to `table.*` allows you to reference columns with table qualification to avoid conflicts.
 
 ### 15.4 Why Case-Safe is Good
 

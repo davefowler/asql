@@ -103,27 +103,22 @@ when amount == 0 then null else amount
 
 ## Automatic Column Namespace Resolution
 
-**What it is**: When column names conflict across joined tables, automatically rename them with table context (e.g., `users.id` and `orders.id` both become `id` but get auto-qualified as `users_id` and `orders_id`).
+**Status**: ✅ **Partially Implemented**
 
-**Current behavior**: Requires explicit qualification:
+**What it is**: When column names conflict across joined tables, automatically qualify them with table context.
+
+**Current behavior**: `SELECT *` with joins is automatically expanded to `table.*` for each table:
 ```asql
 from users
   & orders
--- If both have 'id', you must explicitly qualify:
-select users.id as user_id, orders.id as order_id
+-- SELECT * automatically becomes:
+-- SELECT users.*, orders.*
+-- Columns can be referenced as users.id, orders.id, etc.
 ```
 
-**Proposed behavior**: Automatically namespace conflicting names:
-```asql
-from users
-  & orders
--- Both tables have 'id', automatically becomes:
-select users_id, orders_id  -- or users.id, orders.id (qualified)
-```
+**Future enhancement**: Automatically rename conflicting columns (e.g., `users_id`, `orders_id`) would require schema information to detect which columns actually conflict. Currently, columns are accessible as `table.column` through the `table.*` expansion.
 
-**Status**: Might not be implemented in the initial version. Explicit qualification is safer and clearer.
-
-**Recommendation**: In v1.0, require explicit qualification for ambiguous columns. Auto-qualification could be added later if there's clear demand.
+**Note**: The current implementation expands `SELECT *` to table-qualified columns, allowing you to reference columns with table qualification to avoid conflicts. Full automatic renaming (e.g., `users_id`, `orders_id`) would require schema awareness and is a potential future enhancement.
 
 ---
 
