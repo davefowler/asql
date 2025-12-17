@@ -35,9 +35,9 @@ echo "  ASQL Development Servers"
 echo "=================================================="
 echo ""
 
-# Start playground in background
+# Start playground in background with hot reload
 echo "Starting Playground on http://localhost:5001..."
-python playground.py &
+uvicorn playground:app --reload --host 0.0.0.0 --port 5001 &
 PLAYGROUND_PID=$!
 
 # Start MkDocs in background
