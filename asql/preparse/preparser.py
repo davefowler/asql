@@ -19,6 +19,7 @@ from asql.preparse.clauses import ClausesMixin
 from asql.preparse.pivot import PivotMixin
 from asql.preparse.window import WindowMixin
 from asql.preparse.normalize import NormalizeMixin
+from asql.preparse.shorthand import ShorthandMixin
 
 @dataclass
 class PreParseResult:
@@ -41,7 +42,8 @@ class ASQLPreParser(
     ClausesMixin,
     PivotMixin,
     WindowMixin,
-    NormalizeMixin
+    NormalizeMixin,
+    ShorthandMixin
 ):
     def __init__(self, text: str):
         self.text = text.strip()
@@ -61,6 +63,7 @@ class ASQLPreParser(
         result = self._transform_pipeline(result)
         result = self._transform_join_operators(result)  # Early: transform join operators before other processing
         result = self._transform_stash_as(result)  # Early: split query at stash points before other transforms
+        result = self._transform_shorthand_queries(result)  # Early: transform shorthand queries before count/aggregate transforms
         result = self._transform_count_shorthand(result)
         result = self._transform_order_desc_prefix(result)
         result = self._transform_natural_aggregates(result)

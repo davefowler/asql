@@ -605,5 +605,97 @@ class TestPivot:
         assert "AS B" in result.upper()
 
 
+class TestShorthandQueries:
+    """Test shorthand natural language queries without 'from' clause."""
+    
+    def test_hash_of_table_by_column(self):
+        """# of Users by country transforms to from Users group by."""
+        result = preparse_asql("# of Users by country")
+        assert "FROM USERS" in result.upper()
+        assert "GROUP BY COUNTRY" in result.upper()
+        assert "COUNT(DISTINCT USER_ID)" in result.upper()
+    
+    def test_hash_table_by_column(self):
+        """# users by country transforms to from users group by."""
+        result = preparse_asql("# users by country")
+        assert "FROM USERS" in result.upper()
+        assert "GROUP BY COUNTRY" in result.upper()
+        assert "COUNT(DISTINCT USER_ID)" in result.upper()
+    
+    def test_hash_of_table_by_multiple_columns(self):
+        """# of Users by country, region transforms correctly."""
+        result = preparse_asql("# of Users by country, region")
+        assert "FROM USERS" in result.upper()
+        assert "GROUP BY COUNTRY, REGION" in result.upper()
+        assert "COUNT(DISTINCT USER_ID)" in result.upper()
+    
+    def test_avg_table_column_by_column(self):
+        """Avg Users.age by country transforms correctly."""
+        result = preparse_asql("Avg Users.age by country")
+        assert "FROM USERS" in result.upper()
+        assert "GROUP BY COUNTRY" in result.upper()
+        assert "AVG(USERS.AGE)" in result.upper()
+    
+    def test_sum_of_column_by_column_with_table_prefix(self):
+        """Sum of Users.revenue by region transforms correctly."""
+        result = preparse_asql("Sum of Users.revenue by region")
+        assert "FROM USERS" in result.upper()
+        assert "GROUP BY REGION" in result.upper()
+        assert "SUM(USERS.REVENUE)" in result.upper()
+    
+    def test_average_of_column_by_column(self):
+        """Average of Users.age by country transforms correctly."""
+        result = preparse_asql("Average of Users.age by country")
+        assert "FROM USERS" in result.upper()
+        assert "GROUP BY COUNTRY" in result.upper()
+        assert "AVG(USERS.AGE)" in result.upper()
+    
+    def test_total_of_column_by_column(self):
+        """Total of revenue by region transforms correctly (if table can be inferred)."""
+        # Note: This might not work if table can't be inferred from column name alone
+        # But if Users.revenue is used, it should work
+        result = preparse_asql("Total of Users.revenue by region")
+        assert "FROM USERS" in result.upper()
+        assert "GROUP BY REGION" in result.upper()
+        assert "SUM(USERS.REVENUE)" in result.upper()
+    
+    def test_shorthand_with_order_by(self):
+        """Shorthand query with order by clause."""
+        result = preparse_asql("# of Users by country order by -total_users")
+        assert "FROM USERS" in result.upper()
+        assert "GROUP BY COUNTRY" in result.upper()
+        assert "ORDER BY" in result.upper()
+    
+    def test_shorthand_with_limit(self):
+        """Shorthand query with limit clause."""
+        result = preparse_asql("# of Users by country limit 10")
+        assert "FROM USERS" in result.upper()
+        assert "GROUP BY COUNTRY" in result.upper()
+        assert "LIMIT 10" in result.upper()
+    
+    def test_shorthand_orders_table(self):
+        """# orders by status transforms correctly."""
+        result = preparse_asql("# orders by status")
+        assert "FROM ORDERS" in result.upper()
+        assert "GROUP BY STATUS" in result.upper()
+        assert "COUNT(DISTINCT ORDER_ID)" in result.upper()
+    
+    def test_shorthand_does_not_transform_regular_queries(self):
+        """Regular queries starting with 'from' are not transformed."""
+        result = preparse_asql("from users group by country ( # as total_users )")
+        # Should not have double transformation
+        assert "FROM USERS" in result.upper()
+        # Should still have the group by block transformed
+        assert "GROUP BY COUNTRY" in result.upper()
+    
+    def test_shorthand_compiled(self):
+        """Shorthand query compiles to valid SQL."""
+        from asql.compiler import compile
+        result = compile("# of Users by country", dialect="postgres")
+        assert "FROM users" in result.lower()
+        assert "GROUP BY country" in result.lower()
+        assert "COUNT(DISTINCT user_id)" in result.lower()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
