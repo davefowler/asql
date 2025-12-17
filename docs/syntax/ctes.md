@@ -80,7 +80,7 @@ SET auto_spine = false;
 SET dialect = 'postgres';
 
 from orders
-  group by month(created_at) as month ( sum(amount) as revenue )
+  group by month(created_at) ( sum(amount) as revenue )
 ```
 
 ## Generated SQL

@@ -23,7 +23,7 @@ In a dbt model file, you generally keep the dbt control plane (config, refs, inc
 
 from {{ ref('orders') }}
 where status = 'completed'
-group by month(created_at) as month (
+group by month(created_at) (
     sum(amount) as revenue,
     count(distinct customer_id) as customers
 )
@@ -106,7 +106,7 @@ Pivoting is intentionally terse in ASQL:
 
 ```asql
 from issue_custom_fields
-pivot field_value by field_name
+pivot field_value by field_name values ('priority', 'status', 'assignee')
 ```
 
 And unpivoting (“pivot longer”) is equally direct:
@@ -188,7 +188,7 @@ first_name ?? nickname ?? 'Unknown'
     -- when you filter to a date range.
     from orders
     where created_at >= @2024-01-01 and created_at < @2025-01-01
-    group by month(created_at) as month (
+    group by month(created_at) (
       sum(amount) ?? 0 as revenue
     )
     ```
@@ -220,7 +220,7 @@ first_name ?? nickname ?? 'Unknown'
     # Auto-spine fills gaps automatically for date GROUP BYs
     from orders
     where created_at >= @2024-01-01 and created_at < @2025-01-01
-    group by month(created_at) as month (
+    group by month(created_at) (
         sum(amount) ?? 0 as revenue  # ?? 0 sets default for filled rows
     )
     ```
@@ -262,7 +262,7 @@ first_name ?? nickname ?? 'Unknown'
     ```asql
     -- Denormalize Jira/Salesforce custom fields
     from issue_custom_fields
-    pivot field_value by field_name
+    pivot field_value by field_name values ('priority', 'status', 'assignee')
     ```
 
 ---
@@ -317,7 +317,7 @@ dbt's incremental logic stays in dbt - ASQL focuses on the query:
     -- ASQL query here
     from orders
     where status = 'completed'
-    group by month(created_at) as month (
+    group by month(created_at) (
         sum(amount) as revenue,
         count(distinct customer_id) as customers
     )

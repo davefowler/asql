@@ -5,7 +5,211 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
+from asql.preparse.registry import FUNCTION_ALIASES, FUNCTION_REGISTRY
+
 class ClausesMixin:
+
+    def _normalize_where_before_joins(self, text: str) -> str:
+        """
+        Ensure WHERE appears after JOINs.
+
+        ASQL pipeline semantics allow:
+          from t
+            where ...
+            & u
+            where ...
+
+        But SQL requires JOINs to appear before WHERE. This transform moves any WHERE
+        that appears between FROM and the first JOIN to after the JOIN section,
+        combining it with an existing post-join WHERE using AND.
+        """
+        result = text
+
+        from_match = re.search(r'\bfrom\b', result, re.IGNORECASE)
+        if not from_match:
+            return result
+
+        # Find the first JOIN after FROM (include optional join-type keyword so we don't
+        # accidentally treat "LEFT" as part of a preceding WHERE condition).
+        join_match = re.search(
+            r'\b(?:left|right|inner|cross|full(?:\s+outer)?)\s+join\b|\bjoin\b',
+            result[from_match.end():],
+            re.IGNORECASE,
+        )
+        if not join_match:
+            return result
+        join_pos = from_match.end() + join_match.start()
+
+        # Find the first WHERE after FROM
+        where_match = re.search(r'\bwhere\b', result[from_match.end():], re.IGNORECASE)
+        if not where_match:
+            return result
+        where_pos = from_match.end() + where_match.start()
+
+        # Only fix the case where a WHERE appears before the first JOIN
+        if where_pos > join_pos:
+            return result
+
+        # Extract the pre-join WHERE condition (up to the JOIN)
+        cond_start = where_pos + len(where_match.group(0))
+        cond_end = join_pos
+        cond = result[cond_start:cond_end].strip()
+        if not cond:
+            return result
+
+        # Remove the pre-join WHERE clause
+        result = (result[:where_pos].rstrip() + " " + result[cond_end:].lstrip()).strip()
+
+        # If there's already a WHERE after joins, combine with AND
+        from_match2 = re.search(r'\bfrom\b', result, re.IGNORECASE)
+        if not from_match2:
+            return result
+
+        where_after = re.search(r'\bwhere\b', result[from_match2.end():], re.IGNORECASE)
+        if where_after:
+            insert_at = from_match2.end() + where_after.start() + len(where_after.group(0))
+            return result[:insert_at] + f" ({cond}) AND" + result[insert_at:]
+
+        # Otherwise insert a new WHERE after the join section (before next clause)
+        tail = result[from_match2.end():]
+        clause_match = re.search(r'\b(group\s+by|order\s+by|limit|having|qualify)\b', tail, re.IGNORECASE)
+        if clause_match:
+            insert_at = from_match2.end() + clause_match.start()
+        else:
+            insert_at = len(result)
+
+        return (result[:insert_at].rstrip() + f" WHERE {cond} " + result[insert_at:].lstrip()).strip()
+
+    def _transform_implicit_function_aliases(self, text: str) -> str:
+        """
+        Expand implicit function aliases in SELECT projections.
+
+        This supports the "auto-alias" convention where a single-arg function call's
+        natural alias is `func_col`, and ASQL lets you write that alias directly:
+
+        - select sum_amount  → select sum(amount) as sum_amount
+        - select year_created_at → select year(created_at) as year_created_at
+
+        Notes / constraints:
+        - Applied only to SELECT projection items (not WHERE / GROUP BY / ORDER BY).
+        - Only expands *plain identifiers* (no dots, no parens, no quotes).
+        - Only for a conservative set of single-arg functions (and their aliases).
+        """
+
+        # Only attempt if there's a SELECT clause
+        select_match = re.search(r'\bselect\s+', text, re.IGNORECASE)
+        if not select_match:
+            return text
+
+        # Find SELECT clause extent (similar to _transform_from_first)
+        select_start = select_match.end()
+        select_end = len(text)
+
+        paren_depth = 0
+        i = select_start
+        while i < len(text):
+            char = text[i]
+            if char == '(':
+                paren_depth += 1
+            elif char == ')':
+                paren_depth = max(0, paren_depth - 1)
+            elif paren_depth == 0:
+                remaining = text[i:].lower()
+                for kw in [' from ', '\nfrom ', '\tfrom ', ' where ', ' group by ', ' order by ', ' limit ', ' having ', ' qualify ']:
+                    if remaining.startswith(kw):
+                        select_end = i
+                        i = len(text)
+                        break
+            i += 1
+
+        raw_clause = text[select_start:select_end]
+
+        def split_csv(exprs: str) -> List[str]:
+            items: List[str] = []
+            current: List[str] = []
+            depth = 0
+            in_single = False
+            in_double = False
+            idx = 0
+            while idx < len(exprs):
+                ch = exprs[idx]
+                if ch == "'" and not in_double:
+                    in_single = not in_single
+                elif ch == '"' and not in_single:
+                    in_double = not in_double
+                elif not in_single and not in_double:
+                    if ch == '(':
+                        depth += 1
+                    elif ch == ')':
+                        depth = max(0, depth - 1)
+                    elif ch == ',' and depth == 0:
+                        items.append(''.join(current).strip())
+                        current = []
+                        idx += 1
+                        continue
+                current.append(ch)
+                idx += 1
+            tail = ''.join(current).strip()
+            if tail:
+                items.append(tail)
+            return items
+
+        # Conservative allowlist: single-arg functions that follow func_col aliasing.
+        single_arg_funcs: Set[str] = {
+            # Aggregates
+            'sum', 'avg', 'count', 'min', 'max',
+            # Date parts / truncs
+            'year', 'quarter', 'month', 'week', 'day', 'hour', 'minute', 'second',
+            'day_of_week', 'day_of_month', 'day_of_year',
+            'week_of_year', 'month_of_year', 'quarter_of_year',
+            # Window-ish single-arg helpers
+            'running_sum', 'running_avg', 'running_count',
+            'rolling_sum', 'rolling_avg',
+        }
+
+        # Include aliases (total/average/etc) as valid shorthand prefixes, but expand to canonical fn.
+        alias_prefixes: Set[str] = set(FUNCTION_ALIASES.keys())
+
+        # Include any registered function that is in our allowlist
+        allowed_prefixes: List[str] = sorted(
+            {fn for fn in FUNCTION_REGISTRY if fn in single_arg_funcs}.union(alias_prefixes),
+            key=len,
+            reverse=True,
+        )
+
+        identifier_pattern = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+        def expand_token(token: str) -> str:
+            trimmed = token.strip()
+            if not trimmed:
+                return token
+            # Don't touch anything that's clearly not a bare identifier
+            if not identifier_pattern.match(trimmed):
+                return token
+            if '.' in trimmed:
+                return token
+
+            lowered = trimmed.lower()
+            for prefix in allowed_prefixes:
+                prefix_lower = prefix.lower()
+                needle = f"{prefix_lower}_"
+                if not lowered.startswith(needle):
+                    continue
+                arg = trimmed[len(prefix) + 1:]
+                if not identifier_pattern.match(arg):
+                    return token
+                fn = FUNCTION_ALIASES.get(prefix_lower, prefix_lower)
+                return f"{fn}({arg}) as {trimmed}"
+            return token
+
+        items = split_csv(raw_clause)
+        if not items:
+            return text
+
+        expanded_items = [expand_token(item) for item in items]
+        new_clause = ", ".join(expanded_items)
+
+        return text[:select_start] + new_clause + text[select_end:]
 
     def _transform_column_operators(self, text: str) -> str:
         """

@@ -32,7 +32,7 @@ ASQL automatically fills gaps:
 
 ```asql
 from orders
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -62,7 +62,7 @@ When you group by a date truncation function (`month()`, `year()`, `week()`, etc
 ```asql
 from orders
   where order_date >= @2024-01-01 and order_date < @2024-07-01
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -88,7 +88,7 @@ When grouping by multiple columns, ASQL creates all combinations:
 
 ```asql
 from orders
-  group by region, month(order_date) as month (
+  group by region, month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -120,7 +120,7 @@ Use the nullish coalescing operator to provide defaults for missing values:
 
 ```asql
 from orders
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) ?? 0 as revenue,        -- Default to 0
     count(*) ?? 0 as orders,            -- Default to 0
     avg(amount) as avg_order            -- Leave as NULL
@@ -137,7 +137,7 @@ The most common approach—just filter out zeros:
 
 ```asql
 from orders
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) as revenue
   )
   where revenue > 0
@@ -150,7 +150,7 @@ Use a SET statement:
 ```asql
 SET auto_spine = false;
 from orders
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) as revenue
   )
 ```
@@ -224,7 +224,7 @@ ASQL provides this automatically for common patterns.
 ```asql
 from orders
   where order_date >= @2024-01-01 and order_date < @2025-01-01
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) ?? 0 as revenue,
     count(*) ?? 0 as orders
   )
@@ -245,7 +245,7 @@ from tickets
 ```asql
 from sales
   where year(sale_date) = 2024
-  group by region, quarter(sale_date) as quarter (
+  group by region, quarter(sale_date) (
     sum(amount) ?? 0 as revenue
   )
   order by region, quarter

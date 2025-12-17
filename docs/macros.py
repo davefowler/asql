@@ -313,13 +313,34 @@ def process_asql_blocks(markdown_content: str) -> str:
         # Multi-line SELECT blocks ("select" on its own line + indented columns)
         # are not reliably supported by the current compiler. Leave them as plain
         # fenced code blocks for now.
+        select_lines = 0
         for line in non_comment_lines:
-            if line.lower() == "select":
+            lowered = line.lower()
+            if lowered == "select":
                 return False
+            if lowered.startswith("select "):
+                select_lines += 1
+        # Multiple SELECT statements inside one fenced block are usually documentation snippets.
+        if select_lines > 1:
+            return False
 
         # Spec/WIP conditional syntax isn't implemented yet.
         for line in non_comment_lines:
             if line.lower().startswith("if "):
+                return False
+
+        # Spec-only pseudo syntax (pipeline/object literal examples) should not be compiled.
+        for line in non_comment_lines:
+            if line.startswith("|"):
+                return False
+            if "{" in line or "}" in line:
+                return False
+            lowered = line.lower()
+            # Raw SQL window syntax snippets (OVER ...) are documentation-only.
+            if " over " in lowered or "over(" in lowered:
+                return False
+            # Ellipsis placeholders are documentation-only.
+            if "..." in line:
                 return False
 
         first = non_comment_lines[0].lower()

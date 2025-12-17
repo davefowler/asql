@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
+from asql.preparse.registry import FUNCTION_ALIASES
+
 class AggregatesMixin:
 
     def _transform_natural_aggregates(self, text: str) -> str:
@@ -18,24 +20,35 @@ class AggregatesMixin:
         result = text
         
         # Pattern: func <column> or func of <column> (not followed by opening paren)
-        for func in ['sum', 'avg', 'average', 'total', 'count', 'min', 'max']:
+        for func in ['sum', 'avg', 'average', 'total', 'count', 'min', 'max', 'maximum', 'minimum']:
+            def normalize_fn(raw_fn: str) -> str:
+                lowered = raw_fn.lower()
+                return FUNCTION_ALIASES.get(lowered, lowered)
+
             # func of column → func(column)
             pattern = rf'\b({func})\s+of\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
-            result = re.sub(pattern, r'\1(\2)', result, flags=re.IGNORECASE)
-            
+
+            def replace_of(match: re.Match) -> str:
+                fn = normalize_fn(match.group(1))
+                arg = match.group(2)
+                return f"{fn}({arg})"
+
+            result = re.sub(pattern, replace_of, result, flags=re.IGNORECASE)
+
             # func column → func(column) (but not func() or func(...)
             # Only if not already followed by (
             pattern = rf'\b({func})\s+([a-zA-Z_][a-zA-Z0-9_]*)\b(?!\s*\()'
-            
+
             def replace_if_not_keyword(m: re.Match) -> str:
-                fn = m.group(1)
+                fn_raw = m.group(1)
+                fn = normalize_fn(fn_raw)
                 arg = m.group(2)
                 # Check if arg is a keyword
                 keywords = {'as', 'from', 'where', 'group', 'by', 'order', 'limit', 'join', 'on', 'and', 'or', 'not', 'in', 'is', 'null', 'true', 'false'}
                 if arg.lower() in keywords:
                     return m.group(0)
                 return f'{fn}({arg})'
-            
+
             result = re.sub(pattern, replace_if_not_keyword, result, flags=re.IGNORECASE)
         
         return result

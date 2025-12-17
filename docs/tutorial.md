@@ -170,7 +170,7 @@ Group by month:
 
 ```asql
 from orders
-  group by month(created_at) as month (
+  group by month(created_at) (
     sum(amount) as revenue
   )
 ```
@@ -342,7 +342,6 @@ from orders
   )
   order by -revenue
   limit 10
-  select country, revenue, unique_customers, avg_order
 ```
 
 This query:
@@ -419,7 +418,7 @@ from orders
 ```asql
 from orders
   where year(created_at) = 2024
-  group by month(created_at) as month (
+  group by month(created_at) (
     sum(amount) as revenue
   )
   order by month

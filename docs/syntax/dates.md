@@ -37,7 +37,7 @@ Truncate dates to a specific unit:
 
 ```asql
 from orders
-  group by month(created_at) as month (
+  group by month(created_at) (
     sum(amount) as revenue
   )
 ```
@@ -226,7 +226,7 @@ Time bucketing is simply grouping by a time function:
 
 ```asql
 from orders
-  group by month(created_at) as month (
+  group by month(created_at) (
     sum(amount) as revenue
   )
 
@@ -287,7 +287,7 @@ from orders
 
 ```asql
 from users
-  group by month(created_at) as month (
+  group by month(created_at) (
     # as signups
   )
   order by month

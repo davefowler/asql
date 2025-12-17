@@ -2259,8 +2259,7 @@ from users
 -- User-defined functions are not implemented yet.
 -- Use inline expressions or SQL functions directly for now.
 from users
-  select years(now() - birthday) as user_age
-  group by country ( avg(user_age) as avg_age )
+  group by country ( avg(years(now() - birthday)) as avg_age )
 ```
 
 ### Example 9: Case-Safe Naming
@@ -2277,8 +2276,8 @@ from Users
 ```asql
 from sales
   group by region (
-    total amount as revenue
-    # of distinct customer_id as customers
+    total amount as revenue,
+    #(distinct customer_id) as customers,
     average amount as avg_order
   )
 ```
@@ -2310,7 +2309,7 @@ Each pipeline step becomes a CTE:
 
 ```asql
 from users
-  filter status == "active"
+  where status == "active"
   group by country ( count() as count )
 ```
 
