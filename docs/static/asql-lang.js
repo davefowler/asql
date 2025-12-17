@@ -33,7 +33,7 @@
     }
 
     const ASQL_KEYWORDS = {
-      keyword: 'from where select project group by sort order take limit join with let as on desc asc descending ascending store and or not is in if set',
+      keyword: 'from where select project group by order take limit join with let as on desc asc descending ascending store and or not is in if set',
       literal: 'true false null',
       built_in: 'sum avg average count min max month year day date upper lower trim concat substring length date_trunc date_format'
     };

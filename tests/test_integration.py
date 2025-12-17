@@ -36,7 +36,7 @@ class TestSQLGlotIntegration:
     
     def test_order_by_sql_parses(self) -> None:
         """Test ORDER BY SQL parses correctly."""
-        asql = "from users sort -total_users"
+        asql = "from users order by -total_users"
         sql = compile(asql)
         
         try:
@@ -100,7 +100,7 @@ class TestSQLStructure:
     
     def test_order_by_structure(self) -> None:
         """Test ORDER BY SQL structure."""
-        asql = "from users sort -total_users"
+        asql = "from users order by -total_users"
         sql = compile(asql)
         sql_upper = sql.upper()
         
@@ -113,7 +113,7 @@ class TestSQLStructure:
     
     def test_limit_structure(self) -> None:
         """Test LIMIT SQL structure."""
-        asql = "from users take 10"
+        asql = "from users limit 10"
         sql = compile(asql)
         sql_upper = sql.upper()
         

@@ -119,7 +119,7 @@ For PostgreSQL-style deduplication:
 ```asql
 from orders
   distinct on (customer_id)
-  sort customer_id, -order_date
+  order by customer_id, -order_date
 ```
 
 ---
@@ -132,7 +132,7 @@ Instead of verbose `LAG()` and `LEAD()` syntax, use `prior()` and `next()`:
 
 ```asql
 from monthly_sales
-  sort month
+  order by month
   select 
     month,
     revenue,
@@ -161,7 +161,7 @@ Calculate cumulative totals with `running_sum()`, `running_avg()`, and `running_
 
 ```asql
 from transactions
-  sort date
+  order by date
   select 
     date,
     amount,
@@ -190,7 +190,7 @@ Calculate moving averages with `rolling_avg()` and `rolling_sum()`:
 
 ```asql
 from daily_sales
-  sort date
+  order by date
   select 
     date,
     revenue,
@@ -314,7 +314,7 @@ from orders
 # Pattern 3: Using DISTINCT ON (PostgreSQL-style)
 from orders
   distinct on (customer_id)
-  sort customer_id, -order_date
+  order by customer_id, -order_date
 ```
 
 ### Month-over-Month Comparison
@@ -327,14 +327,14 @@ from monthly_revenue
     prior(revenue) as prev_month,
     revenue - prior(revenue) as mom_change,
     (revenue - prior(revenue)) / prior(revenue) * 100 as mom_pct_change
-  sort month
+  order by month
 ```
 
 ### Rolling 7-Day Average
 
 ```asql
 from daily_metrics
-  sort date
+  order by date
   select 
     date,
     value,
@@ -345,7 +345,7 @@ from daily_metrics
 
 ```asql
 from transactions
-  sort date
+  order by date
   select 
     date,
     amount,

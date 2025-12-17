@@ -172,7 +172,7 @@ class TestDistinctOn:
         asql = """
         from orders
             distinct on (customer_id)
-            sort customer_id, -order_date
+            order by customer_id, -order_date
         """
         sql = compile(asql)
         sql_upper = sql.upper()
@@ -183,7 +183,7 @@ class TestDistinctOn:
         asql = """
         from events
             distinct on (user_id, event_type)
-            sort user_id, event_type, -timestamp
+            order by user_id, event_type, -timestamp
         """
         sql = compile(asql)
         sql_upper = sql.upper()
@@ -197,7 +197,7 @@ class TestPriorNextFunctions:
         """Test prior() function (LAG with default offset 1)."""
         asql = """
         from monthly_sales
-            sort month
+            order by month
             select month, revenue, prior(revenue) as prev_month
         """
         sql = compile(asql)
@@ -208,7 +208,7 @@ class TestPriorNextFunctions:
         """Test prior() function with custom offset."""
         asql = """
         from monthly_sales
-            sort month
+            order by month
             select month, revenue, prior(revenue, 3) as three_months_ago
         """
         sql = compile(asql)
@@ -220,7 +220,7 @@ class TestPriorNextFunctions:
         """Test next() function (LEAD with default offset 1)."""
         asql = """
         from monthly_sales
-            sort month
+            order by month
             select month, revenue, next(revenue) as next_month
         """
         sql = compile(asql)
@@ -231,7 +231,7 @@ class TestPriorNextFunctions:
         """Test next() function with custom offset."""
         asql = """
         from monthly_sales
-            sort month
+            order by month
             select month, revenue, next(revenue, 2) as two_months_ahead
         """
         sql = compile(asql)
@@ -247,7 +247,7 @@ class TestRunningAggregates:
         """Test running_sum() function."""
         asql = """
         from transactions
-            sort date
+            order by date
             select date, amount, running_sum(amount) as cumulative_total
         """
         sql = compile(asql)
@@ -260,7 +260,7 @@ class TestRunningAggregates:
         """Test running_avg() function."""
         asql = """
         from transactions
-            sort date
+            order by date
             select date, amount, running_avg(amount) as avg_to_date
         """
         sql = compile(asql)
@@ -272,7 +272,7 @@ class TestRunningAggregates:
         """Test running_count() function."""
         asql = """
         from transactions
-            sort date
+            order by date
             select date, running_count(*) as transaction_number
         """
         sql = compile(asql)
@@ -288,7 +288,7 @@ class TestRollingAggregates:
         """Test rolling_avg() function with window size."""
         asql = """
         from daily_sales
-            sort date
+            order by date
             select date, revenue, rolling_avg(revenue, 7) as seven_day_avg
         """
         sql = compile(asql)
@@ -300,7 +300,7 @@ class TestRollingAggregates:
         """Test rolling_sum() function with window size."""
         asql = """
         from daily_sales
-            sort date
+            order by date
             select date, revenue, rolling_sum(revenue, 30) as thirty_day_total
         """
         sql = compile(asql)
@@ -389,7 +389,7 @@ class TestArgMaxMinFunctions:
     """Tests for arg_max() and arg_min() ClickHouse-style functions."""
     
     def test_arg_max(self) -> None:
-        """Test arg_max() function - get value where sort column is maximum."""
+        """Test arg_max() function - get value where the ordering column is maximum."""
         asql = """
         from orders
             select customer_id, arg_max(order_id, order_date) as latest_order_id
@@ -400,7 +400,7 @@ class TestArgMaxMinFunctions:
         assert "ORDER BY" in sql_upper
     
     def test_arg_min(self) -> None:
-        """Test arg_min() function - get value where sort column is minimum."""
+        """Test arg_min() function - get value where the ordering column is minimum."""
         asql = """
         from orders
             select customer_id, arg_min(order_id, order_date) as earliest_order_id
@@ -493,7 +493,7 @@ class TestIntegrationScenarios:
         """Test running total with explicit ordering."""
         asql = """
         from daily_revenue
-            sort date
+            order by date
             select date, revenue, running_sum(revenue) as cumulative
         """
         sql = compile(asql)
@@ -505,7 +505,7 @@ class TestIntegrationScenarios:
         """Test using prior and next for comparison calculations."""
         asql = """
         from monthly_metrics
-            sort month
+            order by month
             select 
                 month,
                 revenue,

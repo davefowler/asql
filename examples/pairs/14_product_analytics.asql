@@ -12,5 +12,5 @@ from products
     count(distinct orders.customer_id) as unique_customers
   )
   where order_count >= 5
-  sort products.category, -total_revenue
+  order by products.category, -total_revenue
 

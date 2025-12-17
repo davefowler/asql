@@ -43,14 +43,14 @@ class TestBoundaryConditions:
     
     def test_very_large_limit(self) -> None:
         """Test very large LIMIT value."""
-        asql = "from users take 999999"
+        asql = "from users limit 999999"
         sql = compile(asql)
         assert "LIMIT" in sql.upper()
         assert "999999" in sql
     
     def test_limit_zero(self) -> None:
         """Test LIMIT of 0 (edge case - may be valid SQL but unusual)."""
-        asql = "from users take 0"
+        asql = "from users limit 0"
         sql = compile(asql)
         assert "LIMIT" in sql.upper()
         # SQL allows LIMIT 0, though it returns no rows
@@ -60,7 +60,7 @@ class TestBoundaryConditions:
         """Test negative LIMIT - syntactically valid but may error at runtime."""
         # SQLGlot accepts negative limits as valid SQL syntax
         # Runtime behavior depends on the database
-        sql = compile("from users take -10")
+        sql = compile("from users limit -10")
         assert "LIMIT" in sql.upper()
     
     def test_empty_in_list(self) -> None:
@@ -207,26 +207,26 @@ from sales group by region (
         assert "product_category" in sql.lower() or "product" in sql.lower()
 
 
-class TestSortEdgeCases:
-    """Test sorting edge cases."""
-    
-    def test_many_sort_columns(self) -> None:
-        """Test many sort columns."""
-        asql = "from users sort col1, col2, col3, col4, col5"
+class TestOrderByEdgeCases:
+    """Test ORDER BY edge cases."""
+
+    def test_many_order_by_columns(self) -> None:
+        """Test many ORDER BY columns."""
+        asql = "from users order by col1, col2, col3, col4, col5"
         sql = compile(asql)
         assert "ORDER BY" in sql.upper()
     
     def test_mixed_asc_desc(self) -> None:
-        """Test mixed ascending and descending sorts."""
-        asql = "from users sort -col1, col2, -col3, col4"
+        """Test mixed ascending and descending ORDER BY."""
+        asql = "from users order by -col1, col2, -col3, col4"
         sql = compile(asql)
         assert "ORDER BY" in sql.upper()
         assert "DESC" in sql.upper()
         # Should have multiple columns
     
-    def test_function_calls_in_sort(self) -> None:
-        """Test multiple function calls in sort."""
-        asql = "from users sort -month(updated_at), year(created_at), name"
+    def test_function_calls_in_order_by(self) -> None:
+        """Test multiple function calls in ORDER BY."""
+        asql = "from users order by -month(updated_at), year(created_at), name"
         sql = compile(asql)
         assert "ORDER BY" in sql.upper()
         assert "MONTH" in sql.upper() or "month" in sql.lower()

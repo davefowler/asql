@@ -15,5 +15,5 @@ from orders
     count(order_items.product_id) as item_count
   )
   where item_count >= 2
-  sort -orders.order_date, -orders.total_amount
+  order by -orders.order_date, -orders.total_amount
 

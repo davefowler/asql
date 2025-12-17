@@ -315,7 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Map common variants
                 if (language === 'sql' || language === 'asql') {
                     // Check if content looks like ASQL (has asql-specific keywords)
-                    const asqlPatterns = /\b(stash|sort|take|per|qualify|prior|next|running_|rolling_|days?\s+ago|#\s*$|#\s*\(|\?\?)\b/i;
+                    const asqlPatterns = /\b(stash|take|per|qualify|prior|next|running_|rolling_|days?\s+ago|#\s*$|#\s*\(|\?\?)\b/i;
                     if (language === 'asql' || asqlPatterns.test(code)) {
                         language = 'asql';
                     }

@@ -280,7 +280,7 @@ How to handle `sum_total_amount`?
 
 What if table actually has a column named `avg_amount`?
 
-**Proposal**: Actual columns take precedence, pattern interpretation is fallback:
+**Proposal**: Actual columns limit precedence, pattern interpretation is fallback:
 1. Parser checks schema first (if available)
 2. If column exists, use it directly
 3. If not, interpret as function pattern

@@ -426,7 +426,7 @@ def test_equivalence():
 
 ```python
 def test_schema_precedence():
-    """Actual column names take precedence over patterns"""
+    """Actual column names limit precedence over patterns"""
     # With schema that has sum_revenue column
     result = compile("from sales select sum_revenue", schema=schema_with_sum_revenue)
     assert "sum_revenue" in result  # Literal column, not SUM(revenue)

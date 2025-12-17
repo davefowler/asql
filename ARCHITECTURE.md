@@ -344,8 +344,8 @@ WHERE status = 'active'
 from users
   where status == "active"
   group by country ( total_users as # )
-  sort -total_users
-  take 10
+  order by -total_users
+  limit 10
 ```
 
 ### Stage 3: Aggregations & Natural Language (v0.1.0)

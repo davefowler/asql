@@ -33,5 +33,5 @@ from customer_rfm
       when monetary_value >= 100 then "Low"
       else "None"
     end as monetary_segment
-  sort -monetary_value
+  order by -monetary_value
 

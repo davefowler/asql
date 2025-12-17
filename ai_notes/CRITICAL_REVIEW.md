@@ -292,7 +292,7 @@ ASQL is an ambitious attempt to modernize SQL for analytical workloads. The spec
 Focus on features that provide the most value with least complexity:
 
 1. **Pipeline syntax** (indentation-based)
-2. **Basic operators** (`where`, `group by`, `select`, `sort`, `take`)
+2. **Basic operators** (`where`, `group by`, `select`, `sort`, `limit`)
 3. **Standard aggregations** (`sum`, `avg`, `count`, etc.)
 4. **Simple `#` syntax** (just `#` for count, not all variants)
 5. **Basic joins** (explicit only, no inference initially)

@@ -88,8 +88,8 @@ class TestComplexPipelines:
 from users
 where status == "active"
 group by country ( # as total_users )
-sort -total_users
-take 10
+order by -total_users
+limit 10
 """
         sql = compile(asql)
         assert "SELECT" in sql.upper()
@@ -215,33 +215,33 @@ from sales group by region (
         assert "total_users" in sql.lower()
 
 
-class TestSorting:
-    """Test sorting functionality."""
-    
-    def test_sort_ascending(self) -> None:
-        """Test ascending sort."""
-        asql = "from users sort name"
+class TestOrderBy:
+    """Test ORDER BY functionality."""
+
+    def test_order_by_ascending(self) -> None:
+        """Test ascending ORDER BY."""
+        asql = "from users order by name"
         sql = compile(asql)
         assert "ORDER BY" in sql.upper()
         assert "name" in sql.lower()
     
-    def test_sort_descending(self) -> None:
-        """Test descending sort with - prefix."""
-        asql = "from users sort -total_users"
+    def test_order_by_descending(self) -> None:
+        """Test descending ORDER BY with - prefix."""
+        asql = "from users order by -total_users"
         sql = compile(asql)
         assert "ORDER BY" in sql.upper()
         assert "DESC" in sql.upper()
     
-    def test_sort_function_call(self) -> None:
-        """Test sorting by function call."""
-        asql = "from users sort month(created_at)"
+    def test_order_by_function_call(self) -> None:
+        """Test ORDER BY with function call."""
+        asql = "from users order by month(created_at)"
         sql = compile(asql)
         assert "ORDER BY" in sql.upper()
         assert "MONTH" in sql.upper() or "month" in sql.lower()
     
-    def test_sort_multiple_columns(self) -> None:
-        """Test sorting by multiple columns."""
-        asql = "from users sort -total_users, name"
+    def test_order_by_multiple_columns(self) -> None:
+        """Test ORDER BY with multiple columns."""
+        asql = "from users order by -total_users, name"
         sql = compile(asql)
         assert "ORDER BY" in sql.upper()
         # Should have both columns
@@ -319,8 +319,8 @@ class TestRealWorldQueries:
 from users
 where status == "active" and age >= 18
 group by country ( # as total_users, avg(age) as avg_age )
-sort -total_users
-take 20
+order by -total_users
+limit 20
 """
         sql = compile(asql)
         assert "SELECT" in sql.upper()
@@ -335,8 +335,8 @@ take 20
 from sales
 where status == "completed" and amount > 100
 group by region ( sum(amount) as revenue, # as orders )
-sort -revenue
-take 10
+order by -revenue
+limit 10
 """
         sql = compile(asql)
         assert "SELECT" in sql.upper()

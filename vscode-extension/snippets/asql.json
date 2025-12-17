@@ -31,19 +31,19 @@
     ],
     "description": "GROUP BY with multiple aggregations"
   },
-  "SORT descending": {
-    "prefix": "sort",
+  "ORDER BY descending": {
+    "prefix": "orderby",
     "body": [
-      "sort -${1:column}"
+      "order by -${1:column}"
     ],
-    "description": "Sort descending"
+    "description": "Order by descending"
   },
-  "SORT multiple columns": {
-    "prefix": "sortmulti",
+  "ORDER BY multiple columns": {
+    "prefix": "orderbymulti",
     "body": [
-      "sort -${1:column1}, ${2:column2}"
+      "order by -${1:column1}, ${2:column2}"
     ],
-    "description": "Sort by multiple columns"
+    "description": "Order by multiple columns"
   },
   "Complete query pipeline": {
     "prefix": "query",
@@ -51,8 +51,8 @@
       "from ${1:table_name}",
       "where ${2:condition}",
       "group by ${3:column} ( # as ${4:count} )",
-      "sort -${4:count}",
-      "take ${5:10}"
+      "order by -${4:count}",
+      "limit ${5:10}"
     ],
     "description": "Complete ASQL query pipeline"
   },
@@ -73,7 +73,7 @@
   "JOIN": {
     "prefix": "join",
     "body": [
-      "join ${1:table} on ${2:left_column} == ${1:table}.${3:right_column}"
+      "join ${1:table} on ${2:left_column} = ${1:table}.${3:right_column}"
     ],
     "description": "JOIN clause"
   },

@@ -12,8 +12,8 @@ group by region, month (
     # as order_count,
     avg(amount) as avg_order
 )
-sort -revenue
-take 20"""
+order by -revenue
+limit 20"""
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -28,7 +28,7 @@ group by country (
     # as total_users,
     avg(age) as avg_age
 )
-sort -total_users"""
+order by -total_users"""
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -47,8 +47,8 @@ group by product_category (
     avg(amount) as avg_order_value,
     max(amount) as max_order_value
 )
-sort -total_revenue
-take 10"""
+order by -total_revenue
+limit 10"""
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -62,7 +62,7 @@ where event_type == "signup" and created_at is not null
 group by month (
     # as signups
 )
-sort month"""
+order by month"""
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)

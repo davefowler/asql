@@ -65,11 +65,11 @@ from orders join users on orders.user_id == users.id
 from users left join orders on users.id == orders.user_id
 
 # ORDER BY / SORT
-from users sort -created_at, name
+from users order by -created_at, name
 from users order by -total_users
 
 # LIMIT / TAKE
-from users take 10
+from users limit 10
 from users limit 100
 ```
 
@@ -139,16 +139,16 @@ from scores rank by -score
 from orders select *, row_number() over (partition by customer_id order by -order_date) as rn qualify rn == 1
 
 # DISTINCT ON
-from orders distinct on (customer_id) sort customer_id, -order_date
+from orders distinct on (customer_id) order by customer_id, -order_date
 
 # prior() / next()
-from sales sort month select month, revenue, prior(revenue) as prev_month
+from sales order by month select month, revenue, prior(revenue) as prev_month
 
 # Running aggregates
-from transactions sort date select running_sum(amount) as cumulative
+from transactions order by date select running_sum(amount) as cumulative
 
 # Rolling aggregates
-from daily_sales sort date select rolling_avg(revenue, 7) as seven_day_avg
+from daily_sales order by date select rolling_avg(revenue, 7) as seven_day_avg
 
 # first() / last() with order
 from orders select first(order_id order by order_date) as first_order
@@ -157,27 +157,20 @@ from orders select first(order_id order by order_date) as first_order
 from orders select arg_max(order_id, order_date) as latest_order_id
 ```
 
-### CTEs & Variables ✅
+### CTEs (stash as) ✅
 
 ```python
-# set
-set active_users = from users where status == "active"
-from active_users group by country ( # as total )
-
-# with
-with active_users = from users where status == "active"
-from active_users select *
-
-# stash as (mid-pipeline)
+# stash as (mid-pipeline CTE)
 from users
 where status == "active"
 stash as active_users
 group by country ( # as total )
 
-# Multiple CTEs
-set base = from users where is_premium
-set by_country = from base group by country ( # as total )
-from by_country sort -total take 10
+# Multiple CTEs via stash as chaining
+from users where is_premium stash as base
+from base group by country ( # as total ) stash as by_country
+from by_country select *
+from by_country order by -total limit 10
 ```
 
 ### Utility Functions ✅

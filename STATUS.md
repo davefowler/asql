@@ -20,11 +20,11 @@
   - Multiple grouping columns
   - Multiple aggregations
 - **SORT/ORDER BY**
-  - `sort -total_users` (descending)
-  - `sort total_users` (ascending)
-  - Multiple sort columns
+  - `order by -total_users` (descending)
+  - `order by total_users` (ascending)
+  - Multiple order by columns
 - **TAKE/LIMIT**
-  - `take 10` → SQL LIMIT
+  - `limit 10` → SQL LIMIT
 
 ### Phase 2: Expressions & Operators ✅ (Partial)
 - **Comparison operators**: `==`, `!=`, `<`, `>`, `<=`, `>=`
@@ -57,15 +57,15 @@ compile("from users group by country ( # as total_users )")
 compile("from sales group by region ( sum(amount) as revenue, # as orders )")
 
 # SORT
-compile("from users sort -total_users")
-compile("from users sort name, -age")
+compile("from users order by -total_users")
+compile("from users order by name, -age")
 
 # TAKE/LIMIT
-compile("from users take 10")
+compile("from users limit 10")
 
 
 # Complex pipeline
-compile("from users group by country ( # as total_users ) sort -total_users take 10")
+compile("from users group by country ( # as total_users ) order by -total_users limit 10")
 ```
 
 ## Architecture Decisions

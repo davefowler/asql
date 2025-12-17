@@ -18,8 +18,8 @@ asql_query = """
 from users
 where status == "active"
 group by country ( # as total_users )
-sort -total_users
-take 10
+order by -total_users
+limit 10
 """
 
 sql = compile(asql_query, dialect="postgres")
@@ -63,9 +63,9 @@ from users
 where status == 'active'
 """, dialect="postgres")
 
-# Multiple queries (creates CTEs)
+# Query with CTE using stash as
 multi_query = """
-with active_users = from users where status == 'active';
+from users where status == 'active' stash as active_users
 from active_users group by country ( # as total )
 """
 
@@ -612,8 +612,8 @@ results = pipeline.execute_query("""
 from users
 where status == 'active'
 group by country ( # as total_users )
-sort -total_users
-take 10
+order by -total_users
+limit 10
 """)
 
 for row in results:

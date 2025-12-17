@@ -15,6 +15,6 @@ All notable changes to the ASQL VS Code extension will be documented in this fil
 
 ### Features
 - Highlighting for keywords, operators, functions, and literals
-- Support for all ASQL pipeline operators (`from`, `where`, `group by`, `sort`, `take`, etc.)
+- Support for all ASQL pipeline operators (`from`, `where`, `group by`, `order by`, `limit`, etc.)
 - Snippets for quick query creation
 - Smart indentation for multi-line queries

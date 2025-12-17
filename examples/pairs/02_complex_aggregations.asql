@@ -11,5 +11,5 @@ from sales
     sum(case when status == "refunded" then amount else 0 end) as refunded_amount
   )
   where total_revenue > 10000
-  sort -month(order_date), -total_revenue
+  order by -month(order_date), -total_revenue
 
