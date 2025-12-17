@@ -1,0 +1,93 @@
+"""Inline SET statement extraction utilities."""
+
+from __future__ import annotations
+
+from typing import List, Optional, Tuple
+
+from sqlglot import exp
+
+from asql.config import CompileSettings
+
+
+def extract_inline_settings(
+    statements: List[exp.Expression],
+) -> Tuple[CompileSettings, Optional[str], List[exp.Expression]]:
+    """Extract leading SET statements into CompileSettings.
+
+    SET statements at the beginning of a query can configure compilation behavior.
+
+    Example:
+        SET auto_spine = false;
+        SET dialect = 'postgres';
+        SELECT * FROM orders
+
+    Args:
+        statements: Parsed SQLGlot expressions.
+
+    Returns:
+        (settings, dialect_override, remaining_statements)
+    """
+    settings = CompileSettings()
+    dialect_override: Optional[str] = None
+    queries: List[exp.Expression] = []
+
+    for stmt in statements:
+        if isinstance(stmt, exp.Set):
+            for item in stmt.expressions:
+                if hasattr(item, "this") and isinstance(item.this, exp.EQ):
+                    eq = item.this
+                    key = eq.this.sql().lower().strip('"\'`')
+                    value_expr = eq.expression
+
+                    if isinstance(value_expr, exp.Boolean):
+                        value = value_expr.this
+                    elif isinstance(value_expr, exp.Literal):
+                        value = value_expr.this.strip('"\'')
+                        if isinstance(value, str):
+                            if value.lower() == "true":
+                                value = True
+                            elif value.lower() == "false":
+                                value = False
+                    elif isinstance(value_expr, exp.Var):
+                        value = value_expr.this
+                    else:
+                        value = value_expr.sql().strip('"\'')
+
+                    if key == "dialect":
+                        dialect_override = str(value).lower()
+                    elif key == "auto_spine":
+                        settings.auto_spine = bool(value)
+                    elif key == "week_start":
+                        if value in ("monday", "sunday"):
+                            settings.week_start = value
+                    elif key == "relative_date_type":
+                        if value in ("timestamp", "date"):
+                            settings.relative_date_type = value
+        else:
+            queries.append(stmt)
+
+    return settings, dialect_override, queries
+
+
+def extract_dialect_from_comment(asql_query: str) -> Optional[str]:
+    """Extract a dialect override from a comment directive.
+
+    Looks for patterns like:
+    - -- dialect: snowflake
+    - # dialect: snowflake
+
+    Can appear anywhere in the query.
+    """
+    import re
+
+    patterns = [
+        r"--\s*dialect\s*:\s*(\w+)",
+        r"#\s*dialect\s*:\s*(\w+)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, asql_query, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+
+    return None
