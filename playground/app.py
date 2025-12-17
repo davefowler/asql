@@ -71,7 +71,35 @@ async def index() -> HTMLResponse:
     """Render the playground interface."""
     template_path = TEMPLATES_DIR / "index.html"
     if template_path.exists():
-        return HTMLResponse(content=template_path.read_text())
+        content = template_path.read_text()
+        
+        # Inject examples data directly into the template
+        import json
+        examples_data = {
+            "asql": ASQL_EXAMPLES,
+            "pipeline": PIPELINE_EXAMPLES,
+            "cohort": COHORT_EXAMPLES,
+            "sampling": SAMPLING_EXAMPLES,
+            "reshaping": RESHAPING_EXAMPLES,
+            "column_operators": COLUMN_OPERATOR_EXAMPLES,
+            "count_inference": COUNT_INFERENCE_EXAMPLES,
+            "sql": SQL_EXAMPLES,
+        }
+        examples_json = json.dumps(examples_data)
+        
+        # Escape </script> to prevent breaking HTML parser
+        # Use \u003c instead of < in the closing script tag
+        examples_json = examples_json.replace("</script>", r"<\/script>")
+        examples_json = examples_json.replace("</Script>", r"<\/Script>")
+        examples_json = examples_json.replace("</SCRIPT>", r"<\/SCRIPT>")
+        
+        # Replace the placeholder with actual data
+        content = content.replace(
+            '/* EXAMPLES_DATA_PLACEHOLDER */ {}',
+            examples_json
+        )
+        
+        return HTMLResponse(content=content)
     return HTMLResponse(content="<h1>Template not found</h1>", status_code=500)
 
 

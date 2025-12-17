@@ -19,7 +19,8 @@ theme:
     primary: custom
     accent: custom
   features:
-    - navigation.sections       # Render sections in sidebar
+    - navigation.tabs           # Top sections in header, creates proper sidebar
+    - navigation.sections       # Render section headers in sidebar
     - navigation.top            # Back-to-top button
     - navigation.instant        # Faster page loads
     - navigation.tracking       # URL updates as you scroll
