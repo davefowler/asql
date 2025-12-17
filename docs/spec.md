@@ -271,9 +271,42 @@ from orders where (status ?? "pending") = "completed"
 **Precedence:**
 The `??` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`=`, `!=`, etc.). Use parentheses for clarity in complex expressions.
 
-### 4.7 Conditional Expressions (`when`)
+### 4.7 Conditional Expressions
 
-ASQL uses `when` for conditional expressions, replacing SQL's verbose `CASE` statement with cleaner, more natural syntax.
+ASQL provides two syntaxes for conditional expressions: ternary (`? :`) for simple binary conditions, and `when` for multi-branch conditions. Both replace SQL's verbose `CASE` statement with cleaner, more natural syntax.
+
+#### 4.7.1 Ternary Conditional (`? :`)
+
+For simple binary conditions, ASQL supports a concise ternary syntax:
+
+**Syntax:**
+```asql
+condition ? true_value : false_value
+```
+
+**Examples:**
+```asql
+from orders
+  select 
+    amount > 1000 ? "high" : "low" as tier,
+    status == "active" ? 1 : 0 as is_active
+
+# With expressions
+from users
+  select
+    age >= 18 ? "adult" : "minor" as age_group,
+    (score ?? 0) > 80 ? "pass" : "fail" as result
+```
+
+**When to use ternary vs `when`:**
+- Use ternary (`? :`) for simple binary conditions: `condition ? value_if_true : value_if_false`
+- Use `when` for multi-branch conditions or when readability benefits from the explicit structure
+
+**Compiles to:** `CASE WHEN condition THEN true_value ELSE false_value END`
+
+#### 4.7.2 Multi-Branch Conditionals (`when`)
+
+For multi-branch conditions, ASQL uses `when` expressions:
 
 **Basic syntax with `is` for equality:**
 ```asql
@@ -345,8 +378,8 @@ from orders
   group by customer_id
   select
     customer_id,
-    sum(when status is "completed" then 1 otherwise 0) as completed_count,
-    sum(when status is "returned" then amount otherwise 0) as returned_value
+    sum(status == "completed" ? 1 : 0) as completed_count,
+    sum(status == "returned" ? amount : 0) as returned_value
 ```
 
 **Operators supported:**
