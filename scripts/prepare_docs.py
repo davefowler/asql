@@ -30,7 +30,7 @@ def replace_playground_urls(content: str, playground_url: str) -> str:
 
 def main():
     """Main function to process docs."""
-    playground_url = os.environ.get('PLAYGROUND_URL', 'https://asql-playground.railway.app')
+    playground_url = os.environ.get('PLAYGROUND_URL', 'https://play.analyticsql.com')
     docs_dir = Path(__file__).parent.parent / 'docs'
     
     # Process all markdown files

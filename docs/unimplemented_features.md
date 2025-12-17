@@ -1,6 +1,11 @@
 # Unimplemented Features Tracking
 
-This document tracks features that are specified but not yet implemented, along with their GitHub issue status.
+This document tracks **features that are specified but NOT implemented**.
+
+- **Source of truth for current syntax**: `docs/spec.md`
+- **Future ideas / “maybe” features** (design-only): `docs/spec_future.md`
+
+If a feature is implemented, it should live in `docs/spec.md` and **be removed from this list**.
 
 **Last Updated**: December 2025
 
@@ -8,144 +13,84 @@ This document tracks features that are specified but not yet implemented, along 
 
 ## High Priority
 
-### 1. String Matching Operators ✅
-**Status**: ✅ Implemented (December 2025)  
-**GitHub Issue**: [#36](https://github.com/davefowler/asql/issues/36)  
-**Spec Section**: 4.5 (String Matching)
-
-**Implemented Syntax**:
-- `contains` / `icontains` - substring match (case-sensitive / case-insensitive)
-- `starts with` / `istarts with` - prefix match
-- `ends with` / `iends with` - suffix match
-- `matches` - LIKE pattern matching (not regex by default)
-
-**Design Decision**: Use `icontains` instead of `contains ... ignore case` for better analyst UX.
-
-**Example**:
-```asql
-from users where email icontains "gmail"
-from users where name starts with "John"
-from users where filename ends with ".pdf"
-from users where email matches "%@gmail.com"  -- LIKE syntax, not regex
-```
-
-**Implementation**: Transforms to SQL `LIKE` / `ILIKE` operators. Case-insensitive operators use `ILIKE` for PostgreSQL and dialects that support it.
+### 1. `when` conditional expressions
+- **Status**: ❌ Not implemented
+- **Spec**: `docs/spec.md` §4.7
+- **What it is**: A readable replacement for SQL `CASE` expressions (both “simple case” and “searched case”).
+- **Current workaround**: Use SQL `CASE WHEN ... THEN ... ELSE ... END` directly in ASQL expressions.
+- **Why it matters**: This unlocks a lot of real-world “labeling / bucketing / business logic” without dropping to raw SQL.
+- **Recommendation to remove from this list**:
+  - **Create issue + implement soon** (this is core ergonomics).
+  - After implementation: move the full docs/examples into `docs/spec.md` and delete this entry.
 
 ---
 
 ## Medium Priority
 
-### 2. Dynamic Pivot
-**Status**: ✅ Implemented  
-**GitHub Issue**: [#37](https://github.com/davefowler/asql/issues/37)  
-**Spec Section**: 13.3 (Pivot)
+### 2. Dynamic pivot (values from subquery)
+- **Status**: ❌ Not implemented
+- **Spec**: `docs/spec.md` §13.3
+- **What it is**: `pivot ... values (<subquery>)` where the pivot values come from data.
+- **Current behavior**: Pivot requires an explicit values list (static pivot).
+- **Why it matters**: Great for “wide custom fields” style schemas, but it’s also inherently tricky because most warehouses require dynamic SQL for true dynamic pivots.
+- **Recommendation to remove from this list**:
+  - If we really want it: **create an issue** and implement as “compile-time expansion” only when the subquery can be evaluated safely (likely requires database access / execution) — otherwise this probably belongs as **future design**.
+  - If we do *not* want to support it in the compiler: **move the idea to `docs/spec_future.md` and remove from this list**.
 
-**What it is**: Pivot where the values come from a subquery instead of being hardcoded at compile time.
+### 3. `deduplicate by ...`
+- **Status**: ❌ Not implemented
+- **Spec**: `docs/spec.md` §13.2
+- **What it is**: A convenience operator for the common “one row per key” pattern.
+- **Current workaround**:
+  - Use `per <cols> first by -<order_col>` (this compiles to `QUALIFY ROW_NUMBER() ... = 1`).
+  - Or write explicit window functions + `QUALIFY`.
+- **Important nuance**: This is mostly sugar over existing capabilities — `per ... first by ...` is the underlying primitive.
+- **Recommendation to remove from this list**:
+  - **Create issue + implement soon** as syntax sugar that rewrites to the existing `per ... first by ...` transformation.
+  - Once implemented: add to `docs/spec.md` and remove this entry.
 
-**Implementation**: Dynamic pivot is now supported using subqueries in the values clause:
-
-```asql
-from sales
-  pivot sum(amount) by category values (
-    from sales select distinct category
-  )
-```
-
-The subquery is compiled to a CTE and used to generate pivot expressions. See `docs/spec.md` section 13.3 and `docs/syntax/pivot-unpivot.md` for full documentation and examples.
-
----
-
-### 3. Cohort Analysis Features
-**Status**: ✅ Implemented (December 2025)  
-**GitHub Issue**: [#38](https://github.com/davefowler/asql/issues/38)  
-**Spec Section**: 14 (Cohort Analysis)
-
-**Implementation**: The `cohort by` operator is now available, simplifying cohort queries from 50+ lines of SQL to 3-5 lines of ASQL.
-
-**Documentation**:
-- [Spec: Cohort Analysis](spec.md#14-cohort-analysis)
-- [Syntax Guide: Cohorts](syntax/cohorts.md)
-
-**Example**:
-```asql
-from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
-```
+### 4. User-defined functions (`func ... = ...`)
+- **Status**: ❌ Not implemented
+- **Spec**: `docs/spec.md` §12
+- **What it is**: Define reusable scalar/table functions inside ASQL.
+- **Why it matters**: Powerful, but it’s a real feature (needs scoping, substitution rules, hygiene, recursion rules, etc.).
+- **Recommendation to remove from this list**:
+  - **Move to `docs/spec_future.md`** unless we’re actively prioritizing implementation work.
+  - If we prioritize it: create issues for “scalar functions” and “table/macro functions” separately.
 
 ---
 
-## Low Priority / Future Consideration
+## Lower Priority / Future Work
 
-### 4. Ternary-Style Conditionals
-**Status**: Future Consideration  
-**GitHub Issue**: [#28](https://github.com/davefowler/asql/issues/28)  
-**Spec Section**: 4.12
+### 5. Table sources: `date_spine(...)` / `series(...)`
+- **Status**: ❌ Not implemented
+- **Spec**: `docs/spec.md` §13.4
+- **What it is**: A table-producing function you can `from date_spine(...)` / `from series(...)`.
+- **Important nuance**: This is **different** from today’s `auto_spine` behavior, which already gap-fills grouped results by default (see `auto_spine` in compiler settings).
+- **Recommendation to remove from this list**:
+  - For most analytics use cases: **do not implement**; `auto_spine` already covers the “fill gaps” intent.
+  - If we need it for “generate rows without any source table”: **move to `docs/spec_future.md`** (or create an issue only when a concrete use case appears).
 
-**Proposed Syntax**:
-```asql
-amount == 0 ? null : amount           -- JS-style
-null if amount == 0 else amount       -- Python-style
-```
+### 6. Schema-aligned `union(...)`
+- **Status**: ❌ Not implemented
+- **Spec**: `docs/spec.md` §13.5
+- **What it is**: Union multiple tables while aligning columns and filling missing ones automatically.
+- **Recommendation to remove from this list**: likely **future** (`docs/spec_future.md`) unless there’s an immediate product need.
 
-**Current**: Use `when` syntax:
-```asql
-when amount == 0 then null else amount
-```
+### 7. `key(...)` surrogate keys
+- **Status**: ❌ Not implemented
+- **Spec**: `docs/spec.md` §13.6
+- **What it is**: Stable, cross-dialect surrogate key helper (hashing + null handling).
+- **Recommendation to remove from this list**: **future** (`docs/spec_future.md`) unless you want to standardize this now.
 
-**Priority**: Low - `when` syntax is already clear and readable.
-
----
-
-### 5. Automatic Column Namespace Resolution
-**Status**: ✅ **Implemented** (December 2025)  
-**GitHub Issue**: [#39](https://github.com/davefowler/asql/issues/39)  
-**Spec Section**: 15.3
-
-**What it is**: Automatically qualify conflicting column names in joined queries by expanding `SELECT *` to `table.*` for each joined table.
-
-**Implementation**: When `SELECT *` is used with joins, ASQL automatically expands it to `SELECT table1.*, table2.*, ...` for each joined table. This prevents column name conflicts and allows columns to be referenced with table qualification (e.g., `users.id`, `orders.id`).
-
-**Example**:
-```asql
-from users & orders on users.id = orders.user_id
--- Automatically becomes:
--- SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id
-```
-
-**Note**: Full automatic renaming (e.g., `users_id`, `orders_id`) would require schema information and is a potential future enhancement. The current implementation provides table-qualified columns which prevent conflicts.
+### 10. Nested result shapes (`select { ... }`)
+- **Status**: ❌ Not implemented
+- **Spec**: `docs/spec.md` §16
+- **What it is**: EdgeQL/Malloy-like nested result shaping.
+- **Recommendation to remove from this list**: **future** (`docs/spec_future.md`) unless ASQL is going to own result-shaping semantics (big scope).
 
 ---
 
-### 6. Shorthand Natural Language (50/50)
-**Status**: Maybe  
-**GitHub Issue**: [#40](https://github.com/davefowler/asql/issues/40)  
-**Spec Section**: Example 11
+## “Maybe” features (design-only)
 
-**What it is**: Omit `from` clause and infer table from aggregation:
-```asql
-# of Users by country
-Sum of revenue by region
-```
-
-**Pros**: Nice shorthand for exploratory queries  
-**Cons**: Different from other queries, potentially confusing
-
-**Decision**: Marked as 50/50 - may or may not make it into v1.0.
-
----
-
-## Implementation Notes
-
-- Features marked as "Future Consideration" are lower priority and may not be implemented
-- Features marked as "50/50" or "Maybe" are uncertain
-- All features have workarounds using existing ASQL or raw SQL
-
----
-
-## How to Update This Document
-
-1. When a feature is implemented, mark it as "✅ Implemented" and add implementation date
-2. When a GitHub issue is created, update the issue link
-3. When priority changes, update the section
-4. Add new unimplemented features as they're discovered or requested
+These are tracked in `docs/spec_future.md` (this doc stays focused on concrete “not implemented” items).

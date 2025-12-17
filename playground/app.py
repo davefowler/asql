@@ -66,12 +66,22 @@ class NormalizeRequest(BaseModel):
 
 # --- Routes ---
 
+def _normalize_base_url(url: str) -> str:
+    """Normalize a base URL (no trailing slash)."""
+    return url.strip().rstrip("/")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
     """Render the playground interface."""
     template_path = TEMPLATES_DIR / "index.html"
     if template_path.exists():
         content = template_path.read_text()
+
+        docs_url = _normalize_base_url(os.environ.get("DOCS_URL", "https://analyticsql.com"))
+        playground_url = _normalize_base_url(os.environ.get("PLAYGROUND_URL", "https://play.analyticsql.com"))
+        content = content.replace("__DOCS_URL__", docs_url)
+        content = content.replace("__PLAYGROUND_URL__", playground_url)
         
         # Inject examples data directly into the template
         import json

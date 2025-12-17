@@ -80,7 +80,7 @@
 
 ## ❌ Not Yet Implemented (Planned in Spec)
 
-These features are documented in `SPEC.md` but not yet implemented:
+These features are documented as future/planned work in `docs/spec_future.md` (or marked “Not implemented yet” in `docs/spec.md`):
 
 ### String Matching (Section 4.5) ✅ Implemented
 - `contains "pattern"` ✅
@@ -202,4 +202,4 @@ Some ASQL features have limited support across SQL dialects. See [Dialect Limita
 
 ## Next Steps
 
-See `SPEC.md` for planned features and `ai_notes/` for implementation notes.
+See `docs/spec_future.md` for planned features and `ai_notes/` for implementation notes.

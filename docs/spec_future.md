@@ -2,7 +2,7 @@
 
 This document contains features that are planned for future implementation, under consideration, or marked as "maybe" for v1.0.
 
-**Note**: Features in this document are NOT implemented. See `spec.md` for the current specification of implemented features.
+**Note**: Features in this document are NOT implemented. See `docs/spec.md` for the current specification of implemented features.
 
 ---
 
@@ -19,9 +19,9 @@ amount == 0 ? null : amount           -- JS-style
 null if amount == 0 else amount       -- Python-style
 ```
 
-**Current**: Use `when` syntax which is clear and readable:
+**Current**: Use SQL `CASE WHEN ... THEN ... ELSE ... END` (ASQL `when` is not implemented yet):
 ```asql
-when amount == 0 then null else amount
+CASE WHEN amount == 0 THEN NULL ELSE amount END
 ```
 
 **Priority**: Low - `when` syntax is already clear and readable. Ternary expressions are syntactic sugar.
@@ -68,7 +68,43 @@ These are broader ideas that may or may not be implemented:
 
 ---
 
+## Safe casting (`::type?`) (Future Consideration)
+
+ASQL may add “safe cast” syntax that returns `NULL` on cast failure.
+
+### Why it exists
+- Dialects differ (`TRY_CAST`, `SAFE_CAST`, etc.)
+- Real data often contains non-castable values (`\"N/A\"`, empty strings, mixed types)
+
+### Proposed syntax
+
+```asql
+select value::integer? as value_int
+select value::integer? ?? 0 as value_int
+```
+
+### Current
+Use strict casts (`value::integer`) and/or dialect-specific SQL (`TRY_CAST`, `SAFE_CAST`) directly.
+
+---
+
+## Safe divide (`/?`) (Future Consideration)
+
+ASQL may add a safe divide operator where divide-by-zero yields `NULL` (i.e., the result is “not required”).
+
+### Proposed syntax
+
+```asql
+4 /? 3     -- normal division
+4 /? 0     -- NULL (safe-divide)
+```
+
+### Current
+Use SQL `CASE` / `NULLIF` patterns directly, e.g. `a / NULLIF(b, 0)` (dialect dependent).
+
+---
+
 **See Also**:
-- `spec.md` - Current specification of implemented features
-- `unimplemented_features.md` - Tracking document with GitHub issues
+- `docs/spec.md` - Current specification of implemented features
+- `docs/unimplemented_features.md` - Not-implemented feature tracking
 - `ai_notes/COHORT_ANALYSIS.md` - Detailed cohort analysis design

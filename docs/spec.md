@@ -106,7 +106,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
 | `order by` | Sort rows | `ORDER BY` | `order by -users` (descending) |
 | `limit` | Limit rows | `LIMIT` | `limit 10` |
-| `set` | Define variable/fragment (CTE) | `WITH ... AS` | `set active = from users \| where is_active` |
+| `stash as` | Define reusable CTE | `WITH ... AS` | `stash as active_users` |
 
 ---
 
@@ -275,6 +275,8 @@ The `??` operator has higher precedence than logical operators (`and`, `or`, `no
 
 ASQL uses `when` for conditional expressions, replacing SQL's verbose `CASE` statement with cleaner, more natural syntax.
 
+**Not implemented yet**: `when` is not currently supported by the forward compiler. For now, use SQL `CASE WHEN ... THEN ... ELSE ... END` directly in ASQL expressions.
+
 **Basic syntax with `is` for equality:**
 ```asql
 from users
@@ -357,7 +359,7 @@ from orders
 
 **Default clause:** Both `else` and `otherwise` are supported (they are aliases).
 
-All forms compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
+**Planned**: All forms will compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
 
 ### 4.8 Type Casting (`::`)
 
@@ -520,113 +522,49 @@ from products
 
 #### NULLIF Alternative
 
-Instead of SQL's `NULLIF()` function, use the `when` conditional expression:
+Instead of SQL's `NULLIF()` function, use SQL `NULLIF()` directly (or a `CASE WHEN` expression).
 
 ```asql
 from transactions
   select 
-    when amount == 0 then null else amount as safe_amount
+    CASE WHEN amount == 0 THEN NULL ELSE amount END as safe_amount
 ```
 
-This is clearer than `nullif(amount, 0)` and consistent with ASQL's conditional syntax.
+This is clearer than `nullif(amount, 0)` for some readers, but either is valid.
 
 
 ### 4.13 Function Shorthand (Underscore/Space Principle)
 
-ASQL provides flexible syntax for function calls where **underscores and spaces are interchangeable**. This makes queries more natural to write and read.
+ASQL supports a small set of **implemented** shorthand/normalization rules that make queries read more naturally.
 
-#### The Core Principle
+#### Implemented today
 
-All of these are equivalent and produce the same result:
-
-```asql
--- Function call styles (all equivalent):
-sum(amount)           -- explicit function call
-sum_amount            -- underscore shorthand
-sum amount            -- space shorthand
-sum of amount         -- "of" style (natural language)
-```
-
-All produce a column named `sum_amount`.
-
-#### Applies to All Functions
-
-This principle applies universally to:
-
-**Aggregations:**
-```asql
-sum_revenue           -- → sum(revenue)
-avg_price             -- → avg(price)
-count_orders          -- → count(orders)
-max_amount            -- → max(amount)
-```
-
-**Date functions:**
-```asql
-year_created_at       -- → year(created_at)
-month_signup_date     -- → month(signup_date)
-day_of_week_order_date -- → day_of_week(order_date)
-```
-
-**Multi-word functions:**
-```asql
-day_of_week(created_at)     -- explicit
-day_of_week_created_at      -- underscore shorthand
-day of week created_at      -- space shorthand (most natural)
-```
-
-#### Auto-Generated Column Names
-
-When using function shorthand, column names are auto-generated:
+- **Natural-language aggregate calls** (space + optional `of`) are normalized to function calls:
 
 ```asql
-from sales
-  select sum_amount, avg_price, month_created_at
-  
--- Equivalent to:
-from sales
-  select 
-    sum(amount) as sum_amount,
-    avg(price) as avg_price,
-    month(created_at) as month_created_at
+sum amount        -- → sum(amount)
+sum of amount     -- → sum(amount)
+avg price         -- → avg(price)
 ```
 
-#### Where This Applies
-
-| Context | Applies? | Example |
-|---------|----------|---------|
-| SELECT expressions | ✅ Yes | `select sum_amount` |
-| GROUP BY | ✅ Yes | `group by month_created_at` |
-| ORDER BY | ✅ Yes | `order by -sum_amount` |
-| WHERE conditions | ✅ Yes | `where days_since_created_at > 30` |
-| Column names (literals) | ❌ No | `created_at` stays as-is |
-| Table names | ❌ No | `user_accounts` stays as-is |
-| String literals | ❌ No | `"hello_world"` stays as-is |
-
-#### Ambiguity Resolution
-
-If an actual column name matches a potential function pattern, the **column takes precedence**:
+- **Certain multi-word functions** can be written with spaces and are normalized to underscored function names:
 
 ```asql
--- If table has actual column "sum_revenue":
-select sum_revenue    -- Uses the column, not sum(revenue)
-
--- To force function interpretation, use explicit syntax:
-select sum(revenue) as sum_revenue
+day of week created_at     -- → day_of_week(created_at)
+week of year created_at    -- → week_of_year(created_at)
+string agg(name, ", ")     -- → string_agg(name, ", ")
 ```
 
-#### Extended Patterns
-
-Some patterns expand to more complex expressions:
+- **Date “since/until” patterns** are supported as special forms:
 
 ```asql
--- Time since patterns
-days_since_created_at     -- → days(now() - created_at)
-months_since_signup_date  -- → months(now() - signup_date)
-
--- Time until patterns  
-days_until_due_date       -- → days(due_date - now())
+days_since_created_at   -- → DATEDIFF('day', created_at, CURRENT_TIMESTAMP)
+days_until_due_date     -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
 ```
+
+#### Not implemented (yet)
+
+The broad “underscore/space principle” where arbitrary identifiers like `sum_amount` or `month_created_at` automatically expand to `sum(amount)` / `month(created_at)` is **not** implemented. Use explicit function calls (`sum(amount)`, `month(created_at)`) and explicit aliases (`... as sum_amount`) instead.
 
 ---
 
@@ -691,10 +629,6 @@ from Users
 sum(amount) as revenue
 total(amount) as revenue
 
-# Shorthand syntax (see Section 4.13)
-sum_amount              -- → sum(amount) as sum_amount
-total_revenue           -- → sum(revenue) as total_revenue
-
 # Natural language syntax
 Sum of amount as revenue
 Total of amount as revenue
@@ -704,7 +638,6 @@ Total amount as revenue
 # In group by
 from sales
   group by region (
-    sum_amount,         -- shorthand
     total amount as revenue
   )
 ```
@@ -1234,15 +1167,7 @@ hour(created_at)      -- Truncate to hour: 2025-01-15 14:00:00
 quarter(created_at)   -- Truncate to quarter start
 ```
 
-**Natural language alternatives** (all equivalent):
-```asql
-year(created_at)      -- function style
-year created_at       -- space style
-year_created_at       -- underscore style (ASQL interprets as year(created_at))
-year of created_at    -- "of" style
-```
-
-These compile to `DATE_TRUNC()` and are ideal for time series grouping.
+**Current note**: Time truncation currently requires normal function-call syntax like `year(created_at)`. (The broader underscore/space shorthands are not implemented.)
 
 ### 8.3 Date Part Extraction
 
@@ -1370,17 +1295,17 @@ WHERE estimated_delivery <= CURRENT_TIMESTAMP + INTERVAL '3 days'
 
 **`*_since_*` pattern** - time elapsed since a date:
 ```asql
-days_since_created_at        -- → days(now() - created_at)
-weeks_since_signup_date      -- → weeks(now() - signup_date)
-months_since_last_login      -- → months(now() - last_login)
-years_since_birth_date       -- → years(now() - birth_date)
+days_since_created_at        -- → DATEDIFF('day', created_at, CURRENT_TIMESTAMP)
+weeks_since_signup_date      -- → DATEDIFF('week', signup_date, CURRENT_TIMESTAMP)
+months_since_last_login      -- → DATEDIFF('month', last_login, CURRENT_TIMESTAMP)
+years_since_birth_date       -- → DATEDIFF('year', birth_date, CURRENT_TIMESTAMP)
 ```
 
 **`*_until_*` pattern** - time remaining until a future date:
 ```asql
-days_until_due_date          -- → days(due_date - now())
-weeks_until_deadline         -- → weeks(deadline - now())
-months_until_renewal         -- → months(renewal_date - now())
+days_until_due_date          -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
+weeks_until_deadline         -- → DATEDIFF('week', CURRENT_TIMESTAMP, deadline)
+months_until_renewal         -- → DATEDIFF('month', CURRENT_TIMESTAMP, renewal_date)
 ```
 
 **Example usage:**
@@ -1593,49 +1518,33 @@ The `-` prefix applies only to the column immediately following it.
 
 ---
 
-## 11. Variables & CTEs
+## 11. Settings & CTEs
 
-### 11.1 Simple Variables & CTEs
+### 11.1 Compile settings (`SET`)
 
-Variables in ASQL create CTEs (Common Table Expressions). The syntax is designed to make CTEs easier and less necessary:
+ASQL supports SQL-style `SET` statements for **compile settings** (not CTE variables). Supported settings:
 
-**Using `set` (creates CTE):**
-```asql
-set active_users = from users
-  where is_active
+- `auto_spine` (boolean)
+- `dialect` (string)
+- `week_start` (string)
+- `relative_date_type` (string)
 
-from active_users
-  group by country ( # as total_users )
-```
-
-**Why `set`?**
-- **SQL familiarity**: SQL uses `SET` in various contexts (SET variables, SET operations)
-- **Clear intent**: "Set this variable to this query" is intuitive
-- **CTE mapping**: Maps naturally to SQL's `WITH ... AS` (Common Table Expression)
-- **Not `let`**: `let` comes from functional programming (Lisp, ML, Haskell) and doesn't fit SQL's imperative style
-
-**Alternatives considered**: `let`, `const`, `var`, `define`, `with`
-- `let` - Too functional programming style, not SQL-like
-- `const`/`var` - JavaScript-specific, not SQL
-- `define` - Too generic
-- `with` - Conflicts with SQL's `WITH` keyword usage
-- `set` ✅ - Most SQL-like and clear
-
-**Major benefit: Less need for CTEs**: Because ASQL uses pipelines, you often don't need CTEs at all. Instead of breaking into a CTE, you can just add a comment marking a logical stopping point:
+Examples:
 
 ```asql
-from users
-  where is_active
-  -- cleaned users by country
-  group by country ( # as total_users )
-  order by -total_users
+SET auto_spine = false;
+SET dialect = 'postgres';
+
+from orders
+  where status = "active"
+  limit 10
 ```
 
-The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally. CTEs are still available when you need to reuse a subquery multiple times.
+**Note**: `set name = <query>` (using `SET` to define a CTE variable) is **not implemented**.
 
-### 11.2 Stashing CTEs in Pipelines (`stash as`)
+### 11.2 CTEs via `stash as`
 
-Instead of defining CTEs at the top level with `set`, you can stash intermediate pipeline results directly within a pipeline using `stash as`. This keeps CTEs close to where they're used and makes chaining clearer. The key benefit is that you end with the name and use it right after, so your eyes don't have to jump around.
+ASQL can create reusable CTEs using `stash as`. This keeps CTEs close to where they’re defined and used.
 
 **Basic usage (at the end):**
 ```asql
@@ -1681,123 +1590,15 @@ from use_this_later
 - ✅ **Natural flow**: Fits naturally into the pipeline syntax
 - ✅ **Better readability**: You end with the name and use it right after, so your eyes don't have to jump around
 
-**When to use `stash as` vs `set`:**
-- Use `stash as` when you want to stash an intermediate result within a pipeline (can be in the middle or at the end)
-- Use `set` when you want to define a CTE at the top level before any queries
-- Both compile to SQL `WITH ... AS` CTEs
-
-### 11.3 Nested Variables
-
-```asql
-set base = from users
-  where plan == "premium"
-
-set by_country = from base
-  group by country ( # as total_users )
-
-from by_country
-  order by -total_users
-```
+**Note**: `stash as` is currently the only ASQL syntax that creates CTEs.
 
 ---
 
 ## 12. Functions
 
-### 12.1 User-Defined Scalar Functions
+**Not implemented yet**: User-defined functions (`func ... = ...`) are not currently supported.
 
-Functions in ASQL are similar to dbt macros or PostgreSQL functions, but simpler and more integrated:
-
-**Basic function:**
-```asql
-func age(user) = years(now() - user.birthday)
-
-from users
-  select age(user) as user_age
-  group by country ( avg_age as average of user_age )
-```
-
-**Function taking table name (works on any table with matching column):**
-```asql
-func age(table) = years(now() - table.birthday)
-
-# Works on any table with a 'birthday' column
-from users
-  select age(users) as user_age
-
-from employees
-  select age(employees) as employee_age
-```
-
-**Another example - days since created:**
-```asql
-func days_since_created(table) = days(now() - table.created_at)
-
-# Works on any table with created_at
-from users
-  select days_since_created(users) as days_active
-```
-
-**Typing**: Functions are not typed - ASQL infers types from usage. This keeps the syntax simple and natural.
-
-**dbt comparison**:
-- **dbt macros**: More powerful but require Jinja templating, harder to read
-- **dbt semantic models**: More structured but require YAML configuration
-- **ASQL functions**: Simple, readable, drop-in replacements that feel like built-in functions
-
-**PostgreSQL comparison**:
-- PostgreSQL functions require `CREATE FUNCTION` statements, separate from queries
-- ASQL functions are defined inline and feel like part of the query language
-
-**Example with natural language:**
-```asql
-func age(user) = years(now() - user.birthday)
-
-# Natural language usage
-avg age of user by country
-# Reads like: "average age of user, grouped by country"
-```
-
-**Note**: Functions can be used in SELECT expressions to compute values:
-```asql
-from users
-  select age(user) as user_age
-  group by country ( avg(user_age) as avg_age )
-```
-
-### 12.2 User-Defined Table Functions
-
-Table functions transform entire tables. These are implemented as drop-in replacements (macros) that expand inline:
-
-```asql
-func top_n(table, n, key) =
-  table
-    order by -{key}
-    limit n
-
-from sales
-  top_n(10, amount)
-```
-
-**Implementation**: Table functions are expanded inline during compilation - they don't create actual database functions. The function body is substituted where the function is called, then the whole query is compiled to SQL.
-
-### 12.3 Built-in Functions
-
-Standard SQL functions are available:
-
-- `count()`, `sum()`, `avg()`, `min()`, `max()`
-- `distinct()`
-- `coalesce()` or `??` operator (JavaScript-style nullish coalescing)
-- `date_format()`, `year()`, `month()`, etc.
-- `years_between()`, `days_between()`, etc.
-
-### 12.4 Function Examples
-
-```asql
-func year(table) = DATE_FORMAT('%Y', table._mainDate)
-
-from users
-| year(created_at)
-```
+You can still use normal SQL/SQLGlot function calls in expressions (e.g. `sum(amount)`, `date_trunc(...)`, `substring(...)`) and ASQL’s implemented shorthands described elsewhere in this document.
 
 ---
 
@@ -1874,41 +1675,18 @@ from users
 
 ### 13.2 Deduplicate
 
-Remove duplicate rows based on specified columns, keeping one row per group:
+**Not implemented yet**: `deduplicate by ...` is not currently supported.
 
-```asql
-# Keep most recent per user/event combination
-from events
-  deduplicate by user_id, event_type
-  order by -created_at
+Current options:
 
-# Keep first occurrence
-from events
-  deduplicate by user_id, event_type
-  order by created_at
-```
-
-The `order by` determines which row to keep when duplicates exist.
-
-**Compiles to**:
-```sql
--- On warehouses with QUALIFY:
-SELECT * FROM events
-QUALIFY ROW_NUMBER() OVER (PARTITION BY user_id, event_type ORDER BY created_at DESC) = 1
-
--- Fallback:
-WITH ranked AS (
-  SELECT *, ROW_NUMBER() OVER (PARTITION BY user_id, event_type ORDER BY created_at DESC) AS rn
-  FROM events
-)
-SELECT * FROM ranked WHERE rn = 1
-```
+- Use `per <cols> first by ...` (deduplication via `QUALIFY ROW_NUMBER() ... = 1`)
+- Or write explicit SQL window functions + `QUALIFY`
 
 ### 13.3 Pivot / Unpivot / Explode
 
 #### `pivot` - Rows to Columns
 
-Transform row values into columns. Supports both static values (known at compile time) and dynamic values (from subquery).
+Transform row values into columns.
 
 **Static Pivot (Explicit Values)**
 
@@ -1924,53 +1702,7 @@ from sales
   pivot amount by category values ('A', 'B', 'C')
 ```
 
-**Dynamic Pivot (Values from Subquery)**
-
-When pivot values are unknown at compile time, use a subquery to get them dynamically:
-
-```asql
-# Get pivot values from a subquery
-from sales
-  pivot sum(amount) by category values (
-    from sales select distinct category
-  )
-
-# With filtering in the subquery
-from orders
-  pivot sum(total) by status values (
-    from orders 
-    where order_date >= '2024-01-01'
-    select distinct status
-  )
-  group by customer_id
-```
-
-**Example use case - denormalizing custom fields:**
-
-```asql
-# Jira custom fields table:
-# | issue_id | field_name   | field_value |
-# | PROJ-123 | priority     | High        |
-# | PROJ-123 | sprint       | Sprint 5    |
-
-# Static pivot (known fields)
-from issue_custom_fields
-  pivot field_value by field_name values ('priority', 'sprint')
-  group by issue_id
-
-# Dynamic pivot (unknown fields)
-from issue_custom_fields
-  pivot field_value by field_name values (
-    from issue_custom_fields select distinct field_name
-  )
-  group by issue_id
-
-# Result:
-# | issue_id | priority | sprint   |
-# | PROJ-123 | High     | Sprint 5 |
-```
-
-**Compiles to**: `CASE WHEN` expressions with aggregation. For dynamic pivot, the subquery is compiled to a CTE and used to generate pivot expressions, which works across all dialects.
+**Note**: Pivot currently requires an explicit values list. “Dynamic pivot” (values from a subquery) is **not implemented**.
 
 #### `unpivot` - Columns to Rows
 
@@ -2006,114 +1738,26 @@ This is the inverse of `array_agg()` / `array agg`.
 
 ### 13.4 Date Spine / Series
 
-Generate sequences as table sources:
-
-```asql
-# Date spine - one row per day/week/month
-from date_spine(start = '2020-01-01', end = today(), grain = day)
-
-# Numeric series
-from series(1, 100)
-
-# Join with actual data to fill gaps
-from date_spine(start = '2024-01-01', end = '2024-12-31', grain = month) as dates
-  left join (
-    from orders
-      group by month(created_at) as month (
-        sum(amount) as revenue
-      )
-  ) as sales on dates.date = sales.month
-```
-
-**Compilation**: Uses native `generate_series()` where available, numbers table or recursive CTE fallback elsewhere.
+**Not implemented yet**: `date_spine(...)` and `series(...)` as table sources are not currently supported (see `docs/spec_future.md`).
 
 ### 13.5 Union with Schema Alignment
 
-Union tables with automatic column alignment:
-
-```asql
-# Union multiple tables, aligning columns
-from union(users_2022, users_2023, users_2024)
-
-# With options
-from union(users_2022, users_2023, fill_missing = null)
-```
-
-**Compilation**: Reads schemas, produces aligned `SELECT` lists with missing columns filled as `NULL`, then `UNION ALL`.
+**Not implemented yet**: `union(...)` with schema alignment is not currently supported (see `docs/spec_future.md`).
 
 ### 13.6 Surrogate Keys
 
-Generate consistent surrogate keys:
+**Not implemented yet**: `key(...)` / surrogate key helpers are not currently supported (see `docs/spec_future.md`).
 
-```asql
-select key(user_id, order_id) as order_key
-```
-
-**Semantics**:
-- Stable hashing algorithm across runs
-- Consistent NULL handling (NULLs hash consistently)
-- Type normalization before hashing
-
-**Compiles to**: Warehouse-appropriate hash function with delimiter injection and null handling.
-
-### 13.7 Safe Casting
-
-ASQL supports safe type casting that returns `NULL` on failure instead of erroring:
-
-```asql
-# Strict cast - errors on failure (default, SQL-compatible)
-select value::integer
-
-# Safe cast - returns NULL on failure (? suffix)
-select value::integer?
-
-# Safe cast with default (using ?? coalescing)
-select value::integer? ?? 0
-```
-
-**Why this matters**: Real-world data is messy. Columns may contain `"N/A"`, empty strings, or invalid formats. Safe casting handles this gracefully:
-
-```asql
-# Form submission with user input
-from form_submissions
-  select 
-    response_id,
-    age_input::integer? ?? 0 as age,     -- "N/A" becomes 0
-    amount_input::decimal? as amount     -- Invalid becomes NULL
-```
-
-**Compilation**:
-- `value::integer` → `CAST(value AS INTEGER)`
-- `value::integer?` → `TRY_CAST(value AS INTEGER)` (or `SAFE_CAST` on BigQuery)
-- `value::integer? ?? 0` → `COALESCE(TRY_CAST(value AS INTEGER), 0)`
-
-### 13.8 Safe Divide
-
-Avoid divide-by-zero errors:
-
-```asql
-select safe_divide(revenue, users) as revenue_per_user
-```
-
-**Compiles to**: `CASE WHEN users = 0 THEN NULL ELSE revenue / users END` (or native `SAFE_DIVIDE` on BigQuery).
-
-### 13.10 Operator Quick Reference
+### 13.7 Operator Quick Reference
 
 | Operator | Purpose | Example |
 |----------|---------|---------|
 | `except` | Exclude columns | `except email, phone` |
 | `rename` | Rename columns | `rename id as user_id` |
 | `replace` | Replace column values | `replace name with upper(name)` |
-| `deduplicate by` | Remove duplicates | `deduplicate by user_id order by -date` |
 | `pivot ... by ... values` | Rows to columns | `pivot sum(amount) by category values ('A', 'B')` |
 | `unpivot ... into` | Columns to rows | `unpivot jan, feb into month, value` |
 | `explode ... as` | Array to rows | `explode tags as tag` |
-| `date_spine()` | Generate date sequence | `from date_spine(start='2024-01-01', end=today(), grain=day)` |
-| `series()` | Generate number sequence | `from series(1, 100)` |
-| `union()` | Union with alignment | `from union(t1, t2, t3)` |
-| `key()` | Surrogate key | `key(user_id, order_id)` |
-| `::type?` | Safe cast | `value::integer?` |
-| `safe_divide()` | Null on divide-by-zero | `safe_divide(a, b)` |
 
 ---
 
@@ -2340,7 +1984,7 @@ from users
 
 ## 16. Nested Results (Optional)
 
-Inspired by EdgeQL, support nested result shapes:
+**Not implemented yet**: Nested result shapes (EdgeQL-style `select { ... }`) are not currently supported.
 
 ```asql
 from countries
@@ -2362,8 +2006,8 @@ Every line must return a new table. For multi-line operations, indent:
 
 ```asql
 from users
-  filter status == "active"
-  filter age >= 18
+  where status == "active"
+  where age >= 18
   group by country ( count() as count )
 ```
 
@@ -2371,12 +2015,7 @@ from users
 
 ```asql
 from users
-  select {
-    name,
-    orders = from orders
-      filter orders.user_id == users.id
-      select sum(amount) as total
-  }
+  -- Nested selects are not implemented yet; write as separate queries/joins for now.
 ```
 
 ---
@@ -2438,7 +2077,7 @@ SELECT first_name, created_at FROM users
 
 ### 18.3 Column Name Conflicts
 
-ASQL automatically handles column name conflicts in joined queries by expanding `SELECT *` to table-qualified columns.
+ASQL helps reduce ambiguity in joined queries by **auto-qualifying unqualified column references** when it can.
 
 #### Before (Explicit Qualification Required)
 
@@ -2453,20 +2092,7 @@ JOIN orders ON users.id = orders.user_id
 
 #### After (Automatic Resolution)
 
-ASQL automatically expands `SELECT *` to `table.*` for each joined table, preventing conflicts:
-
-```asql
--- ASQL: Automatic expansion
-from users
-  & orders on users.id = orders.user_id
--- Automatically becomes:
--- SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id
-```
-
-**How It Works**:
-- When `SELECT *` is used with joins, ASQL expands it to `SELECT table1.*, table2.*, ...` for each joined table
-- Columns can be referenced with table qualification: `users.id`, `orders.id`, `users.name`, `orders.amount`
-- This prevents ambiguous column errors without requiring explicit qualification
+ASQL does **not** rewrite `SELECT *` into `table.*` lists. Instead, it focuses on qualifying ambiguous references (e.g., `id` → `users.id` or `orders.id`) in later clauses when possible.
 
 **Examples**:
 
@@ -2578,10 +2204,11 @@ Avg Users.age by country
 ### Example 5: Variables and Reuse
 
 ```asql
-set base = from users
+from users
   where plan == "premium"
+  stash as premium_users
 
-from base
+from premium_users
   group by country ( # as total_users )
 ```
 
@@ -2609,11 +2236,11 @@ from users
 ### Example 8: User-Defined Function
 
 ```asql
-func age(user) = years(now() - user.birthday)
-
+-- User-defined functions are not implemented yet.
+-- Use inline expressions or SQL functions directly for now.
 from users
-  select age(user) as user_age
-  group by country ( avg_age as average of user_age )
+  select years(now() - birthday) as user_age
+  group by country ( avg(user_age) as avg_age )
 ```
 
 ### Example 9: Case-Safe Naming
@@ -2640,11 +2267,10 @@ from sales
 
 **Example with function:**
 ```asql
-func age(user) = years(now() - user.birthday)
-
-# Natural language usage
-avg age of user by country
-# Reads beautifully: "average age of user, grouped by country"
+-- User-defined functions are not implemented yet.
+-- Inline expressions are the current workaround:
+from users
+  group by country ( avg(years(now() - birthday)) as avg_age )
 ```
 
 ---
@@ -2743,7 +2369,7 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ## 23. Future Features
 
-For features that are planned, under consideration, or marked as "maybe" for v1.0, see `spec_future.md`.
+For features that are planned, under consideration, or marked as "maybe" for v1.0, see `docs/spec_future.md`.
 
 ---
 

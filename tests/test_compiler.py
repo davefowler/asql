@@ -116,13 +116,8 @@ def test_compile_group_by_sum() -> None:
     parsed = sqlglot.parse_one(sql)
     select = parsed.find(exp.Select)
     assert select is not None
-    # Check that SUM aggregation exists
-    sum_found = False
-    for expr in select.expressions:
-        if isinstance(expr, exp.AggFunc) and expr.this.upper() == "SUM":
-            sum_found = True
-            break
-    assert sum_found, "SUM aggregation not found in SELECT"
+    sum_expr = select.find(exp.Sum) or select.find(exp.AggFunc)
+    assert sum_expr is not None, "SUM aggregation not found in SELECT"
 
 
 def test_compile_group_by_multiple_aggregations() -> None:
@@ -261,7 +256,9 @@ def test_compile_take() -> None:
     parsed = sqlglot.parse_one(sql)
     limit = parsed.find(exp.Limit)
     assert limit is not None, "LIMIT clause not found"
-    assert limit.this.sql() == "10", f"Expected LIMIT 10, got {limit.this.sql()}"
+    limit_expr = limit.args.get("expression")
+    assert limit_expr is not None, "LIMIT expression not found"
+    assert limit_expr.sql() == "10", f"Expected LIMIT 10, got {limit_expr.sql()}"
 
 
 def test_compile_take_with_order_by() -> None:

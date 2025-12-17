@@ -1,11 +1,12 @@
-"""ASQL Documentation Macros - Provides dialect tabs for ASQL code blocks.
+"""ASQL Documentation Macros - Provides a mini-playground for ASQL code blocks.
 
 This module is loaded by mkdocs-macros-plugin and provides:
-1. A hook to process markdown and add dialect tabs to ASQL code blocks
+1. A hook to process markdown and add a mini-playground to ASQL code blocks
 2. Pre-compilation of ASQL to all supported SQL dialects
 """
 
 import re
+import os
 import json
 import base64
 import html
@@ -47,10 +48,114 @@ DIALECT_NAMES = {
     "databricks": "Databricks",
 }
 
+DEFAULT_DOCS_URL = "https://analyticsql.com"
+DEFAULT_PLAYGROUND_URL = "https://play.analyticsql.com"
+
+
+def _normalize_base_url(url: str) -> str:
+    """Normalize a base URL (no trailing slash)."""
+    return url.strip().rstrip("/")
+
+
+def _runtime_config_script_tag() -> str:
+    """Inject runtime config for docs JavaScript (per-page)."""
+    docs_url = _normalize_base_url(os.environ.get("DOCS_URL", DEFAULT_DOCS_URL))
+    playground_url = _normalize_base_url(os.environ.get("PLAYGROUND_URL", DEFAULT_PLAYGROUND_URL))
+    return (
+        "<script>"
+        f"window.__ASQL_DOCS_URL__ = {json.dumps(docs_url)};"
+        f"window.__ASQL_PLAYGROUND_URL__ = {json.dumps(playground_url)};"
+        "</script>\n"
+    )
+
 
 def get_dialect_name(dialect: str) -> str:
     """Get display name for a dialect."""
     return DIALECT_NAMES.get(dialect, dialect.title())
+
+
+def _split_top_level_commas(text: str) -> list[str]:
+    """
+    Split a string on commas that are not nested in parentheses.
+    This is a small heuristic formatter for docs readability (not a parser).
+    """
+    parts: list[str] = []
+    buf: list[str] = []
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth = max(0, depth - 1)
+
+        if ch == "," and depth == 0:
+            part = "".join(buf).strip()
+            if part:
+                parts.append(part)
+            buf = []
+            continue
+
+        buf.append(ch)
+
+    tail = "".join(buf).strip()
+    if tail:
+        parts.append(tail)
+
+    return parts
+
+
+def _format_paren_list_block(prefix: str, inner: str, indent: str) -> str:
+    items = _split_top_level_commas(inner)
+    if len(items) <= 1:
+        return f"{prefix}({inner.strip()})"
+
+    formatted_items = "\n".join(f"{indent}{item}" for item in items)
+    return f"{prefix}(\n{formatted_items}\n)"
+
+
+def format_asql_for_docs(asql_query: str) -> str:
+    """
+    Format ASQL for docs display (prefer short vertical lines).
+
+    Heuristics:
+    - `select (...)` → one item per line inside parens
+    - `group by <keys> (...)` → keep keys, one item per line inside parens
+    - leaves unknown patterns untouched
+    """
+    lines = asql_query.strip().splitlines()
+    out: list[str] = []
+
+    for line in lines:
+        raw = line.rstrip()
+        if not raw.strip():
+            out.append(raw)
+            continue
+
+        leading_ws = re.match(r"^\s*", raw).group(0)
+        body = raw.strip()
+
+        # select (a, b, c)
+        if body.lower().startswith("select"):
+            m = re.match(r"^select\s*\((.*)\)\s*$", body, flags=re.IGNORECASE)
+            if m:
+                inner = m.group(1)
+                out.append(leading_ws + _format_paren_list_block("select ", inner, leading_ws + "  "))
+                continue
+
+        # group by <keys> (a, b, c)
+        if body.lower().startswith("group by"):
+            m = re.match(r"^group\s+by\s+(.+?)\s*\((.*)\)\s*$", body, flags=re.IGNORECASE)
+            if m:
+                keys = m.group(1).strip()
+                inner = m.group(2)
+                prefix = f"group by {keys} "
+                out.append(leading_ws + _format_paren_list_block(prefix, inner, leading_ws + "  "))
+                continue
+
+        out.append(raw)
+
+    # Trim trailing blank lines introduced by formatting
+    return "\n".join(out).rstrip() + "\n"
 
 
 def precompile_asql_query(asql_query: str) -> Dict[str, str]:
@@ -63,7 +168,8 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
     import io
     from asql import compile
     
-    results = {"asql": asql_query}
+    formatted_asql = format_asql_for_docs(asql_query)
+    results = {"asql": formatted_asql}
     
     for dialect in ALL_DIALECTS:
         try:
@@ -73,10 +179,18 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
                 old_stdout, old_stderr = sys.stdout, sys.stderr
                 sys.stdout = sys.stderr = io.StringIO()
                 try:
-                    sql = compile(asql_query, dialect=dialect)
+                    sql = compile(formatted_asql, dialect=dialect)
                 finally:
                     sys.stdout, sys.stderr = old_stdout, old_stderr
-            results[dialect] = sql
+            # Pretty-print for docs readability (adds newlines/indentation)
+            try:
+                import sqlglot
+
+                parsed = sqlglot.parse_one(sql, dialect=dialect)
+                results[dialect] = parsed.sql(dialect=dialect, pretty=True)
+            except Exception:
+                # If pretty formatting fails for any reason, fall back to raw SQL
+                results[dialect] = sql
         except Exception as e:
             # If compilation fails, store error message
             results[dialect] = f"-- Error compiling to {dialect}: {str(e)}"
@@ -84,48 +198,56 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
     return results
 
 
-def generate_tabs_html(compiled: Dict[str, str], block_id: str) -> str:
-    """Generate HTML for dialect tabs."""
-    
-    # Get top dialects (excluding asql)
-    top_dialects_list = [d for d in TOP_DIALECTS if d in compiled]
-    
-    # Get other dialects (not in top 4)
-    other_dialects = [d for d in ALL_DIALECTS if d not in TOP_DIALECTS and d in compiled]
-    
+def generate_mini_playground_html(compiled: Dict[str, str], block_id: str) -> str:
+    """Generate HTML for the ASQL mini-playground (split pane + global 'to' dialect)."""
+
     # Encode compiled SQL for embedding in HTML
     compiled_json = json.dumps(compiled)
     compiled_b64 = base64.b64encode(compiled_json.encode()).decode()
-    
-    # Get initial code content (ASQL by default)
-    initial_code = compiled.get('asql', '')
-    initial_code_escaped = html.escape(initial_code)
-    
-    tabs_html = f'''<div class="asql-code-block" data-block-id="{block_id}" data-compiled="{compiled_b64}">
-<div class="dialect-tabs">
-<button class="tab-btn active" data-dialect="asql" onclick="showDialect('{block_id}', 'asql')">ASQL</button>
-'''
-    
-    # Add top dialect tabs
-    for dialect in top_dialects_list:
+
+    # Initial content (JS will update the "to" pane based on localStorage)
+    initial_asql = html.escape(compiled.get("asql", ""))
+    default_to_dialect = "postgres"
+    initial_to_sql = html.escape(compiled.get(default_to_dialect, ""))
+
+    # Build dropdown options for all available dialects (excluding ASQL)
+    options_html = ""
+    for dialect in ALL_DIALECTS:
+        if dialect not in compiled:
+            continue
         dialect_name = get_dialect_name(dialect)
-        tabs_html += f'<button class="tab-btn" data-dialect="{dialect}" onclick="showDialect(\'{block_id}\', \'{dialect}\')">{dialect_name}</button>\n'
-    
-    # Add "..." tab if there are other dialects
-    if other_dialects:
-        tabs_html += f'<button class="tab-btn more-tab" onclick="showMoreDialects(\'{block_id}\')">⋯</button>\n'
-    
-    tabs_html += f'''</div>
-<div class="code-content">
-<a href="#" onclick="openInPlayground('{block_id}'); return false;" class="play-button" title="Open in Playground">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-</a>
-<pre><code class="language-asql" id="code-{block_id}">{initial_code_escaped}</code></pre>
+        selected_attr = ' selected="selected"' if dialect == default_to_dialect else ""
+        options_html += f'<option value="{dialect}"{selected_attr}>{dialect_name}</option>\n'
+
+    playground_html = f'''<div class="asql-code-block asql-mini-playground" data-block-id="{block_id}" data-compiled="{compiled_b64}">
+<div class="asql-mp-grid">
+  <div class="asql-mp-pane asql-mp-pane-left">
+    <div class="asql-mp-pane-header">
+      <span class="asql-mp-pane-title">ASQL</span>
+      <a href="#" onclick="openInPlayground('{block_id}'); return false;" class="asql-mp-play-button" title="Open in Playground" aria-label="Open in Playground">
+        <span class="asql-mp-play-label">Playground</span>
+        <span class="asql-mp-play-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </span>
+      </a>
+    </div>
+    <pre><code class="language-asql" id="asql-{block_id}">{initial_asql}</code></pre>
+  </div>
+  <div class="asql-mp-pane asql-mp-pane-right">
+    <div class="asql-mp-pane-header">
+      <div class="asql-mp-to-wrap" aria-label="Choose SQL dialect">
+        <select class="asql-mp-to-select" data-block-id="{block_id}">
+          {options_html}
+        </select>
+      </div>
+    </div>
+    <pre><code class="language-sql" id="to-{block_id}">{initial_to_sql}</code></pre>
+  </div>
 </div>
 </div>
 '''
-    
-    return tabs_html
+
+    return playground_html
 
 
 def process_asql_blocks(markdown_content: str) -> str:
@@ -150,8 +272,8 @@ def process_asql_blocks(markdown_content: str) -> str:
         # Create a unique ID for this code block
         block_id = hashlib.md5(asql_query.encode()).hexdigest()[:8]
         
-        # Generate HTML for tabs
-        tabs_html = generate_tabs_html(compiled, block_id)
+        # Generate HTML for mini playground
+        tabs_html = generate_mini_playground_html(compiled, block_id)
         
         return tabs_html
     
@@ -179,12 +301,22 @@ def define_env(env):
         """
         compiled = precompile_asql_query(query.strip())
         block_id = hashlib.md5(query.encode()).hexdigest()[:8]
-        return generate_tabs_html(compiled, block_id)
+        return generate_mini_playground_html(compiled, block_id)
     
     @env.macro
     def dialect_name(dialect: str) -> str:
         """Get display name for a dialect."""
         return get_dialect_name(dialect)
+
+    @env.macro
+    def playground_url() -> str:
+        """Get the configured playground base URL."""
+        return _normalize_base_url(os.environ.get("PLAYGROUND_URL", DEFAULT_PLAYGROUND_URL))
+
+    @env.macro
+    def docs_url() -> str:
+        """Get the configured docs base URL."""
+        return _normalize_base_url(os.environ.get("DOCS_URL", DEFAULT_DOCS_URL))
 
 
 def on_pre_page_macros(env) -> None:
@@ -194,4 +326,12 @@ def on_pre_page_macros(env) -> None:
     """
     # Access the markdown content and process it
     if hasattr(env, 'markdown') and env.markdown:
+        playground_url = _normalize_base_url(os.environ.get("PLAYGROUND_URL", DEFAULT_PLAYGROUND_URL))
+
+        # Make markdown links environment-aware (so mkdocs serve can point at localhost).
+        env.markdown = env.markdown.replace(DEFAULT_PLAYGROUND_URL, playground_url)
+
+        # Provide runtime config for docs/static/docs.js
+        env.markdown = _runtime_config_script_tag() + env.markdown
+
         env.markdown = process_asql_blocks(env.markdown)
