@@ -92,21 +92,33 @@
 }
 
 .md-sidebar--secondary .md-nav {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
+    line-height: 1.25;
 }
 
 .md-sidebar--secondary .md-nav__item {
-    margin-bottom: 0.2rem;
+    margin: 0;
 }
 
 .md-sidebar--secondary .md-nav__link {
-    padding: 0.3rem 0.6rem;
+    padding: 0.2rem 0.45rem;
     border-radius: 4px;
     transition: all 0.2s;
 }
 
 .md-sidebar--secondary .md-nav__link:hover {
     background-color: rgba(197, 48, 48, 0.05);
+}
+
+/* TOC title tighter (reduces chance of scroll) */
+.md-sidebar--secondary .md-nav__title {
+    font-size: 0.8rem;
+    padding: 0.35rem 0.45rem;
+}
+
+/* TOC nested indentation */
+.md-sidebar--secondary .md-nav .md-nav__list .md-nav__list {
+    margin-left: 0.4rem;
 }
 
 /* Navigation sidebar - left (light mode) */
@@ -206,6 +218,14 @@
    (relies on Material's navigation.sections)
    ============================================= */
 
+/* The Material TOC gets inlined under the active page inside the PRIMARY nav.
+   We never want that: TOC should only appear in the right sidebar. */
+.md-sidebar--primary #__toc,
+.md-sidebar--primary label[for="__toc"],
+.md-sidebar--primary .md-nav--secondary {
+    display: none !important;
+}
+
 /* Remove the forced "show everything" behavior (let Material manage state) */
 
 /* Make primary nav more compact + readable */
@@ -218,6 +238,18 @@
     font-weight: 600;
     padding: 0.45rem 0.6rem;
     border-radius: 6px;
+}
+
+/* Match Dataface: section labels + chevron aligned right */
+.md-sidebar--primary .md-nav__item--nested > label.md-nav__link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.md-sidebar--primary .md-nav__item--nested > label.md-nav__link .md-nav__icon {
+    opacity: 0.7;
 }
 
 /* Active section header: red text (no heavy background) */
