@@ -192,7 +192,6 @@ async def api_normalize(request: NormalizeRequest) -> dict:
             cast=style_config.get('cast', 'double_colon'),
             quotes=style_config.get('quotes', 'double'),
             week_start=style_config.get('week_start', 'monday'),
-            sort_keyword=style_config.get('sort_keyword', 'order_by'),
             squash_empty_ctes=style_config.get('squash_empty_ctes', True),
         )
         config = ASQLConfig(style=style)

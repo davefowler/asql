@@ -424,9 +424,7 @@ def _select_to_asql(select_expr: exp.Select, style: "StyleConfig" = None) -> str
             else:
                 order_parts.append(expr_str)
         
-        # Use sort_keyword from style
-        sort_kw = "sort" if style.sort_keyword == "sort" else "order by"
-        parts.append(f"{sort_kw} {', '.join(order_parts)}")
+        parts.append(f"order by {', '.join(order_parts)}")
     
     # LIMIT clause
     limit_expr = select_expr.args.get("limit")

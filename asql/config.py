@@ -128,9 +128,6 @@ class StyleConfig:
     # Week start day for week() function
     week_start: Literal["monday", "sunday"] = "monday"
     
-    # Sort keyword: order by or sort
-    sort_keyword: Literal["order_by", "sort"] = "order_by"
-    
     # CTE handling: squash pass-through CTEs like "from table stash as name"
     # When True, removes CTEs that are just SELECT * FROM table with no transforms
     squash_empty_ctes: bool = True
@@ -151,7 +148,6 @@ class StyleConfig:
             "cast": self.cast,
             "quotes": self.quotes,
             "week_start": self.week_start,
-            "sort_keyword": self.sort_keyword,
             "squash_empty_ctes": self.squash_empty_ctes,
             "keep_final_empty_cte": self.keep_final_empty_cte,
         }
@@ -281,7 +277,6 @@ class ASQLConfig:
                 descending="prefix",
                 cast="double_colon",
                 quotes="double",
-                sort_keyword="order_by",
             )
         )
     
@@ -297,7 +292,6 @@ class ASQLConfig:
                 descending="suffix",
                 cast="function",
                 quotes="single",
-                sort_keyword="order_by",
             )
         )
     
@@ -313,7 +307,6 @@ class ASQLConfig:
                 descending="prefix",
                 cast="double_colon",
                 quotes="double",
-                sort_keyword="sort",
             )
         )
     

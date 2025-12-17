@@ -33,6 +33,12 @@
 - `docs/` is ONLY for user-facing public documentation that appears on the website
 - See `ai_notes/README.md` for organization guidelines
 
+## AI Notes Naming Convention
+- **Time-specific reports** (status reports, analysis results, completion summaries) MUST use date-prefixed filenames: `YYYY-MM-DD-descriptive-name.md`
+  - Examples: `2025-12-16-style-analysis.md`, `2025-12-16-implementation-status.md`
+  - This makes it clear these are snapshots in time, not "source of truth" documents
+- **Design docs and research** should use descriptive names without dates (they go in `archive/designs/` or `archive/research/`)
+
 
 ## Issues / PR naming (to avoid duplicates)
 - When creating a GH issue, include an explicit PR title and branch name in the issue body:

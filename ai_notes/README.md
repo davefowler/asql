@@ -22,9 +22,7 @@ Use `ai_notes/` for:
 Active notes and time-sensitive documents that are still being referenced:
 
 **Time-Sensitive Analysis** (may become outdated):
-- `style_analysis.md` (2025-01-XX) - Analysis of default style settings violations
-- `CODE_QUALITY.md` (2025-01-XX) - Code quality standards and cleanup tasks checklist
-- `DIALECT_REWRITE_TASK.md` (Dec 2025) - Task document for dialect system rewrite (✅ COMPLETE)
+- [`2025-12-16-style-analysis.md`](2025-12-16-style-analysis.md) - Analysis of default style settings violations
 
 **Active Research & Tracking**:
 - `CLI_SPEC.md` - CLI specification (psql-like interface)
@@ -37,7 +35,10 @@ Active notes and time-sensitive documents that are still being referenced:
 ### 📦 Archive (`ai_notes/archive/`)
 Important design decisions, architectural explorations, and implementation guides that document the evolution of ASQL. These are kept for historical reference and design rationale.
 
-**Design Decisions & Explorations**:
+#### 📐 Designs (`archive/designs/`)
+Design decisions, architectural explorations, and feature designs:
+
+**Core Design Principles**:
 - `case.md` - Design exploration for `when` conditional expressions
 - `CRITICAL_REVIEW.md` - Critical review of ASQL specification with design concerns
 - `UNDERSCORE_SPACE_PRINCIPLE.md` - Core principle: underscore/space interchangeability
@@ -61,7 +62,9 @@ Important design decisions, architectural explorations, and implementation guide
 - `WINDOW_UTILS.md` - Window function utilities design
 - `universal_function_shorthand.md` - Function shorthand pattern design
 
-**Research & Comparisons**:
+#### 🔬 Research (`archive/research/`)
+Research notes, comparisons, and learnings from other tools:
+
 - `SQLMESH_COMPARISON.md` - Comparison with SQLMesh architecture and features
 
 ## Maintenance
@@ -82,10 +85,13 @@ Delete notes when:
 ### When to Archive Notes
 
 Move to `archive/` when:
-- ✅ The note documents important design decisions or rationale
-- ✅ The note contains architectural explorations that influenced the design
-- ✅ The note serves as reference for understanding "why" decisions were made
-- ✅ The note is an implementation guide that's complete but still useful for reference
+- ✅ The note documents important design decisions or rationale → `archive/designs/`
+- ✅ The note contains architectural explorations that influenced the design → `archive/designs/`
+- ✅ The note serves as reference for understanding "why" decisions were made → `archive/designs/`
+- ✅ The note is an implementation guide that's complete but still useful for reference → `archive/designs/`
+- ✅ The note is research/comparison with other tools → `archive/research/`
+
+**Note**: Not all archived notes need to go into subfolders. Some may stay directly in `archive/` if they don't fit the designs/research categories.
 
 ### When to Keep in Root
 
@@ -96,11 +102,15 @@ Keep in root when:
 
 ### Best Practices
 
-1. **Dates**: Add dates to time-sensitive notes at the top (e.g., `**Date**: 2025-01-XX`) to make staleness obvious
-2. **Status**: For implementation plans, mark completion status at the top
-3. **Naming**: Use descriptive, kebab-case filenames (e.g., `string-matching-plan.md`)
-4. **Links**: Link to related notes and official docs when relevant
-5. **Cleanup**: Periodically review and:
+1. **Date-based naming**: Time-specific reports (status reports, analysis results, completion summaries) MUST use date-prefixed filenames: `YYYY-MM-DD-descriptive-name.md` (e.g., `2025-12-16-style-analysis.md`)
+   - This makes it clear these are snapshots in time, not "source of truth" documents
+   - Use when: status reports, analysis results, completion summaries, one-off investigations
+   - Don't use for: design docs, implementation guides, research (these go in archive)
+2. **Dates in content**: For notes that remain in root but may become outdated, add date headers at the top (e.g., `**Date**: 2025-01-XX`)
+3. **Status**: For implementation plans, mark completion status at the top
+4. **Naming**: Use descriptive, kebab-case filenames (e.g., `string-matching-plan.md`)
+5. **Links**: Link to related notes and official docs when relevant
+6. **Cleanup**: Periodically review and:
    - Delete one-off status reports and outdated analyses
    - Archive completed design docs that document important decisions
    - Add dates to time-sensitive notes that remain in root

@@ -83,9 +83,20 @@ order by -revenue, name
 order by created_at DESC
 ```
 
-**Note**: In window function `OVER()` clauses, SQL syntax is used (that's correct).
+**In window functions**: Use `per` syntax with `-` prefix:
+```asql
+-- Preferred (per syntax)
+per customer_id first by -order_date
+per department rank by -salary
+
+-- Avoid (SQL window function syntax)
+row_number() over (partition by customer_id order by order_date DESC)
+```
+
+**Note**: The `per` syntax is ASQL's preferred way to express window operations and fully supports the `-` prefix for descending order.
 
 ---
+
 
 ### Type Casting
 
@@ -121,20 +132,6 @@ where status = 'active'
 
 ---
 
-### Sort Keyword
-
-**Preferred**: `order by`  
-**Alternative**: `sort` (not currently implemented as alternative)
-
-```asql
--- Preferred
-order by -revenue
-
--- Not currently supported
-sort by -revenue
-```
-
----
 
 ## Part 2: Preferred Syntax Patterns
 
@@ -211,6 +208,24 @@ when status
 
 ---
 
+### Ternary Expressions: Not Available - Use `when`
+
+**Note**: Ternary-style conditionals (like `condition ? value1 : value2` or `value1 if condition else value2`) are **not implemented** in ASQL.
+
+**Use `when` instead:**
+```asql
+-- Preferred (ASQL way)
+when amount = 0 then null otherwise amount
+
+-- Not available (ternary syntax)
+amount = 0 ? null : amount              -- ❌ Not supported
+null if amount = 0 else amount          -- ❌ Not supported
+```
+
+**Rationale**: `when` expressions are ASQL's standard conditional syntax. They're more readable for complex conditions and support multiple branches. For simple two-branch cases, `when ... then ... otherwise ...` is still preferred.
+
+---
+
 ### CTEs: `stash as` over `WITH ... AS`
 
 **Preferred**: `stash as` (inline CTEs)  
@@ -235,29 +250,6 @@ GROUP BY country
 ```
 
 **Rationale**: `stash as` is more concise, keeps CTE definition close to usage, and fits ASQL's pipeline model.
-
----
-
-### Filtering: `where` over `if` (in most contexts)
-
-**Preferred**: `where` for filtering  
-**Alternative**: `if` (syntactic sugar, also works)
-
-```asql
--- Preferred
-from users
-  where status = "active"
-  where age >= 18
-
--- Also works (syntactic sugar)
-from users
-  if status = "active"
-  if age >= 18
-```
-
-**Rationale**: `where` is more familiar to SQL users and clearer in intent. `if` is available for natural language feel but `where` is preferred in documentation.
-
-**Note**: `if` can be useful for readability in some contexts (e.g., "total pipeline by owner if status is open"), but `where` is the standard.
 
 ---
 
@@ -305,6 +297,31 @@ where domain LIKE '%.com'
 
 ---
 
+### Window Functions: `per` syntax over SQL `OVER()`
+
+**Preferred**: `per` command syntax  
+**Alternative**: SQL `OVER()` window functions (also accepted)
+
+```asql
+-- Preferred (per syntax)
+from orders
+  per customer_id first by -order_date
+
+from employees
+  per department rank by -salary
+
+-- Avoid (SQL window function syntax)
+from orders
+  select *, row_number() over (partition by customer_id order by order_date DESC) as rn
+  qualify rn = 1
+```
+
+**Rationale**: `per` syntax is more concise, readable, and fits ASQL's pipeline model. It fully supports the `-` prefix for descending order.
+
+**Note**: For advanced window frame specifications (e.g., `ROWS BETWEEN ... PRECEDING`), SQL `OVER()` syntax may be necessary and is acceptable.
+
+---
+
 ### Aggregations: Natural language over function calls (when appropriate)
 
 **Preferred**: Natural language aggregates  
@@ -332,7 +349,6 @@ group by region ( sum(revenue) as total_revenue )
 | **Descending** | `-col` | `col DESC` | Prefix minus |
 | **Cast** | `::` | `CAST(...)` | PostgreSQL style |
 | **Quotes** | `"` | `'` | Double quotes |
-| **Sort** | `order by` | N/A | Standard keyword |
 | **Conditionals** | `when` | `CASE WHEN` | ASQL syntax |
 | **Equality in when** | `is` | `=` | More readable |
 | **Default clause** | `otherwise` | `else` | More explicit |
@@ -340,6 +356,7 @@ group by region ( sum(revenue) as total_revenue )
 | **Filtering** | `where` | `if` | Standard keyword |
 | **Pipelines** | Indentation | `\|` | Cleaner |
 | **String matching** | `contains` | `LIKE` | Natural language |
+| **Window functions** | `per` syntax | `OVER()` | More concise |
 
 ---
 
