@@ -474,6 +474,108 @@ class TestFirstLastInGroupBy:
         assert "GROUP BY" in sql_upper
 
 
+class TestDeduplicateBy:
+    """Tests for the deduplicate by operator (syntax sugar for per ... first by)."""
+    
+    def test_deduplicate_by_single_column(self) -> None:
+        """Test deduplicate by with single partition column."""
+        asql = """
+        from events
+            deduplicate by user_id
+            order by -created_at
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "PARTITION BY" in sql_upper
+        assert "USER_ID" in sql_upper
+        assert "ORDER BY" in sql_upper
+        assert "CREATED_AT" in sql_upper
+        assert "DESC" in sql_upper
+        assert "QUALIFY" in sql_upper or "WHERE" in sql_upper
+    
+    def test_deduplicate_by_multiple_columns(self) -> None:
+        """Test deduplicate by with multiple partition columns."""
+        asql = """
+        from events
+            deduplicate by user_id, event_type
+            order by -created_at
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "PARTITION BY" in sql_upper
+        assert "USER_ID" in sql_upper
+        assert "EVENT_TYPE" in sql_upper
+        assert "ORDER BY" in sql_upper
+        assert "CREATED_AT" in sql_upper
+    
+    def test_deduplicate_by_with_order_by_inline(self) -> None:
+        """Test deduplicate by with order by on same line."""
+        asql = """
+        from events
+            deduplicate by user_id, event_type order by -created_at
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "PARTITION BY" in sql_upper
+        assert "USER_ID" in sql_upper
+        assert "EVENT_TYPE" in sql_upper
+        assert "ORDER BY" in sql_upper
+        assert "CREATED_AT" in sql_upper
+        assert "DESC" in sql_upper
+    
+    def test_deduplicate_by_ascending_order(self) -> None:
+        """Test deduplicate by with ascending order (no minus prefix)."""
+        asql = """
+        from events
+            deduplicate by user_id order by created_at
+        """
+        sql = compile(asql)
+        sql_upper = sql.upper()
+        assert "ROW_NUMBER" in sql_upper
+        assert "PARTITION BY" in sql_upper
+        assert "ORDER BY" in sql_upper
+        assert "CREATED_AT" in sql_upper
+    
+    def test_deduplicate_by_missing_order_by_error(self) -> None:
+        """Test that deduplicate by without order by raises error."""
+        from asql.errors import ASQLSyntaxError
+        
+        asql = """
+        from events
+            deduplicate by user_id
+        """
+        with pytest.raises(ASQLSyntaxError) as exc_info:
+            compile(asql)
+        assert "order by" in str(exc_info.value).lower()
+    
+    def test_deduplicate_by_equivalent_to_per_first_by(self) -> None:
+        """Test that deduplicate by produces same result as per ... first by."""
+        asql1 = """
+        from events
+            deduplicate by user_id, event_type order by -created_at
+        """
+        asql2 = """
+        from events
+            per user_id, event_type first by -created_at
+        """
+        sql1 = compile(asql1)
+        sql2 = compile(asql2)
+        # Both should have ROW_NUMBER with PARTITION BY and ORDER BY
+        sql1_upper = sql1.upper()
+        sql2_upper = sql2.upper()
+        assert "ROW_NUMBER" in sql1_upper
+        assert "ROW_NUMBER" in sql2_upper
+        assert "PARTITION BY" in sql1_upper
+        assert "PARTITION BY" in sql2_upper
+        assert "USER_ID" in sql1_upper
+        assert "USER_ID" in sql2_upper
+        assert "EVENT_TYPE" in sql1_upper
+        assert "EVENT_TYPE" in sql2_upper
+
+
 class TestIntegrationScenarios:
     """Integration tests for common window function patterns."""
     
