@@ -242,49 +242,97 @@
     overflow: visible !important;
 }
 
-/* Navigation visibility - FORCE EVERYTHING TO SHOW */
+/* Navigation visibility */
 @media screen and (min-width: 960px) {
-    /* Force ALL elements in primary nav to be visible */
-    .md-nav--primary,
-    .md-nav--primary *,
-    .md-nav--primary .md-nav__list,
-    .md-nav--primary .md-nav__item,
-    .md-nav--primary .md-nav__link,
-    .md-nav--primary .md-nav__title {
+    /* Show primary nav container */
+    .md-nav--primary {
+        display: block !important;
+        position: static !important;
+    }
+    
+    /* Show the main nav list */
+    .md-nav--primary > .md-nav__list {
+        display: block !important;
+    }
+    
+    /* Show nav items */
+    .md-nav--primary > .md-nav__list > .md-nav__item {
+        display: block !important;
+    }
+    
+    /* CRITICAL: Hide the TOC (secondary nav) when inside primary sidebar */
+    .md-sidebar--primary .md-nav--secondary,
+    .md-sidebar--primary nav[aria-label="Table of contents"],
+    .md-sidebar--primary [aria-label="Table of contents"],
+    .md-nav--primary .md-nav--secondary,
+    .md-nav--primary nav[aria-label="Table of contents"],
+    .md-nav--lifted .md-nav--secondary,
+    nav.md-nav.md-nav--secondary[aria-label="Table of contents"] {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        overflow: hidden !important;
+    }
+    
+    /* But show TOC in the secondary sidebar (right side) */
+    .md-sidebar--secondary .md-nav--secondary,
+    .md-sidebar--secondary nav[aria-label="Table of contents"] {
         display: block !important;
         visibility: visible !important;
-        opacity: 1 !important;
-        transform: none !important;
-        position: static !important;
         height: auto !important;
-        max-height: none !important;
         overflow: visible !important;
     }
     
-    /* Except hide nested navs by default (collapse behavior) */
-    .md-nav--primary .md-nav__item > .md-nav {
+    /* Hide toggle checkboxes */
+    .md-nav__toggle {
         display: none !important;
     }
     
-    /* Show nested nav when toggle checked OR item is active */
-    .md-nav--primary .md-nav__toggle:checked ~ .md-nav,
-    .md-nav--primary .md-nav__item--active > .md-nav {
+    /* Section navs: collapsed by default */
+    .md-nav--primary .md-nav__item--nested > .md-nav[data-md-level="1"] {
+        display: none;
+    }
+    
+    /* Expand when toggle checked or section active */
+    .md-nav--primary .md-nav__toggle:checked ~ .md-nav[data-md-level="1"],
+    .md-nav--primary .md-nav__item--section.md-nav__item--active > .md-nav[data-md-level="1"] {
         display: block !important;
     }
 }
 
-/* Active nav items */
-.md-nav__link--active {
-    color: var(--asql-red) !important;
-    font-weight: 600;
+/* Nav font size */
+.md-nav--primary {
+    font-size: 0.75rem;
 }
 
-.md-nav__item--active > .md-nav__link {
+.md-nav--primary .md-nav__link {
+    padding: 0.35rem 0.6rem;
+}
+
+/* GLOBAL: Always hide TOC in left sidebar, show in right */
+.md-sidebar--primary .md-nav--secondary {
+    display: none !important;
+}
+
+.md-sidebar--secondary .md-nav--secondary {
+    display: block !important;
+}
+
+/* Active nav items - only highlight the actual current page, not parent sections */
+.md-nav__link--active {
     color: var(--asql-red) !important;
     font-weight: 600;
     background-color: rgba(197, 48, 48, 0.08);
     border-left: 3px solid var(--asql-red);
-    padding-left: calc(1rem - 3px);
+    padding-left: calc(0.6rem - 3px) !important;
+}
+
+/* Section labels (like "Getting Started") should NOT be highlighted even when active */
+.md-nav__item--section > .md-nav__link {
+    color: #333 !important;
+    font-weight: 600;
+    background: none !important;
+    border-left: none !important;
 }
 
 
