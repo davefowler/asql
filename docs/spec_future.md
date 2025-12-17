@@ -6,9 +6,9 @@ This document contains features that are planned for future implementation, unde
 
 ---
 
-## String Matching Operators (Planned)
+## String Matching Operators ✅ Implemented
 
-ASQL will provide intuitive string matching operators that are more readable than SQL's `LIKE` syntax.
+ASQL provides intuitive string matching operators that are more readable than SQL's `LIKE` syntax.
 
 **Proposed ASQL Syntax:**
 
@@ -49,7 +49,7 @@ from users where phone matches "555-___-____"
 | `ends with "pattern"` | `LIKE '%pattern'` | Clearer intent |
 | `matches "%pattern%"` | `LIKE '%pattern%'` | LIKE syntax, not regex |
 
-**Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim.
+**Status**: ✅ Implemented - Available in current version.
 
 ---
 
