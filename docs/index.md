@@ -314,11 +314,43 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 
 ## Getting Started
 
-- [Syntax Guide](quick_start.md) — Core syntax reference
+- [Quick Start](quick_start.md) — Get up and running quickly
 - [Grouping & Aggregation](group_by.md) — Guaranteed groups, aggregates
 - [Window Functions](window_functions.md) — Running totals, ranking, prior/next
-- [Language Specification](spec.md) — Complete reference
 - [Examples](examples.md) — Real queries with SQL output
+
+## Documentation
+
+### Syntax Guide
+
+Detailed documentation on ASQL syntax:
+
+- [Syntax Overview](syntax/index.md) — All syntax documentation
+- [Pipeline Basics](syntax/pipeline.md) — FROM-first queries, chaining
+- [Expressions & Operators](syntax/expressions.md) — Comparisons, conditionals
+- [Aggregations](syntax/aggregations.md) — GROUP BY deep dive
+- [Joins](syntax/joins.md) — Join operators, FK inference
+- [Dates & Time](syntax/dates.md) — Date functions, arithmetic
+- [Window Functions](syntax/window-functions.md) — Ranking, running totals
+- [CTEs & Variables](syntax/ctes.md) — stash as, set
+
+### Concepts
+
+Understanding ASQL's design:
+
+- [Pipeline Semantics](concepts/pipelines.md) — Why FROM-first matters
+- [Guaranteed Groups](concepts/guaranteed-groups.md) — Automatic gap-filling
+- [Convention Over Configuration](concepts/conventions.md) — Smart defaults
+- [Function Shorthand](concepts/shorthand.md) — Underscore/space flexibility
+
+### Reference
+
+Quick lookup:
+
+- [Functions Reference](reference/functions.md) — All built-in functions
+- [Operators Reference](reference/operators.md) — All operators
+- [Keywords Reference](reference/keywords.md) — Reserved keywords
+- [Language Specification](spec.md) — Complete language reference
 
 ---
 
