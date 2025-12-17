@@ -275,8 +275,6 @@ The `??` operator has higher precedence than logical operators (`and`, `or`, `no
 
 ASQL uses `when` for conditional expressions, replacing SQL's verbose `CASE` statement with cleaner, more natural syntax.
 
-**Not implemented yet**: `when` is not currently supported by the forward compiler. For now, use SQL `CASE WHEN ... THEN ... ELSE ... END` directly in ASQL expressions.
-
 **Basic syntax with `is` for equality:**
 ```asql
 from users
@@ -359,7 +357,7 @@ from orders
 
 **Default clause:** Both `else` and `otherwise` are supported (they are aliases).
 
-**Planned**: All forms will compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
+All forms compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
 
 ### 4.8 Type Casting (`::`)
 
@@ -1680,12 +1678,17 @@ from users
 
 ### 13.2 Deduplicate
 
-**Not implemented yet**: `deduplicate by ...` is not currently supported.
+`deduplicate by ... order by ...` is syntax sugar for the existing window pattern `per ... first by ...`.
 
-Current options:
+```asql
+from events
+  deduplicate by user_id, event_type
+  order by -created_at
+```
 
-- Use `per <cols> first by ...` (deduplication via `QUALIFY ROW_NUMBER() ... = 1`)
-- Or write explicit SQL window functions + `QUALIFY`
+Notes:
+- `order by` is required (it defines which row is kept)
+- This rewrites to: `per user_id, event_type first by -created_at`
 
 ### 13.3 Pivot / Unpivot / Explode
 

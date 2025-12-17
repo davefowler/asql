@@ -19,7 +19,7 @@ amount == 0 ? null : amount           -- JS-style
 null if amount == 0 else amount       -- Python-style
 ```
 
-**Current**: Use SQL `CASE WHEN ... THEN ... ELSE ... END` (ASQL `when` is not implemented yet):
+**Current**: Use ASQL `when` (or SQL `CASE WHEN ... THEN ... ELSE ... END`):
 ```asql
 CASE WHEN amount == 0 THEN NULL ELSE amount END
 ```
