@@ -75,7 +75,21 @@
     color: var(--asql-red-dark);
 }
 
-/* Table of contents - right sidebar (light mode) */
+/* Table of contents - right sidebar */
+/* Hide TOC on screens below 1220px for cleaner layout */
+@media (max-width: 1219px) {
+    .md-sidebar--secondary {
+        display: none;
+    }
+}
+
+/* Show TOC only on wide screens */
+@media (min-width: 1220px) {
+    .md-sidebar--secondary {
+        width: 12rem;
+    }
+}
+
 [data-md-color-scheme="default"] .md-sidebar--secondary .md-nav__link {
     color: #333 !important;
 }
@@ -89,11 +103,6 @@
     font-weight: 600;
     border-left: 2px solid var(--asql-red);
     padding-left: calc(0.6rem - 2px);
-}
-
-/* Improve TOC sidebar styling */
-.md-sidebar--secondary {
-    width: 14rem;
 }
 
 .md-sidebar--secondary .md-nav {
@@ -131,9 +140,47 @@
     padding-left: calc(1rem - 3px);
 }
 
-/* Left navigation sidebar */
-.md-sidebar--primary {
-    width: 13rem;
+/* Left navigation sidebar - show on all but mobile screens */
+@media screen and (min-width: 768px) {
+    /* Force sidebar to be visible */
+    .md-sidebar--primary {
+        display: block !important;
+        position: sticky !important;
+        top: 0;
+        width: 12rem;
+        height: 100vh;
+        overflow-y: auto;
+    }
+    
+    .md-sidebar--primary .md-sidebar__scrollwrap {
+        display: block !important;
+        overflow: visible;
+    }
+    
+    .md-sidebar--primary .md-nav--primary {
+        display: block !important;
+    }
+    
+    /* Hide the hamburger menu toggle on wider screens */
+    .md-header__button[for="__drawer"] {
+        display: none !important;
+    }
+    
+    /* Ensure main content doesn't overlap sidebar */
+    .md-main__inner {
+        margin-left: 12rem;
+    }
+}
+
+/* Wider sidebar on larger screens */
+@media screen and (min-width: 1024px) {
+    .md-sidebar--primary {
+        width: 14rem;
+    }
+    
+    .md-main__inner {
+        margin-left: 14rem;
+    }
 }
 
 /* Section labels in left nav */
