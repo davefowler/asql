@@ -57,8 +57,8 @@ from users where phone matches "555-___-____"
 - `matches` → `LIKE` (with pattern)
 
 **Implementation Notes**:
-- See `spec_future.md` for full design
-- See `docs/spec.md` section 4.5 (removed, was "Planned") for original design
+- ✅ **IMPLEMENTED** - See `docs/spec.md` section 4.13 for full documentation
+- See `spec_future.md` for original design notes
 - Priority: Medium - can be worked around with `LIKE` in the interim
 
 **Related**:

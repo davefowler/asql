@@ -537,6 +537,97 @@ months_since_signup_date  -- → months(now() - signup_date)
 days_until_due_date       -- → days(due_date - now())
 ```
 
+### 4.13 String Matching Operators
+
+ASQL provides intuitive string matching operators that are more readable than SQL's `LIKE` syntax.
+
+#### Case-Sensitive Operators
+
+**Contains (substring match):**
+```asql
+from users where email contains "@gmail.com"
+from users where name contains "John"
+```
+
+**Starts with (prefix match):**
+```asql
+from users where email starts with "admin"
+from users where domain starts with "https://"
+```
+
+**Ends with (suffix match):**
+```asql
+from users where email ends with ".com"
+from users where filename ends with ".pdf"
+```
+
+#### Case-Insensitive Operators
+
+For case-insensitive matching, use the `i` prefix:
+
+**Case-insensitive contains:**
+```asql
+from users where email icontains "gmail"
+from users where name icontains "john"
+```
+
+**Case-insensitive starts with:**
+```asql
+from users where domain istarts with "https://"
+from users where name istarts with "john"
+```
+
+**Case-insensitive ends with:**
+```asql
+from users where filename iends with ".pdf"
+from users where email iends with ".com"
+```
+
+#### Pattern Matching
+
+The `matches` operator supports SQL `LIKE` syntax with `%` and `_` wildcards:
+
+```asql
+from users where email matches "%@gmail.com"
+from users where phone matches "555-___-____"
+```
+
+**Note**: `matches` uses LIKE syntax (with `%` and `_` wildcards), not regex. Regex support may be added in the future, but most SQL dialects don't support it well anyway.
+
+#### SQL Equivalents
+
+| ASQL | SQL Equivalent | Notes |
+|------|---------------|-------|
+| `contains "pattern"` | `LIKE '%pattern%'` | More intuitive, no wildcards needed |
+| `icontains "pattern"` | `ILIKE '%pattern%'` (PostgreSQL) or `LOWER(column) LIKE LOWER('%pattern%')` | Case-insensitive |
+| `starts with "pattern"` | `LIKE 'pattern%'` | Clearer intent than LIKE |
+| `istarts with "pattern"` | `ILIKE 'pattern%'` or `LOWER(column) LIKE LOWER('pattern%')` | Case-insensitive |
+| `ends with "pattern"` | `LIKE '%pattern'` | Clearer intent than LIKE |
+| `iends with "pattern"` | `ILIKE '%pattern'` or `LOWER(column) LIKE LOWER('%pattern')` | Case-insensitive |
+| `matches "%pattern%"` | `LIKE '%pattern%'` | LIKE syntax, not regex |
+
+#### Usage Examples
+
+**With logical operators:**
+```asql
+from users 
+  where email contains "@gmail.com" and status == "active"
+  where name starts with "John" or name starts with "Jane"
+```
+
+**With function calls:**
+```asql
+from users where upper(name) contains "JOHN"
+from users where coalesce(email, "") contains "@"
+```
+
+**With dotted column names:**
+```asql
+from users where users.email contains "@gmail.com"
+```
+
+**Design Decision**: Use `icontains` / `istarts with` / `iends with` instead of `contains ... ignore case` - analysts will prefer this syntax as it's more explicit and readable.
+
 ---
 
 ## 5. Aggregations
