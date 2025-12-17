@@ -1,7 +1,5 @@
 """ASQL compiler public API."""
 
-from __future__ import annotations
-
 from typing import Optional, Tuple
 
 import sqlglot
@@ -40,15 +38,23 @@ def compile(
         preparsed = preparse_asql(asql_query)
         preparsed = process_explode_markers(preparsed, dialect)
 
+        # Parse with the target dialect when possible, but fall back to generic parsing.
+        # Some dialect parsers (e.g. Trino) reject otherwise-representable constructs
+        # such as QUALIFY; SQLGlot can still transpile these when parsed generically.
+        parse_error: Optional[Exception] = None
         try:
             statements = sqlglot.parse(preparsed, dialect=dialect)
         except sqlglot.errors.ParseError as e:
-            raise ASQLSyntaxError(
-                "Failed to parse ASQL query.\n"
-                f"Original: {asql_query}\n"
-                f"Pre-parsed: {preparsed}\n"
-                f"Error: {e}"
-            ) from e
+            parse_error = e
+            try:
+                statements = sqlglot.parse(preparsed)
+            except sqlglot.errors.ParseError:
+                raise ASQLSyntaxError(
+                    "Failed to parse ASQL query.\n"
+                    f"Original: {asql_query}\n"
+                    f"Pre-parsed: {preparsed}\n"
+                    f"Error: {parse_error}"
+                ) from e
 
         inline_settings, dialect_override, query_statements = extract_inline_settings(statements)
         final_settings = base_settings.merge_with(inline_settings)
