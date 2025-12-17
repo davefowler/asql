@@ -125,11 +125,11 @@ When adding new syntax highlighters:
 1. Create a new subdirectory for the editor/tool
 2. Add the highlighter files
 3. Update this README with usage instructions
-4. Ensure the highlighter covers all ASQL features from `SPEC.md`
+4. Ensure the highlighter covers all ASQL features from `docs/spec.md`
 
 ## References
 
-- [ASQL Language Specification](../SPEC.md)
+- [ASQL Language Specification](../docs/spec.md)
 - [CodeMirror Mode Development Guide](https://codemirror.net/doc/manual.html#modeapi)
 - [TextMate Grammar Documentation](https://macromates.com/manual/en/language_grammars)
 

@@ -950,7 +950,7 @@ class ClickHouse(Dialect):
 
 ---
 
-## 13. SPEC.md Updates ✅ COMPLETED
+## 13. Spec Updates ✅ COMPLETED
 
 The following changes have been made to `docs/spec.md`:
 

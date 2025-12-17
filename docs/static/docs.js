@@ -1,5 +1,124 @@
 // ASQL Documentation JavaScript - Dialect Tabs
 
+const ASQL_TO_DIALECT_STORAGE_KEY = 'asql_to_dialect';
+const ASQL_TO_DIALECT_LEGACY_STORAGE_KEY = 'asql_preferred_dialect';
+const ASQL_DEFAULT_TO_DIALECT = 'postgres';
+
+function getPlaygroundBaseUrl() {
+    const fromWindow =
+        (typeof window !== 'undefined' && window.__ASQL_PLAYGROUND_URL__)
+            ? String(window.__ASQL_PLAYGROUND_URL__)
+            : 'https://play.analyticsql.com';
+    return fromWindow.replace(/\/+$/, '');
+}
+
+function getGlobalToDialect() {
+    const stored = localStorage.getItem(ASQL_TO_DIALECT_STORAGE_KEY);
+    if (stored) return stored;
+    const legacy = localStorage.getItem(ASQL_TO_DIALECT_LEGACY_STORAGE_KEY);
+    if (legacy) return legacy;
+    return ASQL_DEFAULT_TO_DIALECT;
+}
+
+function setGlobalToDialect(dialect, shouldDispatch = true) {
+    localStorage.setItem(ASQL_TO_DIALECT_STORAGE_KEY, dialect);
+    // keep legacy key for backward compatibility
+    localStorage.setItem(ASQL_TO_DIALECT_LEGACY_STORAGE_KEY, dialect);
+
+    if (shouldDispatch) {
+        window.dispatchEvent(new CustomEvent('asql:to-dialect-changed', { detail: { dialect } }));
+    }
+}
+
+function getCompiledFromBlock(block) {
+    const compiledB64 = block.getAttribute('data-compiled');
+    if (!compiledB64) return null;
+    return JSON.parse(atob(compiledB64));
+}
+
+function highlightIntoCodeElement(codeElement, code, language) {
+    if (!codeElement) return;
+
+    if (window.hljs) {
+        try {
+            if (language === 'asql' && (!window.hljs.getLanguage || !window.hljs.getLanguage('asql'))) {
+                if (window.registerASQLLanguage) {
+                    window.registerASQLLanguage();
+                }
+            }
+
+            const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
+            if (langAvailable) {
+                const result = hljs.highlight(code, { language, ignoreIllegals: true });
+                codeElement.innerHTML = result.value;
+                codeElement.className = `hljs language-${language}`;
+                return;
+            }
+        } catch (e) {
+            console.warn('Highlight.js error:', e);
+        }
+    }
+
+    // Fallback if highlight.js isn't available or failed
+    codeElement.textContent = code;
+    codeElement.className = `language-${language}`;
+}
+
+function updateMiniPlaygroundBlock(block, toDialect) {
+    const blockId = block.getAttribute('data-block-id');
+    if (!blockId) return;
+
+    const compiled = getCompiledFromBlock(block);
+    if (!compiled) return;
+
+    const select = block.querySelector('.asql-mp-to-select');
+    if (select) {
+        // If this dialect isn't available in this block, fall back to default.
+        const hasOption = !!select.querySelector(`option[value="${CSS.escape(toDialect)}"]`);
+        const nextDialect = hasOption ? toDialect : ASQL_DEFAULT_TO_DIALECT;
+        if (select.value !== nextDialect) {
+            select.value = nextDialect;
+        }
+        toDialect = nextDialect;
+    }
+
+    const asqlElement = document.getElementById(`asql-${blockId}`);
+    const toElement = document.getElementById(`to-${blockId}`);
+
+    if (asqlElement) {
+        const asqlCode = compiled.asql || asqlElement.textContent || '';
+        highlightIntoCodeElement(asqlElement, asqlCode, 'asql');
+    }
+
+    if (toElement) {
+        const sqlCode = compiled[toDialect] || compiled[ASQL_DEFAULT_TO_DIALECT] || '';
+        highlightIntoCodeElement(toElement, sqlCode, 'sql');
+    }
+}
+
+function initMiniPlaygrounds() {
+    const blocks = document.querySelectorAll('.asql-mini-playground');
+    const globalDialect = getGlobalToDialect();
+
+    blocks.forEach((block) => {
+        if (block.getAttribute('data-asql-mp-initialized') === '1') {
+            updateMiniPlaygroundBlock(block, globalDialect);
+            return;
+        }
+
+        const select = block.querySelector('.asql-mp-to-select');
+        if (select) {
+            select.addEventListener('change', (e) => {
+                const nextDialect = e.target.value;
+                setGlobalToDialect(nextDialect, true);
+            });
+        }
+
+        block.setAttribute('data-asql-mp-initialized', '1');
+        updateMiniPlaygroundBlock(block, globalDialect);
+    });
+}
+
 // Initialize dialect tracking from localStorage
 function initDialectTracking() {
     // Get or initialize dialects tracking object
@@ -47,6 +166,16 @@ function openInPlayground(blockId) {
     // Get compiled SQL
     const compiledB64 = block.getAttribute('data-compiled');
     const compiled = JSON.parse(atob(compiledB64));
+
+    // Mini playground: always open from ASQL to selected dialect
+    const toSelect = block.querySelector('.asql-mp-to-select');
+    if (toSelect) {
+        const toDialect = toSelect.value || getGlobalToDialect();
+        const encodedQuery = encodeURIComponent(compiled.asql || '');
+        const url = `${getPlaygroundBaseUrl()}?d_f=ASQL&d_t=${toDialect}&sql_f=${encodedQuery}`;
+        window.open(url, '_blank');
+        return;
+    }
     
     // Get current active dialect (or default to asql)
     const activeTab = block.querySelector('.tab-btn.active');
@@ -66,7 +195,7 @@ function openInPlayground(blockId) {
     const encodedQuery = encodeURIComponent(currentCode);
     
     // Build URL
-    const url = `https://play.analyticsql.com?d_f=${fromDialect}&d_t=${toDialect}&sql_f=${encodedQuery}`;
+    const url = `${getPlaygroundBaseUrl()}?d_f=${fromDialect}&d_t=${toDialect}&sql_f=${encodedQuery}`;
     
     // Open in new tab
     window.open(url, '_blank');
@@ -101,7 +230,7 @@ function showDialect(blockId, dialect) {
                 const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
                 if (langAvailable) {
                     // Use highlight() directly for more control
-                    const result = hljs.highlight(compiled[dialect], { language: language });
+                    const result = hljs.highlight(compiled[dialect], { language: language, ignoreIllegals: true });
                     codeElement.innerHTML = result.value;
                     codeElement.className = `hljs language-${language}`;
                 } else {
@@ -284,7 +413,7 @@ function addPlaygroundButton() {
     
     // Create playground button
     const btn = document.createElement('a');
-    btn.href = 'https://play.analyticsql.com';
+    btn.href = getPlaygroundBaseUrl();
     btn.target = '_blank';
     btn.className = 'playground-btn';
     btn.innerHTML = `
@@ -353,7 +482,7 @@ function highlightAllCodeBlocks() {
                 if (!block.classList.contains('hljs')) {
                     const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
                     if (langAvailable) {
-                        const result = hljs.highlight(code, { language: language });
+                        const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
                         block.innerHTML = result.value;
                         block.classList.add('hljs', `language-${language}`);
                     } else {
@@ -366,58 +495,72 @@ function highlightAllCodeBlocks() {
         }
     });
     
-    // Also handle ASQL dialect blocks
+    // Also handle ASQL blocks
     const blocks = document.querySelectorAll('.asql-code-block');
     blocks.forEach(block => {
         const blockId = block.getAttribute('data-block-id');
+        if (!blockId) return;
+        if (block.classList.contains('asql-mini-playground')) return;
         reorderTabsOnLoad(blockId);
         showDialect(blockId, 'asql');
     });
+
+    // Initialize split-pane mini playgrounds
+    initMiniPlaygrounds();
 }
 
-// Initialize all code blocks on page load
-document.addEventListener('DOMContentLoaded', () => {
+function initDocsPage() {
     // Add WIP warning banner
     addWIPBanner();
-    // Sync banner height CSS variable (and keep it updated on resize)
+
+    // Sync banner/header height vars (used for sticky sidebar offsets)
     syncBannerHeightVar();
     syncHeaderHeightVar();
-    window.addEventListener('resize', syncBannerHeightVar);
-    window.addEventListener('resize', syncHeaderHeightVar);
+
     // Add playground button to header
     addPlaygroundButton();
+
+    // Attach global listeners once (instant navigation re-runs init)
+    if (!window.__asql_docs_global_listeners_attached) {
+        window.__asql_docs_global_listeners_attached = true;
+        window.addEventListener('resize', syncBannerHeightVar);
+        window.addEventListener('resize', syncHeaderHeightVar);
+
+        // Close more dialects menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.more-tab') && !e.target.closest('.more-dialects-menu')) {
+                document.querySelectorAll('.more-dialects-menu').forEach(menu => {
+                    menu.classList.remove('show');
+                });
+            }
+        });
+    }
+
     // Wait a bit for highlight.js and ASQL language to be fully loaded
     const initHighlighting = () => {
         if (!window.hljs) {
-            // Retry if highlight.js isn't loaded yet
             setTimeout(initHighlighting, 100);
             return;
         }
-        
-        // Ensure ASQL language is registered
+
         if (!window.hljs.getLanguage || !window.hljs.getLanguage('asql')) {
-            // Try to register if function is available
             if (window.registerASQLLanguage) {
                 window.registerASQLLanguage();
             }
-            // Wait a bit more for registration
             setTimeout(initHighlighting, 50);
             return;
         }
-        
-        // First, highlight any existing code blocks (from server-side HTML)
-        // This includes both standalone code blocks and code blocks in tabs
+
+        // Highlight any code blocks in the current page content
         document.querySelectorAll('pre code[class*="language-"], pre code:not([class])').forEach((block) => {
             if (block.textContent && block.textContent.trim()) {
                 try {
                     const code = block.textContent;
-                    // Determine language from class name, or try to detect from parent
                     let language = null;
                     const langMatch = block.className.match(/language-(\w+)/);
                     if (langMatch) {
                         language = langMatch[1];
                     } else {
-                        // Check if parent pre has a class
                         const parentPre = block.parentElement;
                         if (parentPre && parentPre.className) {
                             const parentLangMatch = parentPre.className.match(/language-(\w+)/);
@@ -426,59 +569,87 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         }
                     }
-                    
-                    // Default to sql if no language detected
+
                     if (!language) {
                         language = 'sql';
                     }
-                    
-                    // Only highlight if not already highlighted (check for hljs class)
+
                     if (!block.classList.contains('hljs')) {
-                        // Check if language is available
                         const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
                         if (langAvailable) {
-                            const result = hljs.highlight(code, { language: language });
+                            const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
                             block.innerHTML = result.value;
-                            // Add classes without removing existing ones
                             block.classList.add('hljs', `language-${language}`);
                         } else {
-                            // Fallback: just add language class
                             block.classList.add(`language-${language}`);
                         }
                     }
                 } catch (e) {
                     console.warn('Highlight.js error on initial block:', e);
-                    // Ensure it still has the background even if highlighting fails
                     if (!block.classList.contains('hljs')) {
                         block.className = block.className || 'language-sql';
                     }
                 }
             }
         });
-        
+
+        // Legacy tabbed blocks (if any remain)
         const blocks = document.querySelectorAll('.asql-code-block');
-        
         blocks.forEach(block => {
             const blockId = block.getAttribute('data-block-id');
-            
-            // Reorder tabs based on view counts
+            if (!blockId) return;
+            if (block.classList.contains('asql-mini-playground')) return;
             reorderTabsOnLoad(blockId);
-            
-            // Always default to ASQL
             showDialect(blockId, 'asql');
         });
+
+        // Split-pane mini playgrounds (global to-dialect)
+        initMiniPlaygrounds();
     };
-    
-    // Start initialization
+
     initHighlighting();
-    
-    // Close more dialects menu when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.more-tab') && !e.target.closest('.more-dialects-menu')) {
-            document.querySelectorAll('.more-dialects-menu').forEach(menu => {
-                menu.classList.remove('show');
-            });
+}
+
+function subscribeToInstantNavigation() {
+    if (window.__asql_docs_instant_subscribed) return;
+    if (!window.document$ || typeof window.document$.subscribe !== 'function') {
+        // Material may attach document$ after our script runs
+        if (!window.__asql_docs_instant_retry_scheduled) {
+            window.__asql_docs_instant_retry_scheduled = true;
+            setTimeout(() => {
+                window.__asql_docs_instant_retry_scheduled = false;
+                subscribeToInstantNavigation();
+            }, 250);
         }
+        return;
+    }
+    window.__asql_docs_instant_subscribed = true;
+    window.document$.subscribe(() => {
+        initDocsPage();
+    });
+}
+
+// Initialize on first load
+document.addEventListener('DOMContentLoaded', () => {
+    initDocsPage();
+    subscribeToInstantNavigation();
+});
+
+// Keep all mini-playground dropdowns in sync
+window.addEventListener('asql:to-dialect-changed', (e) => {
+    const dialect = e && e.detail ? e.detail.dialect : getGlobalToDialect();
+    document.querySelectorAll('.asql-mini-playground').forEach((block) => {
+        updateMiniPlaygroundBlock(block, dialect);
+    });
+});
+
+// Cross-tab / cross-window sync
+window.addEventListener('storage', (e) => {
+    if (!e) return;
+    if (e.key !== ASQL_TO_DIALECT_STORAGE_KEY && e.key !== ASQL_TO_DIALECT_LEGACY_STORAGE_KEY) return;
+    const nextDialect = getGlobalToDialect();
+    document.querySelectorAll('.asql-mini-playground').forEach((block) => {
+        updateMiniPlaygroundBlock(block, nextDialect);
     });
 });
 

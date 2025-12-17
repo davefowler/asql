@@ -330,7 +330,7 @@ Could we support more complex patterns like `days_since_created_at` → `days(no
 ## 7. Related Documentation
 
 - `dates.md`: Date-specific handling and syntax
-- `SPEC.md`: ASQL language specification
+- `docs/spec.md`: ASQL language specification
 - `UNHANDLED_SQL_FUNCTIONS.md`: Functions not yet handled
 
 ---

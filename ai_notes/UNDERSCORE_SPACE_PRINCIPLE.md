@@ -583,7 +583,7 @@ Each phase should be backward compatible - existing queries continue to work.
 
 ## 11. Related Documentation
 
-- `SPEC.md`: Core language specification (includes this principle)
+- `docs/spec.md`: Core language specification
 - `universal_function_shorthand.md`: The broader shorthand pattern
 - `dates.md`: Date features that depend on this principle
 

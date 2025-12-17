@@ -35,6 +35,20 @@ kill_patterns() {
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# Load default env vars (production defaults live in asql.env)
+if [ -f "asql.env" ]; then
+    set -a
+    source "asql.env"
+    set +a
+fi
+
+# Optional: support local, untracked .env overrides (if present)
+if [ -f ".env" ]; then
+    set -a
+    source ".env"
+    set +a
+fi
+
 # Activate venv if it exists
 if [ -d "venv" ]; then
     source venv/bin/activate
@@ -67,6 +81,10 @@ echo "=================================================="
 echo "  ASQL Development Servers"
 echo "=================================================="
 echo ""
+
+# Local dev should point buttons/links at localhost servers
+export DOCS_URL="http://localhost:8000"
+export PLAYGROUND_URL="http://localhost:5001"
 
 # Start playground in background with hot reload
 echo "Starting Playground on http://localhost:5001..."

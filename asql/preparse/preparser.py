@@ -21,6 +21,7 @@ from asql.preparse.window import WindowMixin
 from asql.preparse.normalize import NormalizeMixin
 from asql.preparse.cohort import CohortMixin
 from asql.preparse.key import KeyMixin
+from asql.preparse.when import WhenMixin
 
 @dataclass
 class PreParseResult:
@@ -45,7 +46,8 @@ class ASQLPreParser(
     WindowMixin,
     NormalizeMixin,
     CohortMixin,
-    KeyMixin
+    WhenMixin,
+    KeyMixin,
 ):
     def __init__(self, text: str):
         self.text = text.strip()
@@ -72,6 +74,7 @@ class ASQLPreParser(
         result = self._transform_relative_dates(result)
         result = self._transform_date_arithmetic(result)
         result = self._transform_since_until_patterns(result)
+        result = self._transform_deduplicate_by(result)  # Transform deduplicate by to per ... first by
         result = self._transform_per_commands(result)
         result = self._transform_aggregate_blocks(result)
         result = self._transform_column_operators(result)  # except, rename, replace - before from_first
@@ -88,6 +91,7 @@ class ASQLPreParser(
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
         result = self._transform_qualify_clause(result)  # qualify rn == 1
         result = self._transform_coalesce_operator(result)  # After FROM-first for proper structure
+        result = self._transform_when_expressions(result)  # when expressions to CASE WHEN
         result = self._transform_key_function(result)  # key(col1, col2, ...) surrogate key generation
         result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
         result = self._normalize_function_spaces(result)
