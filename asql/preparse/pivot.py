@@ -5,8 +5,6 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
-from asql.preparse import preparse_asql
-
 class PivotMixin:
 
     def _transform_explode(self, text: str) -> str:
@@ -102,60 +100,28 @@ class PivotMixin:
         Syntax:
         pivot value by category values ('A', 'B', 'C')  -- static with explicit values
         pivot sum(value) by category values ('A', 'B')  -- with aggregation
-        pivot sum(value) by category values (from table select distinct category)  -- dynamic with subquery
         
         For static pivots (known values), this generates CASE expressions that work
         across all SQL dialects.
         
-        For dynamic pivots (subquery in values), this uses a two-pass approach:
-        1. Extract and compile the subquery to get pivot values
-        2. Generate CASE expressions using those values
+        Note: Dynamic pivot (values from subquery) is not supported in pure SQL
+        compilation, as it requires knowing all pivot values at compile time to generate
+        individual CASE expressions. For dynamic pivoting, use warehouse-specific PIVOT
+        operators (e.g., Snowflake's PIVOT) or raw SQL.
         """
         result = text
         
-        # Pattern 1: pivot value by category values ('A', 'B', 'C') or subquery
-        # Match values clause - could be quoted values or a subquery starting with 'from'
-        # First find the pivot ... values ( part
-        pivot_match = re.search(r"\bpivot\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)\s+by\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+values\s*\(", result, re.IGNORECASE | re.DOTALL)
-        if pivot_match:
-            value_expr = pivot_match.group(1).strip()
-            pivot_col = pivot_match.group(2).strip()
-            start_pos = pivot_match.end()
+        # Pattern 1: pivot value by category values ('A', 'B', 'C')
+        # With explicit values list
+        pattern_values = r"\bpivot\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)\s+by\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+values\s*\(([^)]+)\)"
+        
+        match = re.search(pattern_values, result, re.IGNORECASE)
+        if match:
+            value_expr = match.group(1).strip()
+            pivot_col = match.group(2).strip()
+            values_str = match.group(3).strip()
             
-            # Now find the matching closing parenthesis, handling nested parentheses
-            paren_count = 1
-            pos = start_pos
-            end_pos = None
-            while pos < len(result):
-                if result[pos] == '(':
-                    paren_count += 1
-                elif result[pos] == ')':
-                    paren_count -= 1
-                    if paren_count == 0:
-                        end_pos = pos
-                        break
-                pos += 1
-            
-            if end_pos is None:
-                # No matching closing parenthesis found
-                return result
-            
-            values_str = result[start_pos:end_pos].strip()
-            match_start = pivot_match.start()
-            match_end = end_pos + 1
-            
-            # Check if values_str is a subquery (starts with 'from')
-            if values_str.strip().lower().startswith('from'):
-                # Dynamic pivot: extract subquery and compile it
-                # Create a simple match-like object
-                class SimpleMatch:
-                    def start(self):
-                        return match_start
-                    def end(self):
-                        return match_end
-                return self._handle_dynamic_pivot(result, SimpleMatch(), value_expr, pivot_col, values_str)
-            
-            # Static pivot: parse quoted values
+            # Parse the values - they should be quoted strings
             # Handle both 'value' and "value" formats
             values = re.findall(r"'([^']*)'|\"([^\"]*)\"", values_str)
             values = [v[0] or v[1] for v in values]  # Get the non-empty capture group
@@ -188,8 +154,8 @@ class PivotMixin:
             
             # Replace pivot clause with marker - the CASE expressions will be added
             # We use a marker that _transform_from_first will handle
-            before_pivot = result[:match_start]
-            after_pivot = result[match_end:]
+            before_pivot = result[:match.start()]
+            after_pivot = result[match.end():]
             
             # Store the pivot expressions in a special marker format
             # The from_first transform will pick this up and add to SELECT
@@ -207,89 +173,8 @@ class PivotMixin:
             value_expr = match.group(1).strip()
             pivot_col = match.group(2).strip()
             raise ValueError(
-                f"pivot requires explicit values. Use: pivot {value_expr} by {pivot_col} values ('val1', 'val2', ...) or values (from table select distinct {pivot_col})"
+                f"pivot requires explicit values. Use: pivot {value_expr} by {pivot_col} values ('val1', 'val2', ...)"
             )
-        
-        return result
-    
-    def _handle_dynamic_pivot(self, text: str, match: re.Match, value_expr: str, pivot_col: str, subquery_str: str) -> str:
-        """
-        Handle dynamic pivot where values come from a subquery.
-        
-        Strategy: Since we can't execute the subquery at compile time to get values,
-        we use a two-pass compilation approach:
-        1. First pass: Compile the subquery to get its SQL representation
-        2. Second pass: Generate SQL that uses the subquery in a CTE and builds
-           CASE expressions using a pattern that works across dialects
-        
-        The generated SQL will:
-        1. Create a CTE with the pivot values from the subquery
-        2. Use those values in CASE expressions by joining/cross-referencing
-        
-        However, pure SQL doesn't support truly dynamic CASE generation without
-        knowing values at compile time. So we generate SQL that uses the subquery
-        results to build the pivot structure.
-        """
-        # Extract the subquery ASQL
-        subquery_asql = subquery_str.strip()
-        
-        # Compile the subquery to SQL
-        # This will transform ASQL syntax to SQL
-        try:
-            subquery_sql = preparse_asql(subquery_asql)
-        except Exception as e:
-            raise ValueError(
-                f"Failed to compile pivot values subquery: {e}\n"
-                f"Subquery: {subquery_asql}"
-            ) from e
-        
-        # Check if value_expr is an aggregate function
-        is_aggregate = bool(re.match(r'(sum|avg|count|min|max|total|average)\s*\(', value_expr, re.IGNORECASE))
-        
-        # Generate a unique CTE name for the pivot values
-        # Access self.ctes through the instance (PivotMixin is mixed into ASQLPreParser)
-        if hasattr(self, 'ctes'):
-            cte_counter = len([c for c in self.ctes if c[0].startswith('__pivot_values')])
-            cte_name = f"__pivot_values_{cte_counter}__" if cte_counter > 0 else "__pivot_values__"
-            
-            # Store the CTE - we'll use it to generate CASE expressions
-            # The subquery should return a single column with the pivot values
-            self.ctes.append((cte_name, subquery_sql))
-        else:
-            cte_name = "__pivot_values__"
-        
-        # Generate CASE expressions that reference the CTE
-        # Since we can't know the values at compile time, we'll generate SQL
-        # that uses a pattern with the CTE. However, we still need individual
-        # CASE expressions for each value.
-        
-        # The challenge: we need to generate CASE expressions without knowing the values.
-        # Solution: Use a pattern that generates CASE expressions by cross-joining
-        # with the CTE. But this is complex and dialect-specific.
-        
-        # For a practical implementation, we'll generate SQL that:
-        # 1. Uses the CTE to get values
-        # 2. Generates CASE expressions using a subquery pattern
-        
-        # Actually, the most practical approach is to generate SQL that uses
-        # conditional aggregation with the CTE values. We'll create a pattern like:
-        # CASE WHEN pivot_col IN (SELECT * FROM cte) THEN value_expr END
-        
-        # But we still need individual columns for each value...
-        
-        # Let's use a marker approach: store the pivot info and process it later
-        # We'll generate the actual CASE expressions in a separate transform
-        # that can access the CTE
-        
-        before_pivot = text[:match.start()]
-        after_pivot = text[match.end():]
-        
-        # Store pivot info in a marker for later processing
-        # Format: __DYNAMIC_PIVOT__(value_expr|pivot_col|cte_name|is_aggregate)__
-        is_agg_str = "1" if is_aggregate else "0"
-        dynamic_pivot_marker = f"__DYNAMIC_PIVOT__({value_expr}|{pivot_col}|{cte_name}|{is_agg_str})__"
-        
-        result = f"{before_pivot}{dynamic_pivot_marker}{after_pivot}"
         
         return result
 
@@ -303,9 +188,6 @@ class PivotMixin:
         __PIVOT_COLS__(col1, col2)__ → SELECT existing, col1, col2
         """
         result = text
-        
-        # First handle dynamic pivot markers
-        result = self._transform_dynamic_pivot_marker(result)
         
         # Pattern to find pivot markers
         pattern = r'__PIVOT_COLS__\((.+?)\)__'
@@ -341,112 +223,5 @@ class PivotMixin:
         else:
             # Couldn't find SELECT, leave marker in place (will cause error)
             pass
-        
-        return result
-    
-    def _transform_dynamic_pivot_marker(self, text: str) -> str:
-        """
-        Process __DYNAMIC_PIVOT__ markers and generate CASE expressions.
-        
-        Since we can't know the pivot values at compile time, we generate SQL
-        that uses the CTE to build CASE expressions. The pattern uses conditional
-        aggregation with the CTE values.
-        
-        Format: __DYNAMIC_PIVOT__(value_expr|pivot_col|cte_name|is_aggregate)__
-        """
-        result = text
-        
-        # Pattern to find dynamic pivot markers
-        pattern = r'__DYNAMIC_PIVOT__\(([^|]+)\|([^|]+)\|([^|]+)\|([^|]+)\)__'
-        
-        match = re.search(pattern, result)
-        if not match:
-            return result
-        
-        value_expr = match.group(1).strip()
-        pivot_col = match.group(2).strip()
-        cte_name = match.group(3).strip()
-        is_aggregate = match.group(4).strip() == "1"
-        
-        # Get the CTE SQL to understand what column it returns
-        # We need to extract the column name from the CTE
-        cte_sql = None
-        if hasattr(self, 'ctes'):
-            for cte_name_stored, cte_sql_stored in self.ctes:
-                if cte_name_stored == cte_name:
-                    cte_sql = cte_sql_stored
-                    break
-        
-        if not cte_sql:
-            # CTE not found, this is an error
-            raise ValueError(f"CTE {cte_name} not found for dynamic pivot")
-        
-        # Extract the column name from the CTE SQL
-        # The CTE should return a single column - try to extract it
-        # Pattern: SELECT column FROM ... or SELECT DISTINCT column FROM ...
-        col_match = re.search(r'SELECT\s+(?:DISTINCT\s+)?([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?)', cte_sql, re.IGNORECASE)
-        if col_match:
-            cte_col = col_match.group(1)
-            # If it's qualified (table.col), extract just the column
-            if '.' in cte_col:
-                cte_col = cte_col.split('.')[-1]
-        else:
-            # Default to the first column or use a generic name
-            cte_col = "value"
-        
-        # Generate CASE expressions using the CTE
-        # The challenge: we need individual columns for each value in the CTE,
-        # but we don't know the values at compile time.
-        #
-        # Solution: Generate SQL that uses the CTE in a CROSS JOIN pattern
-        # to create individual columns. We'll use conditional aggregation with
-        # the CTE values to build the pivot structure.
-        #
-        # Pattern: For each value in the CTE, generate a CASE expression.
-        # Since we can't enumerate values, we'll use a pattern that works
-        # by referencing the CTE column directly.
-        
-        # Extract column name for use in CASE expressions
-        # We'll sanitize it to make a valid column alias
-        safe_cte_col = re.sub(r'[^a-zA-Z0-9_]', '_', cte_col)
-        
-        # Generate the pivot expression using the CTE
-        # We'll create CASE expressions that reference the CTE column
-        # The pattern uses the CTE in a way that creates individual columns
-        if is_aggregate:
-            # Extract the aggregate function and inner column
-            agg_func = value_expr.split('(')[0].strip()
-            inner_col_match = re.search(r'\(([^)]+)\)', value_expr)
-            if inner_col_match:
-                inner_col = inner_col_match.group(1)
-                # Use CASE WHEN with CTE column reference
-                # Pattern: agg_func(CASE WHEN pivot_col = cte.col THEN inner_col END) AS col_alias
-                pivot_expr = f"{agg_func}(CASE WHEN {pivot_col} = {cte_name}.{cte_col} THEN {inner_col} END) AS {safe_cte_col}"
-            else:
-                pivot_expr = f"{agg_func}(CASE WHEN {pivot_col} = {cte_name}.{cte_col} THEN {value_expr} END) AS {safe_cte_col}"
-        else:
-            pivot_expr = f"MAX(CASE WHEN {pivot_col} = {cte_name}.{cte_col} THEN {value_expr} END) AS {safe_cte_col}"
-        
-        # Note: This generates a single pivot expression that references the CTE.
-        # To create individual columns for each value, the query needs to CROSS JOIN
-        # with the CTE and use conditional aggregation. However, pure SQL doesn't
-        # support dynamic column generation without knowing values at compile time.
-        #
-        # For a complete implementation, we would need to:
-        # 1. Execute the subquery to get actual values (requires database connection)
-        # 2. Generate individual CASE expressions for each value
-        #
-        # For now, this generates valid SQL that uses the CTE. The generated SQL
-        # will need to be modified to properly create individual columns, or users
-        # can use warehouse-specific PIVOT operators for true dynamic pivoting.
-        
-        pivot_sql = pivot_expr
-        
-        # Remove the dynamic pivot marker
-        before_marker = result[:match.start()]
-        after_marker = result[match.end():]
-        
-        # Replace with regular pivot marker so it gets processed normally
-        result = f"{before_marker}__PIVOT_COLS__({pivot_sql})__{after_marker}"
         
         return result

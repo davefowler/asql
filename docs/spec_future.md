@@ -55,19 +55,28 @@ from users where phone matches "555-___-____"
 
 ## Dynamic Pivot
 
-**Status**: ✅ Implemented
+**Status**: Not Implemented (Not Feasible)
 
-Dynamic pivot allows the pivot column values to come from a subquery instead of being hardcoded. This is useful when you don't know all possible values at compile time.
+**Current limitation**: Pivot requires explicit values at compile time:
 
-**Syntax**:
 ```asql
 from sales
-  pivot sum(amount) by category values (
-    from sales select distinct category
-  )
+  pivot sum(amount) by category values ('Electronics', 'Clothing', 'Food')
 ```
 
-**Implementation**: The subquery is compiled to SQL and used in a CTE to generate pivot expressions. Note that pure SQL compilation has limitations - individual columns per value require knowing values at compile time. For full dynamic pivoting with individual columns per value, consider using warehouse-specific PIVOT operators (e.g., Snowflake's `PIVOT` operator).
+**Why not implemented**: Dynamic pivot (values from subquery) is fundamentally incompatible with pure SQL compilation. To generate individual `CASE` expressions for each pivot value, the compiler would need to:
+1. Execute the subquery at compile time (requires database connection)
+2. Know all pivot values to generate individual columns
+
+Pure SQL compilation generates SQL without executing queries, so this approach is not feasible.
+
+**Recommended alternatives**:
+- Use static pivot with explicit values (works for known value sets)
+- Use warehouse-specific PIVOT operators (Snowflake, SQL Server support dynamic pivoting)
+- Use raw SQL with dynamic SQL generation
+- Perform pivoting at the application layer
+
+**Workaround**: Use raw SQL or warehouse-specific PIVOT syntax (e.g., Snowflake's `PIVOT` operator).
 
 ---
 
