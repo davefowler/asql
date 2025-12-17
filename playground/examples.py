@@ -307,6 +307,59 @@ replace email with lower(email)"""
     },
 ]
 
+# Cohort analysis examples
+COHORT_EXAMPLES: list[Example] = [
+    {
+        "title": "User Retention by Cohort",
+        "desc": "Monthly active users by signup cohort",
+        "query": """from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)"""
+    },
+    {
+        "title": "Revenue Cohort Analysis",
+        "desc": "Revenue by first purchase cohort",
+        "query": """from orders
+group by month(order_date) (sum(total) as revenue)
+cohort by month(customers.first_order_date)"""
+    },
+    {
+        "title": "Cohort Retention with Percentage",
+        "desc": "Retention rate by cohort (requires helper functions)",
+        "query": """from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)"""
+    },
+    {
+        "title": "Cumulative LTV by Cohort",
+        "desc": "Lifetime value over time using running_sum",
+        "query": """from orders
+group by month(order_date) (sum(total) as revenue)
+cohort by month(customers.first_order_date)"""
+    },
+    {
+        "title": "Weekly Activity by Cohort",
+        "desc": "Weekly active users by signup cohort",
+        "query": """from events
+group by week(event_date) (count(distinct user_id) as active)
+cohort by week(users.signup_date)"""
+    },
+    {
+        "title": "Segmented Cohorts by Channel",
+        "desc": "Cohort analysis segmented by acquisition channel",
+        "query": """from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by users.channel, month(users.signup_date)"""
+    },
+    {
+        "title": "Period-over-Period Change",
+        "desc": "Month-over-month retention change",
+        "query": """from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)"""
+    },
+]
+
 # Count inference examples
 COUNT_INFERENCE_EXAMPLES: list[Example] = [
     {
@@ -430,6 +483,7 @@ def get_all_examples() -> dict[str, list[Example]]:
         "reshaping": RESHAPING_EXAMPLES,
         "column_operators": COLUMN_OPERATOR_EXAMPLES,
         "count_inference": COUNT_INFERENCE_EXAMPLES,
+        "cohort": COHORT_EXAMPLES,
     }
 
 
