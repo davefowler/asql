@@ -131,31 +131,31 @@
     padding-left: calc(1rem - 3px);
 }
 
-/* Improve sidebar visibility and width - only for primary nav */
+/* Left navigation sidebar */
 .md-sidebar--primary {
-    width: 14rem;
-    border-right: 1px solid rgba(0, 0, 0, 0.07);
+    width: 13rem;
 }
 
-/* Make navigation sections more prominent */
-.md-nav__title {
+/* Section labels in left nav */
+.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__link {
     font-weight: 600;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     color: #666;
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
+    padding: 0.6rem 0.8rem 0.3rem;
 }
 
-.md-nav__item {
-    margin-bottom: 0.25rem;
+/* Child items in left nav */
+.md-nav--primary .md-nav__item .md-nav__item > .md-nav__link {
+    font-size: 0.85rem;
+    padding: 0.35rem 0.8rem;
 }
 
+/* Nav link styling */
 .md-nav__link {
     border-radius: 4px;
-    padding: 0.4rem 0.8rem;
-    transition: all 0.2s;
+    transition: all 0.15s;
 }
 
 .md-nav__link:hover {
@@ -327,10 +327,31 @@
 /* Fix main content container to use available space properly */
 .md-main {
     flex: 1;
+    overflow: visible;
 }
 
 .md-main__inner {
     max-width: 100%;
+}
+
+/* Ensure proper layout structure */
+.md-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.md-main__inner {
+    display: flex;
+    flex: 1;
+}
+
+/* Fix Safari-specific sidebar issues */
+@supports (-webkit-appearance: none) {
+    .md-sidebar--primary {
+        -webkit-overflow-scrolling: touch;
+        will-change: scroll-position;
+    }
 }
 
 .playground-btn svg {
@@ -427,4 +448,185 @@
 
 [data-md-color-scheme="slate"] .hljs-function {
     color: #89b4fa !important;
+}
+
+/* ========================================
+   ASQL Dialect Tabs
+   ======================================== */
+
+.asql-code-block {
+    position: relative;
+    margin: 1rem 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .asql-code-block {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Dialect tabs container */
+.dialect-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    background: #f0f0f0;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .dialect-tabs {
+    background: #313244;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Tab button */
+.tab-btn {
+    background: transparent;
+    border: none;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.tab-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #333;
+}
+
+[data-md-color-scheme="slate"] .tab-btn {
+    color: #a6adc8;
+}
+
+[data-md-color-scheme="slate"] .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #cdd6f4;
+}
+
+/* Active tab */
+.tab-btn.active {
+    background: var(--asql-red);
+    color: white !important;
+}
+
+.tab-btn.active:hover {
+    background: var(--asql-red-dark);
+}
+
+/* More dialects button */
+.tab-btn.more-tab {
+    font-weight: bold;
+    min-width: 32px;
+}
+
+/* Code content area */
+.asql-code-block .code-content {
+    position: relative;
+}
+
+.asql-code-block .code-content pre {
+    margin: 0 !important;
+    border-radius: 0 !important;
+}
+
+.asql-code-block .code-content code {
+    display: block;
+    padding: 1rem !important;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-x: auto;
+}
+
+/* More dialects dropdown menu */
+.more-dialects-menu {
+    display: none;
+    position: absolute;
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    min-width: 150px;
+    padding: 4px 0;
+}
+
+.more-dialects-menu.show {
+    display: block;
+}
+
+[data-md-color-scheme="slate"] .more-dialects-menu {
+    background: #1e1e2e;
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.more-dialects-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 16px;
+    background: none;
+    border: none;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+
+.more-dialects-menu button:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+[data-md-color-scheme="slate"] .more-dialects-menu button {
+    color: #cdd6f4;
+}
+
+[data-md-color-scheme="slate"] .more-dialects-menu button:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Play button for opening in playground */
+.play-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0;
+    text-decoration: none !important;
+    z-index: 10;
+}
+
+.asql-code-block:hover .play-button {
+    opacity: 1;
+}
+
+.play-button:hover {
+    background: var(--asql-red);
+    color: white;
+}
+
+[data-md-color-scheme="slate"] .play-button {
+    background: rgba(255, 255, 255, 0.1);
+    color: #a6adc8;
+}
+
+[data-md-color-scheme="slate"] .play-button:hover {
+    background: var(--asql-red);
+    color: white;
 }

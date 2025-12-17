@@ -290,6 +290,77 @@ function addPlaygroundButton() {
     }
 }
 
+// Highlight all code blocks on the page
+function highlightAllCodeBlocks() {
+    if (!window.hljs) {
+        // Retry if highlight.js isn't loaded yet
+        setTimeout(highlightAllCodeBlocks, 100);
+        return;
+    }
+    
+    // Ensure ASQL language is registered
+    if (!window.hljs.getLanguage || !window.hljs.getLanguage('asql')) {
+        // Try to register if function is available
+        if (window.registerASQLLanguage) {
+            window.registerASQLLanguage();
+        }
+        // Wait a bit more for registration
+        setTimeout(highlightAllCodeBlocks, 50);
+        return;
+    }
+    
+    // Highlight code blocks
+    document.querySelectorAll('pre code[class*="language-"], pre code:not([class])').forEach((block) => {
+        if (block.textContent && block.textContent.trim()) {
+            try {
+                const code = block.textContent;
+                // Determine language from class name
+                let language = null;
+                const langMatch = block.className.match(/language-(\w+)/);
+                if (langMatch) {
+                    language = langMatch[1];
+                } else {
+                    // Check if parent pre has a class
+                    const parentPre = block.parentElement;
+                    if (parentPre && parentPre.className) {
+                        const parentLangMatch = parentPre.className.match(/language-(\w+)/);
+                        if (parentLangMatch) {
+                            language = parentLangMatch[1];
+                        }
+                    }
+                }
+                
+                // Default to sql if no language detected
+                if (!language) {
+                    language = 'sql';
+                }
+                
+                // Only highlight if not already highlighted
+                if (!block.classList.contains('hljs')) {
+                    const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
+                    if (langAvailable) {
+                        const result = hljs.highlight(code, { language: language });
+                        block.innerHTML = result.value;
+                        block.classList.add('hljs', `language-${language}`);
+                    } else {
+                        block.classList.add(`language-${language}`);
+                    }
+                }
+            } catch (e) {
+                console.warn('Highlight.js error on block:', e);
+            }
+        }
+    });
+    
+    // Also handle ASQL dialect blocks
+    const blocks = document.querySelectorAll('.asql-code-block');
+    blocks.forEach(block => {
+        const blockId = block.getAttribute('data-block-id');
+        reorderTabsOnLoad(blockId);
+        showDialect(blockId, 'asql');
+    });
+}
+
 // Initialize all code blocks on page load
 document.addEventListener('DOMContentLoaded', () => {
     // Add WIP warning banner
@@ -349,10 +420,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (langAvailable) {
                             const result = hljs.highlight(code, { language: language });
                             block.innerHTML = result.value;
-                            block.className = `hljs language-${language}`;
+                            // Add classes without removing existing ones
+                            block.classList.add('hljs', `language-${language}`);
                         } else {
-                            // Fallback: just set text and class
-                            block.className = `language-${language}`;
+                            // Fallback: just add language class
+                            block.classList.add(`language-${language}`);
                         }
                     }
                 } catch (e) {
@@ -381,6 +453,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Start initialization
     initHighlighting();
     
+    // Setup accordion navigation - only expand active section
+    setupAccordionNavigation();
+    
     // Close more dialects menu when clicking outside
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.more-tab') && !e.target.closest('.more-dialects-menu')) {
@@ -390,6 +465,111 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+// Setup accordion-style navigation - only expand sections containing current page
+function setupAccordionNavigation() {
+    // Wait for MkDocs Material to initialize navigation
+    const initAccordion = () => {
+        // Get current page path - normalize it
+        const currentPath = window.location.pathname;
+        const currentHref = currentPath.replace(/\/$/, '') || '/';
+        
+        // Find all navigation sections (top-level nav items with children)
+        const navSections = document.querySelectorAll('.md-nav--primary .md-nav__item--nested');
+        
+        if (navSections.length === 0) {
+            // Navigation not ready yet, try again
+            setTimeout(initAccordion, 100);
+            return;
+        }
+        
+        navSections.forEach(section => {
+            const sectionToggle = section.querySelector('.md-nav__link');
+            const sectionList = section.querySelector('.md-nav__list');
+            
+            if (!sectionToggle || !sectionList) return;
+            
+            // Check if this section contains the current page
+            const sectionLinks = sectionList.querySelectorAll('.md-nav__link');
+            let containsCurrentPage = false;
+            
+            // Check all links in this section
+            sectionLinks.forEach(link => {
+                const href = link.getAttribute('href');
+                if (href) {
+                    // Normalize href - handle both absolute and relative paths
+                    let linkPath = href;
+                    if (linkPath.startsWith('/')) {
+                        linkPath = linkPath.replace(/\/$/, '') || '/';
+                    } else {
+                        // Relative path - resolve it
+                        const basePath = currentHref.substring(0, currentHref.lastIndexOf('/') + 1);
+                        linkPath = (basePath + linkPath).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+                    }
+                    
+                    // Check if current path matches
+                    if (currentHref === linkPath || 
+                        currentHref.startsWith(linkPath + '/') ||
+                        linkPath.startsWith(currentHref + '/')) {
+                        containsCurrentPage = true;
+                    }
+                }
+            });
+            
+            // Also check if the section toggle itself links to current page
+            const toggleHref = sectionToggle.getAttribute('href');
+            if (toggleHref && toggleHref !== '#') {
+                let togglePath = toggleHref;
+                if (togglePath.startsWith('/')) {
+                    togglePath = togglePath.replace(/\/$/, '') || '/';
+                } else {
+                    const basePath = currentHref.substring(0, currentHref.lastIndexOf('/') + 1);
+                    togglePath = (basePath + togglePath).replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+                }
+                
+                if (currentHref === togglePath || 
+                    currentHref.startsWith(togglePath + '/') ||
+                    togglePath.startsWith(currentHref + '/')) {
+                    containsCurrentPage = true;
+                }
+            }
+            
+            // Collapse all sections by default, except the one containing current page
+            if (!containsCurrentPage) {
+                section.classList.remove('md-nav__item--active');
+            } else {
+                // Expand the section containing current page
+                section.classList.add('md-nav__item--active');
+            }
+            
+            // Add click handler to toggle sections (only if it's not a real link)
+            const originalHref = sectionToggle.getAttribute('href');
+            if (!originalHref || originalHref === '#') {
+                sectionToggle.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const isActive = section.classList.contains('md-nav__item--active');
+                    
+                    if (isActive) {
+                        section.classList.remove('md-nav__item--active');
+                    } else {
+                        section.classList.add('md-nav__item--active');
+                    }
+                }, true); // Use capture phase to override Material's handler
+            }
+        });
+        
+        console.log('Accordion navigation initialized:', navSections.length, 'sections');
+    };
+    
+    // Start initialization after DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setTimeout(initAccordion, 200));
+    } else {
+        setTimeout(initAccordion, 200);
+    }
+}
 
 // Reorder tabs on page load based on view counts
 function reorderTabsOnLoad(blockId) {
