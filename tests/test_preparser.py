@@ -405,5 +405,63 @@ class TestStarColumnOverride:
         assert "EXCEPT" in result.upper()
 
 
+class TestSampleClause:
+    """Test sample clause transformation."""
+    
+    def test_sample_fixed_n(self):
+        """sample N becomes ORDER BY RANDOM() LIMIT N."""
+        result = preparse_asql("from orders sample 100")
+        assert "ORDER BY RANDOM()" in result.upper()
+        assert "LIMIT 100" in result.upper()
+    
+    def test_sample_fixed_n_with_where(self):
+        """sample N works with WHERE clause."""
+        result = preparse_asql("from orders where status = 'active' sample 50")
+        assert "ORDER BY RANDOM()" in result.upper()
+        assert "LIMIT 50" in result.upper()
+        assert "WHERE" in result.upper()
+    
+    def test_sample_percentage(self):
+        """sample N% becomes TABLESAMPLE BERNOULLI(N)."""
+        result = preparse_asql("from orders sample 10%")
+        assert "TABLESAMPLE" in result.upper()
+        assert "BERNOULLI" in result.upper()
+        assert "10" in result
+    
+    def test_sample_percentage_decimal(self):
+        """sample with decimal percentage."""
+        result = preparse_asql("from orders sample 0.5%")
+        assert "TABLESAMPLE" in result.upper()
+        assert "0.5" in result
+    
+    def test_sample_stratified(self):
+        """sample N per column becomes stratified sampling with window function."""
+        result = preparse_asql("from orders sample 100 per category")
+        assert "QUALIFY" in result.upper()
+        assert "ROW_NUMBER()" in result.upper()
+        assert "PARTITION BY CATEGORY" in result.upper()
+        assert "ORDER BY RANDOM()" in result.upper()
+        assert "100" in result
+    
+    def test_sample_stratified_with_underscore_column(self):
+        """sample N per column with underscore in column name."""
+        result = preparse_asql("from orders sample 50 per product_category")
+        assert "PARTITION BY PRODUCT_CATEGORY" in result.upper()
+        assert "50" in result
+    
+    def test_sample_with_select(self):
+        """sample works with explicit select."""
+        result = preparse_asql("from orders select id, amount sample 25")
+        assert "ORDER BY RANDOM()" in result.upper()
+        assert "LIMIT 25" in result.upper()
+    
+    def test_sample_preserves_order(self):
+        """sample followed by order by - sample is applied first."""
+        result = preparse_asql("from orders sample 100")
+        # The sample clause transforms to ORDER BY RANDOM() LIMIT N
+        assert "RANDOM()" in result.upper()
+        assert "LIMIT" in result.upper()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

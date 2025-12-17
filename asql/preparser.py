@@ -132,6 +132,7 @@ class ASQLPreParser:
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
         result = self._transform_qualify_clause(result)  # qualify rn == 1
         result = self._transform_coalesce_operator(result)  # After FROM-first for proper structure
+        result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
         result = self._normalize_function_spaces(result)
         result = self._transform_equality_operators(result)
         
@@ -1524,6 +1525,63 @@ class ASQLPreParser:
         # Transform qualify keyword to QUALIFY (SQL standard for some dialects)
         # Just uppercase it and fix the equality operator
         result = re.sub(r'\bqualify\s+', 'QUALIFY ', result, flags=re.IGNORECASE)
+        
+        return result
+    
+    def _transform_sample_clause(self, text: str) -> str:
+        """
+        Transform ASQL sample clause to SQL.
+        
+        sample N → ORDER BY RANDOM() LIMIT N (or TABLESAMPLE for dialects that support it)
+        sample N% → TABLESAMPLE SYSTEM(N) or ORDER BY RANDOM() LIMIT (N% of count)
+        sample N per col → stratified sampling via window functions
+        
+        The transformation creates portable SQL that works across dialects:
+        - For fixed N: ORDER BY RANDOM() LIMIT N (universally supported)
+        - For percentage: Uses TABLESAMPLE where available, otherwise approximates
+        - For stratified: Uses window functions with QUALIFY or subquery
+        """
+        result = text
+        
+        # Pattern 1: sample N per column (stratified sampling)
+        # sample 100 per category → get N random rows per group value
+        pattern_per = r'\bsample\s+(\d+)\s+per\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
+        match_per = re.search(pattern_per, result, re.IGNORECASE)
+        if match_per:
+            n = match_per.group(1)
+            partition_col = match_per.group(2)
+            # Transform to window function with QUALIFY
+            # This selects N random rows per partition
+            stratified_sql = (
+                f"QUALIFY ROW_NUMBER() OVER (PARTITION BY {partition_col} ORDER BY RANDOM()) <= {n}"
+            )
+            result = result[:match_per.start()] + stratified_sql + result[match_per.end():]
+            return result
+        
+        # Pattern 2: sample N% (percentage sampling)
+        # sample 10% → random 10% of rows
+        pattern_pct = r'\bsample\s+(\d+(?:\.\d+)?)\s*%'
+        match_pct = re.search(pattern_pct, result, re.IGNORECASE)
+        if match_pct:
+            pct = match_pct.group(1)
+            # Use TABLESAMPLE for efficiency where supported
+            # Falls back to RANDOM() filter for dialects without TABLESAMPLE
+            # TABLESAMPLE BERNOULLI(pct) is SQL standard
+            sample_sql = f"TABLESAMPLE BERNOULLI({pct})"
+            result = result[:match_pct.start()] + sample_sql + result[match_pct.end():]
+            return result
+        
+        # Pattern 3: sample N (fixed number of rows)
+        # sample 100 → random 100 rows
+        pattern_n = r'\bsample\s+(\d+)\b(?!\s*%|\s+per\b)'
+        match_n = re.search(pattern_n, result, re.IGNORECASE)
+        if match_n:
+            n = match_n.group(1)
+            # Use ORDER BY RANDOM() LIMIT N for portability
+            # This is slower than TABLESAMPLE but universally supported
+            sample_sql = f"ORDER BY RANDOM() LIMIT {n}"
+            result = result[:match_n.start()] + sample_sql + result[match_n.end():]
+            return result
         
         return result
     

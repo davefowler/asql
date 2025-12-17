@@ -120,6 +120,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
 | `order by` | Sort rows | `ORDER BY` | `order by -users` (descending), `order by name` (ascending) |
 | `limit` | Limit rows | `LIMIT` | `limit 10` |
+| `sample` | Random sampling | `TABLESAMPLE` / `LIMIT` | `sample 100`, `sample 10%`, `sample 5 per category` |
 | `stash as` | Save pipeline result as named CTE | `WITH ... AS` | `from users \| where is_active \| stash as active_users` |
 
 ---
@@ -1033,6 +1034,92 @@ from sales order by -revenue, region, -date
 ```
 
 The `-` prefix applies only to the column immediately following it.
+
+---
+
+## 10A. Sampling
+
+ASQL provides intuitive syntax for random sampling, which is essential for exploratory data analysis and working with large datasets.
+
+### 10A.1 Fixed Sample Size
+
+Get a random sample of N rows:
+
+```asql
+from orders
+sample 100
+```
+
+This returns 100 random rows from the table.
+
+**Generated SQL:**
+```sql
+SELECT * FROM orders ORDER BY RANDOM() LIMIT 100
+```
+
+### 10A.2 Percentage Sampling
+
+Get a random percentage of rows:
+
+```asql
+from orders
+sample 10%
+```
+
+This returns approximately 10% of the rows, randomly selected.
+
+**Generated SQL (using SQL standard TABLESAMPLE):**
+```sql
+SELECT * FROM orders TABLESAMPLE BERNOULLI(10)
+```
+
+**Dialect variations:**
+- PostgreSQL/Redshift: `TABLESAMPLE BERNOULLI(10)` or `TABLESAMPLE SYSTEM(10)`
+- BigQuery: `TABLESAMPLE SYSTEM(10 PERCENT)`
+- Snowflake: `SAMPLE (10)`
+- DuckDB: `USING SAMPLE 10%`
+
+### 10A.3 Stratified Sampling
+
+Get N random rows per group value (stratified sampling):
+
+```asql
+from orders
+sample 100 per category
+```
+
+This returns 100 random rows for each distinct value of `category`.
+
+**Generated SQL:**
+```sql
+SELECT *
+FROM orders
+QUALIFY ROW_NUMBER() OVER (PARTITION BY category ORDER BY RANDOM()) <= 100
+```
+
+**Use cases:**
+- Balanced training datasets for ML
+- Representative samples across categories
+- Proportional sampling for analysis
+
+### 10A.4 Combining with Other Operations
+
+Sampling can be combined with filters and other operations:
+
+```asql
+from orders
+where status = "completed"
+sample 1000
+order by created_at
+```
+
+**Note**: When combining with ORDER BY, the ORDER BY applies to the final sampled result, not to the sampling process itself.
+
+### 10A.5 Performance Considerations
+
+- **Fixed N sampling** (`sample N`): Uses `ORDER BY RANDOM()` which is portable but requires a full table scan. For very large tables, consider using approximate sampling methods.
+- **Percentage sampling** (`sample N%`): Uses `TABLESAMPLE` where available, which is much faster as it samples at the block level.
+- **Stratified sampling** (`sample N per col`): Requires window functions and may be slower on large datasets.
 
 ---
 
