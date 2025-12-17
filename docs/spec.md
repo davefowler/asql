@@ -140,89 +140,7 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 - Dates: `@2025-01-10`, `@2025-11-10`
 - Numbers: `42`, `3.14`
 
-### 4.5 String Matching (Planned)
-
-ASQL will provide intuitive string matching operators that are more readable than SQL's `LIKE` syntax. The design is inspired by the best practices from modern query languages and libraries:
-
-**Research & Inspiration:**
-- **KQL (Kusto)**: `contains`, `startswith`, `endswith`, `matches regex` - very intuitive
-- **Python pandas**: `.str.contains()`, `.str.startswith()`, `.str.endswith()` - clear and explicit
-- **JavaScript**: `.includes()`, `.startsWith()`, `.endsWith()` - simple and readable
-- **dplyr (R)**: `str_detect()`, `str_starts()`, `str_ends()` - functional but verbose
-- **SQL**: `LIKE '%pattern%'` - cryptic, requires wildcards, not intuitive
-
-**Proposed ASQL Syntax:**
-
-```asql
-# Contains (substring match)
-from users where email contains "@gmail.com"
-from users where name contains "John"
-
-# Starts with
-from users where email starts with "admin"
-from users where domain starts with "https://"
-
-# Ends with
-from users where email ends with ".com"
-from users where filename ends with ".pdf"
-
-# Case-insensitive variants (optional)
-from users where email contains "GMAIL" ignore case
-from users where name starts with "john" ignore case
-
-# Regex matching (advanced)
-from users where email matches "^[a-z]+@[a-z]+\\.com$"
-from users where phone matches "^\d{3}-\d{3}-\d{4}$"
-```
-
-**Design Principles:**
-1. **Natural language**: Reads like English - "email contains gmail" is clearer than "email LIKE '%gmail%'"
-2. **No wildcards required**: `contains` is more intuitive than `LIKE '%pattern%'`
-3. **Explicit operations**: `starts with` and `ends with` are clearer than `LIKE 'pattern%'` and `LIKE '%pattern'`
-4. **Case handling**: Default behavior TBD (case-sensitive or case-insensitive), with explicit `ignore case` option
-5. **Regex support**: Available but secondary - most users don't need regex for common string matching
-
-**Comparison with SQL:**
-
-| ASQL | SQL Equivalent | Notes |
-|------|----------------|-------|
-| `contains "pattern"` | `LIKE '%pattern%'` | More intuitive, no wildcards |
-| `starts with "pattern"` | `LIKE 'pattern%'` | Clearer intent |
-| `ends with "pattern"` | `LIKE '%pattern'` | Clearer intent |
-| `matches "regex"` | `~ 'regex'` or `REGEXP` | Explicit regex matching |
-| `contains "PATTERN" ignore case` | `ILIKE '%pattern%'` (PostgreSQL) | Explicit case handling |
-
-**Alternative Syntax Considerations:**
-
-1. **Method-style** (like Python/JS):
-   ```asql
-   from users where email.contains("@gmail.com")
-   from users where name.starts_with("John")
-   ```
-   - Pros: Familiar to programmers, explicit
-   - Cons: Less natural language feel, requires dots
-
-2. **Function-style**:
-   ```asql
-   from users where contains(email, "@gmail.com")
-   from users where starts_with(name, "John")
-   ```
-   - Pros: Functional, clear
-   - Cons: Less readable, more verbose
-
-3. **Natural language** (recommended):
-   ```asql
-   from users where email contains "@gmail.com"
-   from users where name starts with "John"
-   ```
-   - Pros: Most readable, natural language feel
-   - Cons: Requires keyword parsing
-
-**Recommendation**: Use natural language syntax (`contains`, `starts with`, `ends with`) as it aligns with ASQL's philosophy of reading like natural language. This makes queries accessible to non-technical users while remaining precise.
-
-**Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim. Should be implemented after arithmetic operators and before advanced features.
-
-### 4.6 COALESCE Operator (`??`)
+### 4.5 COALESCE Operator (`??`)
 
 ASQL uses the `??` operator for COALESCE (nullish coalescing), providing a cleaner syntax than the function call.
 
@@ -262,7 +180,7 @@ from orders where (status ?? "pending") = "completed"
 **Precedence:**
 The `??` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`=`, `!=`, etc.). Use parentheses for clarity in complex expressions.
 
-### 4.7 Conditional Expressions (`when`)
+### 4.6 Conditional Expressions (`when`)
 
 ASQL uses `when` for conditional expressions, replacing SQL's verbose `CASE` statement with cleaner, more natural syntax.
 
@@ -350,7 +268,7 @@ from orders
 
 All forms compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
 
-### 4.8 Type Casting (`::`)
+### 4.7 Type Casting (`::`)
 
 ASQL uses PostgreSQL-style double colon (`::`) syntax for type casting, which is more concise and readable than SQL's `CAST(... AS ...)` syntax.
 
@@ -400,7 +318,7 @@ All standard SQL types are supported, including:
 - Boolean: `BOOLEAN`, `BOOL`
 - And dialect-specific types (e.g., Snowflake's `NUMBER`, BigQuery's `INT64`)
 
-### 4.9 Comments
+### 4.8 Comments
 
 ASQL uses SQL-standard comment syntax:
 
@@ -412,7 +330,7 @@ ASQL uses SQL-standard comment syntax:
 - `#` is reserved for count aggregation syntax (see Section 5.2)
 - Better compatibility with SQL tooling and editors
 
-### 4.10 String Functions
+### 4.9 String Functions
 
 ASQL provides clean string manipulation functions.
 
@@ -483,7 +401,7 @@ from products
 | `trim(str)` | Remove whitespace | `trim(input)` |
 | `length(str)` | String length | `length(name)` |
 
-### 4.11 Comparison Functions
+### 4.10 Comparison Functions
 
 #### Multi-Value Min/Max
 
@@ -507,7 +425,7 @@ from products
 
 **Note**: This is configurable - if you prefer SQL-style `greatest()`/`least()` as the default, this can be adjusted in ASQL settings.
 
-### 4.12 NULL Handling
+### 4.11 NULL Handling
 
 #### NULLIF Alternative
 
@@ -521,22 +439,8 @@ from transactions
 
 This is clearer than `nullif(amount, 0)` and consistent with ASQL's conditional syntax.
 
-#### Ternary-Style Conditionals (Future Consideration)
 
-ASQL may add support for concise ternary expressions in the future:
-
-```asql
--- Potential future syntax (not yet decided)
-amount == 0 ? null : amount           -- JS-style
-null if amount == 0 else amount       -- Python-style
-```
-
-For now, use the `when` syntax which is clear and readable:
-```asql
-when amount == 0 then null else amount
-```
-
-### 4.13 Function Shorthand (Underscore/Space Principle)
+### 4.12 Function Shorthand (Underscore/Space Principle)
 
 ASQL provides flexible syntax for function calls where **underscores and spaces are interchangeable**. This makes queries more natural to write and read.
 
@@ -1944,7 +1848,7 @@ from issue_custom_fields
 
 **Compiles to**: `CASE WHEN` expressions with aggregation, which works across all dialects.
 
-**Note**: Dynamic pivot (values from subquery) is not yet supported - use raw SQL for dynamic cases.
+**Note**: Dynamic pivot (values from subquery) is not yet supported. See `spec_future.md` for details. Use raw SQL for dynamic cases.
 
 #### `unpivot` - Columns to Rows
 
@@ -2238,18 +2142,18 @@ from Users
 SELECT first_name, created_at FROM users
 ```
 
-### 15.3 Automatic Conflict Resolution
+### 15.3 Column Name Conflicts
 
-**⚠️ Warning**: When column names conflict, automatically qualifying them (e.g., `users.id` and `orders.id`) might not be implemented in the initial version. This could be confusing and error-prone. Better to require explicit qualification:
+When column names conflict across joined tables, you must explicitly qualify them:
 
 ```asql
 from users
   & orders
--- If both have 'id', you should explicitly qualify:
+-- If both have 'id', you must explicitly qualify:
 select users.id as user_id, orders.id as order_id
 ```
 
-**Recommendation**: In v1.0, require explicit qualification for ambiguous columns. Auto-qualification could be added later if there's clear demand, but explicit is safer and clearer.
+**Note**: Automatic namespace resolution (renaming conflicting columns with table context) is not implemented. Explicit qualification is required and is clearer and safer. See `spec_future.md` for potential future support.
 
 ### 15.4 Why Case-Safe is Good
 
@@ -2389,18 +2293,6 @@ avg age of user by country
 # Reads beautifully: "average age of user, grouped by country"
 ```
 
-### Example 11: Shorthand Natural Language (50/50 on implementation)
-
-For very simple exploratory queries, you can omit the `from` clause and infer it from the aggregation:
-
-```asql
-# of Users by country
-Sum of revenue by region
-Avg Users.age by country
-```
-
-**Note**: This shorthand is nice for a big percentage of exploratory queries, but it's different from other queries that start with `from`. In these examples, the `from` table is inferred from its use in `# of Users`. It's really nice shorthand, but also potentially confusing. This feature is marked as 50/50 on implementation - may or may not make it into v1.0.
-
 ---
 
 ## 19. Compilation & Transpilation
@@ -2495,14 +2387,9 @@ ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, a
 
 ---
 
-## 22. Future Considerations
+## 22. Future Features
 
-- **Visual SQL Editor**: ASQL's structure could enable a great visual query builder whose base could also be a text editor/IDE. Get the best of visual and text-based exploration.
-- **dbt Integration**: Building ASQL into dbt out of the gate would make it immediately useful for the dbt community
-- **Common Schema Format**: A shared schema/statistics library for cross-database compatibility
-- **Query Optimization**: ASQL-specific optimizations before SQL generation
-- **IDE Integration**: Full-featured editor with autocomplete, error checking, SQL preview
-- **Testing Framework**: Query testing and validation tools
+For features that are planned, under consideration, or marked as "maybe" for v1.0, see `spec_future.md`.
 
 ---
 
