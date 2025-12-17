@@ -82,14 +82,16 @@
 
 These features are documented in `SPEC.md` but not yet implemented:
 
-### String Matching (Section 4.5)
-- `contains "pattern"`
-- `starts with "pattern"`
-- `ends with "pattern"`
-- `matches "regex"`
-- `ignore case` modifier
+### String Matching (Section 4.5) ✅ Implemented
+- `contains "pattern"` ✅
+- `icontains "pattern"` ✅
+- `starts with "pattern"` ✅
+- `istarts with "pattern"` ✅
+- `ends with "pattern"` ✅
+- `iends with "pattern"` ✅
+- `matches "pattern"` ✅ (LIKE syntax, not regex)
 
-**Workaround**: Use SQL `LIKE` syntax directly.
+**See**: `docs/spec.md` section 4.5 for full documentation.
 
 ### Conditional Expressions (Section 4.7)
 - `when status is "active" then 1 otherwise 0`

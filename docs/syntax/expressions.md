@@ -38,6 +38,77 @@ where status in ("pending", "active", "shipped")
 where country not in ("XX", "YY")
 ```
 
+## String Matching Operators
+
+ASQL provides intuitive string matching operators that are more readable than SQL's `LIKE` syntax.
+
+### Case-Sensitive Operators
+
+**Contains (substring match):**
+```asql
+where email contains "@gmail.com"
+where name contains "John"
+```
+
+**Starts with (prefix match):**
+```asql
+where email starts with "admin"
+where domain starts with "https://"
+```
+
+**Ends with (suffix match):**
+```asql
+where email ends with ".com"
+where filename ends with ".pdf"
+```
+
+### Case-Insensitive Operators
+
+For case-insensitive matching, use the `i` prefix:
+
+```asql
+where email icontains "gmail"        -- Case-insensitive contains
+where name istarts with "john"        -- Case-insensitive starts with
+where filename iends with ".pdf"     -- Case-insensitive ends with
+```
+
+### Pattern Matching
+
+The `matches` operator supports SQL `LIKE` syntax with `%` and `_` wildcards:
+
+```asql
+where email matches "%@gmail.com"
+where phone matches "555-___-____"
+```
+
+**Note**: `matches` uses LIKE syntax (with `%` and `_` wildcards), not regex.
+
+### SQL Equivalents
+
+| ASQL | SQL Equivalent |
+|------|---------------|
+| `contains "pattern"` | `LIKE '%pattern%'` |
+| `icontains "pattern"` | `ILIKE '%pattern%'` (PostgreSQL) or `LOWER(column) LIKE LOWER('%pattern%')` |
+| `starts with "pattern"` | `LIKE 'pattern%'` |
+| `istarts with "pattern"` | `ILIKE 'pattern%'` or `LOWER(column) LIKE LOWER('pattern%')` |
+| `ends with "pattern"` | `LIKE '%pattern'` |
+| `iends with "pattern"` | `ILIKE '%pattern'` or `LOWER(column) LIKE LOWER('%pattern')` |
+| `matches "%pattern%"` | `LIKE '%pattern%'` |
+
+### Examples
+
+**With logical operators:**
+```asql
+where email contains "@gmail.com" and status == "active"
+where name starts with "John" or name starts with "Jane"
+```
+
+**With function calls:**
+```asql
+where upper(name) contains "JOHN"
+where coalesce(email, "") contains "@"
+```
+
 ## Logical Operators
 
 | Operator | Meaning | Example |
