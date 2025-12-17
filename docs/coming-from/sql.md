@@ -228,8 +228,10 @@ If you can write:
     where order_count > 5
     order by -order_count
 
-    -- Or use set/stash for reusable parts
-    set active_users = from users where is_active
+    -- Or use stash for reusable parts
+    from users
+    where is_active
+    stash as active_users
 
     from active_users
     & orders on active_users.id = orders.user_id

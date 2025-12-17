@@ -24,7 +24,7 @@ TOP_DIALECTS = ["postgres", "snowflake", "bigquery", "databricks"]
 
 # All available dialects
 ALL_DIALECTS = [
-    "postgres", "mysql", "sqlite", "oracle", "mssql", "bigquery",
+    "postgres", "mysql", "sqlite", "oracle", "tsql", "bigquery",
     "snowflake", "redshift", "presto", "trino", "spark", "hive",
     "clickhouse", "duckdb", "databricks"
 ]
@@ -38,7 +38,7 @@ DIALECT_NAMES = {
     "mysql": "MySQL",
     "sqlite": "SQLite",
     "oracle": "Oracle",
-    "mssql": "SQL Server",
+    "tsql": "SQL Server",
     "presto": "Presto",
     "trino": "Trino",
     "spark": "Spark",
@@ -109,7 +109,12 @@ def _format_paren_list_block(prefix: str, inner: str, indent: str) -> str:
     if len(items) <= 1:
         return f"{prefix}({inner.strip()})"
 
-    formatted_items = "\n".join(f"{indent}{item}" for item in items)
+    formatted_lines: list[str] = []
+    for idx, item in enumerate(items):
+        is_last = idx == len(items) - 1
+        suffix = "" if is_last else ","
+        formatted_lines.append(f"{indent}{item}{suffix}")
+    formatted_items = "\n".join(formatted_lines)
     return f"{prefix}(\n{formatted_items}\n)"
 
 
@@ -144,7 +149,10 @@ def format_asql_for_docs(asql_query: str) -> str:
 
         # group by <keys> (a, b, c)
         if body.lower().startswith("group by"):
-            m = re.match(r"^group\s+by\s+(.+?)\s*\((.*)\)\s*$", body, flags=re.IGNORECASE)
+            # Require a whitespace boundary before the aggregation parens so we don't
+            # accidentally treat function-call parens in the grouping keys (e.g. month(created_at))
+            # as the start of the aggregation list.
+            m = re.match(r"^group\s+by\s+(.+?)\s+\((.*)\)\s*$", body, flags=re.IGNORECASE)
             if m:
                 keys = m.group(1).strip()
                 inner = m.group(2)
@@ -171,6 +179,8 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
     formatted_asql = format_asql_for_docs(asql_query)
     results = {"asql": formatted_asql}
     
+    compilation_errors: list[str] = []
+
     for dialect in ALL_DIALECTS:
         try:
             # Suppress all output during compilation (SQLGlot prints warnings to stdout/stderr)
@@ -192,9 +202,18 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
                 # If pretty formatting fails for any reason, fall back to raw SQL
                 results[dialect] = sql
         except Exception as e:
-            # If compilation fails, store error message
-            results[dialect] = f"-- Error compiling to {dialect}: {str(e)}"
+            compilation_errors.append(f"{dialect}: {e}")
     
+    if compilation_errors:
+        # Fail fast: docs build should fail if any compiled example doesn't compile.
+        msg = (
+            "ASQL docs example failed to compile for one or more dialects.\n"
+            f"Errors: {', '.join(compilation_errors)}\n"
+            "ASQL:\n"
+            f"{formatted_asql}"
+        )
+        raise RuntimeError(msg)
+
     return results
 
 
@@ -259,11 +278,62 @@ def process_asql_blocks(markdown_content: str) -> str:
     # We need to match standalone ```asql blocks (not in === tabs)
     asql_pattern = r'```asql\s*\n(.*?)```'
     
+    def should_compile_asql_block(asql_query: str) -> bool:
+        """
+        Only compile full ASQL queries into the mini-playground.
+
+        Many docs pages include small ASQL *snippets* (e.g. `sum amount`, `# users`)
+        that are intended as syntax examples, not standalone queries. We leave those
+        as normal fenced code blocks (still syntax-highlighted), and only compile
+        blocks that look like real queries.
+        """
+        non_comment_lines: list[str] = []
+        for line in asql_query.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("--"):
+                continue
+            non_comment_lines.append(stripped)
+
+        if not non_comment_lines:
+            return False
+
+        # Only compile blocks that appear to contain a *single* query.
+        # If there are multiple independent examples in one fenced block (e.g. multiple `from ...`),
+        # leave it as a normal code block.
+        query_starters = 0
+        for line in non_comment_lines:
+            lowered = line.lower()
+            if lowered.startswith("from ") or lowered.startswith("with "):
+                query_starters += 1
+        if query_starters != 1:
+            return False
+
+        # Multi-line SELECT blocks ("select" on its own line + indented columns)
+        # are not reliably supported by the current compiler. Leave them as plain
+        # fenced code blocks for now.
+        for line in non_comment_lines:
+            if line.lower() == "select":
+                return False
+
+        # Spec/WIP conditional syntax isn't implemented yet.
+        for line in non_comment_lines:
+            if line.lower().startswith("if "):
+                return False
+
+        first = non_comment_lines[0].lower()
+        return first.startswith("from ") or first.startswith("with ")
+
     def replace_asql_block(match):
         asql_query = match.group(1).strip()
         
         # Skip if empty
         if not asql_query:
+            return match.group(0)
+
+        # Skip snippet blocks (leave as fenced code, no compilation)
+        if not should_compile_asql_block(asql_query):
             return match.group(0)
         
         # Pre-compile to all dialects
@@ -334,4 +404,11 @@ def on_pre_page_macros(env) -> None:
         # Provide runtime config for docs/static/docs.js
         env.markdown = _runtime_config_script_tag() + env.markdown
 
-        env.markdown = process_asql_blocks(env.markdown)
+        try:
+            env.markdown = process_asql_blocks(env.markdown)
+        except Exception as e:
+            page = getattr(env, "page", None)
+            page_file = getattr(page, "file", None) if page is not None else None
+            src_path = getattr(page_file, "src_path", None) if page_file is not None else None
+            page_hint = f" (page: {src_path})" if src_path else ""
+            raise RuntimeError(f"{e}{page_hint}") from e

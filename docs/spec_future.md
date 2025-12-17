@@ -106,5 +106,5 @@ Use SQL `CASE` / `NULLIF` patterns directly, e.g. `a / NULLIF(b, 0)` (dialect de
 
 **See Also**:
 - `docs/spec.md` - Current specification of implemented features
-- `docs/unimplemented_features.md` - Not-implemented feature tracking
+- GitHub issues - Work tracked as issues when prioritized
 - `ai_notes/COHORT_ANALYSIS.md` - Detailed cohort analysis design

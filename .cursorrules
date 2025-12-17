@@ -27,7 +27,6 @@
 ## Important links (source of truth)
 - **Language spec**: `docs/spec.md`
 - **Future / maybe features**: `docs/spec_future.md`
-- **Not-implemented backlog**: `docs/unimplemented_features.md`
 
 
 ## Issues / PR naming (to avoid duplicates)

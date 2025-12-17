@@ -315,7 +315,9 @@ The `stash as` creates a CTE and continues the pipeline.
 ### Top-Level Variables
 
 ```asql
-set active_users = from users where is_active
+from users
+  where is_active
+  stash as active_users
 
 from active_users
   group by country (# as total)

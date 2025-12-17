@@ -10,7 +10,7 @@ This section provides detailed documentation on ASQL syntax. Each page covers a 
 - **[Joins](joins.md)** — Join operators, FK inference, dot notation traversal
 - **[Dates & Time](dates.md)** — Date literals, truncation, arithmetic, relative dates
 - **[Window Functions](window-functions.md)** — Ranking, running totals, prior/next, deduplication
-- **[CTEs & Variables](ctes.md)** — `stash as`, `set`, named CTEs, query composition
+- **[CTEs & Settings](ctes.md)** — `stash as` (CTEs) and `SET` (compiler settings)
 - **[Cohort Analysis](cohorts.md)** — Cohort assignment, retention calculations, period-over-period comparisons
 
 ## Data Manipulation

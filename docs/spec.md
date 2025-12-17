@@ -535,7 +535,7 @@ This is clearer than `nullif(amount, 0)` for some readers, but either is valid.
 
 ### 4.13 Function Shorthand (Underscore/Space Principle)
 
-ASQL supports a small set of **implemented** shorthand/normalization rules that make queries read more naturally.
+ASQL supports shorthand/normalization rules that make queries read more naturally.
 
 #### Implemented today
 
@@ -562,9 +562,14 @@ days_since_created_at   -- → DATEDIFF('day', created_at, CURRENT_TIMESTAMP)
 days_until_due_date     -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
 ```
 
-#### Not implemented (yet)
+#### Underscore shorthand
 
-The broad “underscore/space principle” where arbitrary identifiers like `sum_amount` or `month_created_at` automatically expand to `sum(amount)` / `month(created_at)` is **not** implemented. Use explicit function calls (`sum(amount)`, `month(created_at)`) and explicit aliases (`... as sum_amount`) instead.
+In function contexts, underscores are interchangeable with spaces. For example:
+
+```asql
+sum_amount        -- → sum(amount)
+month_created_at  -- → month(created_at)
+```
 
 ---
 
@@ -889,7 +894,7 @@ By default, ASQL ensures all expected dimension values appear in grouped results
 -- All months from Jan-Jun will appear, even with zero revenue
 from orders
   where order_date >= @2024-01-01 and order_date < @2024-07-01
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -912,7 +917,7 @@ This ensures all four statuses appear in results, even if some have zero orders.
 **Filter the results** (most common):
 ```asql
 from orders
-  group by month(order_date) as month ( sum(amount) as revenue )
+  group by month(order_date) ( sum(amount) as revenue )
   where revenue > 0
 ```
 
@@ -920,7 +925,7 @@ from orders
 ```asql
 SET auto_spine = false;
 from orders
-  group by month(order_date) as month ( sum(amount) as revenue )
+  group by month(order_date) ( sum(amount) as revenue )
 ```
 
 **Disable globally** via config file or API.

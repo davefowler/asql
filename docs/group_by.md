@@ -28,7 +28,7 @@ GROUP BY region
 
 ```asql
 from orders
-  group by region, month(order_date) as month (
+  group by region, month(order_date) (
     sum(amount) as revenue
   )
 ```
@@ -63,7 +63,7 @@ April and May are missing. This breaks charts, corrupts month-over-month calcula
 ```asql
 from orders
   where order_date >= @2024-01-01 and order_date < @2024-07-01
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -126,7 +126,7 @@ The most common approach—just filter out zeros:
 
 ```asql
 from orders
-  group by month(order_date) as month ( sum(amount) as revenue )
+  group by month(order_date) ( sum(amount) as revenue )
   where revenue > 0
 ```
 
@@ -135,7 +135,7 @@ from orders
 ```asql
 SET auto_spine = false;
 from orders
-  group by month(order_date) as month ( sum(amount) as revenue )
+  group by month(order_date) ( sum(amount) as revenue )
 ```
 
 ### Disable Globally
@@ -170,7 +170,7 @@ sum of amount by region
 
 ```asql
 from orders
-  group by region ( sum_amount, # as order_count )
+  group by region ( sum(amount) as sum_amount, # as order_count )
 ```
 
 All of these compile to equivalent SQL.

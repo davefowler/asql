@@ -180,7 +180,7 @@ from orders
 | Keyword | Description |
 |---------|-------------|
 | `stash as` | Save intermediate result as CTE |
-| `set` | Define top-level CTE |
+| `set` | Compiler setting statement (not a CTE) |
 
 ### stash as
 
@@ -195,13 +195,14 @@ from users
 
 ### set
 
-Define a named CTE at the top level:
+Set compiler options (not CTE variables):
 
 ```asql
-set active = from users where is_active
+SET auto_spine = false;
+SET dialect = 'postgres';
 
-from active
-  group by country (# as total)
+from orders
+  group by month(created_at) as month ( sum(amount) as revenue )
 ```
 
 ---
