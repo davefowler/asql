@@ -89,7 +89,7 @@ from users
 where status == "active"
 group by country ( # as total_users )
 order by -total_users
-take 10
+limit 10
 """
         sql = compile(asql)
         assert "SELECT" in sql.upper()
@@ -320,7 +320,7 @@ from users
 where status == "active" and age >= 18
 group by country ( # as total_users, avg(age) as avg_age )
 order by -total_users
-take 20
+limit 20
 """
         sql = compile(asql)
         assert "SELECT" in sql.upper()
@@ -336,7 +336,7 @@ from sales
 where status == "completed" and amount > 100
 group by region ( sum(amount) as revenue, # as orders )
 order by -revenue
-take 10
+limit 10
 """
         sql = compile(asql)
         assert "SELECT" in sql.upper()

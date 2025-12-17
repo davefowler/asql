@@ -69,7 +69,7 @@ ASQL Text → Custom Parser (asql/parser.py) → SQLGlot AST → SQLGlot Generat
    - Multiple order by columns
 
 3. **TAKE/LIMIT** (Priority: MEDIUM)
-   - Parse `take 10`
+   - Parse `limit 10`
    - Generate SQL LIMIT
 
    - Generate SQL SELECT with computed columns

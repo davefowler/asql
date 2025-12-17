@@ -458,7 +458,7 @@ SELECT * FROM users ORDER BY total_users DESC, name ASC
 **ASQL:**
 ```asql
 from users
-take 10
+limit 10
 ```
 
 **SQL (PostgreSQL):**
@@ -491,7 +491,7 @@ from users
 where status == "active" 
 group by country ( # as total_users ) 
 order by -total_users 
-take 10
+limit 10
 ```
 
 **SQL (PostgreSQL):**
@@ -546,7 +546,7 @@ group by region, month (
     avg(amount) as avg_order
 )
 order by -revenue
-take 20
+limit 20
 ```
 
 **SQL (PostgreSQL):**
@@ -604,7 +604,7 @@ group by product_category (
     max(amount) as max_order_value
 )
 order by -total_revenue
-take 10
+limit 10
 ```
 
 **SQL (PostgreSQL):**
@@ -640,7 +640,7 @@ from users
 where status == "active" 
 group by country ( # as total_users ) 
 order by -total_users 
-take 10
+limit 10
 """
 
 sql = compile(asql_query, dialect="postgres")

@@ -869,7 +869,7 @@ ASQL should:
 - Keep supporting `interval "7 days"` syntax
 - Keep `date_trunc()`, `datediff()`, `dateadd()` pass-through
 - New syntax is additive, not replacing
-- Actual column names take precedence over pattern interpretation
+- Actual column names limit precedence over pattern interpretation
 
 ---
 

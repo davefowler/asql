@@ -51,7 +51,7 @@ A complete VS Code extension for ASQL, inspired by PRQL's VS Code tooling, provi
 ## Features Implemented
 
 ### Syntax Highlighting
-- ✅ Keywords: `from`, `where`, `select`, `group by`, `order by`, `take`, `join`, `with`
+- ✅ Keywords: `from`, `where`, `select`, `group by`, `order by`, `limit`, `join`, `with`
 - ✅ Operators: `==`, `!=`, `in`, `not in`, `and`, `or`, `not`
 - ✅ Functions: `sum()`, `avg()`, `count()`, `month()`, etc.
 - ✅ Literals: Strings, numbers, booleans

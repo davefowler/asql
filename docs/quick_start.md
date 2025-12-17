@@ -142,12 +142,12 @@ order by -amount, created_at          # Order by amount DESC, then created_at AS
 
 ### TAKE - Limit results
 
-Use `take` to limit the number of rows:
+Use `limit` to limit the number of rows:
 
 ```asql
 from users
 order by -created_at
-take 10
+limit 10
 ```
 
 ## Date Functions
@@ -402,7 +402,7 @@ from orders
       # as order_count
   )
   order by -revenue
-  take 10
+  limit 10
 ```
 
 This query:

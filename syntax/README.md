@@ -21,7 +21,7 @@ A standalone CodeMirror mode for ASQL syntax highlighting.
 
 ### Features
 
-- **Keywords**: `from`, `where`, `select`, `project`, `group by`, `order by`, `take`, `join`, `with`, etc.
+- **Keywords**: `from`, `where`, `select`, `project`, `group by`, `order by`, `limit`, `join`, `with`, etc.
 - **Functions**: `sum`, `avg`, `count`, `min`, `max`, `month`, `year`, `date_trunc`, etc.
 - **Operators**: `==`, `!=`, `<=`, `>=`, `<`, `>`, `+`, `-`, `*`, `/`, `%`, `|`
 - **Strings**: Single and double quoted strings with escape sequences

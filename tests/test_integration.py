@@ -113,7 +113,7 @@ class TestSQLStructure:
     
     def test_limit_structure(self) -> None:
         """Test LIMIT SQL structure."""
-        asql = "from users take 10"
+        asql = "from users limit 10"
         sql = compile(asql)
         sql_upper = sql.upper()
         

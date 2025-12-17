@@ -195,7 +195,7 @@ def test_compile_order_by_column_multiple() -> None:
 
 def test_compile_take() -> None:
     """Test compiling TAKE/LIMIT."""
-    asql = "from users take 10"
+    asql = "from users limit 10"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "LIMIT" in sql_upper
@@ -204,7 +204,7 @@ def test_compile_take() -> None:
 
 def test_compile_take_with_order_by() -> None:
     """Test compiling TAKE with ORDER BY."""
-    asql = "from users order by -total_users take 10"
+    asql = "from users order by -total_users limit 10"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "ORDER BY" in sql_upper
@@ -214,7 +214,7 @@ def test_compile_take_with_order_by() -> None:
 
 def test_compile_group_by_order_by_take() -> None:
     """Test compiling GROUP BY, ORDER BY, and TAKE together."""
-    asql = "from users group by country ( # as total_users ) order by -total_users take 10"
+    asql = "from users group by country ( # as total_users ) order by -total_users limit 10"
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "GROUP BY" in sql_upper

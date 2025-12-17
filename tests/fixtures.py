@@ -71,11 +71,11 @@ VALID_ASQL_QUERIES = [
     "from users order by month(created_at)",
     
     # TAKE
-    "from users take 10",
+    "from users limit 10",
     
     # Complex pipelines
-    'from users where status == "active" group by country ( # as total_users ) order by -total_users take 10',
-    'from sales where status == "completed" group by region ( sum(amount) as revenue ) order by -revenue take 5',
+    'from users where status == "active" group by country ( # as total_users ) order by -total_users limit 10',
+    'from sales where status == "completed" group by region ( sum(amount) as revenue ) order by -revenue limit 5',
 ]
 
 # Queries that should fail with specific errors

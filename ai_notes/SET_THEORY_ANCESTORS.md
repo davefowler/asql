@@ -745,5 +745,5 @@ The key is adopting these ideas in ways that feel natural to SQL users while pro
 - Date & Darwen, "The Third Manifesto" (introducing Tutorial D)
 - Stonebraker, M. "The Design of INGRES" (1976)
 - Wikipedia: QUEL, SETL, Datalog, Alpha, QBE
-- "Out of the Tar Pit" (Moseley & Marks) - modern take on relational programming
+- "Out of the Tar Pit" (Moseley & Marks) - modern limit on relational programming
 
