@@ -393,3 +393,127 @@ class ClausesMixin:
             return result
         
         return result
+
+    def _transform_string_matching_operators(self, text: str) -> str:
+        """
+        Transform string matching operators to SQL LIKE/ILIKE.
+        
+        contains "pattern" → LIKE '%pattern%'
+        icontains "pattern" → ILIKE '%pattern%' (or LOWER(column) LIKE LOWER('%pattern%'))
+        starts with "pattern" → LIKE 'pattern%'
+        istarts with "pattern" → case-insensitive version
+        ends with "pattern" → LIKE '%pattern'
+        iends with "pattern" → case-insensitive version
+        matches "pattern" → LIKE pattern (with pattern as-is)
+        
+        Handles:
+        - Simple columns: email contains "gmail"
+        - Dotted columns: users.email contains "gmail"
+        - Function calls: upper(name) contains "JOHN"
+        - Complex expressions: coalesce(email, '') contains "gmail"
+        """
+        result = text
+        
+        # Pattern to match string literals (single or double quotes, handling escaped quotes)
+        string_pattern = r'(?:"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')'
+        
+        # Transform each operator type
+        operators = [
+            ('icontains', 'ILIKE', '%{}%'),
+            ('contains', 'LIKE', '%{}%'),
+            ('istarts with', 'ILIKE', '{}%'),
+            ('starts with', 'LIKE', '{}%'),
+            ('iends with', 'ILIKE', '%{}'),
+            ('ends with', 'LIKE', '%{}'),
+            ('matches', 'LIKE', '{}'),
+        ]
+        
+        for asql_op, sql_op, pattern_template in operators:
+            # Pattern: <expression> <operator> <string_literal>
+            # We need to find the operator, then work backwards for the expression
+            # and forwards for the string literal
+            # Handle multi-word operators by replacing spaces with \s+
+            op_pattern = asql_op.replace(' ', r'\s+')
+            pattern = rf'\b{op_pattern}\s+({string_pattern})'
+            
+            while True:
+                match = re.search(pattern, result, re.IGNORECASE)
+                if not match:
+                    break
+                
+                op_start = match.start()
+                op_end = match.end()
+                
+                # Find the start of the left-hand expression
+                # Work backwards from operator, skipping whitespace
+                expr_end = op_start
+                expr_start = expr_end
+                
+                # Find where the expression starts (work backwards)
+                i = expr_end - 1
+                paren_depth = 0
+                in_string = False
+                string_char = None
+                
+                while i >= 0:
+                    char = result[i]
+                    
+                    # Track string literals
+                    if char in ('"', "'") and (i == len(result) - 1 or result[i+1] != '\\'):
+                        if not in_string:
+                            in_string = True
+                            string_char = char
+                        elif char == string_char:
+                            in_string = False
+                            string_char = None
+                    
+                    if not in_string:
+                        if char == ')':
+                            paren_depth += 1
+                        elif char == '(':
+                            paren_depth -= 1
+                        elif paren_depth == 0:
+                            # Stop at logical operators, comparison operators, or clause keywords
+                            if char in (' ', '\t', '\n'):
+                                # Check if preceding word is a keyword
+                                remaining = result[:i+1]
+                                if re.search(r'\b(and|or|not|where|group|order|limit|having|qualify)\s*$', remaining, re.IGNORECASE):
+                                    expr_start = i + 1
+                                    break
+                            elif char in ('(', ',', '='):
+                                # Stop before these characters
+                                expr_start = i + 1
+                                break
+                    
+                    i -= 1
+                
+                if i < 0:
+                    expr_start = 0
+                
+                # Extract expression and string literal
+                expr = result[expr_start:expr_end].strip()
+                string_literal = match.group(1)  # The matched string literal
+                
+                # Remove quotes and escape SQL special characters
+                quote_char = string_literal[0]
+                pattern_value = string_literal[1:-1]  # Remove quotes
+                # Escape single quotes for SQL (double them)
+                pattern_value = pattern_value.replace("'", "''")
+                # Escape backslashes
+                pattern_value = pattern_value.replace('\\', '\\\\')
+                
+                # Apply pattern template (wrapping with % for contains/starts/ends)
+                sql_pattern = pattern_template.format(pattern_value)
+                
+                # Build SQL expression
+                # For case-insensitive operators, use ILIKE (PostgreSQL) or LOWER() LIKE LOWER() (others)
+                if sql_op == 'ILIKE':
+                    # Use ILIKE directly - SQLGlot will handle dialect translation
+                    sql_expr = f"{expr} ILIKE '{sql_pattern}'"
+                else:
+                    sql_expr = f"{expr} LIKE '{sql_pattern}'"
+                
+                # Replace in result
+                result = result[:expr_start] + sql_expr + result[op_end:]
+        
+        return result

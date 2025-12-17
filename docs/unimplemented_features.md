@@ -8,12 +8,12 @@ This document tracks features that are specified but not yet implemented, along 
 
 ## High Priority
 
-### 1. String Matching Operators
-**Status**: Not Implemented  
+### 1. String Matching Operators ✅
+**Status**: ✅ Implemented (December 2025)  
 **GitHub Issue**: [#36](https://github.com/davefowler/asql/issues/36)  
 **Spec Section**: 4.5 (String Matching)
 
-**Proposed Syntax**:
+**Implemented Syntax**:
 - `contains` / `icontains` - substring match (case-sensitive / case-insensitive)
 - `starts with` / `istarts with` - prefix match
 - `ends with` / `iends with` - suffix match
@@ -29,7 +29,7 @@ from users where filename ends with ".pdf"
 from users where email matches "%@gmail.com"  -- LIKE syntax, not regex
 ```
 
-**Workaround**: Use SQL `LIKE` syntax directly.
+**Implementation**: Transforms to SQL `LIKE` / `ILIKE` operators. Case-insensitive operators use `ILIKE` for PostgreSQL and dialects that support it.
 
 ---
 
