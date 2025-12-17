@@ -16,6 +16,7 @@
         
         html, body {
             width: 100%;
+            height: 100%;
             margin: 0;
             padding: 0;
             overflow-x: hidden;
@@ -27,12 +28,6 @@
             color: #333;
         }
         
-        .container {
-            max-width: none;
-            width: 100%;
-            margin: 0;
-            padding: 20px;
-        }
         
         h1 {
             text-align: center;
@@ -41,69 +36,78 @@
             font-weight: 400;
         }
         
-        .language-selectors {
+        .language-selector-inline {
             display: flex;
-            justify-content: center;
             align-items: center;
-            gap: 12px;
-            margin-bottom: 20px;
+            gap: 6px;
         }
         
-        .language-selector {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        
-        .language-selector label {
+        .language-selector-inline label {
             font-size: 12px;
             color: #666;
             font-weight: 500;
+            white-space: nowrap;
         }
         
-        .language-selector select {
-            padding: 8px 32px 8px 12px;
+        .language-selector-inline select {
+            padding: 4px 24px 4px 8px;
             border: 1px solid #dadce0;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 12px;
             background: white;
             color: #ea4335;
             cursor: pointer;
-            min-width: 160px;
+            min-width: 120px;
             appearance: none;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23ea4335' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
-            background-position: right 8px center;
+            background-position: right 6px center;
         }
         
-        .language-selector select:hover {
+        .language-selector-inline select:hover {
             border-color: #f28b82;
         }
         
-        .language-selector select:focus {
+        .language-selector-inline select:focus {
             outline: none;
             border-color: #ea4335;
         }
         
-        .swap-button {
-            background: none;
-            border: none;
+        .panel-header-swap {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 0 8px;
+            margin-top: 12px;
+        }
+        
+        .swap-button-inline {
+            background: white;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
             cursor: pointer;
-            padding: 8px;
-            margin-top: 20px;
+            padding: 6px;
             color: #666;
             display: flex;
             align-items: center;
             justify-content: center;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
         
-        .swap-button:hover {
+        .swap-button-inline:hover {
             color: #ea4335;
+            border-color: #ea4335;
+            background: #f8f9fa;
         }
         
         .swap-icon {
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
         }
         
         .playground {
@@ -113,12 +117,46 @@
             margin-bottom: 0;
             border: 1px solid #dadce0;
             border-radius: 8px;
-            overflow: hidden;
+            overflow: visible;
+            flex: 1;
+            min-height: 0;
+            position: relative;
+        }
+        
+        .container {
+            max-width: none;
+            width: 100%;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
         }
         
         @media (max-width: 968px) {
             .playground {
                 grid-template-columns: 1fr;
+            }
+            
+            .panel-header-swap {
+                position: static;
+                transform: none;
+                justify-content: center;
+                padding: 8px;
+                margin: 0;
+                border-top: 1px solid #dadce0;
+                border-bottom: 1px solid #dadce0;
+            }
+            
+            .container > div:first-child {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+            }
+            
+            .container > div:first-child > div {
+                width: 100%;
+                justify-content: space-between;
             }
         }
         
@@ -143,6 +181,7 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid #dadce0;
+            position: relative;
         }
         
         .panel-content {
@@ -155,17 +194,9 @@
         
         #input-editor, #output-editor {
             flex: 1;
-            min-height: 350px;
+            min-height: 0;
         }
         
-        
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 12px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
         
         button {
             padding: 10px 24px;
@@ -188,17 +219,6 @@
             color: #999;
             cursor: not-allowed;
             border-color: #dadce0;
-        }
-        
-        .translate-btn {
-            background: #ea4335;
-            color: white;
-            border: none;
-        }
-        
-        .translate-btn:hover {
-            background: #c5221f;
-            border-color: #c5221f;
         }
         
         .error {
@@ -348,7 +368,7 @@
         }
         
         .CodeMirror-scroll {
-            min-height: 350px;
+            min-height: 0;
         }
         
         .CodeMirror-focused {
@@ -569,52 +589,26 @@
             <h1 style="margin: 0;">🚀 ASQL Playground</h1>
             <div style="display: flex; gap: 8px;">
                 <button onclick="openExamplesModal()" style="color: #ea4335; background: white; font-weight: 500; padding: 8px 16px; border: 1px solid #ea4335; border-radius: 4px; cursor: pointer;">📚 Examples</button>
-                <a href="/docs/" style="color: #ea4335; text-decoration: none; font-weight: 500; padding: 8px 16px; border: 1px solid #ea4335; border-radius: 4px; display: inline-block;">← Back to Docs</a>
+                <a href="/docs/" style="color: #ea4335; text-decoration: none; font-weight: 500; padding: 8px 16px; border: 1px solid #ea4335; border-radius: 4px; display: inline-block;">Documentation</a>
             </div>
-        </div>
-        
-        <div class="language-selectors">
-            <div class="language-selector">
-                <label>From:</label>
-                <select id="from-dialect">
-                    <option value="asql">ASQL</option>
-                    <option value="">SQL (Auto-detect)</option>
-                    <option value="postgres">PostgreSQL</option>
-                    <option value="mysql">MySQL</option>
-                    <option value="bigquery">BigQuery</option>
-                    <option value="snowflake">Snowflake</option>
-                    <option value="redshift">Redshift</option>
-                    <option value="spark">Spark</option>
-                </select>
-            </div>
-            <button class="swap-button" onclick="swapLanguages()" title="Swap languages">
-                <svg class="swap-icon" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/>
-                </svg>
-            </button>
-            <div class="language-selector">
-                <label>To:</label>
-                <select id="to-dialect">
-                    <option value="asql">ASQL</option>
-                    <option value="">SQL (ANSI)</option>
-                    <option value="postgres">PostgreSQL</option>
-                    <option value="mysql">MySQL</option>
-                    <option value="bigquery">BigQuery</option>
-                    <option value="snowflake" selected>Snowflake</option>
-                    <option value="redshift">Redshift</option>
-                    <option value="spark">Spark</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="controls">
-            <button class="translate-btn" onclick="translateQuery()">Translate</button>
         </div>
 
         <div class="playground">
             <div class="panel" id="input-panel">
                 <div class="panel-header" id="input-header">
-                    <span id="input-title">Enter text</span>
+                    <div class="language-selector-inline">
+                        <label>From:</label>
+                        <select id="from-dialect">
+                            <option value="asql">ASQL</option>
+                            <option value="">SQL (Auto-detect)</option>
+                            <option value="postgres">PostgreSQL</option>
+                            <option value="mysql">MySQL</option>
+                            <option value="bigquery">BigQuery</option>
+                            <option value="snowflake">Snowflake</option>
+                            <option value="redshift">Redshift</option>
+                            <option value="spark">Spark</option>
+                        </select>
+                    </div>
                     <button class="copy-btn" onclick="copyInput()">Copy</button>
                 </div>
                 <div class="panel-content">
@@ -623,9 +617,29 @@
                 </div>
             </div>
             
+            <div class="panel-header-swap">
+                <button class="swap-button-inline" onclick="swapLanguages()" title="Swap languages">
+                    <svg class="swap-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/>
+                    </svg>
+                </button>
+            </div>
+            
             <div class="panel" id="output-panel">
                 <div class="panel-header" id="output-header">
-                    <span id="output-title">Translation</span>
+                    <div class="language-selector-inline">
+                        <label>To:</label>
+                        <select id="to-dialect">
+                            <option value="asql">ASQL</option>
+                            <option value="">SQL (ANSI)</option>
+                            <option value="postgres">PostgreSQL</option>
+                            <option value="mysql">MySQL</option>
+                            <option value="bigquery">BigQuery</option>
+                            <option value="snowflake" selected>Snowflake</option>
+                            <option value="redshift">Redshift</option>
+                            <option value="spark">Spark</option>
+                        </select>
+                    </div>
                     <button class="copy-btn" onclick="copyOutput()">Copy</button>
                 </div>
                 <div class="panel-content">
@@ -665,6 +679,8 @@
                 if (container) {
                     container.style.maxWidth = '100%';
                     container.style.padding = '10px';
+                    container.style.height = 'auto';
+                    container.style.minHeight = '100%';
                 }
                 // Hide back to docs link if embedded (it will be in parent frame)
                 const backLink = document.querySelector('a[href="/docs/"]');
@@ -708,6 +724,38 @@
         
         // Fetch examples on load
         fetchExamples();
+        
+        // ========== Examples Modal Functions (must be global for onclick handlers) ==========
+        
+        function openExamplesModal() {
+            const modal = document.getElementById('examples-modal');
+            if (modal) {
+                modal.classList.add('open');
+                document.body.style.overflow = 'hidden';
+                loadExamples();
+            }
+        }
+        
+        function closeExamplesModal(event) {
+            // If called from backdrop click, only close if clicking the modal backdrop itself
+            if (event && event.target !== document.getElementById('examples-modal')) {
+                return;
+            }
+            const modal = document.getElementById('examples-modal');
+            if (modal) {
+                modal.classList.remove('open');
+                document.body.style.overflow = '';
+            }
+        }
+        
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeExamplesModal();
+            }
+        });
+        
+        // ========== End Examples Modal Functions ==========
         
         // Wait for DOM and ensure ASQL mode is loaded
         document.addEventListener('DOMContentLoaded', function() {
@@ -907,11 +955,7 @@
             const fromDialect = document.getElementById('from-dialect').value;
             const toDialect = document.getElementById('to-dialect').value;
             
-            const fromLabel = fromDialect === 'asql' ? 'ASQL' : (fromDialect || 'SQL');
-            const toLabel = toDialect === 'asql' ? 'ASQL' : (toDialect || 'SQL');
-            
-            document.getElementById('input-title').textContent = fromLabel;
-            document.getElementById('output-title').textContent = toLabel;
+            // Titles are now handled by the selectors themselves, no need to update
             
             // Update CodeMirror mode based on dialect
             if (fromDialect === 'asql') {
@@ -927,33 +971,7 @@
             }
         }
         
-        // ========== Examples Modal ==========
-        
-        function openExamplesModal() {
-            const modal = document.getElementById('examples-modal');
-            modal.classList.add('open');
-            document.body.style.overflow = 'hidden';
-            loadExamples();
-        }
-        
-        function closeExamplesModal(event) {
-            // If called from backdrop click, only close if clicking the modal backdrop itself
-            if (event && event.target !== document.getElementById('examples-modal')) {
-                return;
-            }
-            const modal = document.getElementById('examples-modal');
-            modal.classList.remove('open');
-            document.body.style.overflow = '';
-        }
-        
-        // Close modal on Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                closeExamplesModal();
-            }
-        });
-        
-        // ========== End Examples Modal ==========
+        // ========== Examples Modal Functions (already defined globally above) ==========
         
         function swapLanguages() {
             const fromSelect = document.getElementById('from-dialect');
