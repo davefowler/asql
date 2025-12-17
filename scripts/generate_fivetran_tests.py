@@ -1,16 +1,28 @@
 #!/usr/bin/env python3
-"""Test all Fivetran dbt examples to ensure they compile correctly to ASQL."""
+"""Generate pytest tests from Fivetran dbt examples.
+
+This script tests all Fivetran dbt examples and generates a pytest file
+with the passing examples. Run from project root:
+
+    ./venv/bin/python scripts/generate_fivetran_tests.py
+"""
 
 import sys
 from pathlib import Path
-from playground import strip_jinja_templates
+
+# Add project root to path for imports
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from playground import strip_jinja_templates  # exported from playground package
 from asql.reverse_compiler import reverse_compile
 from asql.errors import ASQLCompilationError
 import re
 
-def test_fivetran_examples():
-    """Test all Fivetran examples."""
-    real_examples_dir = Path('examples/real')
+
+def generate_fivetran_tests():
+    """Test all Fivetran examples and generate pytest file."""
+    real_examples_dir = project_root / 'examples' / 'real'
     if not real_examples_dir.exists():
         print(f"Directory {real_examples_dir} does not exist")
         return 1
@@ -89,15 +101,15 @@ def test_fivetran_examples():
     
     # Save passing examples to a test file
     if passed:
-        test_file = Path('tests/test_fivetran_examples_compilation.py')
+        test_file = project_root / 'tests' / 'test_fivetran_examples_compilation.py'
         with open(test_file, 'w') as f:
             f.write('''"""Test that Fivetran examples compile correctly to ASQL.
 
-This test file is auto-generated. Run test_fivetran_examples.py to regenerate.
+This test file is auto-generated. Run scripts/generate_fivetran_tests.py to regenerate.
 """
 
 import pytest
-from playground import strip_jinja_templates
+from playground import strip_jinja_templates  # exported from playground package
 from asql.reverse_compiler import reverse_compile
 from asql.errors import ASQLCompilationError
 from pathlib import Path
@@ -136,7 +148,7 @@ def test_fivetran_example_compiles(filename):
     
     return 0 if len(failed) == 0 else 1
 
-if __name__ == '__main__':
-    sys.exit(test_fivetran_examples())
 
+if __name__ == '__main__':
+    sys.exit(generate_fivetran_tests())
 
