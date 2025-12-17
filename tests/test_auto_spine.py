@@ -430,7 +430,12 @@ class TestRollupSpineGeneration:
         pass
     
     def test_compile_with_rollup(self):
-        """Test that ROLLUP queries compile with auto_spine."""
+        """Test that standard SQL with ROLLUP compiles with auto_spine.
+        
+        Note: ASQL doesn't have native ROLLUP syntax yet. This tests that
+        raw SQL containing ROLLUP is correctly detected and handled by
+        auto-spine (adding NULL to spines + hierarchical filter).
+        """
         sql = compile(
             "SELECT region, month, SUM(amount) as total FROM orders GROUP BY ROLLUP(region, month)",
             dialect="postgres",
