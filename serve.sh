@@ -1,6 +1,36 @@
 #!/bin/bash
 # Start ASQL documentation server (MkDocs) and playground
 
+# More robust cleanup on macOS (uvicorn --reload spawns multiple processes)
+kill_port() {
+    local port="$1"
+    local pids
+
+    # Only kill LISTENers to avoid killing random clients
+    pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | tr '\n' ' ')"
+    if [ -z "$pids" ]; then
+        return 0
+    fi
+
+    echo "Killing processes on port $port: $pids"
+    # Try graceful first
+    kill $pids 2>/dev/null || true
+    sleep 0.5
+
+    # Anything still listening? Force kill.
+    pids="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null | tr '\n' ' ')"
+    if [ -n "$pids" ]; then
+        kill -9 $pids 2>/dev/null || true
+    fi
+}
+
+kill_patterns() {
+    # Kill orphaned reloaders that might not be holding the port yet/anymore
+    pkill -f "uvicorn .*playground:app .*--port 5001" 2>/dev/null || true
+    pkill -f "python -m mkdocs serve" 2>/dev/null || true
+    pkill -f "mkdocs serve" 2>/dev/null || true
+}
+
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
@@ -15,15 +45,18 @@ fi
 
 # Kill any existing processes on our ports
 echo "Cleaning up existing processes..."
-lsof -ti:8000 | xargs kill -9 2>/dev/null
-lsof -ti:5001 | xargs kill -9 2>/dev/null
+kill_patterns
+kill_port 8000
+kill_port 5001
 sleep 1
 
 # Function to cleanup background processes on exit
 cleanup() {
     echo ""
     echo "Shutting down servers..."
-    kill $MKDOCS_PID $PLAYGROUND_PID 2>/dev/null
+    # Kill the process groups (helps with uvicorn --reload)
+    kill -- -$MKDOCS_PID 2>/dev/null || true
+    kill -- -$PLAYGROUND_PID 2>/dev/null || true
     exit 0
 }
 
