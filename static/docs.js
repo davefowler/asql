@@ -1,5 +1,13 @@
 // ASQL Documentation JavaScript - Dialect Tabs
 
+function getPlaygroundBaseUrl() {
+    const fromWindow =
+        (typeof window !== 'undefined' && window.__ASQL_PLAYGROUND_URL__)
+            ? String(window.__ASQL_PLAYGROUND_URL__)
+            : 'https://play.analyticsql.com';
+    return fromWindow.replace(/\/+$/, '');
+}
+
 // Initialize dialect tracking from localStorage
 function initDialectTracking() {
     // Get or initialize dialects tracking object
@@ -66,7 +74,7 @@ function openInPlayground(blockId) {
     const encodedQuery = encodeURIComponent(currentCode);
     
     // Build URL
-    const url = `https://play.analyticsql.com?d_f=${fromDialect}&d_t=${toDialect}&sql_f=${encodedQuery}`;
+    const url = `${getPlaygroundBaseUrl()}?d_f=${fromDialect}&d_t=${toDialect}&sql_f=${encodedQuery}`;
     
     // Open in new tab
     window.open(url, '_blank');

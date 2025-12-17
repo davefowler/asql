@@ -39,12 +39,12 @@ If you’re used to leaning on dbt macros for common transformations, the nice s
 |-----------|------|-------|
 | `{{ dbt_utils.star() }}` | Default behavior | ASQL returns all columns by default |
 | `{{ dbt_utils.star(except=[...]) }}` | `except col1, col2` | Exclude columns |
-| `{{ dbt_utils.surrogate_key() }}` | `key(col1, col2)` | Generate surrogate key |
-| `{{ dbt_utils.pivot() }}` | `pivot value by category` | Rows to columns |
+| `{{ dbt_utils.generate_surrogate_key([...]) }}` | `key(col1, col2)` | **Planned** (inspired by dbt macros) |
+| `{{ dbt_utils.pivot() }}` | `pivot ... values ('A', 'B')` | Rows to columns (static values list) |
 | `{{ dbt_utils.unpivot() }}` | `unpivot ... into ...` | Columns to rows |
-| `{{ dbt_utils.date_spine() }}` | `from date_spine(...)` | Generate date sequence |
+| `{{ dbt_utils.date_spine() }}` | auto-spine | Gap filling is automatic for date GROUP BYs |
 | `{{ dbt_utils.deduplicate() }}` | `per id first by -date` | Remove duplicates |
-| `{{ dbt_utils.union_relations() }}` | `from union(t1, t2)` | Union with alignment |
+| `{{ dbt_utils.union_relations() }}` | (future) | Not implemented yet |
 
 ---
 
@@ -73,6 +73,8 @@ except password_hash, ssn
 
 Use `key(col1, col2, ...)` to build a stable surrogate key from one or more columns.
 
+**Status**: Planned (inspired by dbt macros). See the repo’s GitHub issues for the current implementation status.
+
 ```asql
 from orders
 select *, key(user_id, order_id) as order_key
@@ -94,13 +96,9 @@ from events
 per user_id, event_type first by -created_at
 ```
 
-### `date_spine()` → `from date_spine(...)`
+### `date_spine()` → auto-spine (default)
 
-Generate a date series directly, then join/merge it into your pipeline (and combine with `??` defaults when needed).
-
-```asql
-from date_spine(start = '2020-01-01', end = today(), grain = day)
-```
+ASQL’s compiler already provides **auto-spine** (enabled by default) which gap-fills date group-bys when you filter to a range.
 
 ### `pivot()` / `unpivot()` → `pivot` / `unpivot`
 
@@ -118,21 +116,13 @@ from monthly_data
 unpivot jan, feb, mar into month, value
 ```
 
-### `union_relations()` → `from union(...)`
+### `union_relations()` → (future) `from union(...)`
 
-Union a list of relations with a single readable call:
+**Not implemented yet**. (This is a plausible future convenience wrapper for schema-aligned unions.)
 
-```asql
-from union(users_2022, users_2023, users_2024)
-```
+### `safe_cast()` → (future) `::type?` (and defaults with `??`)
 
-### `safe_cast()` → `::type?` (and defaults with `??`)
-
-Safe casts return NULL on failure, and you can immediately default them:
-
-```asql
-select value::integer? ?? 0 as value_int
-```
+Safe casts are **not implemented yet**. For now, use dialect-specific SQL (`TRY_CAST`, `SAFE_CAST`) directly.
 
 ### `coalesce()` → `??`
 
@@ -174,6 +164,8 @@ first_name ?? nickname ?? 'Unknown'
 === "ASQL"
     ```asql
     from orders
+    -- Planned helper inspired by dbt_utils.generate_surrogate_key
+    -- (See GitHub issues)
     select *, key(user_id, order_id) as order_key
     ```
 
@@ -192,7 +184,13 @@ first_name ?? nickname ?? 'Unknown'
 
 === "ASQL"
     ```asql
-    from date_spine(start = '2020-01-01', end = today(), grain = day)
+    -- Auto-spine fills gaps automatically for date GROUP BYs
+    -- when you filter to a date range.
+    from orders
+    where created_at >= @2024-01-01 and created_at < @2025-01-01
+    group by month(created_at) as month (
+      sum(amount) ?? 0 as revenue
+    )
     ```
 
 ---
@@ -280,7 +278,8 @@ first_name ?? nickname ?? 'Unknown'
 
 === "ASQL"
     ```asql
-    from union(users_2022, users_2023, users_2024)
+    -- Not implemented yet (future convenience wrapper)
+    -- from union(users_2022, users_2023, users_2024)
     ```
 
 ---
@@ -299,11 +298,9 @@ first_name ?? nickname ?? 'Unknown'
 
 === "ASQL"
     ```asql
-    -- Safe cast with ? suffix (returns NULL on failure)
-    select value::integer? as value_int
-
-    -- With default
-    select value::integer? ?? 0 as value_int
+    -- Not implemented yet; use dialect-specific SQL for now
+    -- TRY_CAST(value AS INTEGER)  -- Snowflake
+    -- SAFE_CAST(value AS INT64)   -- BigQuery
     ```
 
 ---

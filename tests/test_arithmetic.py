@@ -147,15 +147,10 @@ class TestArithmeticOperators:
         parsed = sqlglot.parse_one(sql)
         select = parsed.find(exp.Select)
         assert select is not None
-        # Find SUM aggregation
-        sum_found = False
-        for expr in select.expressions:
-            if isinstance(expr, exp.AggFunc) and expr.this.upper() == "SUM":
-                sum_found = True
-                # Verify multiplication is in the argument
-                assert "*" in expr.sql(), "Multiplication not found in SUM argument"
-                break
-        assert sum_found, "SUM aggregation not found"
+        sum_expr = select.find(exp.Sum) or select.find(exp.AggFunc)
+        assert sum_expr is not None, "SUM aggregation not found"
+        # Verify multiplication is in the argument
+        assert "*" in sum_expr.sql(), "Multiplication not found in SUM argument"
     
     def test_complex_arithmetic_expression(self) -> None:
         """Test complex arithmetic expression."""

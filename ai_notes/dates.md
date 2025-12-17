@@ -877,7 +877,7 @@ ASQL should:
 
 - `UNDERSCORE_SPACE_PRINCIPLE.md`: **Implementation plan for underscore/space flexibility** (prerequisite for date features)
 - `universal_function_shorthand.md`: The `func column` / `func_column` pattern
-- `SPEC.md` Section 8: Dates & Time
+- `docs/spec.md` Section 8: Dates & Time
 - `UNHANDLED_SQL_FUNCTIONS.md`: Date functions section
 - `examples/pairs/05_date_time_analysis.asql`: Current date examples
 
@@ -1121,7 +1121,7 @@ When implementing date features, ensure proper documentation is added:
 
 ### 13.1 For Each New Feature
 
-1. **SPEC.md** - Add to Section 8 (Dates & Time):
+1. **docs/spec.md** - Update Section 8 (Dates & Time):
    - Syntax definition
    - Examples
    - Edge cases
@@ -1145,10 +1145,10 @@ For each date feature, document:
 
 | Item | Location | Description |
 |------|----------|-------------|
-| Syntax | SPEC.md | Formal syntax definition |
+| Syntax | docs/spec.md | Formal syntax definition |
 | Examples | docs/spec.md | 2-3 usage examples |
-| Edge cases | SPEC.md | What happens with nulls, invalid dates, etc. |
-| Dialect differences | SPEC.md | How it compiles to different SQL dialects |
+| Edge cases | docs/spec.md | What happens with nulls, invalid dates, etc. |
+| Dialect differences | docs/spec.md | How it compiles to different SQL dialects |
 | Error messages | Code | Clear errors for invalid syntax |
 | Tests | tests/ | Unit tests covering happy path and edge cases |
 

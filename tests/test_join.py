@@ -23,7 +23,8 @@ class TestJoinOperators:
         parsed = sqlglot.parse_one(sql)
         join = parsed.find(exp.Join)
         assert join is not None, "JOIN expression not found"
-        assert join.kind == "INNER" or join.kind is None, "Expected INNER JOIN"
+        # sqlglot represents INNER joins with empty kind/side (LEFT joins set join.side="LEFT")
+        assert join.side in (None, ""), f"Expected INNER JOIN, got side={join.side!r}"
         # Verify ON condition
         assert join.args.get("on") is not None, "ON condition not found in JOIN"
     
@@ -39,7 +40,7 @@ class TestJoinOperators:
         parsed = sqlglot.parse_one(sql)
         join = parsed.find(exp.Join)
         assert join is not None, "JOIN expression not found"
-        assert join.kind.upper() == "LEFT", f"Expected LEFT JOIN, got {join.kind}"
+        assert (join.side or "").upper() == "LEFT", f"Expected LEFT JOIN, got side={join.side!r}"
     
     def test_right_join_operator(self) -> None:
         """Test ?& operator for RIGHT JOIN."""
@@ -113,7 +114,7 @@ class TestChainedJoins:
         
         # Verify multiple JOINs in structure
         parsed = sqlglot.parse_one(sql)
-        joins = parsed.find_all(exp.Join)
+        joins = list(parsed.find_all(exp.Join))
         assert len(joins) >= 2, f"Expected at least 2 JOIN expressions, got {len(joins)}"
     
     def test_mixed_join_types(self) -> None:

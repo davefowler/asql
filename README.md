@@ -124,7 +124,7 @@ This starts:
 - 📚 [Comprehensive Examples](docs/examples.md) - Extensive examples with SQL output
 - 🎮 [Interactive Playground](docs/playground.md) - Try ASQL in your browser
 - 🏗️ [Architecture](ARCHITECTURE.md) - System design and implementation details
-- 📋 [Language Specification](SPEC.md) - Complete ASQL syntax reference
+- 📋 [Language Specification](docs/spec.md) - Complete ASQL syntax reference
 
 ## Interactive Playground
 
@@ -247,13 +247,13 @@ from users limit 10
 pip install -e ".[dev]"
 
 # Run tests
-pytest
+./venv/bin/pytest tests/
 
 # Run tests with coverage
-pytest --cov=asql --cov-report=html
+./venv/bin/pytest tests/ --cov=asql --cov-report=html
 
 # Run specific test file
-pytest tests/test_compiler.py
+./venv/bin/pytest tests/test_compiler.py
 ```
 
 ## Project Structure
