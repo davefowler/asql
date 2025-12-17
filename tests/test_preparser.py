@@ -603,20 +603,6 @@ class TestPivot:
         assert "SUM(CASE WHEN" in result.upper()
         assert "AS A" in result.upper()
         assert "AS B" in result.upper()
-    
-    def test_pivot_dynamic_subquery(self):
-        """pivot with subquery in values clause (dynamic pivot)."""
-        result = preparse_asql("from sales pivot sum(amount) by category values (from sales select distinct category)")
-        assert "CASE WHEN" in result.upper()
-        assert "__pivot_values__" in result.lower() or "__pivot_values_0__" in result.lower()
-        assert "category" in result.lower()
-    
-    def test_pivot_dynamic_compiled(self):
-        """dynamic pivot compiles correctly."""
-        from asql.compiler import compile
-        result = compile("from sales pivot sum(amount) by category values (from sales select distinct category)", dialect="postgres")
-        assert "SUM(CASE WHEN" in result.upper() or "CASE WHEN" in result.upper()
-        assert "WITH" in result.upper()  # Should have CTE
 
 
 if __name__ == "__main__":

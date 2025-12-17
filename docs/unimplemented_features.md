@@ -36,18 +36,29 @@ from users where email matches "%@gmail.com"  -- LIKE syntax, not regex
 ## Medium Priority
 
 ### 2. Dynamic Pivot
-**Status**: ✅ Implemented  
+**Status**: Not Implemented (Not Feasible in Pure SQL)  
 **GitHub Issue**: [#37](https://github.com/davefowler/asql/issues/37)  
 **Spec Section**: 13.3 (Pivot)
 
 **What it is**: Pivot where the values come from a subquery instead of being hardcoded at compile time.
 
-**Implementation**: Dynamic pivot is now supported using subqueries in the values clause:
+**Current limitation**: Pivot requires explicit values:
 ```asql
-pivot sum(amount) by status values (from orders select distinct status)
+pivot sum(amount) by status values ('pending', 'shipped', 'delivered')
 ```
 
-The implementation compiles the subquery to SQL and uses it in a CTE to generate pivot expressions. Note that pure SQL compilation has limitations - individual columns per value require knowing values at compile time. For full dynamic pivoting with individual columns, consider using warehouse-specific PIVOT operators (e.g., Snowflake's `PIVOT` operator).
+**Why not implemented**: Pure SQL compilation cannot dynamically generate individual `CASE` expressions for each pivot value without knowing those values at compile time. To create individual columns (one per pivot value), the compiler would need to:
+1. Execute the subquery at compile time (requires database connection)
+2. Generate individual CASE expressions for each returned value
+
+This is fundamentally incompatible with pure SQL compilation, which generates SQL without executing queries.
+
+**Recommended approach**: Use warehouse-specific PIVOT operators for true dynamic pivoting:
+- **Snowflake**: `PIVOT` operator supports dynamic values
+- **SQL Server**: `PIVOT` operator with dynamic SQL
+- **PostgreSQL/Others**: Use raw SQL with dynamic SQL generation or application-level pivoting
+
+**Workaround**: Use static pivot with explicit values, or use raw SQL/warehouse-specific syntax.
 
 ---
 
