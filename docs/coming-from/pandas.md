@@ -1,6 +1,24 @@
 # ASQL for pandas Users
 
-If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chaining approach. The key difference: ASQL compiles to SQL and runs at warehouse scale, while pandas runs in memory.
+If you’re coming from pandas, ASQL should feel immediately familiar: you build a result by chaining small, readable steps.
+
+The big difference is execution model: **ASQL compiles to SQL and runs in your warehouse**, so you get the scalability of SQL with a workflow that feels a lot like a well-written pandas pipeline.
+
+## What will feel familiar
+
+- **Chaining**: each line is a “next transform”, like `df[...]`, `.assign(...)`, `.groupby(...)`, `.merge(...)`.
+- **Column expressions**: write derived columns as expressions (no extra boilerplate).
+- **Groupby mental model**: `group by ... (aggregations...)` mirrors `groupby().agg(...)`.
+- **Common helpers baked in**: `fillna`-style defaults (`??`), dedupe patterns (`per ... first by`), pivot/melt (`pivot`/`unpivot`).
+
+## A quick way to translate pandas → ASQL
+
+- **Start** with `from <table>`
+- **Filters** become `where ...`
+- **assign / mutate** becomes `select *, <expr> as new_col`
+- **groupby/agg** becomes `group by ... ( ... )`
+- **merge** becomes `&` / `&?` joins
+- **sort/head** becomes `order by ...` then `limit ...`
 
 ## Quick Reference
 
