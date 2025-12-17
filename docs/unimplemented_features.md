@@ -63,8 +63,8 @@ The subquery is compiled to a CTE and used to generate pivot expressions. See `d
 **Implementation**: The `cohort by` operator is now available, simplifying cohort queries from 50+ lines of SQL to 3-5 lines of ASQL.
 
 **Documentation**:
-- [Spec: Cohort Analysis](../spec.md#14-cohort-analysis)
-- [Syntax Guide: Cohorts](../syntax/cohorts.md)
+- [Spec: Cohort Analysis](spec.md#14-cohort-analysis)
+- [Syntax Guide: Cohorts](syntax/cohorts.md)
 
 **Example**:
 ```asql

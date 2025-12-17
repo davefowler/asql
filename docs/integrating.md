@@ -625,6 +625,6 @@ pipeline.close()
 ## Next Steps
 
 - Check out the [Language Specification](spec.md) for complete syntax reference
-- See [Examples](EXAMPLES.md) for more query patterns
+- See [Examples](examples.md) for more query patterns
 - Review [Architecture](architecture.md) for implementation details
 
