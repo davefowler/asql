@@ -127,10 +127,22 @@
 }
 
 /* =============================================
-   FORCE SIDEBAR TO ALWAYS SHOW (tablet and up)
+   SIMPLIFIED RESPONSIVE BEHAVIOR
    ============================================= */
 
-@media screen and (min-width: 768px) {
+/* Mobile: Hide sidebar, show hamburger */
+@media screen and (max-width: 959px) {
+    .md-sidebar--primary {
+        display: none !important;
+    }
+    
+    .md-sidebar--secondary {
+        display: none !important;
+    }
+}
+
+/* Desktop: Always show sidebar, never collapse */
+@media screen and (min-width: 960px) {
     /* Hide hamburger menu */
     .md-header__button[for="__drawer"] {
         display: none !important;
@@ -145,7 +157,8 @@
         width: 15rem !important;
         height: auto !important;
         max-height: 100vh;
-        overflow-y: auto;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
         transform: none !important;
         opacity: 1 !important;
         visibility: visible !important;
@@ -167,6 +180,7 @@
         box-shadow: none !important;
         transform: none !important;
         transition: none !important;
+        overflow: visible !important;
     }
     
     /* Hide drawer overlay */
@@ -175,8 +189,11 @@
     }
     
     /* Hide back/close buttons used in drawer mode */
-    .md-nav__title[for="__drawer"],
-    .md-nav__icon {
+    .md-nav__title[for="__drawer"] {
+        display: none !important;
+    }
+    
+    .md-nav__icon--prev {
         display: none !important;
     }
     
@@ -211,6 +228,51 @@
    NAVIGATION STYLING
    ============================================= */
 
+/* Fix double scrollbar issue - ensure single scroll container */
+.md-sidebar--primary {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+.md-nav--primary {
+    overflow: visible !important;
+}
+
+.md-nav--primary .md-nav__list {
+    overflow: visible !important;
+}
+
+/* Navigation visibility - FORCE EVERYTHING TO SHOW */
+@media screen and (min-width: 960px) {
+    /* Force ALL elements in primary nav to be visible */
+    .md-nav--primary,
+    .md-nav--primary *,
+    .md-nav--primary .md-nav__list,
+    .md-nav--primary .md-nav__item,
+    .md-nav--primary .md-nav__link,
+    .md-nav--primary .md-nav__title {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        transform: none !important;
+        position: static !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    
+    /* Except hide nested navs by default (collapse behavior) */
+    .md-nav--primary .md-nav__item > .md-nav {
+        display: none !important;
+    }
+    
+    /* Show nested nav when toggle checked OR item is active */
+    .md-nav--primary .md-nav__toggle:checked ~ .md-nav,
+    .md-nav--primary .md-nav__item--active > .md-nav {
+        display: block !important;
+    }
+}
+
 /* Active nav items */
 .md-nav__link--active {
     color: var(--asql-red) !important;
@@ -220,16 +282,9 @@
 .md-nav__item--active > .md-nav__link {
     color: var(--asql-red) !important;
     font-weight: 600;
-}
-
-/* Expanded sections show their children */
-.md-nav__item--active .md-nav {
-    display: block;
-}
-
-/* All nav items visible */
-.md-nav--primary .md-nav__item {
-    display: block;
+    background-color: rgba(197, 48, 48, 0.08);
+    border-left: 3px solid var(--asql-red);
+    padding-left: calc(1rem - 3px);
 }
 
 

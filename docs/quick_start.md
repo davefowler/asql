@@ -1,6 +1,6 @@
-# Analytic SQL Syntax
+# Quick Start
 
-Learn the syntax of Analytic SQL. This guide covers all the language features you need to write powerful analytic queries.
+Get started with Analytic SQL. This guide covers the essential language features you need to write powerful analytic queries.
 
 ## Table of Contents
 
