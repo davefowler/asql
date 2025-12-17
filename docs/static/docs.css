@@ -126,7 +126,72 @@
     padding-left: calc(1rem - 3px);
 }
 
-/* Sidebar padding - give content more room */
+/* =============================================
+   FORCE SIDEBAR TO ALWAYS SHOW (tablet and up)
+   ============================================= */
+
+@media screen and (min-width: 768px) {
+    /* Hide hamburger menu */
+    .md-header__button[for="__drawer"] {
+        display: none !important;
+    }
+    
+    /* Force primary sidebar to always show */
+    .md-sidebar--primary {
+        display: block !important;
+        position: sticky !important;
+        top: 0;
+        left: 0 !important;
+        width: 15rem !important;
+        height: auto !important;
+        max-height: 100vh;
+        overflow-y: auto;
+        transform: none !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        z-index: 1;
+    }
+    
+    /* Override drawer transform/animation */
+    .md-sidebar--primary[data-md-state="lock"] {
+        transform: none !important;
+    }
+    
+    /* Force nav to show as normal (not drawer) */
+    .md-nav--primary {
+        position: static !important;
+        width: auto !important;
+        height: auto !important;
+        max-height: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        transform: none !important;
+        transition: none !important;
+    }
+    
+    /* Hide drawer overlay */
+    .md-overlay {
+        display: none !important;
+    }
+    
+    /* Hide back/close buttons used in drawer mode */
+    .md-nav__title[for="__drawer"],
+    .md-nav__icon {
+        display: none !important;
+    }
+    
+    /* Adjust main content to account for sidebar */
+    .md-main__inner {
+        display: flex;
+    }
+    
+    .md-content {
+        flex: 1;
+        min-width: 0;
+    }
+}
+
+/* Sidebar and content styling */
 .md-sidebar {
     padding-left: 0.6rem;
     padding-right: 0.6rem;
@@ -137,16 +202,16 @@
     padding-right: 0.8rem;
 }
 
-/* Increase content max-width for more space */
-.md-content {
-    --md-content-max-width: 75rem;
-}
-
+/* Content max-width */
 .md-content__inner {
-    max-width: 100%;
+    max-width: 52rem;
 }
 
-/* Ensure active navigation items are clearly highlighted */
+/* =============================================
+   NAVIGATION STYLING
+   ============================================= */
+
+/* Active nav items */
 .md-nav__link--active {
     color: var(--asql-red) !important;
     font-weight: 600;
@@ -157,12 +222,12 @@
     font-weight: 600;
 }
 
-/* Ensure parent sections of active items are visible and expanded */
+/* Expanded sections show their children */
 .md-nav__item--active .md-nav {
     display: block;
 }
 
-/* Make sure top-level sections are always visible */
+/* All nav items visible */
 .md-nav--primary .md-nav__item {
     display: block;
 }
