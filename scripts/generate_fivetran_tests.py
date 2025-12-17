@@ -151,3 +151,4 @@ def test_fivetran_example_compiles(filename):
 
 if __name__ == '__main__':
     sys.exit(generate_fivetran_tests())
+

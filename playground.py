@@ -406,7 +406,7 @@ PLAYGROUND_HTML = """
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 0;
-            margin-bottom: 20px;
+            margin-bottom: 0;
             border: 1px solid #dadce0;
             border-radius: 8px;
             overflow: hidden;
@@ -458,7 +458,7 @@ PLAYGROUND_HTML = """
         .controls {
             display: flex;
             gap: 10px;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             flex-wrap: wrap;
             justify-content: center;
         }
@@ -506,45 +506,103 @@ PLAYGROUND_HTML = """
             font-size: 13px;
         }
         
-        .examples {
-            background: white;
-            border: 1px solid #dadce0;
-            border-radius: 8px;
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            overflow-y: auto;
             padding: 20px;
+            box-sizing: border-box;
+        }
+        
+        .modal.open {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
             margin-top: 20px;
         }
         
-        .examples h2 {
-            margin-bottom: 15px;
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid #dadce0;
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 1;
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 500;
             color: #333;
-            font-weight: 400;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+            line-height: 1;
+        }
+        
+        .modal-close:hover {
+            color: #333;
+        }
+        
+        .modal-body {
+            padding: 16px 20px;
         }
         
         .example-section {
-            margin-bottom: 25px;
+            margin-bottom: 20px;
         }
         
         .example-section h3 {
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             color: #333;
-            font-size: 16px;
-            font-weight: 400;
+            font-size: 15px;
+            font-weight: 500;
+        }
+        
+        .example-section p {
+            margin-bottom: 10px;
         }
         
         .example-list {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 8px;
         }
         
         .example-btn {
-            padding: 8px 12px;
+            padding: 8px 10px;
             background: white;
             border: 1px solid #dadce0;
             border-radius: 4px;
             cursor: pointer;
             text-align: left;
-            font-size: 13px;
+            font-size: 12px;
             transition: all 0.2s;
         }
         
@@ -803,9 +861,12 @@ PLAYGROUND_HTML = """
 </head>
 <body>
     <div class="container">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
             <h1 style="margin: 0;">🚀 ASQL Playground</h1>
-            <a href="/docs/" style="color: #ea4335; text-decoration: none; font-weight: 500; padding: 8px 16px; border: 1px solid #ea4335; border-radius: 4px; display: inline-block;">← Back to Docs</a>
+            <div style="display: flex; gap: 8px;">
+                <button onclick="openExamplesModal()" style="color: #ea4335; background: white; font-weight: 500; padding: 8px 16px; border: 1px solid #ea4335; border-radius: 4px; cursor: pointer;">📚 Examples</button>
+                <a href="/docs/" style="color: #ea4335; text-decoration: none; font-weight: 500; padding: 8px 16px; border: 1px solid #ea4335; border-radius: 4px; display: inline-block;">← Back to Docs</a>
+            </div>
         </div>
         
         <div class="language-selectors">
@@ -841,96 +902,6 @@ PLAYGROUND_HTML = """
                 </select>
             </div>
         </div>
-        
-        <!-- ASQL Style Settings Panel -->
-        <div class="settings-panel" id="settings-panel">
-            <div class="settings-header" onclick="toggleSettings()">
-                <span>⚙️ ASQL Style Settings</span>
-                <span class="settings-toggle" id="settings-toggle">▼</span>
-            </div>
-            <div class="settings-content" id="settings-content">
-                <div class="settings-presets">
-                    <label>Presets:</label>
-                    <div class="preset-buttons">
-                        <button class="preset-btn active" id="preset-default" onclick="applyPreset('default')">Default</button>
-                        <button class="preset-btn" id="preset-sql-compat" onclick="applyPreset('sql-compat')">SQL Compatible</button>
-                        <button class="preset-btn" id="preset-concise" onclick="applyPreset('concise')">Concise</button>
-                    </div>
-                </div>
-                <div class="settings-grid">
-                    <div class="setting-group">
-                        <label>Equality:</label>
-                        <select id="setting-equality" onchange="updateStyleConfig()">
-                            <option value="single">= (SQL style)</option>
-                            <option value="double">== (Python style)</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label>Count:</label>
-                        <select id="setting-count" onchange="updateStyleConfig()">
-                            <option value="hash"># (shorthand)</option>
-                            <option value="function">count(*)</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label>Null coalescing:</label>
-                        <select id="setting-coalesce" onchange="updateStyleConfig()">
-                            <option value="operator">?? (operator)</option>
-                            <option value="function">coalesce()</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label>Descending:</label>
-                        <select id="setting-descending" onchange="updateStyleConfig()">
-                            <option value="prefix">-column (prefix)</option>
-                            <option value="suffix">column DESC</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label>Type cast:</label>
-                        <select id="setting-cast" onchange="updateStyleConfig()">
-                            <option value="double_colon">::TYPE</option>
-                            <option value="function">CAST()</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label>String quotes:</label>
-                        <select id="setting-quotes" onchange="updateStyleConfig()">
-                            <option value="double">"double"</option>
-                            <option value="single">'single'</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label>Sort keyword:</label>
-                        <select id="setting-sort-keyword" onchange="updateStyleConfig()">
-                            <option value="order_by">order by</option>
-                            <option value="sort">sort</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label>Week starts:</label>
-                        <select id="setting-week-start" onchange="updateStyleConfig()">
-                            <option value="monday">Monday (ISO)</option>
-                            <option value="sunday">Sunday (US)</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label>Squash empty CTEs:</label>
-                        <select id="setting-squash-empty-ctes" onchange="updateStyleConfig()">
-                            <option value="true">Yes (remove pass-through)</option>
-                            <option value="false">No (keep all)</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label>Keep final empty CTE:</label>
-                        <select id="setting-keep-final-empty-cte" onchange="updateStyleConfig()">
-                            <option value="false">No (squash all)</option>
-                            <option value="true">Yes (dbt style)</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <div class="controls">
             <button class="translate-btn" onclick="translateQuery()">Translate</button>
@@ -959,10 +930,18 @@ PLAYGROUND_HTML = """
                 </div>
             </div>
         </div>
-        
-        <div class="examples">
-            <h2>📚 Example Queries</h2>
-            <div id="examples-container"></div>
+    </div>
+    
+    <!-- Examples Modal -->
+    <div id="examples-modal" class="modal" onclick="closeExamplesModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2>📚 Example Queries</h2>
+                <button class="modal-close" onclick="closeExamplesModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="examples-container"></div>
+            </div>
         </div>
     </div>
     
@@ -1677,180 +1656,33 @@ group by region (
             }
         }
         
-        // ========== ASQL Style Settings ==========
+        // ========== Examples Modal ==========
         
-        // Style configuration state
-        let styleConfig = {
-            equality: 'single',
-            count: 'hash',
-            coalesce: 'operator',
-            descending: 'prefix',
-            cast: 'double_colon',
-            quotes: 'double',
-            sort_keyword: 'order_by',
-            week_start: 'monday',
-            squash_empty_ctes: true,
-            keep_final_empty_cte: false,
-        };
+        function openExamplesModal() {
+            const modal = document.getElementById('examples-modal');
+            modal.classList.add('open');
+            document.body.style.overflow = 'hidden';
+            loadExamples();
+        }
         
-        // Preset definitions
-        const STYLE_PRESETS = {
-            'default': {
-                equality: 'single',
-                count: 'hash',
-                coalesce: 'operator',
-                descending: 'prefix',
-                cast: 'double_colon',
-                quotes: 'double',
-                sort_keyword: 'order_by',
-                week_start: 'monday',
-                squash_empty_ctes: true,
-                keep_final_empty_cte: false,
-            },
-            'sql-compat': {
-                equality: 'single',
-                count: 'function',
-                coalesce: 'function',
-                descending: 'suffix',
-                cast: 'function',
-                quotes: 'single',
-                sort_keyword: 'order_by',
-                week_start: 'monday',
-                squash_empty_ctes: true,
-                keep_final_empty_cte: false,
-            },
-            'concise': {
-                equality: 'single',
-                count: 'hash',
-                coalesce: 'operator',
-                descending: 'prefix',
-                cast: 'double_colon',
-                quotes: 'double',
-                sort_keyword: 'sort',
-                week_start: 'monday',
-                squash_empty_ctes: true,
-                keep_final_empty_cte: false,
-            },
-        };
-        
-        // Load style config from localStorage
-        function loadStyleConfig() {
-            const saved = localStorage.getItem('asql_style_config');
-            if (saved) {
-                try {
-                    styleConfig = { ...styleConfig, ...JSON.parse(saved) };
-                    applyConfigToUI();
-                } catch (e) {
-                    console.warn('Failed to load style config:', e);
-                }
+        function closeExamplesModal(event) {
+            // If called from backdrop click, only close if clicking the modal backdrop itself
+            if (event && event.target !== document.getElementById('examples-modal')) {
+                return;
             }
+            const modal = document.getElementById('examples-modal');
+            modal.classList.remove('open');
+            document.body.style.overflow = '';
         }
         
-        // Save style config to localStorage
-        function saveStyleConfig() {
-            localStorage.setItem('asql_style_config', JSON.stringify(styleConfig));
-        }
-        
-        // Apply config to UI dropdowns
-        function applyConfigToUI() {
-            document.getElementById('setting-equality').value = styleConfig.equality;
-            document.getElementById('setting-count').value = styleConfig.count;
-            document.getElementById('setting-coalesce').value = styleConfig.coalesce;
-            document.getElementById('setting-descending').value = styleConfig.descending;
-            document.getElementById('setting-cast').value = styleConfig.cast;
-            document.getElementById('setting-quotes').value = styleConfig.quotes;
-            document.getElementById('setting-sort-keyword').value = styleConfig.sort_keyword;
-            document.getElementById('setting-week-start').value = styleConfig.week_start;
-            document.getElementById('setting-squash-empty-ctes').value = String(styleConfig.squash_empty_ctes);
-            document.getElementById('setting-keep-final-empty-cte').value = String(styleConfig.keep_final_empty_cte);
-
-            // Update preset button states
-            updatePresetButtons();
-        }
-
-        // Read config from UI dropdowns
-        function readConfigFromUI() {
-            styleConfig = {
-                equality: document.getElementById('setting-equality').value,
-                count: document.getElementById('setting-count').value,
-                coalesce: document.getElementById('setting-coalesce').value,
-                descending: document.getElementById('setting-descending').value,
-                cast: document.getElementById('setting-cast').value,
-                quotes: document.getElementById('setting-quotes').value,
-                sort_keyword: document.getElementById('setting-sort-keyword').value,
-                week_start: document.getElementById('setting-week-start').value,
-                squash_empty_ctes: document.getElementById('setting-squash-empty-ctes').value === 'true',
-                keep_final_empty_cte: document.getElementById('setting-keep-final-empty-cte').value === 'true',
-            };
-        }
-        
-        // Toggle settings panel
-        function toggleSettings() {
-            const content = document.getElementById('settings-content');
-            const toggle = document.getElementById('settings-toggle');
-            content.classList.toggle('open');
-            toggle.classList.toggle('open');
-        }
-        
-        // Apply preset
-        function applyPreset(presetName) {
-            if (STYLE_PRESETS[presetName]) {
-                styleConfig = { ...STYLE_PRESETS[presetName] };
-                applyConfigToUI();
-                saveStyleConfig();
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeExamplesModal();
             }
-        }
+        });
         
-        // Update preset button states
-        function updatePresetButtons() {
-            // Remove active class from all preset buttons
-            document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
-            
-            // Check if current config matches any preset
-            for (const [name, preset] of Object.entries(STYLE_PRESETS)) {
-                if (JSON.stringify(styleConfig) === JSON.stringify(preset)) {
-                    document.getElementById('preset-' + name).classList.add('active');
-                    return;
-                }
-            }
-        }
-        
-        // Called when any individual setting changes
-        function updateStyleConfig() {
-            readConfigFromUI();
-            saveStyleConfig();
-            updatePresetButtons();
-        }
-        
-        // Normalize ASQL to user's preferred style
-        async function normalizeASQL(asqlInput) {
-            if (!asqlInput || !asqlInput.trim()) return asqlInput;
-            
-            try {
-                const response = await fetch('/api/normalize', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        asql: asqlInput,
-                        style: styleConfig,
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    console.warn('Normalize error:', data.error);
-                    return asqlInput;  // Return original on error
-                }
-                
-                return data.asql;
-            } catch (error) {
-                console.warn('Normalize failed:', error);
-                return asqlInput;  // Return original on error
-            }
-        }
-        
-        // ========== End ASQL Style Settings ==========
+        // ========== End Examples Modal ==========
         
         function swapLanguages() {
             const fromSelect = document.getElementById('from-dialect');
@@ -1943,6 +1775,7 @@ group by region (
                         btn.appendChild(titleDiv);
                         btn.appendChild(descDiv);
                         btn.onclick = () => {
+                            closeExamplesModal();
                             // Set "from" to ASQL if not already set
                             const fromDialect = document.getElementById('from-dialect').value;
                             if (fromDialect !== 'asql') {
@@ -1994,6 +1827,7 @@ group by region (
                         btn.appendChild(titleDiv);
                         btn.appendChild(descDiv);
                         btn.onclick = () => {
+                            closeExamplesModal();
                             // Set "from" to ASQL if not already set
                             const fromDialect = document.getElementById('from-dialect').value;
                             if (fromDialect !== 'asql') {
@@ -2045,6 +1879,7 @@ group by region (
                         btn.appendChild(titleDiv);
                         btn.appendChild(descDiv);
                         btn.onclick = () => {
+                            closeExamplesModal();
                             // Set "from" to ASQL if not already set
                             const fromDialect = document.getElementById('from-dialect').value;
                             if (fromDialect !== 'asql') {
@@ -2093,6 +1928,7 @@ group by region (
                         btn.appendChild(titleDiv);
                         btn.appendChild(descDiv);
                         btn.onclick = () => {
+                            closeExamplesModal();
                             const fromDialect = document.getElementById('from-dialect').value;
                             if (fromDialect !== 'asql') {
                                 document.getElementById('from-dialect').value = 'asql';
@@ -2137,6 +1973,7 @@ group by region (
                         btn.appendChild(titleDiv);
                         btn.appendChild(descDiv);
                         btn.onclick = () => {
+                            closeExamplesModal();
                             const fromDialect = document.getElementById('from-dialect').value;
                             if (fromDialect !== 'asql') {
                                 document.getElementById('from-dialect').value = 'asql';
@@ -2181,6 +2018,7 @@ group by region (
                         btn.appendChild(titleDiv);
                         btn.appendChild(descDiv);
                         btn.onclick = () => {
+                            closeExamplesModal();
                             const fromDialect = document.getElementById('from-dialect').value;
                             if (fromDialect !== 'asql') {
                                 document.getElementById('from-dialect').value = 'asql';
@@ -2225,6 +2063,7 @@ group by region (
                         btn.appendChild(titleDiv);
                         btn.appendChild(descDiv);
                         btn.onclick = () => {
+                            closeExamplesModal();
                             const fromDialect = document.getElementById('from-dialect').value;
                             if (fromDialect !== 'asql') {
                                 document.getElementById('from-dialect').value = 'asql';
@@ -2266,6 +2105,7 @@ group by region (
                             btn.appendChild(titleDiv);
                             btn.appendChild(descDiv);
                             btn.onclick = () => {
+                                closeExamplesModal();
                                 inputEditor.setValue(example.query);
                                 document.getElementById('from-dialect').value = example.dialect || '';
                                 updateUITitles();
@@ -2333,6 +2173,7 @@ group by region (
                         btn.appendChild(titleDiv);
                         btn.appendChild(descDiv);
                         btn.onclick = () => {
+                            closeExamplesModal();
                             inputEditor.setValue(example.query);
                             document.getElementById('from-dialect').value = example.language || '';
                             if (example.toLanguage) {
