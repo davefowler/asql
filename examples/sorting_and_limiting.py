@@ -32,7 +32,7 @@ def example_sort_multiple():
 # Example 4: TAKE/LIMIT
 def example_take():
     """TAKE to limit results."""
-    asql = "from users take 10"
+    asql = "from users limit 10"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -54,7 +54,7 @@ def example_complete_pipeline():
 where status == "active" 
 group by country ( # as total_users ) 
 order by -total_users 
-take 10"""
+limit 10"""
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -63,7 +63,7 @@ take 10"""
 # Example 7: Top N by revenue
 def example_top_n():
     """Top N results by revenue."""
-    asql = "from sales group by region ( sum(amount) as revenue ) order by -revenue take 5"
+    asql = "from sales group by region ( sum(amount) as revenue ) order by -revenue limit 5"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)

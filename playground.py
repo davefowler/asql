@@ -692,6 +692,113 @@ PLAYGROUND_HTML = """
             background: #f8f9fa;
             border-top: 1px solid #dadce0;
         }
+        
+        /* Settings Panel Styles */
+        .settings-panel {
+            background: white;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .settings-header {
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dadce0;
+            font-weight: 500;
+            font-size: 13px;
+        }
+        
+        .settings-header:hover {
+            background: #f1f3f4;
+        }
+        
+        .settings-content {
+            padding: 16px;
+            display: none;
+        }
+        
+        .settings-content.open {
+            display: block;
+        }
+        
+        .settings-toggle {
+            transition: transform 0.2s;
+        }
+        
+        .settings-toggle.open {
+            transform: rotate(180deg);
+        }
+        
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .setting-group label {
+            font-size: 11px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .setting-group select {
+            padding: 6px 10px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            font-size: 12px;
+            background: white;
+        }
+        
+        .settings-presets {
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e8eaed;
+        }
+        
+        .settings-presets label {
+            font-size: 11px;
+            color: #666;
+            font-weight: 500;
+            display: block;
+            margin-bottom: 6px;
+        }
+        
+        .preset-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .preset-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+        }
+        
+        .preset-btn:hover {
+            background: #f8f9fa;
+            border-color: #f28b82;
+        }
+        
+        .preset-btn.active {
+            background: #ea4335;
+            color: white;
+            border-color: #ea4335;
+        }
     </style>
 </head>
 <body>
@@ -735,10 +842,100 @@ PLAYGROUND_HTML = """
             </div>
         </div>
         
+        <!-- ASQL Style Settings Panel -->
+        <div class="settings-panel" id="settings-panel">
+            <div class="settings-header" onclick="toggleSettings()">
+                <span>⚙️ ASQL Style Settings</span>
+                <span class="settings-toggle" id="settings-toggle">▼</span>
+            </div>
+            <div class="settings-content" id="settings-content">
+                <div class="settings-presets">
+                    <label>Presets:</label>
+                    <div class="preset-buttons">
+                        <button class="preset-btn active" id="preset-default" onclick="applyPreset('default')">Default</button>
+                        <button class="preset-btn" id="preset-sql-compat" onclick="applyPreset('sql-compat')">SQL Compatible</button>
+                        <button class="preset-btn" id="preset-concise" onclick="applyPreset('concise')">Concise</button>
+                    </div>
+                </div>
+                <div class="settings-grid">
+                    <div class="setting-group">
+                        <label>Equality:</label>
+                        <select id="setting-equality" onchange="updateStyleConfig()">
+                            <option value="single">= (SQL style)</option>
+                            <option value="double">== (Python style)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Count:</label>
+                        <select id="setting-count" onchange="updateStyleConfig()">
+                            <option value="hash"># (shorthand)</option>
+                            <option value="function">count(*)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Null coalescing:</label>
+                        <select id="setting-coalesce" onchange="updateStyleConfig()">
+                            <option value="operator">?? (operator)</option>
+                            <option value="function">coalesce()</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Descending:</label>
+                        <select id="setting-descending" onchange="updateStyleConfig()">
+                            <option value="prefix">-column (prefix)</option>
+                            <option value="suffix">column DESC</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Type cast:</label>
+                        <select id="setting-cast" onchange="updateStyleConfig()">
+                            <option value="double_colon">::TYPE</option>
+                            <option value="function">CAST()</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>String quotes:</label>
+                        <select id="setting-quotes" onchange="updateStyleConfig()">
+                            <option value="double">"double"</option>
+                            <option value="single">'single'</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Sort keyword:</label>
+                        <select id="setting-sort-keyword" onchange="updateStyleConfig()">
+                            <option value="order_by">order by</option>
+                            <option value="sort">sort</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Week starts:</label>
+                        <select id="setting-week-start" onchange="updateStyleConfig()">
+                            <option value="monday">Monday (ISO)</option>
+                            <option value="sunday">Sunday (US)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Squash empty CTEs:</label>
+                        <select id="setting-squash-empty-ctes" onchange="updateStyleConfig()">
+                            <option value="true">Yes (remove pass-through)</option>
+                            <option value="false">No (keep all)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Keep final empty CTE:</label>
+                        <select id="setting-keep-final-empty-cte" onchange="updateStyleConfig()">
+                            <option value="false">No (squash all)</option>
+                            <option value="true">Yes (dbt style)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="controls">
             <button class="translate-btn" onclick="translateQuery()">Translate</button>
         </div>
-        
+
         <div class="playground">
             <div class="panel" id="input-panel">
                 <div class="panel-header" id="input-header">
@@ -838,7 +1035,7 @@ order by -total_users`
                 title: "TAKE/LIMIT",
                 desc: "Limit results",
                 query: `from users
-take 10`
+limit 10`
             },
             {
                 title: "Complex Query",
@@ -850,7 +1047,7 @@ group by region (
     # as orders 
 )
 order by -revenue
-take 10`
+limit 10`
             },
             {
                 title: "Multiple Conditions",
@@ -894,7 +1091,7 @@ group by customer_id (
     avg(total) as avg_order_value 
 )
 order by -total_spent
-take 10`
+limit 10`
             },
             {
                 title: "Customer Analytics Pipeline",
@@ -909,7 +1106,7 @@ group by customers.id, customers.country (
     max(orders.created_at) as last_order_date 
 )
 order by -lifetime_value
-take 50`
+limit 50`
             },
             {
                 title: "Sales Funnel Analysis",
@@ -944,7 +1141,7 @@ group by products.id, products.name (
     # as order_count 
 )
 order by -revenue
-take 20`
+limit 20`
             },
             {
                 title: "User Engagement Pipeline",
@@ -960,7 +1157,7 @@ group by users.id, users.country (
     max(events.timestamp) as last_purchase_date 
 )
 order by -total_spent
-take 100`
+limit 100`
             },
             {
                 title: "Time-Series Aggregation Pipeline",
@@ -1007,7 +1204,7 @@ group by customers.id, customers.name (
     count(distinct products.category) as categories_bought 
 )
 order by -total_spent
-take 25`
+limit 25`
             },
         ];
         
@@ -1350,26 +1547,204 @@ group by user_id (
             }
         }
         
+        // ========== ASQL Style Settings ==========
+        
+        // Style configuration state
+        let styleConfig = {
+            equality: 'single',
+            count: 'hash',
+            coalesce: 'operator',
+            descending: 'prefix',
+            cast: 'double_colon',
+            quotes: 'double',
+            sort_keyword: 'order_by',
+            week_start: 'monday',
+            squash_empty_ctes: true,
+            keep_final_empty_cte: false,
+        };
+        
+        // Preset definitions
+        const STYLE_PRESETS = {
+            'default': {
+                equality: 'single',
+                count: 'hash',
+                coalesce: 'operator',
+                descending: 'prefix',
+                cast: 'double_colon',
+                quotes: 'double',
+                sort_keyword: 'order_by',
+                week_start: 'monday',
+                squash_empty_ctes: true,
+                keep_final_empty_cte: false,
+            },
+            'sql-compat': {
+                equality: 'single',
+                count: 'function',
+                coalesce: 'function',
+                descending: 'suffix',
+                cast: 'function',
+                quotes: 'single',
+                sort_keyword: 'order_by',
+                week_start: 'monday',
+                squash_empty_ctes: true,
+                keep_final_empty_cte: false,
+            },
+            'concise': {
+                equality: 'single',
+                count: 'hash',
+                coalesce: 'operator',
+                descending: 'prefix',
+                cast: 'double_colon',
+                quotes: 'double',
+                sort_keyword: 'sort',
+                week_start: 'monday',
+                squash_empty_ctes: true,
+                keep_final_empty_cte: false,
+            },
+        };
+        
+        // Load style config from localStorage
+        function loadStyleConfig() {
+            const saved = localStorage.getItem('asql_style_config');
+            if (saved) {
+                try {
+                    styleConfig = { ...styleConfig, ...JSON.parse(saved) };
+                    applyConfigToUI();
+                } catch (e) {
+                    console.warn('Failed to load style config:', e);
+                }
+            }
+        }
+        
+        // Save style config to localStorage
+        function saveStyleConfig() {
+            localStorage.setItem('asql_style_config', JSON.stringify(styleConfig));
+        }
+        
+        // Apply config to UI dropdowns
+        function applyConfigToUI() {
+            document.getElementById('setting-equality').value = styleConfig.equality;
+            document.getElementById('setting-count').value = styleConfig.count;
+            document.getElementById('setting-coalesce').value = styleConfig.coalesce;
+            document.getElementById('setting-descending').value = styleConfig.descending;
+            document.getElementById('setting-cast').value = styleConfig.cast;
+            document.getElementById('setting-quotes').value = styleConfig.quotes;
+            document.getElementById('setting-sort-keyword').value = styleConfig.sort_keyword;
+            document.getElementById('setting-week-start').value = styleConfig.week_start;
+            document.getElementById('setting-squash-empty-ctes').value = String(styleConfig.squash_empty_ctes);
+            document.getElementById('setting-keep-final-empty-cte').value = String(styleConfig.keep_final_empty_cte);
+
+            // Update preset button states
+            updatePresetButtons();
+        }
+
+        // Read config from UI dropdowns
+        function readConfigFromUI() {
+            styleConfig = {
+                equality: document.getElementById('setting-equality').value,
+                count: document.getElementById('setting-count').value,
+                coalesce: document.getElementById('setting-coalesce').value,
+                descending: document.getElementById('setting-descending').value,
+                cast: document.getElementById('setting-cast').value,
+                quotes: document.getElementById('setting-quotes').value,
+                sort_keyword: document.getElementById('setting-sort-keyword').value,
+                week_start: document.getElementById('setting-week-start').value,
+                squash_empty_ctes: document.getElementById('setting-squash-empty-ctes').value === 'true',
+                keep_final_empty_cte: document.getElementById('setting-keep-final-empty-cte').value === 'true',
+            };
+        }
+        
+        // Toggle settings panel
+        function toggleSettings() {
+            const content = document.getElementById('settings-content');
+            const toggle = document.getElementById('settings-toggle');
+            content.classList.toggle('open');
+            toggle.classList.toggle('open');
+        }
+        
+        // Apply preset
+        function applyPreset(presetName) {
+            if (STYLE_PRESETS[presetName]) {
+                styleConfig = { ...STYLE_PRESETS[presetName] };
+                applyConfigToUI();
+                saveStyleConfig();
+            }
+        }
+        
+        // Update preset button states
+        function updatePresetButtons() {
+            // Remove active class from all preset buttons
+            document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+            
+            // Check if current config matches any preset
+            for (const [name, preset] of Object.entries(STYLE_PRESETS)) {
+                if (JSON.stringify(styleConfig) === JSON.stringify(preset)) {
+                    document.getElementById('preset-' + name).classList.add('active');
+                    return;
+                }
+            }
+        }
+        
+        // Called when any individual setting changes
+        function updateStyleConfig() {
+            readConfigFromUI();
+            saveStyleConfig();
+            updatePresetButtons();
+        }
+        
+        // Normalize ASQL to user's preferred style
+        async function normalizeASQL(asqlInput) {
+            if (!asqlInput || !asqlInput.trim()) return asqlInput;
+            
+            try {
+                const response = await fetch('/api/normalize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        asql: asqlInput,
+                        style: styleConfig,
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.warn('Normalize error:', data.error);
+                    return asqlInput;  // Return original on error
+                }
+                
+                return data.asql;
+            } catch (error) {
+                console.warn('Normalize failed:', error);
+                return asqlInput;  // Return original on error
+            }
+        }
+        
+        // ========== End ASQL Style Settings ==========
+        
         function swapLanguages() {
             const fromSelect = document.getElementById('from-dialect');
             const toSelect = document.getElementById('to-dialect');
             const fromValue = fromSelect.value;
             const toValue = toSelect.value;
-            
+
             fromSelect.value = toValue;
             toSelect.value = fromValue;
-            
+
             // Swap editor contents
             const temp = inputEditor.getValue();
             inputEditor.setValue(outputEditor.getValue());
             outputEditor.setValue(temp);
-            
+
             updateUITitles();
             translateQuery();
         }
-        
+
         // Update UI when dialects change (set up after DOM is ready)
         document.addEventListener('DOMContentLoaded', function() {
+            // Load saved style config
+            loadStyleConfig();
+            
             document.getElementById('from-dialect').addEventListener('change', () => {
                 ensureFromNotPostgresWhenToEmpty();
                 updateUITitles();
@@ -1991,15 +2366,57 @@ def api_detect_dialect():
     try:
         data = request.get_json()
         sql_query = data.get('sql', '')
-        
+
         if not sql_query.strip():
             return jsonify({'dialect': None})
-        
+
         dialect = detect_dialect(sql_query)
         return jsonify({'dialect': dialect})
-        
+
     except Exception as e:
         return jsonify({'dialect': None, 'error': str(e)})
+
+@app.route('/api/normalize', methods=['POST'])
+def api_normalize():
+    """Normalize ASQL to configured style."""
+    try:
+        data = request.get_json()
+        asql_query = data.get('asql', '')
+        style_config = data.get('style', {})
+        
+        if not asql_query.strip():
+            return jsonify({'error': 'Empty ASQL query'})
+        
+        # Build config from style options
+        from asql.config import ASQLConfig, StyleConfig
+        
+        style = StyleConfig(
+            equality=style_config.get('equality', 'single'),
+            count=style_config.get('count', 'hash'),
+            coalesce=style_config.get('coalesce', 'operator'),
+            descending=style_config.get('descending', 'prefix'),
+            cast=style_config.get('cast', 'double_colon'),
+            quotes=style_config.get('quotes', 'double'),
+            week_start=style_config.get('week_start', 'monday'),
+            sort_keyword=style_config.get('sort_keyword', 'order_by'),
+            squash_empty_ctes=style_config.get('squash_empty_ctes', True),
+            keep_final_empty_cte=style_config.get('keep_final_empty_cte', False),
+        )
+        
+        config = ASQLConfig(style=style)
+        
+        # Normalize: ASQL → SQL → ASQL (with config)
+        sql = compile(asql_query, dialect='snowflake')
+        normalized = reverse_compile(sql, config=config)
+        
+        return jsonify({'asql': normalized})
+        
+    except ASQLSyntaxError as e:
+        return jsonify({'error': f'Syntax Error: {str(e)}'})
+    except ASQLCompilationError as e:
+        return jsonify({'error': f'Compilation Error: {str(e)}'})
+    except Exception as e:
+        return jsonify({'error': f'Error: {str(e)}'})
 
 @app.route('/api/debug/examples-path', methods=['GET'])
 def api_debug_examples_path():

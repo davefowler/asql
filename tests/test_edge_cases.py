@@ -43,14 +43,14 @@ class TestBoundaryConditions:
     
     def test_very_large_limit(self) -> None:
         """Test very large LIMIT value."""
-        asql = "from users take 999999"
+        asql = "from users limit 999999"
         sql = compile(asql)
         assert "LIMIT" in sql.upper()
         assert "999999" in sql
     
     def test_limit_zero(self) -> None:
         """Test LIMIT of 0 (edge case - may be valid SQL but unusual)."""
-        asql = "from users take 0"
+        asql = "from users limit 0"
         sql = compile(asql)
         assert "LIMIT" in sql.upper()
         # SQL allows LIMIT 0, though it returns no rows
@@ -60,7 +60,7 @@ class TestBoundaryConditions:
         """Test negative LIMIT - syntactically valid but may error at runtime."""
         # SQLGlot accepts negative limits as valid SQL syntax
         # Runtime behavior depends on the database
-        sql = compile("from users take -10")
+        sql = compile("from users limit -10")
         assert "LIMIT" in sql.upper()
     
     def test_empty_in_list(self) -> None:

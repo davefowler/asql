@@ -59,7 +59,7 @@ Here's a simple workflow to get started:
 3. Modify it: `from users where status == "active"`
 4. Add grouping: `group by country ( # as total_users )`
 5. Sort results: `order by -total_users`
-6. Limit output: `take 10`
+6. Limit output: `limit 10`
 
 Watch the SQL update in real-time as you make changes!
 

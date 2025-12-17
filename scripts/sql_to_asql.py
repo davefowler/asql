@@ -187,7 +187,7 @@ def _select_to_asql(select_expr: exp.Select) -> str:
     if limit_clause:
         limit_expr = limit_clause.this if hasattr(limit_clause, 'this') else limit_clause
         limit_value = limit_expr.this if hasattr(limit_expr, 'this') else str(limit_expr)
-        lines.append(f"  take {limit_value}")
+        lines.append(f"  limit {limit_value}")
     
     return "\n".join(lines)
 

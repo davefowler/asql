@@ -81,6 +81,12 @@ nav:
   - Design Principles: design.md
   - Language Specification: spec.md
   - Syntax: quick_start.md
+  - Coming from...:
+    - Overview: coming-from/index.md
+    - pandas: coming-from/pandas.md
+    - dbt: coming-from/dbt.md
+    - R / dplyr: coming-from/r.md
+    - SQL: coming-from/sql.md
   - Window Functions: window_functions.md
   - Examples: examples.md
   - Integrating: integrating.md

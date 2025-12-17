@@ -70,7 +70,7 @@ Type snippet prefixes and press `Tab`:
 ### Syntax Highlighting
 
 The extension highlights:
-- **Keywords**: `from`, `where`, `select`, `group by`, `order by`, `take`, `join`, `with`
+- **Keywords**: `from`, `where`, `select`, `group by`, `order by`, `limit`, `join`, `with`
 - **Operators**: `==`, `!=`, `in`, `not in`, `and`, `or`
 - **Functions**: `sum()`, `avg()`, `count()`, `month()`, etc.
 - **Literals**: Strings, numbers, booleans
@@ -106,7 +106,7 @@ from users
   where status == "active"
   group by country ( # as total_users )
   order by -total_users
-  take 10
+  limit 10
 ```
 
 ## Contributing

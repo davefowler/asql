@@ -13,7 +13,7 @@ group by region, month (
     avg(amount) as avg_order
 )
 order by -revenue
-take 20"""
+limit 20"""
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -48,7 +48,7 @@ group by product_category (
     max(amount) as max_order_value
 )
 order by -total_revenue
-take 10"""
+limit 10"""
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)

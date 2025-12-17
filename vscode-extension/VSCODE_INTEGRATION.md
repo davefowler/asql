@@ -30,7 +30,7 @@ Our ASQL extension currently provides:
 
 The TextMate grammar (`syntaxes/asql.tmLanguage.json`) highlights:
 
-- **Keywords**: `from`, `where`, `select`, `group by`, `order by`, `take`, `join`, `with`
+- **Keywords**: `from`, `where`, `select`, `group by`, `order by`, `limit`, `join`, `with`
 - **Operators**: `==`, `!=`, `in`, `not in`, `and`, `or`, `not`
 - **Functions**: `sum()`, `avg()`, `count()`, `month()`, `year()`, etc.
 - **Literals**: Strings (`"..."`), numbers, booleans (`true`, `false`, `null`)

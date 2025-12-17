@@ -24,7 +24,7 @@
   - `order by total_users` (ascending)
   - Multiple order by columns
 - **TAKE/LIMIT**
-  - `take 10` → SQL LIMIT
+  - `limit 10` → SQL LIMIT
 
 ### Phase 2: Expressions & Operators ✅ (Partial)
 - **Comparison operators**: `==`, `!=`, `<`, `>`, `<=`, `>=`
@@ -61,11 +61,11 @@ compile("from users order by -total_users")
 compile("from users order by name, -age")
 
 # TAKE/LIMIT
-compile("from users take 10")
+compile("from users limit 10")
 
 
 # Complex pipeline
-compile("from users group by country ( # as total_users ) order by -total_users take 10")
+compile("from users group by country ( # as total_users ) order by -total_users limit 10")
 ```
 
 ## Architecture Decisions

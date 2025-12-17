@@ -345,7 +345,7 @@ from users
   where status == "active"
   group by country ( total_users as # )
   order by -total_users
-  take 10
+  limit 10
 ```
 
 ### Stage 3: Aggregations & Natural Language (v0.1.0)

@@ -69,7 +69,7 @@ from users order by -created_at, name
 from users order by -total_users
 
 # LIMIT / TAKE
-from users take 10
+from users limit 10
 from users limit 100
 ```
 
@@ -177,7 +177,7 @@ group by country ( # as total )
 # Multiple CTEs
 set base = from users where is_premium
 set by_country = from base group by country ( # as total )
-from by_country order by -total take 10
+from by_country order by -total limit 10
 ```
 
 ### Utility Functions ✅

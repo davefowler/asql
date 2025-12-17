@@ -114,7 +114,7 @@ These require extending SQLGlot's Parser:
 | `order by -col` | `order by -amount` | DESC indicator in ORDER BY parser |
 | String matching | `contains`, `starts with` | Infix operator parser |
 
-**Note**: We use standard SQL keywords (`ORDER BY`, `LIMIT`) rather than aliases (`sort`, `take`). No benefit to adding mental overhead for SQL users.
+**Note**: We use standard SQL keywords (`ORDER BY`, `LIMIT`) rather than aliases (`sort`, `limit`). No benefit to adding mental overhead for SQL users.
 
 ```python
 class ASQLParser(Parser):
@@ -960,7 +960,7 @@ The following changes have been made to `docs/spec.md`:
 | `??` for COALESCE (not `\|\|`) | ✅ Done |
 | `set` for CTEs (not `with x = ...`) | ✅ Done |
 | `order by` (not `sort`) | ✅ Done |
-| `limit` (not `take`) | ✅ Done |
+| `limit` (not `limit`) | ✅ Done |
 
 **Rationale for `??` over `||`:**
 - JavaScript uses `??` for nullish coalescing (not `||`)
@@ -970,7 +970,7 @@ The following changes have been made to `docs/spec.md`:
 
 **Rationale for standard SQL keywords:**
 - SQL users already know `ORDER BY` and `LIMIT`
-- No value in learning `sort` and `take` aliases
+- No value in learning `sort` and `limit` aliases
 - Reduces cognitive load
 - `sort` would need `order by by` for consistency anyway
 

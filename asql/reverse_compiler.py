@@ -1,12 +1,15 @@
 """ASQL reverse compiler - transforms SQL to ASQL."""
 
 import re
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 import sqlglot
 from sqlglot import exp
 from sqlglot.dialects import Dialect
 
 from asql.errors import ASQLCompilationError
+
+if TYPE_CHECKING:
+    from asql.config import ASQLConfig, StyleConfig
 
 
 def detect_dialect(sql_query: str) -> Optional[str]:
@@ -64,6 +67,7 @@ def detect_dialect(sql_query: str) -> Optional[str]:
 def reverse_compile(
     sql_query: str,
     source_dialect: Optional[str] = None,
+    config: Optional["ASQLConfig"] = None,
 ) -> str:
     """
     Compile SQL query to ASQL.
@@ -72,6 +76,7 @@ def reverse_compile(
         sql_query: SQL query string
         source_dialect: Source SQL dialect (e.g., 'bigquery', 'redshift')
                        If None, will attempt auto-detection
+        config: ASQL configuration for output style. If None, uses defaults.
     
     Returns:
         ASQL query string
@@ -82,6 +87,12 @@ def reverse_compile(
     try:
         if not sql_query.strip():
             raise ASQLCompilationError("Empty SQL query")
+        
+        # Get style config
+        if config is None:
+            from asql.config import ASQLConfig
+            config = ASQLConfig()
+        style = config.style
         
         # Check for dbt/Jinja templating syntax
         if "{{" in sql_query or "{%" in sql_query:
@@ -136,7 +147,7 @@ def reverse_compile(
         asql_parts = []
         for expr in expressions:
             if isinstance(expr, exp.Select):
-                asql = _select_to_asql(expr)
+                asql = _select_to_asql(expr, style)
                 asql_parts.append(asql)
             elif isinstance(expr, exp.Create):
                 # Handle CREATE TABLE, etc.
@@ -169,14 +180,80 @@ def reverse_compile(
         raise ASQLCompilationError(f"Reverse compilation error: {e}") from e
 
 
-def _select_to_asql(select_expr: exp.Select) -> str:
+def _is_empty_cte(select_expr: exp.Select) -> bool:
+    """Check if a SELECT is an empty pass-through (just SELECT * FROM table).
+    
+    Returns True if the SELECT is essentially just `SELECT * FROM table_name`
+    with no WHERE, JOIN, GROUP BY, ORDER BY, LIMIT, or other clauses.
+    """
+    # Check for SELECT *
+    select_exprs = select_expr.args.get("expressions", [])
+    if not select_exprs:
+        return False
+    
+    # Should be just Star
+    if len(select_exprs) != 1:
+        return False
+    if not isinstance(select_exprs[0], exp.Star):
+        return False
+    
+    # Should have FROM
+    from_expr = select_expr.args.get("from_")
+    if not from_expr:
+        return False
+    
+    # Should NOT have any other clauses
+    has_other_clauses = any([
+        select_expr.args.get("where"),
+        select_expr.args.get("group"),
+        select_expr.args.get("having"),
+        select_expr.args.get("order"),
+        select_expr.args.get("limit"),
+        select_expr.args.get("joins"),
+        select_expr.args.get("distinct"),
+        select_expr.args.get("qualify"),
+        select_expr.args.get("windows"),
+    ])
+    
+    return not has_other_clauses
+
+
+def _get_cte_source_table(select_expr: exp.Select) -> Optional[str]:
+    """Get the source table name from an empty CTE.
+    
+    For `SELECT * FROM table_name`, returns `table_name`.
+    Returns None if not a simple table reference.
+    """
+    from_expr = select_expr.args.get("from_")
+    if not from_expr:
+        return None
+    
+    table = from_expr.this
+    if isinstance(table, exp.Table):
+        return table.this if isinstance(table.this, str) else str(table.this)
+    elif isinstance(table, exp.Identifier):
+        return table.this if isinstance(table.this, str) else str(table.this)
+    
+    return None
+
+
+def _select_to_asql(select_expr: exp.Select, style: "StyleConfig" = None) -> str:
     """Convert a SQLGlot Select expression to ASQL."""
+    if style is None:
+        from asql.config import StyleConfig
+        style = StyleConfig()
+    
     parts = []
+    
+    # Track CTE name -> source table for empty CTEs (used for inlining)
+    empty_cte_map = {}
     
     # Handle WITH/CTE clauses (sqlglot 28+ uses "with_")
     with_clause = select_expr.args.get("with_")
     if with_clause:
         ctes = []
+        cte_list = []  # Keep track of (cte_name, cte_asql, is_empty) tuples
+        
         # Handle case where expressions might not be available
         try:
             # Try to get expressions from the with clause
@@ -194,14 +271,39 @@ def _select_to_asql(select_expr: exp.Select) -> str:
                         cte_name = None
                     
                     if cte_name and isinstance(cte.this, exp.Select):
+                        is_empty = _is_empty_cte(cte.this)
+                        source_table = _get_cte_source_table(cte.this) if is_empty else None
+                        
+                        # Track empty CTEs for potential inlining
+                        if is_empty and source_table:
+                            empty_cte_map[cte_name] = source_table
+                        
                         try:
-                            cte_asql = _select_to_asql(cte.this)
-                            ctes.append(f"{cte_asql}\nstash as {cte_name}")
+                            cte_asql = _select_to_asql(cte.this, style)
+                            cte_list.append((cte_name, cte_asql, is_empty))
                         except ASQLCompilationError as cte_error:
-                            # If a CTE can't be converted (e.g., no FROM clause), 
-                            # include it as a comment and continue
+                            # If a CTE can't be converted, include as comment
                             cte_sql = str(cte.this)
-                            ctes.append(f"-- CTE '{cte_name}' could not be converted: {cte_error}\n-- Original: {cte_sql[:100]}...")
+                            cte_list.append((cte_name, f"-- CTE '{cte_name}' could not be converted: {cte_error}\n-- Original: {cte_sql[:100]}...", False))
+                
+                # Apply squash_empty_ctes logic
+                total_ctes = len(cte_list)
+                for idx, (cte_name, cte_asql, is_empty) in enumerate(cte_list):
+                    is_last = (idx == total_ctes - 1)
+                    
+                    # Determine if we should include this CTE
+                    should_include = True
+                    if style.squash_empty_ctes and is_empty:
+                        # Squash empty CTEs by default
+                        if is_last and style.keep_final_empty_cte:
+                            # But keep the final empty one if keep_final_empty_cte is True
+                            should_include = True
+                        else:
+                            should_include = False
+                    
+                    if should_include:
+                        ctes.append(f"{cte_asql}\nstash as {cte_name}")
+                        
         except (AttributeError, TypeError) as e:
             # If we can't parse CTEs, skip them and continue with the main query
             # This allows the query to still be converted even if CTE parsing fails
@@ -219,37 +321,46 @@ def _select_to_asql(select_expr: exp.Select) -> str:
         select_exprs = select_expr.args.get("expressions", [])
         if select_exprs:
             # Return as a pass-through expression (e.g., for scalar queries)
-            expr_strs = [_expression_to_asql(e) for e in select_exprs]
+            expr_strs = [_expression_to_asql(e, style) for e in select_exprs]
             return f"-- No FROM clause, cannot convert to ASQL: SELECT {', '.join(expr_strs)}"
         raise ASQLCompilationError("ASQL requires a FROM clause")
     
     table = from_expr.this
     if isinstance(table, exp.Table):
         table_name = table.this if isinstance(table.this, str) else str(table.this)
-        parts.append(f"from {table_name}")
     elif isinstance(table, exp.Identifier):
-        parts.append(f"from {table.this}")
+        table_name = table.this if isinstance(table.this, str) else str(table.this)
     else:
-        parts.append(f"from {str(table)}")
+        table_name = str(table)
+    
+    # If referencing a squashed empty CTE, inline the source table
+    if style.squash_empty_ctes and table_name in empty_cte_map:
+        table_name = empty_cte_map[table_name]
+    
+    parts.append(f"from {table_name}")
     
     # JOIN clauses
     joins = select_expr.args.get("joins", [])
     for join in joins:
         join_type = join.kind or "inner"
         join_table = join.this
-        table_name = join_table.this if isinstance(join_table, exp.Table) else str(join_table)
+        join_table_name = join_table.this if isinstance(join_table, exp.Table) else str(join_table)
+        
+        # If referencing a squashed empty CTE, inline the source table
+        if style.squash_empty_ctes and join_table_name in empty_cte_map:
+            join_table_name = empty_cte_map[join_table_name]
         
         on_condition = join.args.get("on")
         if on_condition:
-            condition_str = _expression_to_asql(on_condition)
-            parts.append(f"join {table_name} on {condition_str}")
+            condition_str = _expression_to_asql(on_condition, style)
+            parts.append(f"join {join_table_name} on {condition_str}")
         else:
-            parts.append(f"join {table_name}")
+            parts.append(f"join {join_table_name}")
     
     # WHERE clause
     where_expr = select_expr.args.get("where")
     if where_expr:
-        condition = _expression_to_asql(where_expr.this)
+        condition = _expression_to_asql(where_expr.this, style)
         parts.append(f"where {condition}")
     
     # GROUP BY clause
@@ -259,23 +370,23 @@ def _select_to_asql(select_expr: exp.Select) -> str:
     if group_expr:
         group_cols = []
         for col in group_expr.expressions:
-            group_cols.append(_expression_to_asql(col))
+            group_cols.append(_expression_to_asql(col, style))
         
         # Get aggregations from SELECT expressions
         aggregations = []
         grouping_col_set = set()
         for col in group_expr.expressions:
-            col_str = _expression_to_asql(col)
+            col_str = _expression_to_asql(col, style)
             grouping_col_set.add(col_str.lower())
         
         for expr in select_exprs:
             # Check if it's an aggregation
             if isinstance(expr, (exp.AggFunc, exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
-                agg_str = _aggregation_to_asql(expr)
+                agg_str = _aggregation_to_asql(expr, style)
                 aggregations.append(agg_str)
             # Check if it's an aliased aggregation
             elif isinstance(expr, exp.Alias) and isinstance(expr.this, (exp.AggFunc, exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
-                agg_str = _aggregation_to_asql(expr)
+                agg_str = _aggregation_to_asql(expr, style)
                 aggregations.append(agg_str)
         
         if aggregations:
@@ -293,7 +404,7 @@ def _select_to_asql(select_expr: exp.Select) -> str:
                     # ASQL doesn't have explicit SELECT *, it's implicit
                     continue
                 else:
-                    select_str = _expression_to_asql(expr)
+                    select_str = _expression_to_asql(expr, style)
                     select_parts.append(select_str)
             if select_parts:
                 parts.append(f"select {', '.join(select_parts)}")
@@ -303,13 +414,19 @@ def _select_to_asql(select_expr: exp.Select) -> str:
     if order_expr:
         order_parts = []
         for order in order_expr.expressions:
-            expr_str = _expression_to_asql(order.this)
+            expr_str = _expression_to_asql(order.this, style)
             desc = order.args.get("desc", False)
             if desc:
-                order_parts.append(f"-{expr_str}")
+                if style.descending == "prefix":
+                    order_parts.append(f"-{expr_str}")
+                else:
+                    order_parts.append(f"{expr_str} desc")
             else:
                 order_parts.append(expr_str)
-        parts.append(f"order by {', '.join(order_parts)}")
+        
+        # Use sort_keyword from style
+        sort_kw = "sort" if style.sort_keyword == "sort" else "order by"
+        parts.append(f"{sort_kw} {', '.join(order_parts)}")
     
     # LIMIT clause
     limit_expr = select_expr.args.get("limit")
@@ -323,24 +440,28 @@ def _select_to_asql(select_expr: exp.Select) -> str:
             elif isinstance(limit_value_expr, (int, float)):
                 limit_value = str(int(limit_value_expr))
             else:
-                limit_value = _expression_to_asql(limit_value_expr)
+                limit_value = _expression_to_asql(limit_value_expr, style)
         elif limit_expr.expressions:
             # Fallback: try expressions list
             limit_value_expr = limit_expr.expressions[0]
             if isinstance(limit_value_expr, exp.Literal):
                 limit_value = str(limit_value_expr.this)
             else:
-                limit_value = _expression_to_asql(limit_value_expr)
+                limit_value = _expression_to_asql(limit_value_expr, style)
         else:
             # Last fallback
             limit_value = str(limit_expr.this) if limit_expr.this else "10"
-        parts.append(f"take {limit_value}")
+        parts.append(f"limit {limit_value}")
     
     return "\n".join(parts)
 
 
-def _expression_to_asql(expr: exp.Expression) -> str:
+def _expression_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> str:
     """Convert a SQLGlot expression to ASQL string representation."""
+    if style is None:
+        from asql.config import StyleConfig
+        style = StyleConfig()
+    
     if isinstance(expr, exp.Column):
         parts = []
         if expr.table:
@@ -353,93 +474,94 @@ def _expression_to_asql(expr: exp.Expression) -> str:
     
     elif isinstance(expr, exp.Literal):
         if isinstance(expr.this, str):
-            return f'"{expr.this}"'
+            quote = '"' if style.quotes == "double" else "'"
+            return f'{quote}{expr.this}{quote}'
         return str(expr.this)
     
     elif isinstance(expr, exp.EQ):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
-        return f"{left} == {right}"
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
+        eq_op = "==" if style.equality == "double" else "="
+        return f"{left} {eq_op} {right}"
     
     elif isinstance(expr, exp.NEQ):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} != {right}"
     
     elif isinstance(expr, exp.GT):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} > {right}"
     
     elif isinstance(expr, exp.GTE):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} >= {right}"
     
     elif isinstance(expr, exp.LT):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} < {right}"
     
     elif isinstance(expr, exp.LTE):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} <= {right}"
     
     elif isinstance(expr, exp.And):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} and {right}"
     
     elif isinstance(expr, exp.Or):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"({left} or {right})"
     
     elif isinstance(expr, exp.Is):
-        left = _expression_to_asql(expr.left)
+        left = _expression_to_asql(expr.left, style)
         if expr.args.get("not"):
-            return f"{left} is not null" if expr.right is None else f"{left} is not {_expression_to_asql(expr.right)}"
+            return f"{left} is not null" if expr.right is None else f"{left} is not {_expression_to_asql(expr.right, style)}"
         else:
-            return f"{left} is null" if expr.right is None else f"{left} is {_expression_to_asql(expr.right)}"
+            return f"{left} is null" if expr.right is None else f"{left} is {_expression_to_asql(expr.right, style)}"
     
     elif isinstance(expr, exp.In):
         # In expressions use 'this' for the left side, not 'left'
-        left = _expression_to_asql(expr.this) if expr.this else ""
+        left = _expression_to_asql(expr.this, style) if expr.this else ""
         expressions = expr.expressions
-        values = ", ".join(_expression_to_asql(e) for e in expressions)
+        values = ", ".join(_expression_to_asql(e, style) for e in expressions)
         if expr.args.get("not"):
             return f"{left} not in ({values})"
         return f"{left} in ({values})"
     
     elif isinstance(expr, exp.Add):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} + {right}"
     
     elif isinstance(expr, exp.Sub):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} - {right}"
     
     elif isinstance(expr, exp.Mul):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} * {right}"
     
     elif isinstance(expr, exp.Div):
-        left = _expression_to_asql(expr.left)
-        right = _expression_to_asql(expr.right)
+        left = _expression_to_asql(expr.left, style)
+        right = _expression_to_asql(expr.right, style)
         return f"{left} / {right}"
     
     elif isinstance(expr, exp.Alias):
-        expr_str = _expression_to_asql(expr.this)
+        expr_str = _expression_to_asql(expr.this, style)
         alias = expr.alias.this if isinstance(expr.alias, exp.Identifier) else str(expr.alias)
         return f"{expr_str} as {alias}"
     
     elif isinstance(expr, exp.Cast):
-        # Convert CAST(... AS ...) to PostgreSQL-style :: syntax
-        expr_str = _expression_to_asql(expr.this)
+        expr_str = _expression_to_asql(expr.this, style)
         # Extract type name from 'to' field
         to_type = expr.args.get("to")
         if to_type:
@@ -455,19 +577,26 @@ def _expression_to_asql(expr: exp.Expression) -> str:
                 type_name = to_type.this if isinstance(to_type.this, str) else str(to_type.this)
             else:
                 type_name = str(to_type)
-            return f"{expr_str}::{type_name}"
+            
+            # Use style to determine cast syntax
+            if style.cast == "double_colon":
+                return f"{expr_str}::{type_name}"
+            else:
+                return f"cast({expr_str} as {type_name})"
         # Fallback if type not found
         return f"{expr_str}::UNKNOWN"
     
     elif isinstance(expr, (exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
-        return _aggregation_to_asql(expr)
+        return _aggregation_to_asql(expr, style)
     
     elif isinstance(expr, exp.Coalesce):
-        # Convert COALESCE to ?? operator (ASQL nullish coalescing)
-        # COALESCE(a, b, c) becomes a ?? b ?? c
+        # Convert COALESCE based on style
         args = [expr.this] + (expr.expressions if expr.expressions else [])
-        arg_strs = [_expression_to_asql(arg) for arg in args]
-        return " ?? ".join(arg_strs)
+        arg_strs = [_expression_to_asql(arg, style) for arg in args]
+        if style.coalesce == "operator":
+            return " ?? ".join(arg_strs)
+        else:
+            return f"coalesce({', '.join(arg_strs)})"
     
     elif isinstance(expr, exp.Case):
         # Convert CASE statement to DuckDB/Spark-style syntax
@@ -482,28 +611,28 @@ def _expression_to_asql(expr: exp.Expression) -> str:
         # Check if this is a simple CASE (CASE expr WHEN ...) or searched CASE (CASE WHEN ...)
         if expr.this:
             # Simple CASE: CASE expr WHEN value THEN result
-            expr_str = _expression_to_asql(expr.this)
+            expr_str = _expression_to_asql(expr.this, style)
             parts.append(expr_str)
             
             # Process WHEN clauses (stored in ifs list as If expressions)
             for if_expr in ifs:
                 if isinstance(if_expr, exp.If):
-                    when_value = _expression_to_asql(if_expr.this) if if_expr.this else ""
-                    then_value = _expression_to_asql(if_expr.args.get("true")) if if_expr.args.get("true") else ""
+                    when_value = _expression_to_asql(if_expr.this, style) if if_expr.this else ""
+                    then_value = _expression_to_asql(if_expr.args.get("true"), style) if if_expr.args.get("true") else ""
                     parts.append(f"  when {when_value} then {then_value}")
         else:
             # Searched CASE: CASE WHEN condition THEN result
             # Process WHEN clauses (stored in ifs list as If expressions)
             for if_expr in ifs:
                 if isinstance(if_expr, exp.If):
-                    when_condition = _expression_to_asql(if_expr.this) if if_expr.this else ""
-                    then_value = _expression_to_asql(if_expr.args.get("true")) if if_expr.args.get("true") else ""
+                    when_condition = _expression_to_asql(if_expr.this, style) if if_expr.this else ""
+                    then_value = _expression_to_asql(if_expr.args.get("true"), style) if if_expr.args.get("true") else ""
                     parts.append(f"  when {when_condition} then {then_value}")
         
         # Add ELSE clause if present
         default = expr.args.get("default")
         if default:
-            default_str = _expression_to_asql(default)
+            default_str = _expression_to_asql(default, style)
             parts.append(f"  else {default_str}")
         
         parts.append("end")
@@ -516,46 +645,37 @@ def _expression_to_asql(expr: exp.Expression) -> str:
         
         # Check if it's COALESCE function call
         if func_name_upper == "COALESCE":
-            # Convert COALESCE(a, b, c) to a ?? b ?? c (ASQL nullish coalescing)
-            # Anonymous COALESCE might have first arg in expr.this or expr.expressions
+            # Convert COALESCE based on style
             args = []
             if hasattr(expr, 'this') and expr.this:
                 args.append(expr.this)
             if expr.expressions:
                 args.extend(expr.expressions)
-            # If no args found, try expressions only
             if not args and expr.expressions:
                 args = expr.expressions
-            arg_strs = [_expression_to_asql(arg) for arg in args]
-            return " ?? ".join(arg_strs) if arg_strs else "COALESCE()"
+            arg_strs = [_expression_to_asql(arg, style) for arg in args]
+            if style.coalesce == "operator":
+                return " ?? ".join(arg_strs) if arg_strs else "COALESCE()"
+            else:
+                return f"coalesce({', '.join(arg_strs)})" if arg_strs else "coalesce()"
         
         # Check if it's CAST function call (CAST(expr AS type))
-        # Note: SQLGlot usually parses CAST as exp.Cast, but some dialects might parse as Anonymous
         if func_name_upper == "CAST":
-            # CAST expressions: CAST(expr AS type)
-            # SQLGlot might structure this differently when parsed as Anonymous
-            # Try to extract the expression and type
             if expr.expressions and len(expr.expressions) >= 1:
                 cast_expr = expr.expressions[0]
-                cast_expr_str = _expression_to_asql(cast_expr)
+                cast_expr_str = _expression_to_asql(cast_expr, style)
                 type_name = "UNKNOWN"
                 
-                # Look for type in expressions (might be after AS keyword)
-                # SQLGlot might have: expressions = [expr, "AS", type] or [expr, type]
                 for i, e in enumerate(expr.expressions[1:], 1):
-                    # Skip "AS" keyword if present
                     if isinstance(e, str) and e.upper() == "AS":
                         continue
-                    # Found type
                     if isinstance(e, (exp.Identifier, exp.DataType)):
-                        type_name = _expression_to_asql(e)
+                        type_name = _expression_to_asql(e, style)
                         break
                     elif isinstance(e, exp.Expression):
-                        # Might be a type expression
-                        type_name = _expression_to_asql(e)
+                        type_name = _expression_to_asql(e, style)
                         break
                 
-                # Also check if there's a 'to' argument (like exp.Cast has)
                 if type_name == "UNKNOWN" and hasattr(expr, 'args') and 'to' in expr.args:
                     to_type = expr.args['to']
                     if isinstance(to_type, exp.DataType):
@@ -568,17 +688,20 @@ def _expression_to_asql(expr: exp.Expression) -> str:
                     else:
                         type_name = str(to_type)
                 
-                return f"{cast_expr_str}::{type_name}"
+                if style.cast == "double_colon":
+                    return f"{cast_expr_str}::{type_name}"
+                else:
+                    return f"cast({cast_expr_str} as {type_name})"
         
         # For other functions, just pass through
-        args = ", ".join(_expression_to_asql(arg) for arg in expr.expressions) if expr.expressions else ""
+        args = ", ".join(_expression_to_asql(arg, style) for arg in expr.expressions) if expr.expressions else ""
         return f"{func_name}({args})"
     
     elif hasattr(expr, 'sql_name') and hasattr(expr, 'expressions'):
         # Try to handle as function if it has sql_name and expressions
         try:
             func_name = expr.sql_name()
-            args = ", ".join(_expression_to_asql(arg) for arg in expr.expressions) if expr.expressions else ""
+            args = ", ".join(_expression_to_asql(arg, style) for arg in expr.expressions) if expr.expressions else ""
             return f"{func_name}({args})"
         except Exception:
             pass
@@ -588,49 +711,55 @@ def _expression_to_asql(expr: exp.Expression) -> str:
         return str(expr)
 
 
-def _aggregation_to_asql(expr: exp.Expression) -> str:
+def _aggregation_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> str:
     """Convert an aggregation expression to ASQL."""
+    if style is None:
+        from asql.config import StyleConfig
+        style = StyleConfig()
+    
     if isinstance(expr, exp.Count):
         # Check for DISTINCT keyword
         distinct = getattr(expr, 'distinct', False) or expr.args.get('distinct', False)
         if expr.expressions:
             arg = expr.expressions[0]
             if isinstance(arg, exp.Star):
-                return "#"
+                # Use style for count notation
+                return "#" if style.count == "hash" else "count(*)"
             else:
-                col = _expression_to_asql(arg)
+                col = _expression_to_asql(arg, style)
                 if distinct:
                     return f"count(distinct {col})"
                 return f"count({col})"
-        return "#"
+        # COUNT() with no args = COUNT(*)
+        return "#" if style.count == "hash" else "count(*)"
     
     elif isinstance(expr, exp.Sum):
         if expr.expressions:
-            col = _expression_to_asql(expr.expressions[0])
+            col = _expression_to_asql(expr.expressions[0], style)
             return f"sum({col})"
         return "sum()"
     
     elif isinstance(expr, exp.Avg):
         if expr.expressions:
-            col = _expression_to_asql(expr.expressions[0])
+            col = _expression_to_asql(expr.expressions[0], style)
             return f"avg({col})"
         return "avg()"
     
     elif isinstance(expr, exp.Min):
         if expr.expressions:
-            col = _expression_to_asql(expr.expressions[0])
+            col = _expression_to_asql(expr.expressions[0], style)
             return f"min({col})"
         return "min()"
     
     elif isinstance(expr, exp.Max):
         if expr.expressions:
-            col = _expression_to_asql(expr.expressions[0])
+            col = _expression_to_asql(expr.expressions[0], style)
             return f"max({col})"
         return "max()"
     
     elif isinstance(expr, exp.Alias):
         # Handle aliased aggregations
-        agg_str = _aggregation_to_asql(expr.this)
+        agg_str = _aggregation_to_asql(expr.this, style)
         alias = expr.alias.this if isinstance(expr.alias, exp.Identifier) else str(expr.alias)
         return f"{agg_str} as {alias}"
     

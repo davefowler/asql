@@ -111,7 +111,6 @@ class ASQLPreParser:
         result = self._transform_pipeline(result)
         result = self._transform_stash_as(result)  # Early: split query at stash points before other transforms
         result = self._transform_count_shorthand(result)
-        result = self._transform_take_keyword(result)  # Convert take → LIMIT
         result = self._transform_order_desc_prefix(result)
         result = self._transform_natural_aggregates(result)
         result = self._transform_date_literals(result)
@@ -1118,19 +1117,6 @@ class ASQLPreParser:
         # Transform qualify keyword to QUALIFY (SQL standard for some dialects)
         # Just uppercase it and fix the equality operator
         result = re.sub(r'\bqualify\s+', 'QUALIFY ', result, flags=re.IGNORECASE)
-        
-        return result
-    
-    def _transform_take_keyword(self, text: str) -> str:
-        """
-        Transform ASQL 'take' keyword to SQL 'LIMIT'.
-        
-        from users take 10 → from users LIMIT 10
-        """
-        result = text
-        
-        # Replace 'take' keyword with 'LIMIT'
-        result = re.sub(r'\btake\b', 'LIMIT', result, flags=re.IGNORECASE)
         
         return result
     

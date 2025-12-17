@@ -64,7 +64,7 @@ from users
 where status == "active"
 group by country ( # as total_users )
 order by -total_users
-take 10
+limit 10
 """
 
 sql = compile(asql, dialect="postgres")
@@ -212,7 +212,7 @@ group by country (            # Group and aggregate
     # as total_users
 )
 order by -total_users            # Sort descending
-take 10                      # Limit results
+limit 10                      # Limit results
 ```
 
 ### Comparison Operators
@@ -265,7 +265,7 @@ from users order by -total_users, name
 ### Limiting
 
 ```asql
-from users take 10
+from users limit 10
 ```
 
 ## Development
