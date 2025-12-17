@@ -161,14 +161,21 @@ order by -amount, name      -- Amount DESC, then name ASC
 
 | Operator | Description | SQL Equivalent |
 |----------|-------------|----------------|
-| `#` | Count all | `COUNT(*)` |
+| `#` | Count all rows | `COUNT(*)` |
+| `# *` | Explicit row count | `COUNT(*)` |
 | `#(col)` | Count column | `COUNT(col)` |
 | `#(distinct col)` | Distinct count | `COUNT(DISTINCT col)` |
+| `# users` | Distinct entity count | `COUNT(DISTINCT user_id)` |
+| `# of users` | Natural language variant | `COUNT(DISTINCT user_id)` |
+
+When followed by a table name, `#` infers the primary key using convention (table name → `{singular}_id`):
 
 ```asql
-# as total_rows
-#(email) as emails_present
-#(distinct customer_id) as unique_customers
+# as total_rows                    -- COUNT(*)
+# users as unique_users            -- COUNT(DISTINCT user_id)
+# of orders as order_count         -- COUNT(DISTINCT order_id)
+#(email) as emails_present         -- COUNT(email)
+#(distinct customer_id) as unique  -- COUNT(DISTINCT customer_id)
 ```
 
 ---

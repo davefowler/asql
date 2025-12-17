@@ -86,7 +86,8 @@ ASQL adds shorthand for patterns that are verbose in SQL.
 
 ```asql
 #                    -- COUNT(*)
-#(distinct user_id)  -- COUNT(DISTINCT user_id)
+# users              -- COUNT(DISTINCT user_id) - infers primary key
+#(distinct user_id)  -- COUNT(DISTINCT user_id) - explicit
 order by -revenue    -- ORDER BY revenue DESC
 ```
 

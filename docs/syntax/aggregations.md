@@ -19,21 +19,54 @@ The syntax is: `group by <columns> ( <aggregations> )`.
 
 ## Count Shorthand (`#`)
 
-The `#` symbol is shorthand for `COUNT(*)`:
+The `#` symbol provides flexible counting syntax:
+
+### Basic Row Count
 
 ```asql
 from users
   group by country (
-    # as user_count
+    # as user_count          -- COUNT(*)
   )
 ```
 
-For count with column (non-null values only):
+### Count with Column
 
 ```asql
 #(email)           -- COUNT(email)
 #(distinct email)  -- COUNT(DISTINCT email)
 ```
+
+### Count by Table Name (Distinct Count)
+
+When followed by a table name, `#` automatically infers the primary key and counts distinct values:
+
+```asql
+# users            -- COUNT(DISTINCT user_id)
+# of users         -- COUNT(DISTINCT user_id)
+# orders           -- COUNT(DISTINCT order_id)
+```
+
+This uses convention: the table name (singular form) + `_id` is assumed to be the primary key.
+
+### Explicit Row Count
+
+Use `# *` when you explicitly want row count (not distinct):
+
+```asql
+# *                -- COUNT(*) explicitly
+```
+
+### Count Shorthand Reference
+
+| Syntax | SQL Output | Use Case |
+|--------|------------|----------|
+| `#` | `COUNT(*)` | Count all rows |
+| `# *` | `COUNT(*)` | Explicit row count |
+| `#(col)` | `COUNT(col)` | Count non-null values |
+| `#(distinct col)` | `COUNT(DISTINCT col)` | Distinct values |
+| `# users` | `COUNT(DISTINCT user_id)` | Distinct entity count |
+| `# of users` | `COUNT(DISTINCT user_id)` | Natural language variant |
 
 ## Multiple Grouping Columns
 
