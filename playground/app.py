@@ -35,6 +35,10 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 SYNTAX_DIR = Path(__file__).parent.parent / "syntax"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
+# Mount syntax files first (more specific path)
+if SYNTAX_DIR.exists():
+    app.mount("/static/syntax", StaticFiles(directory=str(SYNTAX_DIR)), name="syntax")
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -67,17 +71,36 @@ async def index() -> HTMLResponse:
     """Render the playground interface."""
     template_path = TEMPLATES_DIR / "index.html"
     if template_path.exists():
-        return HTMLResponse(content=template_path.read_text())
+        content = template_path.read_text()
+        
+        # Inject examples data directly into the template
+        import json
+        examples_data = {
+            "asql": ASQL_EXAMPLES,
+            "pipeline": PIPELINE_EXAMPLES,
+            "cohort": COHORT_EXAMPLES,
+            "sampling": SAMPLING_EXAMPLES,
+            "reshaping": RESHAPING_EXAMPLES,
+            "column_operators": COLUMN_OPERATOR_EXAMPLES,
+            "count_inference": COUNT_INFERENCE_EXAMPLES,
+            "sql": SQL_EXAMPLES,
+        }
+        examples_json = json.dumps(examples_data)
+        
+        # Escape </script> to prevent breaking HTML parser
+        # Use \u003c instead of < in the closing script tag
+        examples_json = examples_json.replace("</script>", r"<\/script>")
+        examples_json = examples_json.replace("</Script>", r"<\/Script>")
+        examples_json = examples_json.replace("</SCRIPT>", r"<\/SCRIPT>")
+        
+        # Replace the placeholder with actual data
+        content = content.replace(
+            '/* EXAMPLES_DATA_PLACEHOLDER */ {}',
+            examples_json
+        )
+        
+        return HTMLResponse(content=content)
     return HTMLResponse(content="<h1>Template not found</h1>", status_code=500)
-
-
-@app.get("/static/syntax/{filename:path}")
-async def serve_syntax(filename: str) -> FileResponse:
-    """Serve syntax highlighter files."""
-    file_path = SYNTAX_DIR / filename
-    if file_path.exists():
-        return FileResponse(file_path)
-    return FileResponse(file_path, status_code=404)
 
 
 @app.post("/api/compile")

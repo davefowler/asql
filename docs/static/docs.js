@@ -175,9 +175,10 @@ function showMoreDialects(blockId) {
         const btn = document.createElement('button');
         btn.textContent = getDialectName(dialect);
         btn.onclick = () => {
+            // Reorder tabs to include this dialect as visible and active
+            reorderTabs(blockId, dialect);
+            // Show the dialect content
             showDialect(blockId, dialect);
-            // Reorder tabs based on new view count
-            reorderTabs(blockId);
         };
         menu.appendChild(btn);
     });
@@ -233,10 +234,9 @@ function getDialectName(dialect) {
 }
 
 // Reorder tabs after a dialect is viewed (called from showDialect)
-function reorderTabs(blockId) {
-    // Just reorder on load, don't dynamically reorder during session
-    // This prevents confusion from tabs moving around
-    reorderTabsOnLoad(blockId);
+function reorderTabs(blockId, activeDialect = null) {
+    // Rebuild tabs with the active dialect visible
+    reorderTabsOnLoad(blockId, activeDialect);
 }
 
 // Add WIP warning banner
@@ -288,6 +288,77 @@ function addPlaygroundButton() {
         // If no next sibling, insert right after title
         headerTitle.insertAdjacentElement('afterend', btn);
     }
+}
+
+// Highlight all code blocks on the page
+function highlightAllCodeBlocks() {
+    if (!window.hljs) {
+        // Retry if highlight.js isn't loaded yet
+        setTimeout(highlightAllCodeBlocks, 100);
+        return;
+    }
+    
+    // Ensure ASQL language is registered
+    if (!window.hljs.getLanguage || !window.hljs.getLanguage('asql')) {
+        // Try to register if function is available
+        if (window.registerASQLLanguage) {
+            window.registerASQLLanguage();
+        }
+        // Wait a bit more for registration
+        setTimeout(highlightAllCodeBlocks, 50);
+        return;
+    }
+    
+    // Highlight code blocks
+    document.querySelectorAll('pre code[class*="language-"], pre code:not([class])').forEach((block) => {
+        if (block.textContent && block.textContent.trim()) {
+            try {
+                const code = block.textContent;
+                // Determine language from class name
+                let language = null;
+                const langMatch = block.className.match(/language-(\w+)/);
+                if (langMatch) {
+                    language = langMatch[1];
+                } else {
+                    // Check if parent pre has a class
+                    const parentPre = block.parentElement;
+                    if (parentPre && parentPre.className) {
+                        const parentLangMatch = parentPre.className.match(/language-(\w+)/);
+                        if (parentLangMatch) {
+                            language = parentLangMatch[1];
+                        }
+                    }
+                }
+                
+                // Default to sql if no language detected
+                if (!language) {
+                    language = 'sql';
+                }
+                
+                // Only highlight if not already highlighted
+                if (!block.classList.contains('hljs')) {
+                    const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
+                    if (langAvailable) {
+                        const result = hljs.highlight(code, { language: language });
+                        block.innerHTML = result.value;
+                        block.classList.add('hljs', `language-${language}`);
+                    } else {
+                        block.classList.add(`language-${language}`);
+                    }
+                }
+            } catch (e) {
+                console.warn('Highlight.js error on block:', e);
+            }
+        }
+    });
+    
+    // Also handle ASQL dialect blocks
+    const blocks = document.querySelectorAll('.asql-code-block');
+    blocks.forEach(block => {
+        const blockId = block.getAttribute('data-block-id');
+        reorderTabsOnLoad(blockId);
+        showDialect(blockId, 'asql');
+    });
 }
 
 // Initialize all code blocks on page load
@@ -349,10 +420,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (langAvailable) {
                             const result = hljs.highlight(code, { language: language });
                             block.innerHTML = result.value;
-                            block.className = `hljs language-${language}`;
+                            // Add classes without removing existing ones
+                            block.classList.add('hljs', `language-${language}`);
                         } else {
-                            // Fallback: just set text and class
-                            block.className = `language-${language}`;
+                            // Fallback: just add language class
+                            block.classList.add(`language-${language}`);
                         }
                     }
                 } catch (e) {
@@ -391,8 +463,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+
 // Reorder tabs on page load based on view counts
-function reorderTabsOnLoad(blockId) {
+function reorderTabsOnLoad(blockId, forceActiveDialect = null) {
     const block = document.querySelector(`[data-block-id="${blockId}"]`);
     if (!block) return;
     
@@ -401,10 +474,10 @@ function reorderTabsOnLoad(blockId) {
     
     const { dialects } = initDialectTracking();
     const topDialects = ['postgres', 'snowflake', 'bigquery', 'databricks'];
-    const topDialectsAvailable = topDialects.filter(d => d in compiled);
+    let topDialectsAvailable = topDialects.filter(d => d in compiled);
     
     // Sort top dialects by view count
-    const sortedTopDialects = topDialectsAvailable.sort((a, b) => {
+    topDialectsAvailable = topDialectsAvailable.sort((a, b) => {
         const countA = dialects[a] || 0;
         const countB = dialects[b] || 0;
         if (countB !== countA) {
@@ -418,9 +491,19 @@ function reorderTabsOnLoad(blockId) {
     if (!tabsContainer) return;
     
     // Get current active dialect before rebuilding
-    // Always default to asql
     const activeTab = tabsContainer.querySelector('.tab-btn.active');
-    const activeDialect = activeTab ? activeTab.getAttribute('data-dialect') : 'asql';
+    let activeDialect = forceActiveDialect || (activeTab ? activeTab.getAttribute('data-dialect') : 'asql');
+    
+    // If active dialect is not in top dialects (and not asql), add it to the visible tabs
+    const dialectsToShow = [...topDialectsAvailable];
+    if (activeDialect !== 'asql' && !topDialects.includes(activeDialect) && activeDialect in compiled) {
+        // Add the active dialect to the beginning of visible dialects
+        dialectsToShow.unshift(activeDialect);
+        // Limit to 4 visible SQL dialects (plus ASQL)
+        if (dialectsToShow.length > 4) {
+            dialectsToShow.pop();
+        }
+    }
     
     // Clear and rebuild
     tabsContainer.innerHTML = '';
@@ -436,8 +519,8 @@ function reorderTabsOnLoad(blockId) {
     }
     tabsContainer.appendChild(asqlTab);
     
-    // Add sorted top dialects
-    sortedTopDialects.forEach(dialect => {
+    // Add visible dialects
+    dialectsToShow.forEach(dialect => {
         const tab = document.createElement('button');
         tab.className = 'tab-btn';
         tab.setAttribute('data-dialect', dialect);
@@ -449,10 +532,9 @@ function reorderTabsOnLoad(blockId) {
         tabsContainer.appendChild(tab);
     });
     
-    // Add more tab if there are other dialects
-    const otherDialects = Object.keys(compiled).filter(
-        d => d !== 'asql' && !topDialects.includes(d)
-    );
+    // Add more tab if there are other dialects not shown
+    const shownDialects = new Set(['asql', ...dialectsToShow]);
+    const otherDialects = Object.keys(compiled).filter(d => !shownDialects.has(d));
     if (otherDialects.length > 0) {
         const newMoreTab = document.createElement('button');
         newMoreTab.className = 'tab-btn more-tab';

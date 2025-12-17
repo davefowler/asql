@@ -194,7 +194,7 @@ compile('set active = from users where status == "active" from active group by c
 
 ## Dialect Limitations
 
-Some ASQL features have limited support across SQL dialects. See [DIALECT_LIMITATIONS.md](../DIALECT_LIMITATIONS.md) for details on:
+Some ASQL features have limited support across SQL dialects. See [Dialect Limitations](dialect-limitations.md) for details on:
 
 - Column override with `select *` (BigQuery, Snowflake, DuckDB only)
 - Auto-spine edge cases with ROLLUP/CUBE

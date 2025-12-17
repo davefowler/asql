@@ -26,7 +26,7 @@
  *   - Operators: ==, !=, <=, >=, <, >, +, -, *, /, %, || (null coalescing), :: (type casting)
  *   - Strings: Single and double quoted strings
  *   - Numbers: Integers and floats
- *   - Comments: # to end of line
+ *   - Comments: -- to end of line (SQL-style)
  *   - Special ASQL syntax: # (count shorthand), -column (descending order), col::TYPE (type casting)
  *   - Multi-word keywords: group by, not in, is null, is not null, stash as
  * 
@@ -104,10 +104,16 @@
         // Handle whitespace
         if (stream.eatSpace()) return null;
         
-        // Handle comments (# to end of line)
-        if (stream.match(/^#/)) {
+        // Handle comments (-- to end of line, SQL-style)
+        if (stream.match(/^--/)) {
             stream.skipToEnd();
             return "comment";
+        }
+        
+        // Handle count shorthand (#) - must be before other operators
+        // # alone = COUNT(*), # col = COUNT(col), # distinct col = COUNT(DISTINCT col)
+        if (stream.match(/^#/)) {
+            return "keyword";
         }
         
         // Handle strings (double quotes)
@@ -150,11 +156,6 @@
         // Handle single pipeline operator (|)
         if (stream.match(/^\|/)) {
             return "operator";
-        }
-        
-        // Handle count shorthand (#)
-        if (stream.match(/^#/)) {
-            return "keyword";
         }
         
         // Handle descending order prefix (-identifier)
@@ -238,7 +239,7 @@
             return state.tokenize(stream, state);
         },
         
-        lineComment: "#",
+        lineComment: "--",
         fold: "indent"
     };
 });

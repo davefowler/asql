@@ -75,7 +75,7 @@
     color: var(--asql-red-dark);
 }
 
-/* Table of contents - right sidebar (light mode) */
+/* Table of contents - right sidebar */
 [data-md-color-scheme="default"] .md-sidebar--secondary .md-nav__link {
     color: #333 !important;
 }
@@ -89,11 +89,6 @@
     font-weight: 600;
     border-left: 2px solid var(--asql-red);
     padding-left: calc(0.6rem - 2px);
-}
-
-/* Improve TOC sidebar styling */
-.md-sidebar--secondary {
-    width: 14rem;
 }
 
 .md-sidebar--secondary .md-nav {
@@ -131,54 +126,167 @@
     padding-left: calc(1rem - 3px);
 }
 
-/* Improve sidebar visibility and width - only for primary nav */
-.md-sidebar--primary {
-    width: 14rem;
-    border-right: 1px solid rgba(0, 0, 0, 0.07);
-}
+/* =============================================
+   SIMPLIFIED RESPONSIVE BEHAVIOR
+   ============================================= */
 
-/* Make navigation sections more prominent */
-.md-nav__title {
-    font-weight: 600;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #666;
-    margin-top: 1rem;
-    margin-bottom: 0.5rem;
-}
-
-.md-nav__item {
-    margin-bottom: 0.25rem;
-}
-
-.md-nav__link {
-    border-radius: 4px;
-    padding: 0.4rem 0.8rem;
-    transition: all 0.2s;
-}
-
-.md-nav__link:hover {
-    background-color: rgba(197, 48, 48, 0.05);
-}
-
-/* Wider content area for better readability */
-@media (min-width: 76.25em) {
-    .md-content {
-        max-width: 50rem;
+/* Mobile: Hide sidebar, show hamburger */
+@media screen and (max-width: 959px) {
+    .md-sidebar--primary {
+        display: none !important;
+    }
+    
+    .md-sidebar--secondary {
+        display: none !important;
     }
 }
 
-/* Better spacing for wide screens */
-@media (min-width: 89.9375em) {
+/* Desktop: Always show sidebar, never collapse */
+@media screen and (min-width: 960px) {
+    /* Hide hamburger menu */
+    .md-header__button[for="__drawer"] {
+        display: none !important;
+    }
+    
+    /* Force primary sidebar to always show */
     .md-sidebar--primary {
-        width: 15rem;
+        display: block !important;
+        position: sticky !important;
+        top: 0;
+        left: 0 !important;
+        width: 15rem !important;
+        height: auto !important;
+        max-height: 100vh;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        transform: none !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        z-index: 1;
+    }
+    
+    /* Override drawer transform/animation */
+    .md-sidebar--primary[data-md-state="lock"] {
+        transform: none !important;
+    }
+    
+    /* Force nav to show as normal (not drawer) */
+    .md-nav--primary {
+        position: static !important;
+        width: auto !important;
+        height: auto !important;
+        max-height: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        transform: none !important;
+        transition: none !important;
+        overflow: visible !important;
+    }
+    
+    /* Hide drawer overlay */
+    .md-overlay {
+        display: none !important;
+    }
+    
+    /* Hide back/close buttons used in drawer mode */
+    .md-nav__title[for="__drawer"] {
+        display: none !important;
+    }
+    
+    .md-nav__icon--prev {
+        display: none !important;
+    }
+    
+    /* Adjust main content to account for sidebar */
+    .md-main__inner {
+        display: flex;
     }
     
     .md-content {
-        max-width: 55rem;
+        flex: 1;
+        min-width: 0;
     }
 }
+
+/* Sidebar and content styling */
+.md-sidebar {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+}
+
+.md-sidebar--secondary {
+    padding-left: 0.8rem;
+    padding-right: 0.8rem;
+}
+
+/* Content max-width */
+.md-content__inner {
+    max-width: 52rem;
+}
+
+/* =============================================
+   NAVIGATION STYLING
+   ============================================= */
+
+/* Fix double scrollbar issue - ensure single scroll container */
+.md-sidebar--primary {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+.md-nav--primary {
+    overflow: visible !important;
+}
+
+.md-nav--primary .md-nav__list {
+    overflow: visible !important;
+}
+
+/* Navigation visibility - FORCE EVERYTHING TO SHOW */
+@media screen and (min-width: 960px) {
+    /* Force ALL elements in primary nav to be visible */
+    .md-nav--primary,
+    .md-nav--primary *,
+    .md-nav--primary .md-nav__list,
+    .md-nav--primary .md-nav__item,
+    .md-nav--primary .md-nav__link,
+    .md-nav--primary .md-nav__title {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        transform: none !important;
+        position: static !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    
+    /* Except hide nested navs by default (collapse behavior) */
+    .md-nav--primary .md-nav__item > .md-nav {
+        display: none !important;
+    }
+    
+    /* Show nested nav when toggle checked OR item is active */
+    .md-nav--primary .md-nav__toggle:checked ~ .md-nav,
+    .md-nav--primary .md-nav__item--active > .md-nav {
+        display: block !important;
+    }
+}
+
+/* Active nav items */
+.md-nav__link--active {
+    color: var(--asql-red) !important;
+    font-weight: 600;
+}
+
+.md-nav__item--active > .md-nav__link {
+    color: var(--asql-red) !important;
+    font-weight: 600;
+    background-color: rgba(197, 48, 48, 0.08);
+    border-left: 3px solid var(--asql-red);
+    padding-left: calc(1rem - 3px);
+}
+
 
 /* Code blocks - light mode */
 [data-md-color-scheme="default"] .md-typeset pre > code,
@@ -327,10 +435,31 @@
 /* Fix main content container to use available space properly */
 .md-main {
     flex: 1;
+    overflow: visible;
 }
 
 .md-main__inner {
     max-width: 100%;
+}
+
+/* Ensure proper layout structure */
+.md-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+.md-main__inner {
+    display: flex;
+    flex: 1;
+}
+
+/* Fix Safari-specific sidebar issues */
+@supports (-webkit-appearance: none) {
+    .md-sidebar--primary {
+        -webkit-overflow-scrolling: touch;
+        will-change: scroll-position;
+    }
 }
 
 .playground-btn svg {
@@ -427,4 +556,196 @@
 
 [data-md-color-scheme="slate"] .hljs-function {
     color: #89b4fa !important;
+}
+
+/* ========================================
+   ASQL Dialect Tabs
+   ======================================== */
+
+.asql-code-block {
+    position: relative;
+    margin: 1rem 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .asql-code-block {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Dialect tabs container */
+.dialect-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    background: #f0f0f0;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .dialect-tabs {
+    background: #313244;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Tab button */
+.tab-btn {
+    background: transparent;
+    border: none;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.tab-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #333;
+}
+
+[data-md-color-scheme="slate"] .tab-btn {
+    color: #a6adc8;
+}
+
+[data-md-color-scheme="slate"] .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #cdd6f4;
+}
+
+/* Active tab */
+.tab-btn.active {
+    background: var(--asql-red);
+    color: white !important;
+}
+
+.tab-btn.active:hover {
+    background: var(--asql-red-dark);
+}
+
+/* More dialects button */
+.tab-btn.more-tab {
+    font-weight: bold;
+    min-width: 32px;
+}
+
+/* Code content area */
+.asql-code-block .code-content {
+    position: relative;
+}
+
+.asql-code-block .code-content pre {
+    margin: 0 !important;
+    border-radius: 0 !important;
+}
+
+.asql-code-block .code-content code {
+    display: block;
+    padding: 1rem !important;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-x: auto;
+}
+
+/* More dialects dropdown menu */
+.more-dialects-menu {
+    display: none;
+    position: absolute;
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 150px;
+    padding: 4px 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.more-dialects-menu.show {
+    display: block;
+}
+
+/* Ensure parent containers don't clip the menu */
+.asql-code-block {
+    overflow: visible !important;
+}
+
+.dialect-tabs {
+    overflow: visible !important;
+}
+
+[data-md-color-scheme="slate"] .more-dialects-menu {
+    background: #1e1e2e;
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.more-dialects-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 16px;
+    background: none;
+    border: none;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+
+.more-dialects-menu button:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+[data-md-color-scheme="slate"] .more-dialects-menu button {
+    color: #cdd6f4;
+}
+
+[data-md-color-scheme="slate"] .more-dialects-menu button:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Play button for opening in playground */
+.play-button {
+    position: absolute;
+    top: 8px;
+    right: 42px;  /* Position left of the copy button */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0;
+    text-decoration: none !important;
+    z-index: 10;
+}
+
+.asql-code-block:hover .play-button {
+    opacity: 1;
+}
+
+.play-button:hover {
+    background: var(--asql-red);
+    color: white;
+}
+
+[data-md-color-scheme="slate"] .play-button {
+    background: rgba(255, 255, 255, 0.1);
+    color: #a6adc8;
+}
+
+[data-md-color-scheme="slate"] .play-button:hover {
+    background: var(--asql-red);
+    color: white;
 }
