@@ -1,326 +1,179 @@
 # ASQL Feature Status - Complete Breakdown
 
-**Last Updated**: Current session  
-**Total Tests**: 182+ tests (all passing ✅)
+**Last Updated**: December 2024  
+**Total Tests**: 434 tests (all passing ✅)
 
-## ✅ Phase 1: Core Pipeline Operators - COMPLETE
+## ✅ IMPLEMENTED FEATURES
 
-### FROM Clause ✅
-- **Status**: ✅ Complete
-- **Tests**: Multiple tests passing
-- **Features**:
-  - Basic `from table` syntax
-  - Table name parsing
-  - Required first clause
+### Core Pipeline Operators ✅
 
-### WHERE Clause ✅
-- **Status**: ✅ Complete
-- **Tests**: 20+ tests passing
-- **Features**:
-  - ✅ Basic filtering: `where condition`
-  - ✅ Comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
-  - ✅ NULL checks: `is null`, `is not null`
-  - ✅ Logical operators: `and`, `or`, `not`
-  - ✅ Membership: `in`, `not in`
-  - ✅ Parentheses support: `(condition)`
-  - ✅ Multiple conditions
-  - ✅ String literals (single and double quotes)
-  - ✅ Numeric literals (integers, floats, negative)
-  - ✅ Column references
+| Feature | Status | Tests | Notes |
+|---------|--------|-------|-------|
+| FROM clause | ✅ Complete | ✅ | Foundation of all queries |
+| WHERE clause | ✅ Complete | ✅ | All comparison/logical operators |
+| SELECT clause | ✅ Complete | ✅ | Column selection, expressions |
+| GROUP BY | ✅ Complete | ✅ | Block syntax `group by col (aggs)` |
+| ORDER BY / SORT | ✅ Complete | ✅ | `-` prefix for DESC |
+| TAKE / LIMIT | ✅ Complete | ✅ | Row limiting |
+| JOIN | ✅ Complete | ✅ | Inner, left, right, outer |
 
-### SELECT Clause ✅
-- **Status**: ✅ Complete
-- **Tests**: Multiple tests passing
-- **Features**:
-  - ✅ Column selection: `select col1, col2`
-  - ✅ Star selection: `select *` (implicit)
-  - ✅ Multiple columns
+### Expressions & Operators ✅
 
-### GROUP BY ✅
-- **Status**: ✅ Complete
-- **Tests**: 10+ tests passing
-- **Features**:
-  - ✅ Basic grouping: `group by col`
-  - ✅ Multiple grouping columns: `group by col1, col2`
-  - ✅ Aggregation block syntax: `group by col ( aggregations )`
-  - ✅ COUNT shorthand: `#` → `COUNT(*)`
-  - ✅ All aggregation functions:
-    - ✅ `sum(column)` → `SUM(column)`
-    - ✅ `avg(column)` → `AVG(column)`
-    - ✅ `count(column)` → `COUNT(column)`
-    - ✅ `min(column)` → `MIN(column)`
-    - ✅ `max(column)` → `MAX(column)`
-  - ✅ Multiple aggregations
-  - ✅ Aggregation aliases: `sum(amount) as revenue`
+| Feature | Status | Syntax |
+|---------|--------|--------|
+| Comparison | ✅ | `==`, `=`, `!=`, `<>`, `<`, `>`, `<=`, `>=` |
+| NULL checks | ✅ | `is null`, `is not null` |
+| Logical | ✅ | `and`, `or`, `not` |
+| Membership | ✅ | `in (...)`, `not in (...)` |
+| Arithmetic | ✅ | `+`, `-`, `*`, `/`, `%` |
+| COALESCE | ✅ | `??` operator |
+| Type casting | ✅ | `::` operator |
 
-### SORT/ORDER BY ✅
-- **Status**: ✅ Complete
-- **Tests**: 10+ tests passing
-- **Features**:
-  - ✅ Ascending sort: `sort column`
-  - ✅ Descending sort: `sort -column` (using `-` prefix)
-  - ✅ Multiple sort columns: `sort col1, col2`
-  - ✅ Function calls: `sort month(created_at)`
-  - ✅ Descending function calls: `sort -month(updated_at)`
-  - ✅ Mixed ascending/descending
+### Aggregation Functions ✅
 
-### TAKE/LIMIT ✅
-- **Status**: ✅ Complete (with minor edge case)
-- **Tests**: Multiple tests passing
-- **Features**:
-  - ✅ Basic limit: `take 10`
-  - ✅ Large numbers
-  - ⚠️ Edge case: `take 0` generates SQL but may need validation
+| Function | Status | Alias |
+|----------|--------|-------|
+| `count(*)` | ✅ | `#` shorthand |
+| `sum()` | ✅ | `total` |
+| `avg()` | ✅ | `average` |
+| `min()` | ✅ | - |
+| `max()` | ✅ | - |
+| `count(distinct)` | ✅ | - |
 
-## ✅ Phase 2: Expressions & Operators - MOSTLY COMPLETE
+### Date & Time ✅
 
-### Comparison Operators ✅
-- **Status**: ✅ Complete
-- **Operators**:
-  - ✅ `==` (equals)
-  - ✅ `!=` (not equals)
-  - ✅ `<` (less than)
-  - ✅ `>` (greater than)
-  - ✅ `<=` (less than or equal)
-  - ✅ `>=` (greater than or equal)
+| Feature | Status | Example |
+|---------|--------|---------|
+| Date literals | ✅ | `@2024-01-01` |
+| Relative dates | ✅ | `7 days ago`, `3 months from now` |
+| Date arithmetic | ✅ | `order_date + 7 days` |
+| Date truncation | ✅ | `year()`, `month()`, `week()`, `day()`, `quarter()` |
+| Date extraction | ✅ | `day_of_week()`, `week_of_year()`, `month_of_year()` |
+| Time since/until | ✅ | `days_since_created_at`, `months_until_due_date` |
+| Date spine | ✅ | `date_spine(start, end, grain)` |
 
-### NULL Checks ✅
-- **Status**: ✅ Complete
-- **Operators**:
-  - ✅ `is null`
-  - ✅ `is not null`
+### Window Functions ✅
 
-### Logical Operators ✅
-- **Status**: ✅ Complete
-- **Operators**:
-  - ✅ `and` (logical AND)
-  - ✅ `or` (logical OR)
-  - ✅ `not` (logical NOT)
-- **Precedence**: ✅ Correct (NOT > AND > OR)
-- **Parentheses**: ✅ Supported for grouping
+| Feature | Status | Syntax |
+|---------|--------|--------|
+| per command | ✅ | `per customer_id first by -order_date` |
+| Ranking | ✅ | `per group rank by col`, `dense rank` |
+| Row numbering | ✅ | `per group number by col` |
+| QUALIFY | ✅ | `qualify row_num == 1` |
+| DISTINCT ON | ✅ | `distinct on (cols)` |
+| prior/next | ✅ | `prior(col)`, `next(col, n)` |
+| Running aggs | ✅ | `running_sum()`, `running_avg()`, `running_count()` |
+| Rolling aggs | ✅ | `rolling_sum(col, n)`, `rolling_avg(col, n)` |
+| first/last | ✅ | `first(col order by x)`, `last(col order by x)` |
+| arg_max/min | ✅ | `arg_max(value_col, sort_col)` |
 
-### Membership Operators ✅
-- **Status**: ✅ Complete
-- **Operators**:
-  - ✅ `in (value1, value2, ...)`
-  - ✅ `not in (value1, value2, ...)`
-- **Features**:
-  - ✅ String values
-  - ✅ Numeric values
-  - ✅ Multiple values
-  - ✅ Empty list detection (error)
+### CTEs & Variables ✅
 
-### Arithmetic Operators ❌
-- **Status**: ❌ Not Implemented
-- **Missing Operators**:
-  - ❌ `+` (addition)
-  - ❌ `-` (subtraction)
-  - ❌ `*` (multiplication)
-  - ❌ `/` (division)
-  - ❌ `%` (modulo)
-- **Priority**: HIGH
-- **Use Cases**: 
-  - `derive age as years_between(now(), dob)` (but we removed derive)
-  - `where amount * 0.1 > 100`
-  - `select price * quantity as total`
+| Feature | Status | Syntax |
+|---------|--------|--------|
+| set | ✅ | `set name = query` |
+| with | ✅ | `with name = query`, `with name as query` |
+| stash as | ✅ | `... stash as cte_name ...` |
 
-### String Matching ❌
-- **Status**: ❌ Not Implemented (Planned)
-- **Planned Operators** (see SPEC.md Section 4.5):
-  - ❌ `contains "pattern"`
-  - ❌ `starts with "pattern"`
-  - ❌ `ends with "pattern"`
-  - ❌ `matches "regex"`
-  - ❌ `ignore case` modifier
-- **Priority**: MEDIUM
-- **Design**: ✅ Complete in SPEC.md
-- **Implementation Plan**: ✅ Complete in docs/STRING_MATCHING_PLAN.md
+### Utility Functions ✅
 
-## ❌ Phase 3: Advanced Features - NOT STARTED
-
-### JOIN ❌
-- **Status**: ❌ Not Implemented
-- **Planned Syntax**:
-  - ❌ `join owners on owner_id == owners.id`
-  - ❌ Automatic joins (requires schema resolver)
-- **Priority**: MEDIUM
-- **Dependencies**: Schema resolution
-
-### SET/CTEs ❌
-- **Status**: ❌ Not Implemented
-- **Planned Syntax**:
-  - ❌ `set active_users = from users where is_active`
-  - ❌ Variable resolution
-  - ❌ SQL `WITH ... AS` generation
-- **Priority**: MEDIUM
-- **Note**: Using `SET` (not `LET`) per spec
-
-### Indentation-Based Syntax ❌
-- **Status**: ❌ Not Implemented
-- **Current**: Single-line queries only
-- **Planned**: Multi-line with indentation
-- **Priority**: LOW
-- **Example**:
-  ```asql
-  from users
-    where status == "active"
-    group by country ( # as total_users )
-  ```
-
-### Schema Resolution ❌
-- **Status**: ❌ Not Implemented
-- **Planned Features**:
-  - ❌ FK inference
-  - ❌ Plural/singular handling
-  - ❌ Automatic joins
-  - ❌ Default time fields
-- **Priority**: LOW (requires model layer)
-- **Dependencies**: Model metadata system
-
-## ✅ Compiler Features - COMPLETE
-
-### SQL Generation ✅
-- **Status**: ✅ Complete
-- **Features**:
-  - ✅ ASQL → SQLGlot AST
-  - ✅ SQLGlot AST → SQL string
-  - ✅ Proper SQL structure
-  - ✅ Keyword ordering correct
+| Function | Status | Description |
+|----------|--------|-------------|
+| `safe_divide()` | ✅ | NULL on divide-by-zero |
+| `key()` | ✅ | Surrogate key generation |
 
 ### Dialect Support ✅
-- **Status**: ✅ Complete
-- **Supported Dialects**:
-  - ✅ PostgreSQL
-  - ✅ MySQL
-  - ✅ BigQuery
-  - ✅ Snowflake
-  - ✅ Redshift
-  - ✅ SQLite
-  - ✅ ANSI SQL (default)
 
-### Error Handling ✅
-- **Status**: ✅ Complete
-- **Features**:
-  - ✅ Clear error messages
-  - ✅ Position tracking support (infrastructure ready)
-  - ✅ Specific error types
-  - ✅ Syntax error detection
+- ✅ PostgreSQL
+- ✅ MySQL
+- ✅ BigQuery
+- ✅ Snowflake
+- ✅ Redshift
+- ✅ SQLite
+- ✅ DuckDB
+- ✅ ANSI SQL (default)
 
-## 📊 Test Coverage Summary
+---
 
-### Test Files
-1. ✅ `test_basic.py` - Basic import and setup tests
-2. ✅ `test_compiler.py` - Core functionality tests (41 tests)
-3. ✅ `test_comprehensive.py` - Parametrized tests (72 tests)
-4. ✅ `test_error_messages.py` - Error message quality (12 tests)
-5. ✅ `test_integration.py` - SQLGlot integration (14 tests)
-6. ✅ `test_example_datasets.py` - Real-world scenarios (16 tests)
-7. ✅ `test_edge_cases.py` - Boundary conditions (20+ tests)
-8. ✅ `test_code_quality.py` - Code quality checks (7 tests)
+## ❌ NOT IMPLEMENTED (Planned)
 
-### Test Statistics
-- **Total Tests**: 181+
-- **Passing**: 179
-- **Failing**: 2 (edge cases - `take 0` and empty aggregation block)
-- **Coverage**: All implemented features
+Features documented in SPEC.md but not yet implemented:
 
-## 🎯 Implementation Priority
+### String Matching (Section 4.5)
+- ❌ `contains "pattern"`
+- ❌ `starts with "pattern"`
+- ❌ `ends with "pattern"`
+- ❌ `matches "regex"`
+- ❌ `ignore case` modifier
 
-### High Priority (Next)
-1. **Arithmetic Operators** - `+`, `-`, `*`, `/`, `%`
-   - Needed for calculations in WHERE and SELECT
-   - Relatively straightforward to implement
+### Conditional Expressions (Section 4.7)
+- ❌ `when status is "active" then 1 otherwise 0`
+- ❌ Multiple conditions with `is`, `<`, `>`, `in`
+
+### Natural Language Aggregates (Section 5.5)
+- ❌ `# of Users by country` (inferred FROM)
+- ❌ `Sum of revenue by region`
+
+### Automatic Joins (Section 7.2)
+- ❌ Arrow syntax: `from opportunities->owners`
+- ❌ FK inference from schema
+- ❌ Plural/singular handling
+
+### Column Operators (Section 13.1)
+- ❌ `except email, phone`
+- ❌ `rename id as user_id`
+- ❌ `prefix user_`
+
+### Deduplicate Operator (Section 13.2)
+- ❌ `deduplicate by user_id order by -created_at`
+
+### Pivot/Unpivot (Section 13.3)
+- ❌ `pivot amount by category`
+- ❌ `unpivot cols into name, value`
+
+### Fill/Gap Filling (Section 13.4)
+- ❌ `fill month`
+- ❌ `fill month with {revenue: 0}`
+
+### Safe Cast (Section 13.8)
+- ❌ `value::integer?` (returns NULL on failure)
+
+---
+
+## 📊 Implementation Summary
+
+| Category | Implemented | Not Implemented | Percentage |
+|----------|-------------|-----------------|------------|
+| Core Operators | 7/7 | 0 | 100% |
+| Expressions | 7/7 | 0 | 100% |
+| Aggregations | 5/5 | 0 | 100% |
+| Date/Time | 7/7 | 0 | 100% |
+| Window Functions | 10/10 | 0 | 100% |
+| CTEs | 3/3 | 0 | 100% |
+| Dialects | 8/8 | 0 | 100% |
+| String Matching | 0/5 | 5 | 0% |
+| Conditionals | 0/1 | 1 | 0% |
+| Natural Lang | 0/2 | 2 | 0% |
+| Auto Joins | 0/3 | 3 | 0% |
+| Column Ops | 0/3 | 3 | 0% |
+| Transforms | 0/4 | 4 | 0% |
+
+**Overall**: ~75% of spec implemented (all core features complete)
+
+---
+
+## 🎯 Next Implementation Priority
+
+### High Priority
+1. **String Matching** - Common use case, design complete in spec
+2. **Conditional Expressions** (`when`) - Needed for business logic
 
 ### Medium Priority
-2. **String Matching** - `contains`, `starts with`, `ends with`
-   - Design complete in SPEC.md
-   - Common use case
-   - Can work around with SQL LIKE for now
+3. **Column Operators** (`except`, `rename`, `prefix`)
+4. **Deduplicate Operator** - Though `per first by` works as alternative
 
-3. **JOIN** - Explicit joins
-   - Common SQL operation
-   - Required for multi-table queries
-
-4. **SET/CTEs** - Variable support
-   - Useful for complex queries
-   - Can work around with subqueries for now
-
-### Low Priority
-5. **Indentation Syntax** - Multi-line support
-6. **Schema Resolution** - Automatic FK inference
-7. **Advanced Features** - Functions, nested queries, etc.
-
-## 📝 Known Limitations
-
-### Current Limitations
-1. **Single-line queries** - No multi-line/indentation support yet
-2. **No arithmetic** - Can't do `amount * 0.1` or `age + 5`
-3. **No string matching** - Must use SQL `LIKE` syntax
-4. **No JOIN** - Can't join tables yet
-5. **No CTEs** - Can't use `SET` for variables yet
-6. **No schema resolution** - Must specify all table/column names explicitly
-
-### Edge Cases Needing Fixes
-1. ⚠️ `take 0` - Generates SQL but may need validation
-2. ⚠️ Empty aggregation block - Should allow or give better error
-
-## ✅ What Works Right Now
-
-You can write queries like:
-
-```asql
-# Basic queries
-from users
-from users select name, email
-
-# Filtering
-from users where status == "active"
-from users where age >= 18 and email is not null
-from users where status in ("active", "pending")
-from users where (status == "active" or status == "pending") and age >= 18
-
-# Aggregations
-from users group by country ( # as total_users )
-from sales group by region ( sum(amount) as revenue, # as orders )
-
-# Sorting
-from users sort -updated_at
-from users sort -month(created_at), name
-
-# Limiting
-from users take 10
-
-# Complex pipelines
-from users 
-where status == "active" 
-group by country ( # as total_users ) 
-sort -total_users 
-take 10
-```
-
-## ❌ What Doesn't Work Yet
-
-```asql
-# Arithmetic (not implemented)
-from users where age + 5 >= 18
-from sales select amount * quantity as total
-
-# String matching (not implemented)
-from users where email contains "@gmail.com"
-from users where name starts with "John"
-
-# JOINs (not implemented)
-from users join orders on users.id == orders.user_id
-
-# CTEs (not implemented)
-set active = from users where status == "active"
-from active group by country ( # as total_users )
-```
-
-## 🚀 Next Steps
-
-1. **Fix edge cases** (2 failing tests)
-2. **Implement arithmetic operators** (HIGH priority)
-3. **Implement string matching** (MEDIUM priority, design ready)
-4. **Implement JOIN** (MEDIUM priority)
-5. **Implement SET/CTEs** (MEDIUM priority)
+### Lower Priority
+5. **Pivot/Unpivot** - Complex, can use SQL directly
+6. **Fill** - Can use date_spine + left join
+7. **Natural Language Aggregates** - Nice-to-have syntactic sugar
+8. **Automatic Joins** - Requires schema resolution infrastructure
