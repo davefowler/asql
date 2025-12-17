@@ -59,6 +59,10 @@ def _detect_rollup_cube(stmt: exp.Expression) -> Tuple[bool, bool, List[str]]:
     - has_rollup: True if ROLLUP is present
     - has_cube: True if CUBE is present
     - rollup_cube_columns: List of column names in the ROLLUP/CUBE (in order for ROLLUP)
+    
+    Note: ASQL doesn't have native ROLLUP/CUBE syntax - this only handles raw SQL
+    passthrough. If SQL passthrough is ever removed, this ROLLUP/CUBE handling
+    (and the related NULL spine logic) can be deleted.
     """
     has_rollup = False
     has_cube = False
@@ -520,7 +524,8 @@ def _apply_auto_spine(
     if not isinstance(stmt, exp.Select):
         return stmt
     
-    # Detect ROLLUP/CUBE
+    # Detect ROLLUP/CUBE (only applies to SQL passthrough - ASQL has no native ROLLUP syntax)
+    # If SQL passthrough is removed, this block and related NULL handling can be deleted.
     has_rollup, has_cube, rollup_cube_columns = _detect_rollup_cube(stmt)
     
     # Get all GROUP BY columns
