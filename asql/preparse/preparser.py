@@ -68,13 +68,13 @@ class ASQLPreParser(
         result = self._transform_join_operators(result)  # Early: transform join operators before other processing
         result = self._transform_stash_as(result)  # Early: split query at stash points before other transforms
         result = self._transform_count_shorthand(result)
+        result = self._transform_deduplicate_by(result)  # Transform deduplicate by to per ... first by
         result = self._transform_order_desc_prefix(result)
         result = self._transform_natural_aggregates(result)
         result = self._transform_date_literals(result)
         result = self._transform_relative_dates(result)
         result = self._transform_date_arithmetic(result)
         result = self._transform_since_until_patterns(result)
-        result = self._transform_deduplicate_by(result)  # Transform deduplicate by to per ... first by
         result = self._transform_per_commands(result)
         result = self._transform_aggregate_blocks(result)
         result = self._transform_column_operators(result)  # except, rename, replace - before from_first

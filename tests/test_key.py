@@ -63,7 +63,7 @@ class TestKeyFunction:
         assert select is not None
         
         # Should have COALESCE in the expression
-        coalesce_funcs = select.find_all(exp.Coalesce)
+        coalesce_funcs = list(select.find_all(exp.Coalesce))
         assert len(coalesce_funcs) > 0, "COALESCE not found for NULL handling"
     
     def test_key_mixed_types(self) -> None:
