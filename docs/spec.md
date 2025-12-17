@@ -2144,26 +2144,76 @@ SELECT first_name, created_at FROM users
 
 ### 15.3 Column Name Conflicts
 
-When column names conflict across joined tables, ASQL automatically expands `SELECT *` to table-qualified columns:
+ASQL automatically handles column name conflicts in joined queries by expanding `SELECT *` to table-qualified columns.
 
-```asql
-from users
-  & orders
--- SELECT * automatically becomes:
--- SELECT users.*, orders.*
--- Columns can be referenced as users.id, orders.id, etc.
+#### Before (Explicit Qualification Required)
+
+In traditional SQL, when joining tables with conflicting column names, you must explicitly qualify every column:
+
+```sql
+-- SQL: Must explicitly qualify conflicting columns
+SELECT users.id AS user_id, orders.id AS order_id, users.name, orders.amount
+FROM users
+JOIN orders ON users.id = orders.user_id
 ```
 
-**Automatic Expansion**: When `SELECT *` is used with joins, it's automatically expanded to `table.*` for each joined table. This allows columns to be referenced with table qualification (e.g., `users.id`, `orders.id`), avoiding conflicts.
+#### After (Automatic Resolution)
 
-**Explicit Qualification**: You can still explicitly qualify columns when needed:
+ASQL automatically expands `SELECT *` to `table.*` for each joined table, preventing conflicts:
 
 ```asql
-from users & orders
+-- ASQL: Automatic expansion
+from users
+  & orders on users.id = orders.user_id
+-- Automatically becomes:
+-- SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id
+```
+
+**How It Works**:
+- When `SELECT *` is used with joins, ASQL expands it to `SELECT table1.*, table2.*, ...` for each joined table
+- Columns can be referenced with table qualification: `users.id`, `orders.id`, `users.name`, `orders.amount`
+- This prevents ambiguous column errors without requiring explicit qualification
+
+**Examples**:
+
+```asql
+-- Simple join: SELECT * expands to users.*, orders.*
+from users & orders on users.id = orders.user_id
+-- → SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id
+
+-- Multiple joins: Expands to all table.* columns
+from orders
+  & customers on orders.customer_id = customers.id
+  & order_items on orders.id = order_items.order_id
+-- → SELECT orders.*, customers.*, order_items.* FROM ...
+
+-- With aliases: Uses alias names
+from users &? orders as o on users.id = o.user_id
+-- → SELECT users.*, o.* FROM users LEFT JOIN orders AS o ON users.id = o.user_id
+
+-- Explicit SELECT: No expansion (uses your explicit columns)
+from users & orders on users.id = orders.user_id
+select users.name, orders.amount
+-- → SELECT users.name, orders.amount FROM users JOIN orders ON users.id = orders.user_id
+```
+
+**When Expansion Happens**:
+- ✅ `SELECT *` with joins → Expanded to `table.*` for each table
+- ❌ `SELECT *` without joins → Kept as `SELECT *`
+- ❌ Explicit `SELECT` columns → No expansion (uses your columns)
+
+**Benefits**:
+- No ambiguous column errors
+- Columns remain accessible with table qualification
+- Works with all join types (INNER, LEFT, RIGHT, FULL OUTER, CROSS)
+- Respects table aliases
+
+**Note**: Without schema information, ASQL cannot automatically rename conflicting columns to `users_id` and `orders_id`. The expansion to `table.*` allows you to reference columns with table qualification (e.g., `users.id`, `orders.id`) to avoid conflicts. You can still add explicit aliases if you want renamed columns:
+
+```asql
+from users & orders on users.id = orders.user_id
 select users.id as user_id, orders.id as order_id
 ```
-
-**Note**: Without schema information, ASQL cannot automatically rename conflicting columns (e.g., `users_id`, `orders_id`). The expansion to `table.*` allows you to reference columns with table qualification to avoid conflicts.
 
 ### 15.4 Why Case-Safe is Good
 

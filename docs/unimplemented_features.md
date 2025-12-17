@@ -102,19 +102,22 @@ when amount == 0 then null else amount
 ---
 
 ### 5. Automatic Column Namespace Resolution
-**Status**: Might Not Be Implemented  
+**Status**: ✅ **Implemented** (December 2025)  
 **GitHub Issue**: [#39](https://github.com/davefowler/asql/issues/39)  
 **Spec Section**: 15.3
 
-**What it is**: Automatically rename conflicting column names with table context (e.g., `users.id` and `orders.id` both become `id` but get auto-qualified as `users_id` and `orders_id`).
+**What it is**: Automatically qualify conflicting column names in joined queries by expanding `SELECT *` to `table.*` for each joined table.
 
-**Current**: Requires explicit qualification:
+**Implementation**: When `SELECT *` is used with joins, ASQL automatically expands it to `SELECT table1.*, table2.*, ...` for each joined table. This prevents column name conflicts and allows columns to be referenced with table qualification (e.g., `users.id`, `orders.id`).
+
+**Example**:
 ```asql
-from users & orders
-select users.id as user_id, orders.id as order_id
+from users & orders on users.id = orders.user_id
+-- Automatically becomes:
+-- SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id
 ```
 
-**Recommendation**: Keep explicit qualification for v1.0 - it's safer and clearer.
+**Note**: Full automatic renaming (e.g., `users_id`, `orders_id`) would require schema information and is a potential future enhancement. The current implementation provides table-qualified columns which prevent conflicts.
 
 ---
 
