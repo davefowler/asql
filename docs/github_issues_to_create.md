@@ -57,12 +57,13 @@ from users where phone matches "555-___-____"
 - `matches` → `LIKE` (with pattern)
 
 **Implementation Notes**:
-- ✅ **IMPLEMENTED** - See `docs/spec.md` section 4.13 for full documentation
-- See `spec_future.md` for original design notes
+- ✅ **IMPLEMENTED** - See `docs/spec.md` section 4.5 for full documentation
 - Priority: Medium - can be worked around with `LIKE` in the interim
 
 **Related**:
-- `docs/spec_future.md` - String Matching Operators section
+- `docs/spec.md` section 4.5 - String Matching Operators
+- `docs/reference/operators.md` - Operators reference table
+- `docs/syntax/expressions.md` - String Matching section
 - `docs/unimplemented_features.md` - Tracking document
 
 ---

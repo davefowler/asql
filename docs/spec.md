@@ -140,7 +140,98 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 - Dates: `@2025-01-10`, `@2025-11-10`
 - Numbers: `42`, `3.14`
 
-### 4.5 COALESCE Operator (`??`)
+### 4.5 String Matching Operators
+
+ASQL provides intuitive string matching operators that are more readable than SQL's `LIKE` syntax.
+
+#### Case-Sensitive Operators
+
+**Contains (substring match):**
+```asql
+from users where email contains "@gmail.com"
+from users where name contains "John"
+```
+
+**Starts with (prefix match):**
+```asql
+from users where email starts with "admin"
+from users where domain starts with "https://"
+```
+
+**Ends with (suffix match):**
+```asql
+from users where email ends with ".com"
+from users where filename ends with ".pdf"
+```
+
+#### Case-Insensitive Operators
+
+For case-insensitive matching, use the `i` prefix:
+
+**Case-insensitive contains:**
+```asql
+from users where email icontains "gmail"
+from users where name icontains "john"
+```
+
+**Case-insensitive starts with:**
+```asql
+from users where domain istarts with "https://"
+from users where name istarts with "john"
+```
+
+**Case-insensitive ends with:**
+```asql
+from users where filename iends with ".pdf"
+from users where email iends with ".com"
+```
+
+#### Pattern Matching
+
+The `matches` operator supports SQL `LIKE` syntax with `%` and `_` wildcards:
+
+```asql
+from users where email matches "%@gmail.com"
+from users where phone matches "555-___-____"
+```
+
+**Note**: `matches` uses LIKE syntax (with `%` and `_` wildcards), not regex. Regex support may be added in the future, but most SQL dialects don't support it well anyway.
+
+#### SQL Equivalents
+
+| ASQL | SQL Equivalent | Notes |
+|------|---------------|-------|
+| `contains "pattern"` | `LIKE '%pattern%'` | More intuitive, no wildcards needed |
+| `icontains "pattern"` | `ILIKE '%pattern%'` (PostgreSQL) or `LOWER(column) LIKE LOWER('%pattern%')` | Case-insensitive |
+| `starts with "pattern"` | `LIKE 'pattern%'` | Clearer intent than LIKE |
+| `istarts with "pattern"` | `ILIKE 'pattern%'` or `LOWER(column) LIKE LOWER('pattern%')` | Case-insensitive |
+| `ends with "pattern"` | `LIKE '%pattern'` | Clearer intent than LIKE |
+| `iends with "pattern"` | `ILIKE '%pattern'` or `LOWER(column) LIKE LOWER('%pattern')` | Case-insensitive |
+| `matches "%pattern%"` | `LIKE '%pattern%'` | LIKE syntax, not regex |
+
+#### Usage Examples
+
+**With logical operators:**
+```asql
+from users 
+  where email contains "@gmail.com" and status == "active"
+  where name starts with "John" or name starts with "Jane"
+```
+
+**With function calls:**
+```asql
+from users where upper(name) contains "JOHN"
+from users where coalesce(email, "") contains "@"
+```
+
+**With dotted column names:**
+```asql
+from users where users.email contains "@gmail.com"
+```
+
+**Design Decision**: Use `icontains` / `istarts with` / `iends with` instead of `contains ... ignore case` - analysts will prefer this syntax as it's more explicit and readable.
+
+### 4.6 COALESCE Operator (`??`)
 
 ASQL uses the `??` operator for COALESCE (nullish coalescing), providing a cleaner syntax than the function call.
 
@@ -180,7 +271,7 @@ from orders where (status ?? "pending") = "completed"
 **Precedence:**
 The `??` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`=`, `!=`, etc.). Use parentheses for clarity in complex expressions.
 
-### 4.6 Conditional Expressions (`when`)
+### 4.7 Conditional Expressions (`when`)
 
 ASQL uses `when` for conditional expressions, replacing SQL's verbose `CASE` statement with cleaner, more natural syntax.
 
@@ -268,7 +359,7 @@ from orders
 
 All forms compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
 
-### 4.7 Type Casting (`::`)
+### 4.8 Type Casting (`::`)
 
 ASQL uses PostgreSQL-style double colon (`::`) syntax for type casting, which is more concise and readable than SQL's `CAST(... AS ...)` syntax.
 
@@ -318,7 +409,7 @@ All standard SQL types are supported, including:
 - Boolean: `BOOLEAN`, `BOOL`
 - And dialect-specific types (e.g., Snowflake's `NUMBER`, BigQuery's `INT64`)
 
-### 4.8 Comments
+### 4.9 Comments
 
 ASQL uses SQL-standard comment syntax:
 
@@ -330,7 +421,7 @@ ASQL uses SQL-standard comment syntax:
 - `#` is reserved for count aggregation syntax (see Section 5.2)
 - Better compatibility with SQL tooling and editors
 
-### 4.9 String Functions
+### 4.10 String Functions
 
 ASQL provides clean string manipulation functions.
 
@@ -401,7 +492,7 @@ from products
 | `trim(str)` | Remove whitespace | `trim(input)` |
 | `length(str)` | String length | `length(name)` |
 
-### 4.10 Comparison Functions
+### 4.11 Comparison Functions
 
 #### Multi-Value Min/Max
 
@@ -425,7 +516,7 @@ from products
 
 **Note**: This is configurable - if you prefer SQL-style `greatest()`/`least()` as the default, this can be adjusted in ASQL settings.
 
-### 4.11 NULL Handling
+### 4.12 NULL Handling
 
 #### NULLIF Alternative
 
@@ -440,7 +531,7 @@ from transactions
 This is clearer than `nullif(amount, 0)` and consistent with ASQL's conditional syntax.
 
 
-### 4.12 Function Shorthand (Underscore/Space Principle)
+### 4.13 Function Shorthand (Underscore/Space Principle)
 
 ASQL provides flexible syntax for function calls where **underscores and spaces are interchangeable**. This makes queries more natural to write and read.
 
@@ -536,97 +627,6 @@ months_since_signup_date  -- → months(now() - signup_date)
 -- Time until patterns  
 days_until_due_date       -- → days(due_date - now())
 ```
-
-### 4.13 String Matching Operators
-
-ASQL provides intuitive string matching operators that are more readable than SQL's `LIKE` syntax.
-
-#### Case-Sensitive Operators
-
-**Contains (substring match):**
-```asql
-from users where email contains "@gmail.com"
-from users where name contains "John"
-```
-
-**Starts with (prefix match):**
-```asql
-from users where email starts with "admin"
-from users where domain starts with "https://"
-```
-
-**Ends with (suffix match):**
-```asql
-from users where email ends with ".com"
-from users where filename ends with ".pdf"
-```
-
-#### Case-Insensitive Operators
-
-For case-insensitive matching, use the `i` prefix:
-
-**Case-insensitive contains:**
-```asql
-from users where email icontains "gmail"
-from users where name icontains "john"
-```
-
-**Case-insensitive starts with:**
-```asql
-from users where domain istarts with "https://"
-from users where name istarts with "john"
-```
-
-**Case-insensitive ends with:**
-```asql
-from users where filename iends with ".pdf"
-from users where email iends with ".com"
-```
-
-#### Pattern Matching
-
-The `matches` operator supports SQL `LIKE` syntax with `%` and `_` wildcards:
-
-```asql
-from users where email matches "%@gmail.com"
-from users where phone matches "555-___-____"
-```
-
-**Note**: `matches` uses LIKE syntax (with `%` and `_` wildcards), not regex. Regex support may be added in the future, but most SQL dialects don't support it well anyway.
-
-#### SQL Equivalents
-
-| ASQL | SQL Equivalent | Notes |
-|------|---------------|-------|
-| `contains "pattern"` | `LIKE '%pattern%'` | More intuitive, no wildcards needed |
-| `icontains "pattern"` | `ILIKE '%pattern%'` (PostgreSQL) or `LOWER(column) LIKE LOWER('%pattern%')` | Case-insensitive |
-| `starts with "pattern"` | `LIKE 'pattern%'` | Clearer intent than LIKE |
-| `istarts with "pattern"` | `ILIKE 'pattern%'` or `LOWER(column) LIKE LOWER('pattern%')` | Case-insensitive |
-| `ends with "pattern"` | `LIKE '%pattern'` | Clearer intent than LIKE |
-| `iends with "pattern"` | `ILIKE '%pattern'` or `LOWER(column) LIKE LOWER('%pattern')` | Case-insensitive |
-| `matches "%pattern%"` | `LIKE '%pattern%'` | LIKE syntax, not regex |
-
-#### Usage Examples
-
-**With logical operators:**
-```asql
-from users 
-  where email contains "@gmail.com" and status == "active"
-  where name starts with "John" or name starts with "Jane"
-```
-
-**With function calls:**
-```asql
-from users where upper(name) contains "JOHN"
-from users where coalesce(email, "") contains "@"
-```
-
-**With dotted column names:**
-```asql
-from users where users.email contains "@gmail.com"
-```
-
-**Design Decision**: Use `icontains` / `istarts with` / `iends with` instead of `contains ... ignore case` - analysts will prefer this syntax as it's more explicit and readable.
 
 ---
 
