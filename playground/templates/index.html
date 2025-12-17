@@ -780,36 +780,18 @@
         // Initialize CodeMirror editors (make them global so functions can access them)
         let inputEditor, outputEditor;
         
-        // Example arrays - will be populated from API
-        let asqlExamples = [];
-        let asqlPipelineExamples = [];
-        let cohortExamples = [];
-        let samplingExamples = [];
-        let dataReshapingExamples = [];
-        let columnOperatorExamples = [];
-        let countInferenceExamples = [];
-        let sqlExamples = [];
+        // Example arrays - embedded directly from server
+        // EXAMPLES_DATA_PLACEHOLDER will be replaced by server with actual JSON
+        const EXAMPLES_DATA = /* EXAMPLES_DATA_PLACEHOLDER */ {};
         
-        // Fetch examples from API
-        async function fetchExamples() {
-            try {
-                const response = await fetch('/api/examples');
-                const data = await response.json();
-                asqlExamples = data.asql || [];
-                asqlPipelineExamples = data.pipeline || [];
-                cohortExamples = data.cohort || [];
-                samplingExamples = data.sampling || [];
-                dataReshapingExamples = data.reshaping || [];
-                columnOperatorExamples = data.column_operators || [];
-                countInferenceExamples = data.count_inference || [];
-                console.log('Loaded examples from API:', Object.keys(data).map(k => `${k}: ${data[k].length}`).join(', '));
-            } catch (error) {
-                console.error('Failed to fetch examples:', error);
-            }
-        }
-        
-        // Fetch examples on load
-        fetchExamples();
+        let asqlExamples = EXAMPLES_DATA.asql || [];
+        let asqlPipelineExamples = EXAMPLES_DATA.pipeline || [];
+        let cohortExamples = EXAMPLES_DATA.cohort || [];
+        let samplingExamples = EXAMPLES_DATA.sampling || [];
+        let dataReshapingExamples = EXAMPLES_DATA.reshaping || [];
+        let columnOperatorExamples = EXAMPLES_DATA.column_operators || [];
+        let countInferenceExamples = EXAMPLES_DATA.count_inference || [];
+        let sqlExamples = EXAMPLES_DATA.sql || [];
         
         // ========== Examples Modal Functions (must be global for onclick handlers) ==========
         
@@ -1155,11 +1137,17 @@
             });
         });
         
-        function loadExamples() {
+        async function loadExamples() {
             const container = document.getElementById('examples-container');
             if (!container) {
                 console.error('Examples container not found');
                 return;
+            }
+            
+            // Wait for examples to be loaded from API first
+            if (!examplesLoaded && examplesLoadPromise) {
+                container.innerHTML = '<p style="color: #666; padding: 20px; text-align: center;">Loading examples...</p>';
+                await examplesLoadPromise;
             }
             
             try {
