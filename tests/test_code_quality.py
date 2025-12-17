@@ -9,9 +9,9 @@ import pytest
 
 def test_all_functions_have_docstrings() -> None:
     """Test that all public functions have docstrings."""
-    from asql import parser, compiler, errors
+    from asql import preparser, compiler, errors
     
-    modules = [parser, compiler]
+    modules = [preparser, compiler]
     
     for module in modules:
         for name, obj in inspect.getmembers(module):
@@ -19,13 +19,13 @@ def test_all_functions_have_docstrings() -> None:
                 assert obj.__doc__ is not None, f"{module.__name__}.{name} missing docstring"
 
 
-def test_parser_class_methods_have_docstrings() -> None:
-    """Test that parser class methods have docstrings."""
-    from asql.parser import ASQLParser
+def test_preparser_class_methods_have_docstrings() -> None:
+    """Test that preparser class methods have docstrings."""
+    from asql.preparser import ASQLPreParser
     
-    for name, method in inspect.getmembers(ASQLParser, predicate=inspect.isfunction):
+    for name, method in inspect.getmembers(ASQLPreParser, predicate=inspect.isfunction):
         if not name.startswith("__"):
-            assert method.__doc__ is not None, f"ASQLParser.{name} missing docstring"
+            assert method.__doc__ is not None, f"ASQLPreParser.{name} missing docstring"
 
 
 def test_error_classes_exist() -> None:
@@ -59,13 +59,12 @@ def test_compile_function_signature() -> None:
         assert sig.return_annotation == str
 
 
-def test_parser_initialization() -> None:
-    """Test that parser initializes correctly."""
-    from asql.parser import ASQLParser
+def test_preparser_initialization() -> None:
+    """Test that preparser initializes correctly."""
+    from asql.preparser import ASQLPreParser
     
-    parser = ASQLParser("from users")
-    assert parser.text == "from users"
-    assert parser.pos == 0
+    preparser = ASQLPreParser("from users")
+    assert preparser.text == "from users"
 
 
 def test_no_syntax_errors_in_code() -> None:
@@ -88,14 +87,14 @@ def test_no_syntax_errors_in_code() -> None:
 def test_imports_work() -> None:
     """Test that all imports work correctly."""
     from asql import compile
-    from asql.parser import ASQLParser
+    from asql.preparser import ASQLPreParser
     from asql.compiler import compile as compile_func
     from asql.errors import ASQLSyntaxError, ASQLCompilationError
     from asql.dialect import ASQLDialect
     
     # Test that imports don't raise errors
     assert compile is not None
-    assert ASQLParser is not None
+    assert ASQLPreParser is not None
     assert compile_func is not None
     assert ASQLSyntaxError is not None
     assert ASQLCompilationError is not None

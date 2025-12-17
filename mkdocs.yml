@@ -15,20 +15,9 @@ copyright: Copyright &copy; 2025 Analytic SQL Contributors
 theme:
   name: material
   palette:
-    # Light mode
-    - scheme: default
-      primary: red
-      accent: red
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    # Dark mode
-    - scheme: slate
-      primary: red
-      accent: red
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
+    scheme: default
+    primary: blue
+    accent: blue
   features:
     - navigation.sections
     - navigation.expand
@@ -42,7 +31,6 @@ theme:
 
 # Custom CSS and JavaScript
 extra_css:
-  - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css
   - static/docs.css
 
 extra_javascript:
@@ -90,6 +78,7 @@ plugins:
 # Navigation
 nav:
   - Home: index.md
+  - Design Principles: design.md
   - Language Specification: spec.md
   - Syntax: quick_start.md
   - Window Functions: window_functions.md

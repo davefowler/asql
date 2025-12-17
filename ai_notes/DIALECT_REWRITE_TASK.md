@@ -1,8 +1,58 @@
 # Task: Implement ASQL as SQLGlot Dialect
 
 **Created**: December 2025  
-**Status**: Ready for implementation  
-**Priority**: High
+**Status**: ✅ COMPLETE (434/434 tests passing)  
+**Priority**: Done
+
+---
+
+## Implementation Status (December 2025)
+
+### All Features Complete ✓
+
+**Pre-parser (`asql/preparser.py`)** - ~1000 lines
+- FROM-first transformation
+- Pipeline operators (|)
+- Aggregate blocks with function calls in GROUP BY
+- Stash as (CTEs) with continuation support
+- Natural aggregates (sum amount, avg of price, etc.)
+- Date expressions (N days ago, date arithmetic)
+- Sort → ORDER BY, Take → LIMIT
+- Coalesce operator (??)
+- DESC prefix (-column)
+- Count shorthand (#)
+- WITH/SET CTE syntax
+- Comment preservation
+- Underscore/space normalization for functions
+- Multiple WHERE clause combination
+- DISTINCT ON support
+- QUALIFY clause support
+- Window functions:
+  - prior(col) / prior(col, n) → LAG
+  - next(col) / next(col, n) → LEAD
+  - running_sum, running_avg, running_count
+  - rolling_avg, rolling_sum with window size
+  - first(col order by ...) / last(col order by ...)
+  - arg_max / arg_min
+  - per ... first/last/number/rank/dense rank by
+  - Standalone rank by, dense rank by, number by
+
+**ASQL Dialect (`asql/dialect.py`)** - ~200 lines
+- Custom tokenizer for ASQL keywords
+- Parser extensions for ASQL functions
+- Generator stub (uses target dialect)
+
+**Updated compiler (`asql/compiler.py`)**
+- Three-stage pipeline: preparse → SQLGlot parse → generate
+- Error handling with context
+
+**New tests**
+- `tests/test_preparser.py` - 40 tests
+- `tests/test_dialect.py` - 37 tests
+
+### Test Results
+- **434 passed, 0 failed**
+- All test suites passing
 
 ---
 
@@ -248,3 +298,4 @@ tests/
 4. Commit frequently with clear messages
 
 The full implementation plan with code examples is in `ai_notes/dialect.md`. Follow that document closely - it has working code snippets for most components.
+

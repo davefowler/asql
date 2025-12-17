@@ -1,13 +1,29 @@
-"""ASQL compiler - transforms ASQL to SQL."""
+"""ASQL compiler - transforms ASQL to SQL.
+
+This module implements the ASQL compilation pipeline:
+1. Pre-parse: Transform ASQL structural syntax to SQL-like syntax
+2. Parse: Use SQLGlot with ASQL dialect to parse the SQL-like syntax
+3. Generate: Output SQL in the target dialect
+
+The pre-parser handles ASQL-specific structural transformations that fundamentally
+differ from SQL (FROM-first, pipeline operators, aggregate blocks, etc.).
+
+The ASQL dialect handles expression-level ASQL syntax that fits within SQLGlot's
+extension model (custom tokens, function parsers, etc.).
+"""
 
 from typing import Optional
 import sqlglot
 from sqlglot import exp
 from sqlglot.dialects import Dialect
+import re
 
 from asql.errors import ASQLCompilationError, ASQLSyntaxError
-from asql.parser import ASQLParser
-import re
+from asql.preparser import preparse_asql, ASQLPreParser
+from asql.dialect import register_asql_dialect
+
+# Ensure ASQL dialect is registered
+register_asql_dialect()
 
 
 def _extract_dialect_from_comment(asql_query: str) -> Optional[str]:
@@ -49,9 +65,14 @@ def compile(
     """
     Compile ASQL query to SQL.
     
+    This is the main compilation function that implements the three-stage pipeline:
+    1. Pre-parse: Transform ASQL to SQL-like syntax
+    2. Parse: Use SQLGlot to parse the SQL-like syntax
+    3. Generate: Output SQL in the target dialect
+    
     Args:
         asql_query: ASQL query string (can contain multiple queries separated by semicolons)
-        dialect: Target SQL dialect (e.g., 'postgres', 'mysql', 'bigquery')
+        dialect: Target SQL dialect (e.g., 'postgres', 'mysql', 'bigquery', 'snowflake')
                  If None, will try to extract from -- dialect: comment in query
         pretty: Whether to format SQL output
     
@@ -61,6 +82,13 @@ def compile(
     Raises:
         ASQLSyntaxError: If ASQL syntax is invalid
         ASQLCompilationError: If compilation fails
+    
+    Example:
+        >>> compile("from users where status = 'active' limit 10", dialect="postgres")
+        "SELECT * FROM users WHERE status = 'active' LIMIT 10"
+        
+        >>> compile("from sales group by region (sum(amount) as revenue)")
+        "SELECT region, SUM(amount) AS revenue FROM sales GROUP BY region"
     """
     try:
         if not asql_query.strip():
@@ -80,101 +108,7 @@ def compile(
         if len(query_parts) == 1:
             return _compile_single_query(query_parts[0], dialect, pretty)
         
-        # Multiple queries: collect all CTEs and combine them
-        all_ctes = {}  # Map of CTE name to CTE expression
-        final_queries = []
-        
-        for query_part in query_parts:
-            # Check if this is a WITH/CTE statement
-            query_stripped = query_part.strip()
-            is_with_statement = query_stripped.lower().startswith("with ")
-            
-            if is_with_statement:
-                # Handle WITH statement
-                parser = ASQLParser(query_part)
-                select_expr = parser.parse()
-                
-                if hasattr(select_expr, "meta") and select_expr.meta.get("_is_cte"):
-                    cte_name = select_expr.meta.get("_cte_name")
-                    if cte_name:
-                        # Store CTE for later use
-                        clean_select = exp.Select()
-                        for key, value in select_expr.args.items():
-                            if key not in ["_is_cte", "_cte_name"]:
-                                clean_select.set(key, value)
-                        
-                        cte = exp.CTE(
-                            this=clean_select,
-                            alias=exp.TableAlias(this=exp.Identifier(this=cte_name))
-                        )
-                        all_ctes[cte_name] = cte
-                        # Create a SELECT that uses the CTE
-                        select_from_cte = exp.Select()
-                        select_from_cte.set("expressions", [exp.Star()])
-                        # SQLGlot 28+ uses 'from_' as the key (Python keyword escaping)
-                        select_from_cte.set("from_", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
-                        final_queries.append(select_from_cte)
-            else:
-                # Regular pipeline query
-                parser = ASQLParser(query_part)
-                select_expr = parser.parse()
-                
-                # Extract CTEs from this query if it has a WITH clause (sqlglot 28+)
-                with_clause = select_expr.args.get("with_")
-                if with_clause and isinstance(with_clause, exp.With):
-                    for cte_expr in with_clause.expressions:
-                        if isinstance(cte_expr, exp.CTE):
-                            # Extract CTE name from alias
-                            cte_name = None
-                            if cte_expr.alias:
-                                if isinstance(cte_expr.alias, exp.TableAlias):
-                                    if isinstance(cte_expr.alias.this, exp.Identifier):
-                                        cte_name = cte_expr.alias.this.name
-                                elif isinstance(cte_expr.alias, str):
-                                    cte_name = cte_expr.alias
-                            if cte_name:
-                                all_ctes[cte_name] = cte_expr
-                
-                final_queries.append(select_expr)
-        
-        # Combine all CTEs into the final query
-        if all_ctes and final_queries:
-            # Use the last query as the final SELECT
-            final_select = final_queries[-1]
-            
-            # Merge all CTEs (sqlglot 28+)
-            existing_ctes = []
-            with_clause = final_select.args.get("with_")
-            if with_clause and isinstance(with_clause, exp.With):
-                existing_ctes = list(with_clause.expressions)
-            
-            # Add all stored CTEs
-            for cte_name, cte_expr in all_ctes.items():
-                # Check if CTE already exists
-                cte_exists = False
-                for cte in existing_ctes:
-                    if isinstance(cte, exp.CTE):
-                        existing_name = None
-                        if cte.alias:
-                            if isinstance(cte.alias, exp.TableAlias):
-                                if isinstance(cte.alias.this, exp.Identifier):
-                                    existing_name = cte.alias.this.name
-                            elif isinstance(cte.alias, str):
-                                existing_name = cte.alias
-                        if existing_name == cte_name:
-                            cte_exists = True
-                            break
-                if not cte_exists:
-                    existing_ctes.append(cte_expr)
-            
-            if existing_ctes:
-                # SQLGlot 28+ uses 'with_' as the key (Python keyword escaping)
-                final_select.set("with_", exp.With(expressions=existing_ctes))
-            
-            sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
-            return final_select.sql(dialect=sql_dialect, pretty=pretty)
-        
-        # Fallback: compile queries separately
+        # Multiple queries: compile each and combine
         sql_parts = []
         for query_part in query_parts:
             sql_parts.append(_compile_single_query(query_part, dialect, pretty))
@@ -193,45 +127,93 @@ def _compile_single_query(
     dialect: Optional[str] = None,
     pretty: bool = False,
 ) -> str:
-    """Compile a single ASQL query to SQL."""
-    # Check if this is a WITH/CTE statement by checking the query text
-    query_stripped = asql_query.strip()
-    is_with_statement = query_stripped.lower().startswith("with ")
+    """
+    Compile a single ASQL query to SQL.
     
-    # Parse ASQL to SQLGlot AST
-    parser = ASQLParser(asql_query)
-    select_expr = parser.parse()
+    This implements the three-stage pipeline for a single query:
+    1. Pre-parse ASQL to SQL-like syntax
+    2. Parse with SQLGlot
+    3. Generate target SQL
     
-    # If this was a WITH statement, extract the CTE name from parser metadata
-    if is_with_statement and hasattr(select_expr, "meta") and select_expr.meta.get("_is_cte"):
-        cte_name = select_expr.meta.get("_cte_name")
+    Args:
+        asql_query: Single ASQL query string
+        dialect: Target SQL dialect
+        pretty: Whether to format SQL output
         
-        if cte_name:
-            # Create a clean copy of the SELECT (without CTE metadata)
-            clean_select = exp.Select()
-            for key, value in select_expr.args.items():
-                if key not in ["_is_cte", "_cte_name"]:
-                    clean_select.set(key, value)
-            
-            # Create WITH clause
-            cte = exp.CTE(
-                this=clean_select,
-                alias=exp.TableAlias(this=exp.Identifier(this=cte_name))
-            )
-            # Create a SELECT that uses the CTE
-            select_from_cte = exp.Select()
-            select_from_cte.set("expressions", [exp.Star()])
-            # SQLGlot 28+ uses 'from_' and 'with_' as keys (Python keyword escaping)
-            select_from_cte.set("from_", exp.From(this=exp.Table(this=exp.Identifier(this=cte_name))))
-            select_from_cte.set("with_", exp.With(expressions=[cte]))
-            
-            sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
-            sql = select_from_cte.sql(dialect=sql_dialect, pretty=pretty)
-            return sql
+    Returns:
+        SQL query string
+    """
+    # Stage 1: Pre-parse ASQL to SQL-like syntax
+    sql_like = preparse_asql(asql_query)
     
-    # Generate SQL
+    # Stage 2: Parse with SQLGlot
+    # We use the default dialect for parsing since pre-parser has already
+    # transformed ASQL-specific syntax to SQL-like syntax
+    try:
+        ast = sqlglot.parse_one(sql_like, dialect=dialect)
+    except sqlglot.errors.ParseError as e:
+        # Try to provide a more helpful error message
+        raise ASQLSyntaxError(
+            f"Failed to parse ASQL query.\n"
+            f"Original: {asql_query}\n"
+            f"Pre-parsed: {sql_like}\n"
+            f"Error: {e}"
+        ) from e
+    
+    # Stage 3: Generate target SQL
     sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
-    sql = select_expr.sql(dialect=sql_dialect, pretty=pretty)
+    sql = ast.sql(dialect=sql_dialect, pretty=pretty)
     
     return sql
 
+
+def compile_to_ast(asql_query: str) -> exp.Expression:
+    """
+    Compile ASQL query to SQLGlot AST (without generating SQL).
+    
+    This is useful for programmatic manipulation of the parsed query.
+    
+    Args:
+        asql_query: ASQL query string
+        
+    Returns:
+        SQLGlot expression tree
+        
+    Raises:
+        ASQLSyntaxError: If ASQL syntax is invalid
+        ASQLCompilationError: If compilation fails
+    """
+    try:
+        if not asql_query.strip():
+            raise ASQLSyntaxError("Empty ASQL query")
+        
+        # Pre-parse ASQL to SQL-like syntax
+        sql_like = preparse_asql(asql_query)
+        
+        # Parse with SQLGlot
+        ast = sqlglot.parse_one(sql_like)
+        
+        return ast
+        
+    except ASQLSyntaxError:
+        raise
+    except sqlglot.errors.ParseError as e:
+        raise ASQLSyntaxError(f"ASQL syntax error: {e}") from e
+    except Exception as e:
+        raise ASQLCompilationError(f"Compilation error: {e}") from e
+
+
+def get_preparsed(asql_query: str) -> str:
+    """
+    Get the pre-parsed SQL-like representation of an ASQL query.
+    
+    This is useful for debugging and understanding how ASQL syntax
+    is transformed before SQLGlot parsing.
+    
+    Args:
+        asql_query: ASQL query string
+        
+    Returns:
+        SQL-like string (intermediate representation)
+    """
+    return preparse_asql(asql_query)

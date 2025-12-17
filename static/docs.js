@@ -246,60 +246,95 @@ function addWIPBanner() {
 document.addEventListener('DOMContentLoaded', () => {
     // Add WIP warning banner
     addWIPBanner();
-    // Wait a bit for highlight.js to be fully loaded
+    
+    // Wait for highlight.js AND asql language to be fully loaded
+    let retryCount = 0;
+    const maxRetries = 50; // 5 seconds max
+    
     const initHighlighting = () => {
+        retryCount++;
+        
+        // Check if highlight.js is loaded
         if (!window.hljs) {
-            // Retry if highlight.js isn't loaded yet
-            setTimeout(initHighlighting, 100);
+            if (retryCount < maxRetries) {
+                setTimeout(initHighlighting, 100);
+            } else {
+                console.warn('Highlight.js failed to load after 5 seconds');
+            }
             return;
         }
         
-        // First, highlight any existing code blocks (from server-side HTML)
-        // This includes both standalone code blocks and code blocks in tabs
-        document.querySelectorAll('pre code[class*="language-"], pre code:not([class])').forEach((block) => {
-            if (block.textContent && block.textContent.trim()) {
-                try {
-                    const code = block.textContent;
-                    // Determine language from class name, or try to detect from parent
-                    let language = null;
-                    const langMatch = block.className.match(/language-(\w+)/);
-                    if (langMatch) {
-                        language = langMatch[1];
-                    } else {
-                        // Check if parent pre has a class
-                        const parentPre = block.parentElement;
-                        if (parentPre && parentPre.className) {
-                            const parentLangMatch = parentPre.className.match(/language-(\w+)/);
-                            if (parentLangMatch) {
-                                language = parentLangMatch[1];
-                            }
-                        }
-                    }
-                    
-                    // Default to sql if no language detected
-                    if (!language) {
-                        language = 'sql';
-                    }
-                    
-                    // Only highlight if not already highlighted (check for hljs class)
-                    if (!block.classList.contains('hljs')) {
-                        const result = hljs.highlight(code, { language: language });
-                        block.innerHTML = result.value;
-                        block.className = `hljs language-${language}`;
-                    }
-                } catch (e) {
-                    console.warn('Highlight.js error on initial block:', e);
-                    // Ensure it still has the background even if highlighting fails
-                    if (!block.classList.contains('hljs')) {
-                        block.className = block.className || 'language-sql';
+        // Check if ASQL language is registered
+        if (!window.hljs.getLanguage('asql')) {
+            if (retryCount < maxRetries) {
+                setTimeout(initHighlighting, 100);
+            } else {
+                console.warn('ASQL language failed to register with highlight.js');
+            }
+            return;
+        }
+        
+        console.log('Highlight.js ready with ASQL language support');
+        
+        // Find all code blocks that need highlighting
+        // MkDocs Material wraps code in: <pre><code class="language-xxx">...</code></pre>
+        // or sometimes just: <pre><code>...</code></pre>
+        const codeBlocks = document.querySelectorAll('pre > code');
+        
+        codeBlocks.forEach((block) => {
+            if (!block.textContent || !block.textContent.trim()) return;
+            
+            // Skip if already highlighted by hljs
+            if (block.classList.contains('hljs')) return;
+            
+            try {
+                const code = block.textContent;
+                
+                // Determine language from class name
+                let language = null;
+                
+                // Check for language-xxx class
+                const langMatch = block.className.match(/language-(\w+)/);
+                if (langMatch) {
+                    language = langMatch[1];
+                }
+                
+                // Check parent pre for language class
+                if (!language && block.parentElement) {
+                    const parentMatch = block.parentElement.className.match(/language-(\w+)/);
+                    if (parentMatch) {
+                        language = parentMatch[1];
                     }
                 }
+                
+                // Default to sql if no language specified
+                if (!language) {
+                    language = 'sql';
+                }
+                
+                // Map common variants
+                if (language === 'sql' || language === 'asql') {
+                    // Check if content looks like ASQL (has asql-specific keywords)
+                    const asqlPatterns = /\b(stash|sort|take|per|qualify|prior|next|running_|rolling_|days?\s+ago|#\s*$|#\s*\(|\?\?)\b/i;
+                    if (language === 'asql' || asqlPatterns.test(code)) {
+                        language = 'asql';
+                    }
+                }
+                
+                // Highlight the code
+                const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
+                block.innerHTML = result.value;
+                block.classList.add('hljs');
+                
+            } catch (e) {
+                console.warn('Highlight.js error:', e);
             }
         });
         
-        const blocks = document.querySelectorAll('.asql-code-block');
+        // Handle dialect tab blocks if present
+        const dialectBlocks = document.querySelectorAll('.asql-code-block');
         
-        blocks.forEach(block => {
+        dialectBlocks.forEach(block => {
             const blockId = block.getAttribute('data-block-id');
             
             // Reorder tabs based on view counts
