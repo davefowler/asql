@@ -1908,29 +1908,23 @@ WITH ranked AS (
 SELECT * FROM ranked WHERE rn = 1
 ```
 
-### 13.3 Pivot / Unpivot
+### 13.3 Pivot / Unpivot / Explode
 
 #### `pivot` - Rows to Columns
 
-Transform row values into columns:
+Transform row values into columns. Requires explicit values at compile time:
 
 ```asql
-# Basic pivot
+# Pivot with explicit values
 from sales
-  pivot amount by category
+  pivot sum(amount) by category values ('Electronics', 'Clothing', 'Food')
 
-# Pivot with aggregation
+# Non-aggregate pivot (uses MAX)
 from sales
-  pivot sum(amount) by category
-
-# Dynamic pivot (values from subquery)
-from sales
-  pivot amount by category from (select distinct category from products)
+  pivot amount by category values ('A', 'B', 'C')
 ```
 
 **Example use case - denormalizing custom fields:**
-
-Many SaaS platforms store custom fields in EAV (Entity-Attribute-Value) tables:
 
 ```asql
 # Jira custom fields table:
@@ -1939,12 +1933,17 @@ Many SaaS platforms store custom fields in EAV (Entity-Attribute-Value) tables:
 # | PROJ-123 | sprint       | Sprint 5    |
 
 from issue_custom_fields
-  pivot field_value by field_name
+  pivot field_value by field_name values ('priority', 'sprint')
+  group by issue_id
 
 # Result:
 # | issue_id | priority | sprint   |
 # | PROJ-123 | High     | Sprint 5 |
 ```
+
+**Compiles to**: `CASE WHEN` expressions with aggregation, which works across all dialects.
+
+**Note**: Dynamic pivot (values from subquery) is not yet supported - use raw SQL for dynamic cases.
 
 #### `unpivot` - Columns to Rows
 
@@ -1955,7 +1954,28 @@ from monthly_metrics
   unpivot jan, feb, mar, apr into month, value
 ```
 
-**Compiles to**: Native `PIVOT`/`UNPIVOT` where supported (Snowflake, BigQuery), `CASE`/`WHEN` + `GROUP BY` fallback elsewhere.
+**Compiles to**: `UNION ALL` subquery that works across all dialects.
+
+#### `explode` - Array to Rows
+
+Expand array-typed columns into multiple rows:
+
+```asql
+# Explode array column
+from posts
+  explode tags as tag
+
+# Split string and explode
+from posts
+  explode split(tags_csv, ',') as tag
+```
+
+**Compiles to**:
+- **Postgres/DuckDB**: `UNNEST(array) AS alias`
+- **BigQuery**: `CROSS JOIN UNNEST(array) AS alias`
+- **Snowflake**: `CROSS JOIN (SELECT value AS alias FROM TABLE(FLATTEN(...)))`
+
+This is the inverse of `array_agg()` / `array agg`.
 
 ### 13.4 Date Spine / Series
 
@@ -2058,8 +2078,9 @@ select safe_divide(revenue, users) as revenue_per_user
 | `rename` | Rename columns | `rename id as user_id` |
 | `replace` | Replace column values | `replace name with upper(name)` |
 | `deduplicate by` | Remove duplicates | `deduplicate by user_id order by -date` |
-| `pivot ... by` | Rows to columns | `pivot amount by category` |
+| `pivot ... by ... values` | Rows to columns | `pivot sum(amount) by category values ('A', 'B')` |
 | `unpivot ... into` | Columns to rows | `unpivot jan, feb into month, value` |
+| `explode ... as` | Array to rows | `explode tags as tag` |
 | `date_spine()` | Generate date sequence | `from date_spine(start='2024-01-01', end=today(), grain=day)` |
 | `series()` | Generate number sequence | `from series(1, 100)` |
 | `union()` | Union with alignment | `from union(t1, t2, t3)` |
