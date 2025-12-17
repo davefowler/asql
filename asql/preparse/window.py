@@ -5,7 +5,87 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
+from asql.errors import ASQLSyntaxError
+
 class WindowMixin:
+
+    def _transform_deduplicate_by(self, text: str) -> str:
+        """
+        Transform deduplicate by to per ... first by syntax.
+        
+        deduplicate by user_id, event_type order by -created_at →
+            per user_id, event_type first by -created_at
+        
+        deduplicate by user_id, event_type
+          order by -created_at →
+            per user_id, event_type first by -created_at
+        
+        This is syntax sugar for the per ... first by pattern.
+        """
+        result = text
+        
+        # Find all deduplicate by clauses
+        # Match: deduplicate by <cols> [order by <order_cols>]
+        # Allow order by to be on same line or next line
+        # Pattern matches partition cols (can have commas/spaces) and optional inline order by
+        deduplicate_pattern = r'\bdeduplicate\s+by\s+([a-zA-Z_][a-zA-Z0-9_,\s]*?)(?:\s+order\s+by\s+(-?[a-zA-Z_][a-zA-Z0-9_,\s-]*(?:\s*,\s*-?[a-zA-Z_][a-zA-Z0-9_,\s-]*)*))?(?=\s|$|\n)'
+        
+        # Process matches in reverse order to preserve positions
+        matches = list(re.finditer(deduplicate_pattern, result, re.IGNORECASE | re.MULTILINE))
+        matches.reverse()
+        
+        for match in matches:
+            partition_cols = match.group(1).strip()
+            order_by_inline = match.group(2)
+            
+            if order_by_inline:
+                # Order by is inline - simple replacement
+                order_cols = order_by_inline.strip()
+                replacement = f"per {partition_cols} first by {order_cols}"
+                result = result[:match.start()] + replacement + result[match.end():]
+            else:
+                # Look ahead for order by clause (may be on next line)
+                remaining = result[match.end():]
+                # Find order by that appears before other major clauses
+                # Stop at: limit, where, group by, select, having, union, etc.
+                order_match = re.search(
+                    r'\border\s+by\s+(-?[a-zA-Z_][a-zA-Z0-9_,\s-]*(?:\s*,\s*-?[a-zA-Z_][a-zA-Z0-9_,\s-]*)*)',
+                    remaining,
+                    re.IGNORECASE | re.MULTILINE
+                )
+                
+                if order_match:
+                    order_cols = order_match.group(1).strip()
+                    # Replace deduplicate by with per ... first by
+                    replacement = f"per {partition_cols} first by {order_cols}"
+                    result = result[:match.start()] + replacement + result[match.end():]
+                    
+                    # Remove the order by clause
+                    # Find it again in the modified string
+                    search_start = match.start() + len(replacement)
+                    remaining_after = result[search_start:]
+                    order_match_after = re.search(
+                        r'\border\s+by\s+(-?[a-zA-Z_][a-zA-Z0-9_,\s-]*(?:\s*,\s*-?[a-zA-Z_][a-zA-Z0-9_,\s-]*)*)',
+                        remaining_after,
+                        re.IGNORECASE | re.MULTILINE
+                    )
+                    if order_match_after:
+                        order_start = search_start + order_match_after.start()
+                        order_end = search_start + order_match_after.end()
+                        # Remove order by and any leading whitespace/newlines
+                        before_order = result[:order_start]
+                        # Find start of line containing order by
+                        line_start = max(before_order.rfind('\n'), before_order.rfind('\r')) + 1
+                        # Remove from line start to end of order by
+                        result = result[:line_start] + result[order_end:].lstrip()
+                else:
+                    # No order by found - raise error
+                    raise ASQLSyntaxError(
+                        f"deduplicate by requires an order by clause. "
+                        f"Use: deduplicate by {partition_cols} order by <column>"
+                    )
+        
+        return result
 
     def _transform_per_commands(self, text: str) -> str:
         """
