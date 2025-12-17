@@ -27,7 +27,11 @@
 ## Important links (source of truth)
 - **Language spec**: `docs/spec.md`
 - **Future / maybe features**: `docs/spec_future.md`
-- AI notes - all new notes you write for investigations/research/etc should go in ai_notes/ not docs  docs is just for public facing documentation.
+
+## ⚠️ AI Notes Location
+- **CRITICAL**: All AI-generated notes, analysis reports, implementation plans, investigations, and research documents MUST go in `ai_notes/` NOT `docs/`
+- `docs/` is ONLY for user-facing public documentation that appears on the website
+- See `ai_notes/README.md` for organization guidelines
 
 
 ## Issues / PR naming (to avoid duplicates)

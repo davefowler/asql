@@ -172,7 +172,7 @@ from users
   -- cleaned and filtered users
   group by country (# as total)
   -- aggregated by country
-  where total > 100
+  having total > 100
   order by -total
 ```
 

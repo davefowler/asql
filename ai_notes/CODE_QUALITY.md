@@ -1,5 +1,8 @@
 # Code Quality Standards
 
+**Date**: 2025-01-XX  
+**Status**: Checklist (may become outdated)
+
 This document outlines code quality standards and cleanup tasks for ASQL.
 
 ## Completed Improvements

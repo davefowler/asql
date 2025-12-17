@@ -18,74 +18,92 @@ Use `ai_notes/` for:
 
 ## Organization
 
-Files are organized by topic/feature. Current categories include:
+### 📁 Root (`ai_notes/`)
+Active notes and time-sensitive documents that are still being referenced:
 
-### Status & Implementation
-- `FEATURE_STATUS.md` - Pointers to canonical spec/status docs
-- `IMPLEMENTATION_STATUS.md` - What's implemented vs. missing
-- `PHASE_COMPLETION.md` - Phase completion summaries
-- `CODE_QUALITY.md` - Code quality standards and cleanup tasks
+**Time-Sensitive Analysis** (may become outdated):
+- `style_analysis.md` (2025-01-XX) - Analysis of default style settings violations
+- `CODE_QUALITY.md` (2025-01-XX) - Code quality standards and cleanup tasks checklist
+- `DIALECT_REWRITE_TASK.md` (Dec 2025) - Task document for dialect system rewrite (✅ COMPLETE)
 
-### Feature Design & Plans
+**Active Research & Tracking**:
+- `CLI_SPEC.md` - CLI specification (psql-like interface)
+- `UNHANDLED_SQL_FUNCTIONS.md` - Tracking document for SQL function coverage
+- `other_sql_support_in_asql.md` - Research on supporting standard SQL within ASQL
+- `pandas-python-notebooks-learnings.md` - Learnings from pandas/Python patterns
+- `sql-dialect-early-signs.md` - Early signs of transformational SQL in existing tools
+- `SET_THEORY_ANCESTORS.md` - Set theory concepts and ancestry patterns
+
+### 📦 Archive (`ai_notes/archive/`)
+Important design decisions, architectural explorations, and implementation guides that document the evolution of ASQL. These are kept for historical reference and design rationale.
+
+**Design Decisions & Explorations**:
 - `case.md` - Design exploration for `when` conditional expressions
+- `CRITICAL_REVIEW.md` - Critical review of ASQL specification with design concerns
+- `UNDERSCORE_SPACE_PRINCIPLE.md` - Core principle: underscore/space interchangeability
+- `spines.md` - Spine concept and gap-filling design
+- `auto_spine_simplifications.md` - Design exploration: patterns that become obsolete with auto-spine
+
+**Architecture & Implementation**:
+- `dialect.md` - Deep dive on implementing ASQL as SQLGlot dialect
+- `PIPELINE_CTE_IMPLEMENTATION.md` - Detailed guide on implementing pipelined CTEs
 - `STRING_MATCHING_PLAN.md` - Implementation plan for string matching operators
-- `PIPELINE_CTE_IMPLEMENTATION.md` - Guide on implementing pipelined CTEs
-- `DIALECT_REWRITE_TASK.md` - Dialect system rewrite planning
+- `comments.md` - Comment extraction and metadata API design
+- `language-config.md` - Language configuration system design
+- `playground-settings.md` - Playground settings and style configuration
 
-### Analysis & Research
-- `style_analysis.md` - Analysis of default style settings
-- `CRITICAL_REVIEW.md` - Critical review of ASQL specification
-- `SQLMESH_COMPARISON.md` - Comparison with SQLMesh
-- `DBT_DEEP_INTEGRATION_IDEATION.md` - dbt integration ideas
-- `pandas-python-notebooks-learnings.md` - Learnings from pandas/Python
+**Feature Design**:
+- `joins.md` - JOIN design and simplification ideas
+- `dates.md` - Date handling design and patterns
+- `macros.md` - dbt macro replacement design (80% of macro value)
+- `DBT_DEEP_INTEGRATION_IDEATION.md` - dbt integration ideas (last 20%)
+- `COHORT_ANALYSIS.md` - Cohort analysis feature design
+- `WINDOW_UTILS.md` - Window function utilities design
+- `universal_function_shorthand.md` - Function shorthand pattern design
 
-### Technical Deep Dives
-- `dialect.md` - Dialect system documentation
-- `joins.md` - JOIN implementation details
-- `dates.md` - Date handling implementation
-- `macros.md` - Macro system documentation
-- `spines.md` - Spine concept documentation
-- `WINDOW_UTILS.md` - Window function utilities
-
-### Other
-- `CLI_SPEC.md` - CLI specification notes
-- `language-config.md` - Language configuration notes
-- `playground-settings.md` - Playground settings documentation
-- `UNDERSCORE_SPACE_PRINCIPLE.md` - Design principle documentation
-- `SET_THEORY_ANCESTORS.md` - Set theory concepts
-- `UNHANDLED_SQL_FUNCTIONS.md` - Unhandled SQL functions list
-- `universal_function_shorthand.md` - Function shorthand documentation
-- `other_sql_support_in_asql.md` - Other SQL support notes
-- `sql-dialect-early-signs.md` - Early dialect system notes
-- `auto_spine_simplifications.md` - Auto-spine simplification notes
-- `COHORT_ANALYSIS.md` - Cohort analysis notes
-- `comments.md` - Comments implementation notes
+**Research & Comparisons**:
+- `SQLMESH_COMPARISON.md` - Comparison with SQLMesh architecture and features
 
 ## Maintenance
 
 ### When to Delete Notes
 
-Consider deleting or archiving notes when:
+Delete notes when:
+- ❌ The note was a one-off response for a single issue (e.g., status reports)
 - ❌ The feature is fully implemented and the note is no longer relevant
 - ❌ The analysis is outdated and superseded by newer documentation
-- ❌ The note was a one-off investigation that's no longer useful
 - ❌ The information has been moved to proper documentation in `docs/`
 
-### When to Keep Notes
+**Examples of deleted notes**:
+- `PHASE_COMPLETION.md` - Was just a response for a single issue
+- `IMPLEMENTATION_STATUS.md` - Was just a response for a single issue
+- `FEATURE_STATUS.md` - Superseded by canonical docs
 
-Keep notes that:
-- ✅ Document important design decisions or rationale
-- ✅ Contain implementation details that aren't in public docs
-- ✅ Serve as reference for future similar work
-- ✅ Are still actively referenced or useful
+### When to Archive Notes
+
+Move to `archive/` when:
+- ✅ The note documents important design decisions or rationale
+- ✅ The note contains architectural explorations that influenced the design
+- ✅ The note serves as reference for understanding "why" decisions were made
+- ✅ The note is an implementation guide that's complete but still useful for reference
+
+### When to Keep in Root
+
+Keep in root when:
+- ✅ The note is still actively being referenced or updated
+- ✅ The note is time-sensitive and may become outdated (add dates!)
+- ✅ The note is a tracking document that's still in use
 
 ### Best Practices
 
-1. **Naming**: Use descriptive, kebab-case filenames (e.g., `string-matching-plan.md`)
-2. **Dates**: Consider adding dates in filenames for time-sensitive notes (e.g., `2025-01-style-analysis.md`)
-3. **Status**: For implementation plans, mark completion status at the top
+1. **Dates**: Add dates to time-sensitive notes at the top (e.g., `**Date**: 2025-01-XX`) to make staleness obvious
+2. **Status**: For implementation plans, mark completion status at the top
+3. **Naming**: Use descriptive, kebab-case filenames (e.g., `string-matching-plan.md`)
 4. **Links**: Link to related notes and official docs when relevant
-5. **Cleanup**: Periodically review and remove outdated notes (quarterly or when they become stale)
+5. **Cleanup**: Periodically review and:
+   - Delete one-off status reports and outdated analyses
+   - Archive completed design docs that document important decisions
+   - Add dates to time-sensitive notes that remain in root
 
 ## Related Documentation
 

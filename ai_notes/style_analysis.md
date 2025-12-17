@@ -1,5 +1,8 @@
 # ASQL Default Style Settings Analysis
 
+**Date**: 2025-01-XX  
+**Status**: Analysis report (may become outdated)
+
 ## Default "Pretty" Settings
 
 Based on `asql/config.py` `StyleConfig` class (default preset):
@@ -13,6 +16,45 @@ Based on `asql/config.py` `StyleConfig` class (default preset):
 | **cast** | `"double_colon"` | Use `::` not `CAST()` | `created_at::DATE` |
 | **quotes** | `"double"` | Use `"` not `'` | `where status = "active"` |
 | **sort_keyword** | `"order_by"` | Use `order by` not `sort` | `order by -revenue` |
+
+## Other Preferred Syntax Patterns (Beyond "Pretty" Settings)
+
+These are syntax choices that represent preferred ASQL patterns:
+
+### Conditional Expressions: `when` over `CASE WHEN`
+- **Preferred**: `when status is "active" then 1 otherwise 0`
+- **Avoid**: `CASE WHEN status = 'active' THEN 1 ELSE 0 END`
+- **Rationale**: `when` is ASQL's primary conditional syntax, more concise and readable
+
+### Equality in `when`: `is` over `=`
+- **Preferred**: `when status is "active" then 1`
+- **Alternative**: `when status = "active" then 1` (also works)
+- **Rationale**: `is` reads more naturally: "when status is active"
+
+### Default Clause: `otherwise` over `else`
+- **Preferred**: `otherwise "Unknown"`
+- **Alternative**: `else "Unknown"` (also accepted)
+- **Rationale**: `otherwise` is more explicit
+
+### CTEs: `stash as` over `WITH ... AS`
+- **Preferred**: `stash as active_users` (inline CTEs)
+- **Alternative**: `WITH ... AS` (SQL style, also accepted)
+- **Rationale**: `stash as` fits ASQL's pipeline model better
+
+### Filtering: `where` over `if`
+- **Preferred**: `where status = "active"`
+- **Alternative**: `if status = "active"` (syntactic sugar)
+- **Rationale**: `where` is more familiar and standard
+
+### Pipeline Style: Indentation over Pipe Operator
+- **Preferred**: Indentation-based pipelines
+- **Alternative**: Pipe operator `|` (also supported)
+- **Rationale**: Indentation is cleaner and more natural
+
+### String Matching: Natural operators over `LIKE`
+- **Preferred**: `contains`, `starts with`, `ends with`
+- **Alternative**: `LIKE` with wildcards (SQL style)
+- **Rationale**: Natural language operators are more readable
 
 ## Violations Found
 
