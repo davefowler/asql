@@ -1844,32 +1844,36 @@ from users
   rename users.id as user_id
 ```
 
-**Compiles to**: `SELECT id AS user_id, name AS user_name, ...`
+**Compiles to**: `SELECT * EXCEPT(id, name), id AS user_id, name AS user_name FROM users`
 
-#### `prefix` - Prefix Column Names
+#### `replace` - Replace Column Values
 
-Add a prefix to column names (especially useful after joins):
+Replace column values with new expressions:
 
 ```asql
 from users
-  prefix user_
+  replace name with upper(name)
 
-# Prefix specific table's columns
+# Chained replacements (comma-separated)
 from users
-  & orders on users.id = orders.user_id
-  prefix orders.* with order_
+  replace name with upper(name), email with lower(email), salary with round(salary, 2)
+
+# Or separate statements
+from users
+  replace name with upper(name)
+  replace email with lower(email)
 ```
 
-**Compiles to**: `SELECT id AS user_id, name AS user_name, ...`
+**Compiles to**: `SELECT * EXCEPT(name, email, salary), upper(name) AS name, lower(email) AS email, round(salary, 2) AS salary FROM users`
 
 #### Combining Column Operators
 
 ```asql
 from users
   & orders on users.id = orders.user_id
-  except users.password_hash, orders.internal_notes
+  except password_hash, internal_notes
   rename users.id as user_id
-  prefix orders.* with order_
+  replace name with upper(name)
 ```
 
 ### 13.2 Deduplicate
@@ -2052,7 +2056,7 @@ select safe_divide(revenue, users) as revenue_per_user
 |----------|---------|---------|
 | `except` | Exclude columns | `except email, phone` |
 | `rename` | Rename columns | `rename id as user_id` |
-| `prefix` | Prefix column names | `prefix user_` |
+| `replace` | Replace column values | `replace name with upper(name)` |
 | `deduplicate by` | Remove duplicates | `deduplicate by user_id order by -date` |
 | `pivot ... by` | Rows to columns | `pivot amount by category` |
 | `unpivot ... into` | Columns to rows | `unpivot jan, feb into month, value` |
