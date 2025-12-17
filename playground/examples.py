@@ -221,115 +221,6 @@ limit 25"""
     },
 ]
 
-# Cohort analysis examples
-COHORT_EXAMPLES: list[Example] = [
-    {
-        "title": "User Retention by Cohort",
-        "desc": "Track monthly active users by signup cohort over time periods",
-        "query": """from events
-join users on events.user_id == users.id
-group by month(users.signup_date), months(month(events.event_date) - month(users.signup_date)) (
-    month(users.signup_date) as cohort_month,
-    months(month(events.event_date) - month(users.signup_date)) as period,
-    count(distinct events.user_id) as active_users
-)
-order by cohort_month, period"""
-    },
-    {
-        "title": "Revenue Cohort Analysis",
-        "desc": "Track revenue by first purchase cohort over time periods",
-        "query": """with customer_cohorts = from orders
-group by customer_id (
-    month(first(order_date order by order_date)) as cohort_month
-)
-from orders
-join customer_cohorts on orders.customer_id == customer_cohorts.customer_id
-group by customer_cohorts.cohort_month, months(month(orders.order_date) - customer_cohorts.cohort_month) (
-    customer_cohorts.cohort_month as cohort_month,
-    months(month(orders.order_date) - customer_cohorts.cohort_month) as period,
-    sum(orders.total) as revenue,
-    count(distinct orders.customer_id) as buyers
-)
-order by cohort_month, period"""
-    },
-    {
-        "title": "Cohort Retention with Percentage",
-        "desc": "Calculate retention rate (% active) by cohort and period",
-        "query": """with cohort_sizes = from users
-group by month(signup_date) (
-    month(signup_date) as cohort_month,
-    count(distinct id) as cohort_size
-)
-from events
-join users on events.user_id == users.id
-join cohort_sizes on month(users.signup_date) == cohort_sizes.cohort_month
-group by month(users.signup_date), months(month(events.event_date) - month(users.signup_date)) (
-    month(users.signup_date) as cohort_month,
-    months(month(events.event_date) - month(users.signup_date)) as period,
-    count(distinct events.user_id) as active_users,
-    first(cohort_sizes.cohort_size) as cohort_size,
-    round(100.0 * count(distinct events.user_id) / first(cohort_sizes.cohort_size), 2) as retention_pct
-)
-order by cohort_month, period"""
-    },
-    {
-        "title": "Cumulative LTV by Cohort",
-        "desc": "Track lifetime value accumulation over time for each cohort",
-        "query": """with customer_cohorts = from orders
-group by customer_id (
-    month(first(order_date order by order_date)) as cohort_month
-)
-from orders
-join customer_cohorts on orders.customer_id == customer_cohorts.customer_id
-group by customer_cohorts.cohort_month, months(month(orders.order_date) - customer_cohorts.cohort_month) (
-    customer_cohorts.cohort_month as cohort_month,
-    months(month(orders.order_date) - customer_cohorts.cohort_month) as period,
-    sum(orders.total) as period_revenue,
-    running_sum(sum(orders.total)) as cumulative_ltv
-)
-order by cohort_month, period"""
-    },
-    {
-        "title": "Weekly Activity by Cohort",
-        "desc": "Track weekly active users by signup cohort over time",
-        "query": """from events
-join users on events.user_id == users.id
-group by month(users.signup_date), weeks(week(events.event_date) - week(month(users.signup_date))) (
-    month(users.signup_date) as cohort_month,
-    weeks(week(events.event_date) - week(month(users.signup_date))) as period,
-    count(distinct events.user_id) as active_users
-)
-order by cohort_month, period"""
-    },
-    {
-        "title": "Segmented Cohorts by Channel",
-        "desc": "Track retention by acquisition channel and cohort",
-        "query": """from events
-join users on events.user_id == users.id
-group by users.channel, month(users.signup_date), months(month(events.event_date) - month(users.signup_date)) (
-    users.channel,
-    month(users.signup_date) as cohort_month,
-    months(month(events.event_date) - month(users.signup_date)) as period,
-    count(distinct events.user_id) as active_users
-)
-order by users.channel, cohort_month, period"""
-    },
-    {
-        "title": "Period-over-Period Change",
-        "desc": "Compare retention between consecutive periods",
-        "query": """from events
-join users on events.user_id == users.id
-group by month(users.signup_date), months(month(events.event_date) - month(users.signup_date)) (
-    month(users.signup_date) as cohort_month,
-    months(month(events.event_date) - month(users.signup_date)) as period,
-    count(distinct events.user_id) as active_users,
-    prior(count(distinct events.user_id)) as prev_period_active,
-    count(distinct events.user_id) - prior(count(distinct events.user_id)) as change
-)
-order by cohort_month, period"""
-    },
-]
-
 # Sampling examples
 SAMPLING_EXAMPLES: list[Example] = [
     {
@@ -535,7 +426,6 @@ def get_all_examples() -> dict[str, list[Example]]:
     return {
         "asql": ASQL_EXAMPLES,
         "pipeline": PIPELINE_EXAMPLES,
-        "cohort": COHORT_EXAMPLES,
         "sampling": SAMPLING_EXAMPLES,
         "reshaping": RESHAPING_EXAMPLES,
         "column_operators": COLUMN_OPERATOR_EXAMPLES,

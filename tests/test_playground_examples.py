@@ -19,7 +19,6 @@ from asql.reverse_compiler import reverse_compile
 from playground.examples import (
     ASQL_EXAMPLES,
     PIPELINE_EXAMPLES,
-    COHORT_EXAMPLES,
     SAMPLING_EXAMPLES,
     RESHAPING_EXAMPLES,
     COLUMN_OPERATOR_EXAMPLES,
