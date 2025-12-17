@@ -180,6 +180,58 @@ When followed by a table name, `#` infers the primary key using convention (tabl
 
 ---
 
+## String Matching Operators
+
+ASQL provides intuitive string matching operators that are more readable than SQL's `LIKE` syntax.
+
+| Operator | Description | SQL Equivalent | Example |
+|----------|-------------|----------------|---------|
+| `contains "pattern"` | Case-sensitive substring match | `LIKE '%pattern%'` | `where email contains "@gmail.com"` |
+| `icontains "pattern"` | Case-insensitive substring match | `ILIKE '%pattern%'` (PostgreSQL) or `LOWER(column) LIKE LOWER('%pattern%')` | `where email icontains "gmail"` |
+| `starts with "pattern"` | Case-sensitive prefix match | `LIKE 'pattern%'` | `where name starts with "John"` |
+| `istarts with "pattern"` | Case-insensitive prefix match | `ILIKE 'pattern%'` or `LOWER(column) LIKE LOWER('pattern%')` | `where domain istarts with "https://"` |
+| `ends with "pattern"` | Case-sensitive suffix match | `LIKE '%pattern'` | `where filename ends with ".pdf"` |
+| `iends with "pattern"` | Case-insensitive suffix match | `ILIKE '%pattern'` or `LOWER(column) LIKE LOWER('%pattern')` | `where email iends with ".com"` |
+| `matches "pattern"` | LIKE pattern matching (with `%` and `_` wildcards) | `LIKE 'pattern'` | `where email matches "%@gmail.com"` |
+
+### Examples
+
+**Case-sensitive operators:**
+```asql
+where email contains "@gmail.com"
+where name starts with "John"
+where filename ends with ".pdf"
+```
+
+**Case-insensitive operators:**
+```asql
+where email icontains "gmail"
+where name istarts with "john"
+where filename iends with ".pdf"
+```
+
+**Pattern matching with wildcards:**
+```asql
+where email matches "%@gmail.com"
+where phone matches "555-___-____"
+```
+
+**With logical operators:**
+```asql
+where email contains "@gmail.com" and status == "active"
+where name starts with "John" or name starts with "Jane"
+```
+
+**With function calls:**
+```asql
+where upper(name) contains "JOHN"
+where coalesce(email, "") contains "@"
+```
+
+**Note**: The `matches` operator uses LIKE syntax (with `%` and `_` wildcards), not regex. Case-insensitive operators use `ILIKE` for PostgreSQL and dialects that support it; otherwise they compile to `LOWER(column) LIKE LOWER(pattern)`.
+
+---
+
 ## Date Operators
 
 ### Date Literal

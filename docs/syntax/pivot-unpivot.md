@@ -77,10 +77,42 @@ Result:
 | PROJ-123 | High     | Sprint 5 |
 ```
 
-### Limitations
+### Dynamic Pivot
 
-- **Values must be known at compile time** — Dynamic pivot (values from subquery) is not yet supported
-- For dynamic cases, use raw SQL or the warehouse's native PIVOT syntax
+When you don't know all pivot values at compile time, use a subquery to get them dynamically:
+
+```asql
+# Get pivot values from a subquery
+from sales
+  pivot sum(amount) by category values (
+    from sales select distinct category
+  )
+```
+
+**How It Works**
+
+The subquery is compiled to a CTE (Common Table Expression), and pivot expressions are generated that reference the CTE. This allows the pivot values to be determined at runtime.
+
+**Example: Dynamic Status Pivot**
+
+```asql
+from orders
+  pivot sum(total) by status values (
+    from orders 
+    where order_date >= '2024-01-01'
+    select distinct status
+  )
+  group by customer_id
+```
+
+This creates columns for each status value found in the filtered orders, without needing to know them in advance.
+
+**When to Use Dynamic vs Static**
+
+- **Static pivot**: Use when you know all possible values (e.g., fixed statuses like 'pending', 'shipped', 'delivered')
+- **Dynamic pivot**: Use when values change over time or are data-driven (e.g., product categories, custom field names, user-defined tags)
+
+**Note**: Dynamic pivot generates SQL that uses the subquery results. For true dynamic pivoting with individual columns per value at runtime, some warehouses (like Snowflake) support native `PIVOT` operators that may be more efficient.
 
 ---
 

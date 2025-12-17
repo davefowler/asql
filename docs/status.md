@@ -82,14 +82,16 @@
 
 These features are documented in `SPEC.md` but not yet implemented:
 
-### String Matching (Section 4.5)
-- `contains "pattern"`
-- `starts with "pattern"`
-- `ends with "pattern"`
-- `matches "regex"`
-- `ignore case` modifier
+### String Matching (Section 4.5) ✅ Implemented
+- `contains "pattern"` ✅
+- `icontains "pattern"` ✅
+- `starts with "pattern"` ✅
+- `istarts with "pattern"` ✅
+- `ends with "pattern"` ✅
+- `iends with "pattern"` ✅
+- `matches "pattern"` ✅ (LIKE syntax, not regex)
 
-**Workaround**: Use SQL `LIKE` syntax directly.
+**See**: `docs/spec.md` section 4.5 for full documentation.
 
 ### Conditional Expressions (Section 4.7)
 - `when status is "active" then 1 otherwise 0`
@@ -125,10 +127,9 @@ These features are documented in `SPEC.md` but not yet implemented:
 
 ### ~~Pivot/Unpivot (Section 13.3)~~ ✅ Implemented!
 - ✅ `pivot sum(amount) by category values ('A', 'B', 'C')` - static pivot with explicit values
+- ✅ `pivot sum(amount) by category values (from sales select distinct category)` - dynamic pivot with subquery
 - ✅ `unpivot jan, feb, mar into month, value` - columns to rows
 - ✅ `explode tags as tag` - array to rows (not in spec yet, but implemented)
-
-**Note**: Pivot requires explicit values at compile time. For dynamic pivots, use raw SQL.
 
 ### Safe Cast (Section 13.7)
 - `value::integer?` - returns NULL on cast failure

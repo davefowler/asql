@@ -6,81 +6,8 @@ This document contains features that are planned for future implementation, unde
 
 ---
 
-## String Matching Operators (Planned)
-
-ASQL will provide intuitive string matching operators that are more readable than SQL's `LIKE` syntax.
-
-**Proposed ASQL Syntax:**
-
-```asql
-# Contains (substring match) - case-sensitive
-from users where email contains "@gmail.com"
-from users where name contains "John"
-
-# Case-insensitive contains (preferred for analysts)
-from users where email icontains "gmail"
-from users where name icontains "john"
-
-# Starts with
-from users where email starts with "admin"
-from users where domain istarts with "https://"
-
-# Ends with
-from users where email ends with ".com"
-from users where filename iends with ".pdf"
-
-# Pattern matching (LIKE syntax, not regex by default)
-from users where email matches "%@gmail.com"
-from users where phone matches "555-___-____"
-```
-
-**Design Decisions:**
-1. Use `icontains` / `istarts with` / `iends with` instead of `contains ... ignore case` - analysts will prefer this syntax
-2. `matches` by default supports LIKE syntax (with `%` and `_` wildcards), not regex
-3. Regex support may be added later but is not a priority (most dialects don't support it well anyway)
-
-**Comparison with SQL:**
-
-| ASQL | SQL Equivalent | Notes |
-|------|----------------|-------|
-| `contains "pattern"` | `LIKE '%pattern%'` | More intuitive, no wildcards |
-| `icontains "pattern"` | `ILIKE '%pattern%'` (PostgreSQL) | Case-insensitive |
-| `starts with "pattern"` | `LIKE 'pattern%'` | Clearer intent |
-| `ends with "pattern"` | `LIKE '%pattern'` | Clearer intent |
-| `matches "%pattern%"` | `LIKE '%pattern%'` | LIKE syntax, not regex |
-
-**Implementation Priority**: Medium - String matching is common but can be worked around with `LIKE` in the interim.
-
 ---
 
-## Dynamic Pivot
-
-**Current limitation**: Pivot requires explicit values at compile time:
-
-```asql
-from sales
-  pivot sum(amount) by category values ('Electronics', 'Clothing', 'Food')
-```
-
-**Desired**: Get values dynamically from a subquery:
-
-```asql
-from sales
-  pivot sum(amount) by category values (
-    from sales select distinct category
-  )
-```
-
-**What it is**: Dynamic pivot allows the pivot column values to come from a subquery instead of being hardcoded. This is useful when you don't know all possible values at compile time.
-
-**Implementation Difficulty**: Medium - requires either:
-- Two-pass compilation (first pass to get values, second to generate CASE expressions)
-- Dynamic SQL generation (warehouse-specific)
-- Runtime evaluation (not possible in pure SQL)
-
-**Workaround**: Use raw SQL or warehouse-specific PIVOT syntax (e.g., Snowflake's `PIVOT` operator).
-
----
 
 ## Ternary-Style Conditionals (Future Consideration)
 
@@ -101,31 +28,6 @@ when amount == 0 then null else amount
 
 ---
 
-## Automatic Column Namespace Resolution
-
-**What it is**: When column names conflict across joined tables, automatically rename them with table context (e.g., `users.id` and `orders.id` both become `id` but get auto-qualified as `users_id` and `orders_id`).
-
-**Current behavior**: Requires explicit qualification:
-```asql
-from users
-  & orders
--- If both have 'id', you must explicitly qualify:
-select users.id as user_id, orders.id as order_id
-```
-
-**Proposed behavior**: Automatically namespace conflicting names:
-```asql
-from users
-  & orders
--- Both tables have 'id', automatically becomes:
-select users_id, orders_id  -- or users.id, orders.id (qualified)
-```
-
-**Status**: Might not be implemented in the initial version. Explicit qualification is safer and clearer.
-
-**Recommendation**: In v1.0, require explicit qualification for ambiguous columns. Auto-qualification could be added later if there's clear demand.
-
----
 
 ## Shorthand Natural Language (50/50 on implementation)
 
@@ -152,34 +54,6 @@ Avg Users.age by country
 
 ---
 
-## Cohort Analysis Features
-
-**Source**: `ai_notes/COHORT_ANALYSIS.md`
-
-Cohort analysis is notoriously complex in SQL, typically requiring 3-5 CTEs for even basic queries. ASQL could dramatically simplify this.
-
-**Vision**: A cohort analysis that takes 50+ lines of SQL should be expressible in 5-10 lines of ASQL.
-
-**Key Features Needed**:
-- Cohort assignment operators
-- Retention calculation helpers
-- Period-over-period comparisons
-- Cohort rollup syntax
-
-**Note**: Many building blocks are already implemented (`first()`, `prior()`, `running_sum()`, `month()`, etc.), but high-level cohort operators are not yet implemented.
-
-**Example** (proposed):
-```asql
-from events
-  cohort by user_id using first(event_date)
-  group by cohort_month, activity_month (
-    count(distinct user_id) as active_users
-  )
-```
-
-**Status**: Not implemented - see `ai_notes/COHORT_ANALYSIS.md` for full design.
-
----
 
 ## Future Considerations
 

@@ -140,7 +140,98 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 - Dates: `@2025-01-10`, `@2025-11-10`
 - Numbers: `42`, `3.14`
 
-### 4.5 COALESCE Operator (`??`)
+### 4.5 String Matching Operators
+
+ASQL provides intuitive string matching operators that are more readable than SQL's `LIKE` syntax.
+
+#### Case-Sensitive Operators
+
+**Contains (substring match):**
+```asql
+from users where email contains "@gmail.com"
+from users where name contains "John"
+```
+
+**Starts with (prefix match):**
+```asql
+from users where email starts with "admin"
+from users where domain starts with "https://"
+```
+
+**Ends with (suffix match):**
+```asql
+from users where email ends with ".com"
+from users where filename ends with ".pdf"
+```
+
+#### Case-Insensitive Operators
+
+For case-insensitive matching, use the `i` prefix:
+
+**Case-insensitive contains:**
+```asql
+from users where email icontains "gmail"
+from users where name icontains "john"
+```
+
+**Case-insensitive starts with:**
+```asql
+from users where domain istarts with "https://"
+from users where name istarts with "john"
+```
+
+**Case-insensitive ends with:**
+```asql
+from users where filename iends with ".pdf"
+from users where email iends with ".com"
+```
+
+#### Pattern Matching
+
+The `matches` operator supports SQL `LIKE` syntax with `%` and `_` wildcards:
+
+```asql
+from users where email matches "%@gmail.com"
+from users where phone matches "555-___-____"
+```
+
+**Note**: `matches` uses LIKE syntax (with `%` and `_` wildcards), not regex. Regex support may be added in the future, but most SQL dialects don't support it well anyway.
+
+#### SQL Equivalents
+
+| ASQL | SQL Equivalent | Notes |
+|------|---------------|-------|
+| `contains "pattern"` | `LIKE '%pattern%'` | More intuitive, no wildcards needed |
+| `icontains "pattern"` | `ILIKE '%pattern%'` (PostgreSQL) or `LOWER(column) LIKE LOWER('%pattern%')` | Case-insensitive |
+| `starts with "pattern"` | `LIKE 'pattern%'` | Clearer intent than LIKE |
+| `istarts with "pattern"` | `ILIKE 'pattern%'` or `LOWER(column) LIKE LOWER('pattern%')` | Case-insensitive |
+| `ends with "pattern"` | `LIKE '%pattern'` | Clearer intent than LIKE |
+| `iends with "pattern"` | `ILIKE '%pattern'` or `LOWER(column) LIKE LOWER('%pattern')` | Case-insensitive |
+| `matches "%pattern%"` | `LIKE '%pattern%'` | LIKE syntax, not regex |
+
+#### Usage Examples
+
+**With logical operators:**
+```asql
+from users 
+  where email contains "@gmail.com" and status == "active"
+  where name starts with "John" or name starts with "Jane"
+```
+
+**With function calls:**
+```asql
+from users where upper(name) contains "JOHN"
+from users where coalesce(email, "") contains "@"
+```
+
+**With dotted column names:**
+```asql
+from users where users.email contains "@gmail.com"
+```
+
+**Design Decision**: Use `icontains` / `istarts with` / `iends with` instead of `contains ... ignore case` - analysts will prefer this syntax as it's more explicit and readable.
+
+### 4.6 COALESCE Operator (`??`)
 
 ASQL uses the `??` operator for COALESCE (nullish coalescing), providing a cleaner syntax than the function call.
 
@@ -180,7 +271,7 @@ from orders where (status ?? "pending") = "completed"
 **Precedence:**
 The `??` operator has higher precedence than logical operators (`and`, `or`, `not`) but lower than comparison operators (`=`, `!=`, etc.). Use parentheses for clarity in complex expressions.
 
-### 4.6 Conditional Expressions (`when`)
+### 4.7 Conditional Expressions (`when`)
 
 ASQL uses `when` for conditional expressions, replacing SQL's verbose `CASE` statement with cleaner, more natural syntax.
 
@@ -268,7 +359,7 @@ from orders
 
 All forms compile to standard SQL `CASE WHEN ... THEN ... ELSE ... END`.
 
-### 4.7 Type Casting (`::`)
+### 4.8 Type Casting (`::`)
 
 ASQL uses PostgreSQL-style double colon (`::`) syntax for type casting, which is more concise and readable than SQL's `CAST(... AS ...)` syntax.
 
@@ -318,7 +409,7 @@ All standard SQL types are supported, including:
 - Boolean: `BOOLEAN`, `BOOL`
 - And dialect-specific types (e.g., Snowflake's `NUMBER`, BigQuery's `INT64`)
 
-### 4.8 Comments
+### 4.9 Comments
 
 ASQL uses SQL-standard comment syntax:
 
@@ -330,7 +421,7 @@ ASQL uses SQL-standard comment syntax:
 - `#` is reserved for count aggregation syntax (see Section 5.2)
 - Better compatibility with SQL tooling and editors
 
-### 4.9 String Functions
+### 4.10 String Functions
 
 ASQL provides clean string manipulation functions.
 
@@ -401,7 +492,7 @@ from products
 | `trim(str)` | Remove whitespace | `trim(input)` |
 | `length(str)` | String length | `length(name)` |
 
-### 4.10 Comparison Functions
+### 4.11 Comparison Functions
 
 #### Multi-Value Min/Max
 
@@ -425,7 +516,7 @@ from products
 
 **Note**: This is configurable - if you prefer SQL-style `greatest()`/`least()` as the default, this can be adjusted in ASQL settings.
 
-### 4.11 NULL Handling
+### 4.12 NULL Handling
 
 #### NULLIF Alternative
 
@@ -440,7 +531,7 @@ from transactions
 This is clearer than `nullif(amount, 0)` and consistent with ASQL's conditional syntax.
 
 
-### 4.12 Function Shorthand (Underscore/Space Principle)
+### 4.13 Function Shorthand (Underscore/Space Principle)
 
 ASQL provides flexible syntax for function calls where **underscores and spaces are interchangeable**. This makes queries more natural to write and read.
 
@@ -1817,7 +1908,11 @@ SELECT * FROM ranked WHERE rn = 1
 
 #### `pivot` - Rows to Columns
 
-Transform row values into columns. Requires explicit values at compile time:
+Transform row values into columns. Supports both static values (known at compile time) and dynamic values (from subquery).
+
+**Static Pivot (Explicit Values)**
+
+When you know the pivot values at compile time, specify them explicitly:
 
 ```asql
 # Pivot with explicit values
@@ -1829,6 +1924,27 @@ from sales
   pivot amount by category values ('A', 'B', 'C')
 ```
 
+**Dynamic Pivot (Values from Subquery)**
+
+When pivot values are unknown at compile time, use a subquery to get them dynamically:
+
+```asql
+# Get pivot values from a subquery
+from sales
+  pivot sum(amount) by category values (
+    from sales select distinct category
+  )
+
+# With filtering in the subquery
+from orders
+  pivot sum(total) by status values (
+    from orders 
+    where order_date >= '2024-01-01'
+    select distinct status
+  )
+  group by customer_id
+```
+
 **Example use case - denormalizing custom fields:**
 
 ```asql
@@ -1837,8 +1953,16 @@ from sales
 # | PROJ-123 | priority     | High        |
 # | PROJ-123 | sprint       | Sprint 5    |
 
+# Static pivot (known fields)
 from issue_custom_fields
   pivot field_value by field_name values ('priority', 'sprint')
+  group by issue_id
+
+# Dynamic pivot (unknown fields)
+from issue_custom_fields
+  pivot field_value by field_name values (
+    from issue_custom_fields select distinct field_name
+  )
   group by issue_id
 
 # Result:
@@ -1846,9 +1970,7 @@ from issue_custom_fields
 # | PROJ-123 | High     | Sprint 5 |
 ```
 
-**Compiles to**: `CASE WHEN` expressions with aggregation, which works across all dialects.
-
-**Note**: Dynamic pivot (values from subquery) is not yet supported. See `spec_future.md` for details. Use raw SQL for dynamic cases.
+**Compiles to**: `CASE WHEN` expressions with aggregation. For dynamic pivot, the subquery is compiled to a CTE and used to generate pivot expressions, which works across all dialects.
 
 #### `unpivot` - Columns to Rows
 
@@ -1995,7 +2117,179 @@ select safe_divide(revenue, users) as revenue_per_user
 
 ---
 
-## 14. Models (Optional Metadata)
+## 14. Cohort Analysis
+
+Cohort analysis groups users by a shared characteristic (usually when they "started") and tracks their behavior over time. Traditional SQL requires 3-5 CTEs and 50+ lines for even basic cohort queries. ASQL simplifies this dramatically with the `cohort by` operator.
+
+### 14.1 Basic Cohort Syntax
+
+The `cohort by` clause transforms any aggregation query into a cohort analysis:
+
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+```
+
+This automatically:
+- Creates cohort assignment CTEs (`cohort_base`, `cohort_sizes`)
+- Joins the activity table to cohort tables
+- Calculates period (months/weeks/days since cohort start)
+- Modifies GROUP BY to include `cohort_month` and `period`
+- Adds cohort columns to SELECT (`cohort_month`, `period`, `cohort_size`)
+- Orders results by `cohort_month, period`
+
+### 14.2 Cohort Assignment
+
+Cohort assignment determines which group each user belongs to. The `cohort by` clause specifies:
+
+- **Granularity**: `month()`, `week()`, or `day()` function
+- **Cohort column**: The date column that defines the cohort (e.g., `users.signup_date`)
+- **Join key**: Optional explicit join key with `on` clause
+
+```asql
+-- Monthly cohorts by signup date
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+
+-- Weekly cohorts
+from events
+group by week(event_date) (count(distinct user_id) as active)
+cohort by week(users.signup_date)
+
+-- Explicit join key
+from orders
+group by month(order_date) (sum(total) as revenue)
+cohort by month(customers.first_order_date) on customer_id
+```
+
+### 14.3 Period Calculation
+
+Period is automatically calculated based on the granularity function:
+
+- `cohort by month(...)` → period in months since cohort start
+- `cohort by week(...)` → period in weeks since cohort start
+- `cohort by day(...)` → period in days since cohort start
+
+The period calculation uses the activity date column from your `group by` clause and the cohort date to compute the difference.
+
+### 14.4 Retention Calculations
+
+With `cohort by`, retention calculations become straightforward. The `cohort_size` column is automatically available in your results:
+
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+```
+
+This generates SQL that includes:
+- `cohort_month`: The month users signed up
+- `period`: Months since signup (0 = signup month, 1 = first month after, etc.)
+- `active`: Active users in that period
+- `cohort_size`: Total users in the cohort
+
+You can then calculate retention rates using window functions or in your BI tool.
+
+### 14.5 Period-over-Period Comparisons
+
+Use window functions like `prior()` for period-over-period analysis:
+
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+select
+  cohort_month,
+  period,
+  active,
+  prior(active) as prev_period_active,
+  active - prior(active) as change
+```
+
+The `cohort by` clause automatically partitions window functions by cohort and orders by period.
+
+### 14.6 Cohort Rollup Syntax
+
+The `cohort by` syntax works with any aggregation query. Simply add `cohort by` to transform it:
+
+```asql
+-- Revenue cohorts
+from orders
+group by month(order_date) (sum(total) as revenue)
+cohort by month(customers.first_order_date)
+
+-- Multiple metrics
+from events
+group by month(event_date) (
+  count(distinct user_id) as active,
+  count(*) as events,
+  sum(revenue) as revenue
+)
+cohort by month(users.signup_date)
+```
+
+### 14.7 Segmented Cohorts
+
+Add segment dimensions before the time function:
+
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by users.channel, month(users.signup_date)
+```
+
+This creates cohorts segmented by acquisition channel, allowing you to compare retention across different channels.
+
+### 14.8 Example: SQL vs ASQL Comparison
+
+**SQL (50+ lines):**
+```sql
+WITH user_cohorts AS (
+    SELECT user_id, DATE_TRUNC('month', signup_date) AS cohort_month
+    FROM users
+),
+activity_months AS (
+    SELECT user_id, DATE_TRUNC('month', event_date) AS activity_month
+    FROM events
+    GROUP BY 1, 2
+),
+cohort_sizes AS (
+    SELECT cohort_month, COUNT(*) AS size
+    FROM user_cohorts GROUP BY 1
+),
+cohort_activity AS (
+    SELECT 
+        uc.cohort_month,
+        EXTRACT(YEAR FROM AGE(am.activity_month, uc.cohort_month)) * 12 +
+        EXTRACT(MONTH FROM AGE(am.activity_month, uc.cohort_month)) AS period,
+        COUNT(DISTINCT uc.user_id) AS active
+    FROM user_cohorts uc
+    JOIN activity_months am ON uc.user_id = am.user_id
+    WHERE am.activity_month >= uc.cohort_month
+    GROUP BY 1, 2
+)
+SELECT 
+    ca.cohort_month, cs.size, ca.period,
+    ca.active, ROUND(ca.active::numeric / cs.size * 100, 1) AS retention
+FROM cohort_activity ca
+JOIN cohort_sizes cs ON ca.cohort_month = cs.cohort_month
+ORDER BY ca.cohort_month, ca.period;
+```
+
+**ASQL (3 lines):**
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+```
+
+**Reduction: 94%** 🎉
+
+---
+
+## 15. Models (Optional Metadata)
 
 **Philosophy**: Ideally, ASQL doesn't create its own model format. It should:
 1. Use dbt's existing `schema.yml` files when available
@@ -2044,7 +2338,7 @@ from users
 
 ---
 
-## 15. Nested Results (Optional)
+## 16. Nested Results (Optional)
 
 Inspired by EdgeQL, support nested result shapes:
 
@@ -2060,9 +2354,9 @@ from countries
 
 ---
 
-## 16. Indentation & Multi-line Queries
+## 17. Indentation & Multi-line Queries
 
-### 14.1 Indentation Rules
+### 17.1 Indentation Rules
 
 Every line must return a new table. For multi-line operations, indent:
 
@@ -2073,7 +2367,7 @@ from users
   group by country ( count() as count )
 ```
 
-### 14.2 Nested Selects
+### 17.2 Nested Selects
 
 ```asql
 from users
@@ -2087,9 +2381,9 @@ from users
 
 ---
 
-## 17. Capitalization & Naming
+## 18. Capitalization & Naming
 
-### 15.1 Case-Safe Design
+### 18.1 Case-Safe Design
 
 **ASQL is case-safe by design.** This means you can use capital letters in column and table names without wrapping them in quotes obsessively. However, table/column names must still match the actual database names (case-insensitively).
 
@@ -2118,7 +2412,7 @@ from Users
 
 ASQL eliminates the friction of matching exact case, allowing you to write queries using whatever naming style feels natural while still matching the correct database objects.
 
-### 15.2 Case Handling Strategy
+### 18.2 Case Handling Strategy
 
 ASQL normalizes identifiers internally while preserving the original case for SQL generation:
 
@@ -2142,20 +2436,80 @@ from Users
 SELECT first_name, created_at FROM users
 ```
 
-### 15.3 Column Name Conflicts
+### 18.3 Column Name Conflicts
 
-When column names conflict across joined tables, you must explicitly qualify them:
+ASQL automatically handles column name conflicts in joined queries by expanding `SELECT *` to table-qualified columns.
+
+#### Before (Explicit Qualification Required)
+
+In traditional SQL, when joining tables with conflicting column names, you must explicitly qualify every column:
+
+```sql
+-- SQL: Must explicitly qualify conflicting columns
+SELECT users.id AS user_id, orders.id AS order_id, users.name, orders.amount
+FROM users
+JOIN orders ON users.id = orders.user_id
+```
+
+#### After (Automatic Resolution)
+
+ASQL automatically expands `SELECT *` to `table.*` for each joined table, preventing conflicts:
 
 ```asql
+-- ASQL: Automatic expansion
 from users
-  & orders
--- If both have 'id', you must explicitly qualify:
+  & orders on users.id = orders.user_id
+-- Automatically becomes:
+-- SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id
+```
+
+**How It Works**:
+- When `SELECT *` is used with joins, ASQL expands it to `SELECT table1.*, table2.*, ...` for each joined table
+- Columns can be referenced with table qualification: `users.id`, `orders.id`, `users.name`, `orders.amount`
+- This prevents ambiguous column errors without requiring explicit qualification
+
+**Examples**:
+
+```asql
+-- Simple join: SELECT * expands to users.*, orders.*
+from users & orders on users.id = orders.user_id
+-- → SELECT users.*, orders.* FROM users JOIN orders ON users.id = orders.user_id
+
+-- Multiple joins: Expands to all table.* columns
+from orders
+  & customers on orders.customer_id = customers.id
+  & order_items on orders.id = order_items.order_id
+-- → SELECT orders.*, customers.*, order_items.* FROM ...
+
+-- With aliases: Uses alias names
+from users &? orders as o on users.id = o.user_id
+-- → SELECT users.*, o.* FROM users LEFT JOIN orders AS o ON users.id = o.user_id
+
+-- Explicit SELECT: No expansion (uses your explicit columns)
+from users & orders on users.id = orders.user_id
+select users.name, orders.amount
+-- → SELECT users.name, orders.amount FROM users JOIN orders ON users.id = orders.user_id
+```
+
+**When Expansion Happens**:
+- ✅ `SELECT *` with joins → Expanded to `table.*` for each table
+- ❌ `SELECT *` without joins → Kept as `SELECT *`
+- ❌ Explicit `SELECT` columns → No expansion (uses your columns)
+
+**Benefits**:
+- No ambiguous column errors
+- Columns remain accessible with table qualification
+- Works with all join types (INNER, LEFT, RIGHT, FULL OUTER, CROSS)
+- Respects table aliases
+
+**Note**: Without schema information, ASQL cannot automatically rename conflicting columns to `users_id` and `orders_id`. The expansion to `table.*` allows you to reference columns with table qualification (e.g., `users.id`, `orders.id`) to avoid conflicts. You can still add explicit aliases if you want renamed columns:
+
+```asql
+from users & orders on users.id = orders.user_id
 select users.id as user_id, orders.id as order_id
 ```
 
-**Note**: Automatic namespace resolution (renaming conflicting columns with table context) is not implemented. Explicit qualification is required and is clearer and safer. See `spec_future.md` for potential future support.
-
-### 15.4 Why Case-Safe is Good
+### 18.4 Why Case-Safe is Good
 
 **Pros:**
 - ✅ Eliminates a common source of errors
@@ -2171,7 +2525,7 @@ select users.id as user_id, orders.id as order_id
 
 ---
 
-## 18. Examples
+## 19. Examples
 
 ### Example 1: Simple Analytic Query
 
@@ -2295,16 +2649,16 @@ avg age of user by country
 
 ---
 
-## 19. Compilation & Transpilation
+## 20. Compilation & Transpilation
 
-### 17.1 Compilation Process
+### 20.1 Compilation Process
 
 1. **Parse**: ASQL → AST (Abstract Syntax Tree)
 2. **Resolve**: AST → Resolved AST (with type info, relationships)
 3. **Transform**: Resolved AST → SQL AST (via SQLGlot)
 4. **Generate**: SQL AST → Target SQL dialect
 
-### 17.2 Intermediate Representation
+### 20.2 Intermediate Representation
 
 Each pipeline step becomes a CTE:
 
@@ -2325,7 +2679,7 @@ FROM step1
 GROUP BY country;
 ```
 
-### 17.3 Target Dialects
+### 20.3 Target Dialects
 
 Via SQLGlot, ASQL can transpile to:
 - ANSI SQL
@@ -2339,7 +2693,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 20. Implementation Roadmap
+## 21. Implementation Roadmap
 
 | Stage | Milestone | Description |
 |-------|-----------|-------------|
@@ -2351,25 +2705,25 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 21. Design Decisions & Rationale
+## 22. Design Decisions & Rationale
 
-### 19.1 Why Remove SELECT?
+### 22.1 Why Remove SELECT?
 
 Traditional SQL requires `SELECT` at the start, but the columns you need often aren't known until the end of the query. ASQL's pipeline approach lets you build up the query naturally, with `select`/`project` appearing only when needed.
 
-### 19.2 Why Indentation-Based Syntax?
+### 22.2 Why Indentation-Based Syntax?
 
 Indentation-based syntax (with optional pipe operators) is cleaner and more natural than requiring explicit operators. It reads like a conversation: "from users, filter active ones, group by country, count them." The pipe operator (`|`) is available for those who prefer explicit flow markers.
 
-### 19.3 Why Natural Language?
+### 22.3 Why Natural Language?
 
 ASQL is pronounced "Ask-el" - it should feel like asking a question. Natural language syntax (`# of Users`, `Sum of amount`, `Average of age`) makes queries readable to non-technical stakeholders while maintaining precision.
 
-### 19.4 Why Case-Safe?
+### 22.4 Why Case-Safe?
 
 Database conventions (snake_case) conflict with frontend conventions (camelCase). ASQL eliminates this friction by being case-insensitive, allowing developers to write queries using whatever naming style feels natural.
 
-### 19.5 Why Convention Over Configuration?
+### 22.5 Why Convention Over Configuration?
 
 ASQL follows a "convention over configuration" philosophy (inspired by frameworks like Rails and dbt):
 
@@ -2381,21 +2735,21 @@ ASQL follows a "convention over configuration" philosophy (inspired by framework
 
 **Example**: If you have `Accounts.user_id` and a `Users` table, ASQL automatically infers the FK relationship. If you have `Accounts.ownerUserRef`, you'll need to configure it explicitly (encouraging you to rename it to `owner_id`).
 
-### 19.6 Why Not Replace SQL?
+### 22.6 Why Not Replace SQL?
 
 ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, and knowledge. It's an evolution, not a revolution. Maybe one day different databases will adopt ASQL or move toward it, just as JavaScript moved toward CoffeeScript's ideas (async/await, arrow functions, etc.).
 
 ---
 
-## 22. Future Features
+## 23. Future Features
 
 For features that are planned, under consideration, or marked as "maybe" for v1.0, see `spec_future.md`.
 
 ---
 
-## 23. Major Benefits of ASQL
+## 24. Major Benefits of ASQL
 
-### 21.1 Reduced Need for CTEs and Nested Queries
+### 24.1 Reduced Need for CTEs and Nested Queries
 
 Traditional SQL often requires CTEs or nested subqueries to break down complex logic. ASQL's pipeline approach eliminates most of this need:
 
@@ -2423,7 +2777,7 @@ from users
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally.
 
-### 21.2 More Readable Column Names
+### 24.2 More Readable Column Names
 
 Natural language syntax makes column names more readable without needing explicit aliases:
 
@@ -2439,14 +2793,14 @@ select country, # of Users as total_users, average of age
 
 The natural language makes columns self-documenting - `# of Users` is clearer than `count` or even `total_users`.
 
-### 21.3 Less Boilerplate
+### 24.3 Less Boilerplate
 
 - No need to write `SELECT` at the start when you don't know what columns you need yet
 - No need for explicit joins when FKs follow conventions
 - No need for verbose date extraction functions
 - No need to quote identifiers obsessively
 
-### 21.4 Better for Analytics
+### 24.4 Better for Analytics
 
 - Time functions that work consistently across databases
 - Natural language aggregations that read like questions
