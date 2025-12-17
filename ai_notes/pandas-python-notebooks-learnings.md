@@ -673,7 +673,7 @@ SELECT * FROM orders ORDER BY RANDOM() LIMIT n
 
 ---
 
-### 11. Explode / Unnest Arrays
+### 11. Explode / Unnest Arrays ✅ IMPLEMENTED
 
 #### Pandas
 ```python
@@ -681,21 +681,7 @@ df.explode('tags')                    # One row per array element
 df['col'].str.split(',').explode()    # Split string, then explode
 ```
 
-#### Current ASQL (No Abstraction Yet)
-You'd write dialect-specific SQL:
-
-```sql
--- BigQuery
-SELECT *, tag FROM posts, UNNEST(tags) as tag
-
--- Postgres
-SELECT *, tag FROM posts, LATERAL unnest(tags) as tag
-
--- Snowflake
-SELECT *, t.value as tag FROM posts, LATERAL FLATTEN(tags) t
-```
-
-#### Proposed Enhancement
+#### ASQL ✅
 ```asql
 from posts
 explode tags as tag
@@ -705,7 +691,12 @@ from posts
 explode split(tags_csv, ',') as tag
 ```
 
-**Value:** High. Array handling syntax varies wildly between warehouses. A single keyword would handle cross-dialect complexity.
+**Compiles to dialect-specific SQL:**
+- **Postgres/DuckDB:** `FROM posts, UNNEST(tags) AS tag`
+- **BigQuery:** `FROM posts CROSS JOIN UNNEST(tags) AS tag`
+- **Snowflake:** `FROM posts CROSS JOIN (SELECT value AS tag FROM TABLE(FLATTEN(...)))`
+
+**Status:** Implemented! Single keyword handles cross-dialect complexity.
 
 ---
 

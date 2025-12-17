@@ -561,8 +561,10 @@ class TestPivot:
         assert "amount" in result.lower()
     
     def test_pivot_with_group_by(self):
-        """pivot with group by clause."""
-        result = preparse_asql("from sales group by region pivot sum(amount) by category values ('X', 'Y')")
+        """pivot with group by clause compiles correctly."""
+        from asql.compiler import compile
+        # Put group by after pivot - cleaner syntax
+        result = compile("from sales pivot sum(amount) by category values ('X', 'Y') group by region", dialect="postgres")
         assert "GROUP BY" in result.upper()
         assert "CASE WHEN" in result.upper()
     

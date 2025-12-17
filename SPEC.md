@@ -572,6 +572,8 @@ Avg Users.age by country
 
 ASQL uses symbolic operators for joins, making the join type visually clear. The `&` represents the join point, and `?` marks optional (nullable) sides.
 
+**Note**: Join operators are **FROM clause syntax**, not pipeline operators. They must appear inline with `from`, not after a `|` pipe. This keeps the pipeline focused on data transformation while `from` establishes the data source.
+
 ### 7.1 Join Operators
 
 | Operator | Join Type | SQL Equivalent | Meaning |
