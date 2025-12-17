@@ -386,8 +386,11 @@ replace(text, "old", "new")
 Return first non-null value.
 
 ```asql
+value ?? default            -- Operator form (preferred)
+primary_email ?? secondary_email ?? "unknown"  -- Chained fallbacks
+
+-- Function form (also accepted)
 coalesce(primary_email, secondary_email, "unknown")
-value ?? default            -- Operator form
 ```
 
 ---

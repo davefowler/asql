@@ -10,6 +10,7 @@ exclude_docs: |
   spec_future.md
   status.md
   playground.md
+  style_analysis.md
 
 # Repository
 repo_name: asql

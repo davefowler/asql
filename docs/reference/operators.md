@@ -225,7 +225,7 @@ where name starts with "John" or name starts with "Jane"
 **With function calls:**
 ```asql
 where upper(name) contains "JOHN"
-where coalesce(email, "") contains "@"
+where (email ?? "") contains "@"
 ```
 
 **Note**: The `matches` operator uses LIKE syntax (with `%` and `_` wildcards), not regex. Case-insensitive operators use `ILIKE` for PostgreSQL and dialects that support it; otherwise they compile to `LOWER(column) LIKE LOWER(pattern)`.

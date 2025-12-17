@@ -221,7 +221,7 @@ from users
 **With function calls:**
 ```asql
 from users where upper(name) contains "JOHN"
-from users where coalesce(email, "") contains "@"
+from users where (email ?? "") contains "@"
 ```
 
 **With dotted column names:**
@@ -237,14 +237,14 @@ ASQL uses the `??` operator for COALESCE (nullish coalescing), providing a clean
 
 **Syntax:**
 ```asql
-# Function form
-coalesce(column, default_value)
-
 # Operator form (preferred)
 column ?? default_value
 
 # Chained (multiple fallbacks)
 column ?? fallback1 ?? fallback2 ?? "default"
+
+# Function form (also accepted)
+coalesce(column, default_value)
 ```
 
 **Examples:**

@@ -74,7 +74,7 @@ Group by multiple columns separated by commas:
 
 ```asql
 from sales
-  group by region, year(date) as year (
+  group by region, year(date) (
     sum(amount) as revenue,
     # as transactions
   )
@@ -109,9 +109,9 @@ Using shorthand:
 ```asql
 from sales
   group by region (
-    sum_amount,      -- becomes sum(amount) as sum_amount
-    avg_price,       -- becomes avg(price) as avg_price
-    # as total       -- count(*)
+    sum_amount,
+    avg_price,
+    # as total
   )
 ```
 
