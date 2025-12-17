@@ -51,6 +51,44 @@ TRUNC_TO_INTERVAL = {
 }
 
 
+def _detect_rollup_cube(stmt: exp.Expression) -> Tuple[bool, bool, List[str]]:
+    """
+    Detect if a statement uses ROLLUP or CUBE in GROUP BY.
+    
+    Returns: (has_rollup, has_cube, rollup_cube_columns)
+    - has_rollup: True if ROLLUP is present
+    - has_cube: True if CUBE is present
+    - rollup_cube_columns: List of column names in the ROLLUP/CUBE (in order for ROLLUP)
+    """
+    has_rollup = False
+    has_cube = False
+    columns = []
+    
+    rollup = stmt.find(exp.Rollup)
+    if rollup:
+        has_rollup = True
+        for expr in rollup.expressions:
+            if isinstance(expr, exp.Column):
+                columns.append(expr.name)
+            elif isinstance(expr, exp.Alias):
+                columns.append(expr.alias)
+            else:
+                columns.append(expr.sql())
+    
+    cube = stmt.find(exp.Cube)
+    if cube:
+        has_cube = True
+        for expr in cube.expressions:
+            if isinstance(expr, exp.Column):
+                columns.append(expr.name)
+            elif isinstance(expr, exp.Alias):
+                columns.append(expr.alias)
+            else:
+                columns.append(expr.sql())
+    
+    return has_rollup, has_cube, columns
+
+
 def _is_guarantee_wrapped(expr: exp.Expression) -> Tuple[bool, Optional[List[str]]]:
     """
     Check if an expression is wrapped in guarantee() for explicit spine.
@@ -364,6 +402,8 @@ def _get_all_group_by_columns(stmt: exp.Expression) -> List[Tuple[str, exp.Expre
     - is_date: True if this is a date truncation function
     - trunc_unit: The truncation unit (month, year, etc.) if is_date
     - explicit_values: Values from guarantee() if provided
+    
+    Handles ROLLUP and CUBE by extracting their inner columns.
     """
     results = []
     
@@ -374,7 +414,35 @@ def _get_all_group_by_columns(stmt: exp.Expression) -> List[Tuple[str, exp.Expre
     if not group_by:
         return results
     
+    # Collect all GROUP BY expressions, expanding ROLLUP/CUBE
+    all_group_exprs = []
+    
+    # Regular GROUP BY expressions
     for group_expr in group_by.expressions:
+        if isinstance(group_expr, (exp.Rollup, exp.Cube)):
+            # Extract columns from ROLLUP/CUBE in expressions
+            for inner_expr in group_expr.expressions:
+                all_group_exprs.append(inner_expr)
+        else:
+            all_group_exprs.append(group_expr)
+    
+    # Check for ROLLUP in args (SQLGlot stores it separately)
+    rollup_list = group_by.args.get('rollup', [])
+    if rollup_list:
+        for rollup in rollup_list:
+            if isinstance(rollup, exp.Rollup):
+                for inner_expr in rollup.expressions:
+                    all_group_exprs.append(inner_expr)
+    
+    # Check for CUBE in args
+    cube_list = group_by.args.get('cube', [])
+    if cube_list:
+        for cube in cube_list:
+            if isinstance(cube, exp.Cube):
+                for inner_expr in cube.expressions:
+                    all_group_exprs.append(inner_expr)
+    
+    for group_expr in all_group_exprs:
         alias = None
         is_date = False
         trunc_unit = None
@@ -440,6 +508,9 @@ def _apply_auto_spine(
     All spines are cross-joined to create complete (col1 × col2 × ...) combinations.
     The data is then left-joined to fill in actual values.
     
+    For ROLLUP: spines include NULL and are filtered to valid hierarchical patterns.
+    For CUBE: spines include NULL (all combinations are valid).
+    
     This ensures all expected dimension values appear in results, which is
     what analysts typically want for charts and reports.
     """
@@ -448,6 +519,9 @@ def _apply_auto_spine(
     
     if not isinstance(stmt, exp.Select):
         return stmt
+    
+    # Detect ROLLUP/CUBE
+    has_rollup, has_cube, rollup_cube_columns = _detect_rollup_cube(stmt)
     
     # Get all GROUP BY columns
     group_cols = _get_all_group_by_columns(stmt)
@@ -468,13 +542,20 @@ def _apply_auto_spine(
     # Build spine CTEs for each column
     spine_ctes = []
     spine_columns = []
+    # Track which columns are in ROLLUP (in order) for hierarchical filter
+    rollup_column_order = []
     
     for alias, group_expr, is_date, trunc_unit, explicit_values in group_cols:
         spine_cte_name = f"{alias}_spine"
         
+        # Check if this column is in ROLLUP/CUBE
+        is_in_rollup_cube = alias in rollup_cube_columns or alias.lower() in [c.lower() for c in rollup_cube_columns]
+        if is_in_rollup_cube and has_rollup:
+            rollup_column_order.append(alias)
+        
         if explicit_values:
             # Use explicit values from guarantee()
-            spine_sql = _build_categorical_spine_sql(alias, explicit_values, dialect)
+            spine_sql = _build_categorical_spine_sql(alias, explicit_values, dialect, include_null=is_in_rollup_cube)
         elif is_date and trunc_unit:
             # Use date range
             source_col = _get_source_column_from_trunc(group_expr)
@@ -482,12 +563,12 @@ def _apply_auto_spine(
             interval = TRUNC_TO_INTERVAL.get(trunc_unit, '1 day')
             
             if min_date and max_date:
-                spine_sql = _build_date_spine_sql(alias, trunc_unit, min_date, max_date, interval, dialect)
+                spine_sql = _build_date_spine_sql(alias, trunc_unit, min_date, max_date, interval, dialect, include_null=is_in_rollup_cube)
             else:
                 # Fall back to MIN/MAX from data
                 spine_sql = _build_date_spine_from_data_sql(
                     alias, trunc_unit, source_col.sql() if source_col else alias, 
-                    source_table, where_sql, interval, dialect
+                    source_table, where_sql, interval, dialect, include_null=is_in_rollup_cube
                 )
         else:
             # Use DISTINCT from data (this is a no-op but maintains consistency)
@@ -500,7 +581,12 @@ def _apply_auto_spine(
                 col_expr = inner.sql()
             else:
                 col_expr = inner_expr.sql()
-            spine_sql = f"SELECT DISTINCT {col_expr} AS {alias} FROM {source_table} {where_sql}"
+            
+            if is_in_rollup_cube:
+                # Include NULL for ROLLUP/CUBE subtotals
+                spine_sql = f"SELECT DISTINCT {col_expr} AS {alias} FROM {source_table} {where_sql} UNION ALL SELECT NULL AS {alias}"
+            else:
+                spine_sql = f"SELECT DISTINCT {col_expr} AS {alias} FROM {source_table} {where_sql}"
         
         try:
             spine_select = sqlglot.parse_one(spine_sql.strip(), dialect=dialect)
@@ -524,6 +610,23 @@ def _apply_auto_spine(
         for alias, cte_name in spine_columns[1:]:
             froms.append(f"CROSS JOIN {cte_name}")
         combined_spine_sql = f"SELECT {', '.join(selects)} FROM {' '.join(froms)}"
+    
+    # For ROLLUP, add filter for valid hierarchical NULL patterns
+    # Rule: if column N is NULL, all subsequent columns must also be NULL
+    # Expressed as: (col_i IS NOT NULL OR col_{i+1} IS NULL) for each adjacent pair
+    if has_rollup and len(rollup_column_order) > 1:
+        rollup_filter_conditions = []
+        for i in range(len(rollup_column_order) - 1):
+            col_curr = rollup_column_order[i]
+            col_next = rollup_column_order[i + 1]
+            # Find the CTE name for each column
+            curr_cte = next((cte for alias, cte in spine_columns if alias == col_curr), None)
+            next_cte = next((cte for alias, cte in spine_columns if alias == col_next), None)
+            if curr_cte and next_cte:
+                rollup_filter_conditions.append(f"({curr_cte}.{col_curr} IS NOT NULL OR {next_cte}.{col_next} IS NULL)")
+        
+        if rollup_filter_conditions:
+            combined_spine_sql += f" WHERE {' AND '.join(rollup_filter_conditions)}"
     
     # Build the data CTE (original query)
     data_cte_name = "spine_data"
@@ -584,22 +687,32 @@ def _apply_auto_spine(
         return stmt
 
 
-def _build_categorical_spine_sql(alias: str, values: List[str], dialect: Optional[str] = None) -> str:
-    """Build SQL for a categorical spine with explicit values."""
+def _build_categorical_spine_sql(alias: str, values: List[str], dialect: Optional[str] = None, include_null: bool = False) -> str:
+    """Build SQL for a categorical spine with explicit values.
+    
+    Args:
+        alias: Column alias for the spine
+        values: List of values to include
+        dialect: SQL dialect
+        include_null: If True, include NULL for ROLLUP/CUBE subtotals
+    """
     dialect_lower = dialect.lower() if dialect else ""
     
     values_sql = ", ".join([f"'{v}'" for v in values])
+    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
     
     if dialect_lower in ('postgres', 'postgresql', 'redshift', 'duckdb'):
-        return f"SELECT unnest(ARRAY[{values_sql}]) AS {alias}"
+        return f"SELECT unnest(ARRAY[{values_sql}]) AS {alias}{null_union}"
     elif dialect_lower == 'bigquery':
-        return f"SELECT {alias} FROM UNNEST([{values_sql}]) AS {alias}"
+        return f"SELECT {alias} FROM UNNEST([{values_sql}]) AS {alias}{null_union}"
     elif dialect_lower == 'snowflake':
         # Snowflake uses FLATTEN with SPLIT
-        return f"SELECT value AS {alias} FROM TABLE(FLATTEN(INPUT => SPLIT('{','.join(values)}', ',')))"
+        return f"SELECT value AS {alias} FROM TABLE(FLATTEN(INPUT => SPLIT('{','.join(values)}', ','))){null_union}"
     else:
         # Default: UNION ALL approach (works everywhere)
         unions = [f"SELECT '{v}' AS {alias}" for v in values]
+        if include_null:
+            unions.append(f"SELECT NULL AS {alias}")
         return " UNION ALL ".join(unions)
 
 
@@ -609,37 +722,43 @@ def _build_date_spine_sql(
     min_date: str,
     max_date: str,
     interval: str,
-    dialect: Optional[str] = None
+    dialect: Optional[str] = None,
+    include_null: bool = False
 ) -> str:
-    """Build SQL for a date spine with explicit bounds."""
+    """Build SQL for a date spine with explicit bounds.
+    
+    Args:
+        include_null: If True, include NULL for ROLLUP/CUBE subtotals
+    """
     dialect_lower = dialect.lower() if dialect else ""
+    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
     
     if dialect_lower in ('postgres', 'postgresql', 'redshift'):
         return f"""
             SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
             FROM generate_series({min_date}::date, {max_date}::date, INTERVAL '{interval}') AS d
-        """
+        """ + null_union
     elif dialect_lower == 'bigquery':
         return f"""
             SELECT DATE_TRUNC(d, {trunc_unit.upper()}) AS {alias}
             FROM UNNEST(GENERATE_DATE_ARRAY({min_date}, {max_date})) AS d
-        """
+        """ + null_union
     elif dialect_lower == 'snowflake':
         return f"""
             SELECT DISTINCT DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), {min_date})) AS {alias}
             FROM TABLE(GENERATOR(ROWCOUNT => 10000))
             WHERE DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), {min_date})) <= {max_date}
-        """
+        """ + null_union
     elif dialect_lower == 'duckdb':
         return f"""
             SELECT DATE_TRUNC('{trunc_unit}', d) AS {alias}
             FROM generate_series({min_date}::date, {max_date}::date, INTERVAL '{interval}') AS t(d)
-        """
+        """ + null_union
     else:
         return f"""
             SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
             FROM generate_series({min_date}::date, {max_date}::date, INTERVAL '{interval}') AS d
-        """
+        """ + null_union
 
 
 def _build_date_spine_from_data_sql(
@@ -649,10 +768,16 @@ def _build_date_spine_from_data_sql(
     source_table: str,
     where_sql: str,
     interval: str,
-    dialect: Optional[str] = None
+    dialect: Optional[str] = None,
+    include_null: bool = False
 ) -> str:
-    """Build SQL for a date spine derived from data MIN/MAX."""
+    """Build SQL for a date spine derived from data MIN/MAX.
+    
+    Args:
+        include_null: If True, include NULL for ROLLUP/CUBE subtotals
+    """
     dialect_lower = dialect.lower() if dialect else ""
+    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
     
     if dialect_lower in ('postgres', 'postgresql', 'redshift'):
         return f"""
@@ -663,7 +788,7 @@ def _build_date_spine_from_data_sql(
             )
             SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
             FROM bounds, generate_series(min_d::date, max_d::date, INTERVAL '{interval}') AS d
-        """
+        """ + null_union
     elif dialect_lower == 'duckdb':
         return f"""
             WITH bounds AS (
@@ -673,10 +798,10 @@ def _build_date_spine_from_data_sql(
             )
             SELECT DATE_TRUNC('{trunc_unit}', d) AS {alias}
             FROM bounds, generate_series(min_d::date, max_d::date, INTERVAL '{interval}') AS t(d)
-        """
+        """ + null_union
     else:
         # Fallback: just use DISTINCT (no gap filling, but at least works)
-        return f"SELECT DISTINCT DATE_TRUNC('{trunc_unit}', {col_expr}) AS {alias} FROM {source_table} {where_sql}"
+        return f"SELECT DISTINCT DATE_TRUNC('{trunc_unit}', {col_expr}) AS {alias} FROM {source_table} {where_sql}" + null_union
 
 
 def _build_spine_select_with_bounds(

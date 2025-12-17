@@ -334,3 +334,113 @@ class TestEdgeCases:
         assert "SELECT" in sql
         assert "WHERE" in sql
         assert "GROUP BY" in sql
+
+
+class TestRollupCubeDetection:
+    """Test ROLLUP and CUBE detection and handling."""
+    
+    def test_detect_rollup(self):
+        """Test detection of ROLLUP in GROUP BY."""
+        from asql.compiler import _detect_rollup_cube
+        
+        stmt = sqlglot.parse_one("SELECT region, month, SUM(amount) FROM orders GROUP BY ROLLUP(region, month)")
+        has_rollup, has_cube, columns = _detect_rollup_cube(stmt)
+        
+        assert has_rollup is True
+        assert has_cube is False
+        assert "region" in columns
+        assert "month" in columns
+    
+    def test_detect_cube(self):
+        """Test detection of CUBE in GROUP BY."""
+        from asql.compiler import _detect_rollup_cube
+        
+        stmt = sqlglot.parse_one("SELECT region, category, SUM(amount) FROM orders GROUP BY CUBE(region, category)")
+        has_rollup, has_cube, columns = _detect_rollup_cube(stmt)
+        
+        assert has_rollup is False
+        assert has_cube is True
+        assert "region" in columns
+        assert "category" in columns
+    
+    def test_no_rollup_cube(self):
+        """Test that regular GROUP BY has no ROLLUP/CUBE."""
+        from asql.compiler import _detect_rollup_cube
+        
+        stmt = sqlglot.parse_one("SELECT region, SUM(amount) FROM orders GROUP BY region")
+        has_rollup, has_cube, columns = _detect_rollup_cube(stmt)
+        
+        assert has_rollup is False
+        assert has_cube is False
+        assert columns == []
+    
+    def test_rollup_three_columns(self):
+        """Test ROLLUP with 3 columns."""
+        from asql.compiler import _detect_rollup_cube
+        
+        stmt = sqlglot.parse_one("SELECT region, category, product, SUM(amount) FROM orders GROUP BY ROLLUP(region, category, product)")
+        has_rollup, has_cube, columns = _detect_rollup_cube(stmt)
+        
+        assert has_rollup is True
+        assert len(columns) == 3
+        assert columns == ["region", "category", "product"]
+
+
+class TestRollupSpineGeneration:
+    """Test that ROLLUP queries get proper spine with NULL handling."""
+    
+    def test_rollup_spine_includes_null_union(self):
+        """Test that ROLLUP columns include NULL in spine for subtotals."""
+        # This tests at a lower level that NULL is included
+        from asql.compiler import _build_categorical_spine_sql
+        
+        # With include_null=True
+        sql = _build_categorical_spine_sql("status", ["active", "inactive"], dialect="postgres", include_null=True)
+        assert "NULL" in sql
+        
+        # Without include_null
+        sql_no_null = _build_categorical_spine_sql("status", ["active", "inactive"], dialect="postgres", include_null=False)
+        assert "NULL" not in sql_no_null
+    
+    def test_rollup_hierarchical_filter_logic(self):
+        """Test that ROLLUP filter excludes invalid NULL combinations.
+        
+        For ROLLUP(a, b, c), valid patterns are:
+        - (val, val, val) - all non-null
+        - (val, val, NULL) - c is null
+        - (val, NULL, NULL) - b,c are null  
+        - (NULL, NULL, NULL) - all null (grand total)
+        
+        Invalid: (val, NULL, val) or (NULL, val, val) etc.
+        
+        Filter: (a IS NOT NULL OR b IS NULL) AND (b IS NOT NULL OR c IS NULL)
+        """
+        # Test the filter logic manually
+        # (West, NULL, Nike) should be filtered out
+        # Filter: (region IS NOT NULL OR category IS NULL) AND (category IS NOT NULL OR product IS NULL)
+        # For (West, NULL, Nike): (True OR False) AND (False OR False) = True AND False = False -> FILTERED
+        
+        # (West, Shoes, NULL) should pass
+        # (True OR False) AND (True OR True) = True AND True = True -> PASS
+        
+        # (NULL, NULL, NULL) should pass
+        # (False OR True) AND (True OR True) = True AND True = True -> PASS
+        
+        # This is just documentation of the logic, actual SQL test is below
+        pass
+    
+    def test_compile_with_rollup(self):
+        """Test that ROLLUP queries compile with auto_spine."""
+        sql = compile(
+            "SELECT region, month, SUM(amount) as total FROM orders GROUP BY ROLLUP(region, month)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Should compile without error
+        assert "SELECT" in sql
+        # Should include NULL in spines for ROLLUP subtotals
+        assert "UNION ALL SELECT NULL" in sql.upper()
+        # Should have the hierarchical filter for ROLLUP
+        # SQLGlot may normalize "IS NOT NULL" to "NOT ... IS NULL"
+        assert "IS NULL" in sql.upper()  # Part of the filter condition

@@ -393,7 +393,16 @@ Why? Because `guarantee(region)` (with no explicit values) creates a spine from 
 
 ### What about ROLLUP/CUBE?
 
-These SQL features generate summary rows (subtotals, grand totals). Auto-spine doesn't currently handle these specially - they'd get spined like regular GROUP BY. This might produce unexpected results and is an area for future consideration.
+These SQL features generate summary rows (subtotals, grand totals) where NULL has special meaning ("all values").
+
+**ROLLUP handling:** When ROLLUP is detected:
+1. Each column's spine includes NULL to match subtotal rows
+2. A hierarchical filter ensures only valid NULL patterns appear:
+   - Valid: `(a, b, NULL)`, `(a, NULL, NULL)`, `(NULL, NULL, NULL)`
+   - Invalid: `(a, NULL, b)` - filtered out
+3. Filter logic: "if a column is NULL, all subsequent columns must also be NULL"
+
+**CUBE handling:** Similar to ROLLUP, but all NULL combinations are valid (2^n patterns), so no filter is applied.
 
 ---
 
@@ -406,8 +415,9 @@ These SQL features generate summary rows (subtotals, grand totals). Auto-spine d
 | Cross-join multiple spines | All (col1 × col2 × ...) combinations | ✅ Implemented |
 | WHERE clause range inference | Auto-detect spine bounds from filters | ✅ Implemented |
 | `guarantee(col, [values])` | Override with explicit array | ✅ Implemented |
+| ROLLUP support | Spines include NULL + hierarchical filter | ✅ Implemented |
+| CUBE support | Spines include NULL (all combos valid) | ✅ Implemented |
 | `guarantee(col, N to M)` | Numeric range | 🔄 Planned |
 | `guarantee(col, subquery)` | Values from subquery | 🔄 Planned |
-| ROLLUP/CUBE detection | Skip auto-spine for these | 🔄 Planned |
 
 **Key insight:** ALL group by columns get spined. Dates use range (fills gaps), non-dates use DISTINCT (no-op but consistent). Use `guarantee(col, [values])` to override with explicit values. Filter with `WHERE revenue > 0` to remove spine rows, or `SET auto_spine = false` to disable entirely.
