@@ -90,10 +90,25 @@ function showDialect(blockId, dialect) {
         // Highlight syntax - ensure highlight.js is available
         if (window.hljs) {
             try {
-                // Use highlight() directly for more control
-                const result = hljs.highlight(compiled[dialect], { language: language });
-                codeElement.innerHTML = result.value;
-                codeElement.className = `hljs language-${language}`;
+                // Ensure ASQL language is registered if needed
+                if (language === 'asql' && (!window.hljs.getLanguage || !window.hljs.getLanguage('asql'))) {
+                    if (window.registerASQLLanguage) {
+                        window.registerASQLLanguage();
+                    }
+                }
+                
+                // Check if language is available
+                const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
+                if (langAvailable) {
+                    // Use highlight() directly for more control
+                    const result = hljs.highlight(compiled[dialect], { language: language });
+                    codeElement.innerHTML = result.value;
+                    codeElement.className = `hljs language-${language}`;
+                } else {
+                    // Fallback: just set text content
+                    codeElement.textContent = compiled[dialect];
+                    codeElement.className = `language-${language}`;
+                }
             } catch (e) {
                 console.warn('Highlight.js error:', e);
                 // Fallback: just set text content
@@ -247,11 +262,11 @@ function addPlaygroundButton() {
     // Check if button already exists
     if (document.querySelector('.playground-btn')) return;
     
-    // Try to find the header inner container first (better for flexbox layout)
+    // Find the header inner container and title
     const headerInner = document.querySelector('.md-header__inner');
     const headerTitle = document.querySelector('.md-header__title');
     
-    if (!headerTitle) return;
+    if (!headerInner || !headerTitle) return;
     
     // Create playground button
     const btn = document.createElement('a');
@@ -265,12 +280,13 @@ function addPlaygroundButton() {
         Playground
     `;
     
-    // Insert after the header title, but ensure proper spacing
-    const parent = headerTitle.parentNode;
-    if (parent && headerTitle.nextSibling) {
-        parent.insertBefore(btn, headerTitle.nextSibling);
-    } else if (parent) {
-        parent.appendChild(btn);
+    // Insert after the header title within the header inner container
+    // This ensures it's in the correct flex container
+    if (headerTitle.nextSibling) {
+        headerInner.insertBefore(btn, headerTitle.nextSibling);
+    } else {
+        // If no next sibling, insert right after title
+        headerTitle.insertAdjacentElement('afterend', btn);
     }
 }
 
@@ -280,11 +296,22 @@ document.addEventListener('DOMContentLoaded', () => {
     addWIPBanner();
     // Add playground button to header
     addPlaygroundButton();
-    // Wait a bit for highlight.js to be fully loaded
+    // Wait a bit for highlight.js and ASQL language to be fully loaded
     const initHighlighting = () => {
         if (!window.hljs) {
             // Retry if highlight.js isn't loaded yet
             setTimeout(initHighlighting, 100);
+            return;
+        }
+        
+        // Ensure ASQL language is registered
+        if (!window.hljs.getLanguage || !window.hljs.getLanguage('asql')) {
+            // Try to register if function is available
+            if (window.registerASQLLanguage) {
+                window.registerASQLLanguage();
+            }
+            // Wait a bit more for registration
+            setTimeout(initHighlighting, 50);
             return;
         }
         
@@ -317,9 +344,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     // Only highlight if not already highlighted (check for hljs class)
                     if (!block.classList.contains('hljs')) {
-                        const result = hljs.highlight(code, { language: language });
-                        block.innerHTML = result.value;
-                        block.className = `hljs language-${language}`;
+                        // Check if language is available
+                        const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
+                        if (langAvailable) {
+                            const result = hljs.highlight(code, { language: language });
+                            block.innerHTML = result.value;
+                            block.className = `hljs language-${language}`;
+                        } else {
+                            // Fallback: just set text and class
+                            block.className = `language-${language}`;
+                        }
                     }
                 } catch (e) {
                     console.warn('Highlight.js error on initial block:', e);

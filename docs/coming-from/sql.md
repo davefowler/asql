@@ -1,6 +1,21 @@
 # ASQL for SQL Users
 
-If you're already comfortable with SQL, ASQL is SQL with better ergonomics. Here's what changes:
+If you’re already comfortable with SQL, you’re going to be productive in ASQL immediately.
+ASQL is designed by (and for) people who live in SQL every day, and many of its features are directly inspired by common SQL patterns—just expressed with friendlier syntax.
+
+ASQL is still “real SQL” (it compiles to your warehouse dialect), but it’s designed to read like a clean transformation pipeline instead of a nested, back-and-forth SQL statement.
+
+## What will feel familiar
+
+- **The core building blocks**: filters, projections, joins, grouping, ordering, limits.
+- **SQL expressions**: arithmetic, comparisons, boolean logic, functions.
+- **The end result**: a query your warehouse can optimize and execute.
+
+## What’s different (in a good way)
+
+- **Top-to-bottom pipelines**: start with `from ...`, then apply transforms line-by-line.
+- **Less ceremony**: fewer CTEs, fewer “select lists as the control plane”, fewer giant macro helpers.
+- **Ergonomic shortcuts**: things like `??`, `-col` for descending, and `per ...` for common window patterns.
 
 ## Key Differences
 
@@ -14,6 +29,17 @@ If you're already comfortable with SQL, ASQL is SQL with better ergonomics. Here
 | CTEs everywhere | Pipeline + comments | Often no CTEs needed |
 
 ---
+
+## Your first ASQL query (5 minutes)
+
+If you can write:
+
+1) `FROM table`
+2) add a `WHERE`
+3) add a `GROUP BY`
+4) add an `ORDER BY`
+
+…then you can write ASQL. The main “reversal” is that you start with the dataset and then refine it.
 
 ## The Pipeline Difference
 
