@@ -249,6 +249,7 @@ SQL doesn't guarantee your grouped results are complete. If a dimension value ha
 This isn't a bug—it's a design decision. SQL was created in the 1970s for transactional systems (OLTP): banking, inventory, order processing. In that context, you're asking "what happened?" and showing non-existent data would be wrong. The relational model is based on set theory: you can only group rows that exist.
 
 But analytics is different. When you ask "what's the trend?" or build a time-series chart, missing data points cause real problems. The line jumps. Month-over-month calculations use the wrong prior month. The dashboard looks broken.
+
 ```sql
 SELECT month, SUM(amount) as revenue
 FROM orders
@@ -282,32 +283,9 @@ from orders
 | May   | 0       |
 | Jun   | 1200    |
 
-This is analytically correct by default. No dimension tables. No extra CTEs. No post-processing. ASQL automatically generates "spines" that ensure all expected values appear in your results.
+This is analytically correct by default. No dimension tables. No extra CTEs. No post-processing. ASQL automatically ensures all expected values appear in your results.
 
-### How It Works
-
-- **Date columns**: ASQL infers the date range from your WHERE clause and fills all periods
-- **Categorical columns**: Uses DISTINCT values from the data
-- **Explicit values**: Use `guarantee()` to specify exactly what should appear
-
-```asql
-from orders
-  group by guarantee(status, ['pending', 'shipped', 'delivered']) (
-    count(*) ?? 0 as order_count
-  )
-```
-
-### Opting Out
-
-If you don't want guaranteed results, filter them:
-
-```asql
-from orders
-  group by month(order_date) as month ( sum(amount) as revenue )
-  where revenue > 0  -- removes zero-value rows
-```
-
-Or disable globally: `SET auto_spine = false`
+See [Language Specification](spec.md) for details on `guarantee()` and configuration options.
 
 ---
 
