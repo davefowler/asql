@@ -242,6 +242,72 @@ select
 
 ---
 
+## Gap-Filling (Auto-Spine)
+
+A common analytics bug: your chart shows revenue by month, but months with zero sales are missing entirely—the line jumps from March to June. SQL only returns rows that exist.
+
+**The Problem:**
+```sql
+-- If April and May had no sales, they won't appear
+SELECT month, SUM(amount) as revenue
+FROM orders
+GROUP BY month;
+```
+
+| month | revenue |
+|-------|---------|
+| Jan   | 1000    |
+| Feb   | 1500    |
+| Mar   | 800     |
+| Jun   | 1200    |  ← Where did April and May go?
+
+**ASQL Solution:**
+
+ASQL automatically generates "spines" for grouped columns, ensuring all expected values appear:
+
+```asql
+from orders
+  group by month(order_date) as month (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+| month | revenue |
+|-------|---------|
+| Jan   | 1000    |
+| Feb   | 1500    |
+| Mar   | 800     |
+| Apr   | 0       |  ← Filled in!
+| May   | 0       |  ← Filled in!
+| Jun   | 1200    |
+
+### How It Works
+
+- **Date columns**: ASQL infers the range from your WHERE clause (or MIN/MAX of data) and fills all gaps
+- **Categorical columns**: Uses DISTINCT values from the data
+- **Explicit values**: Use `guarantee()` to specify exactly what values should appear
+
+```asql
+from orders
+  group by guarantee(status, ['pending', 'shipped', 'delivered']) (
+    count(*) ?? 0 as order_count
+  )
+```
+
+### Opting Out
+
+If you don't want gap-filling, just filter:
+
+```asql
+from orders
+  group by month(order_date) as month ( sum(amount) as revenue )
+  where revenue > 0  -- removes zero-filled rows
+```
+
+Or disable globally: `SET auto_spine = false`
+
+---
+
 ## Multi-Dialect Output
 
 ASQL uses [SQLGlot](https://github.com/tobymao/sqlglot) for transpilation. Supported dialects include:
@@ -254,6 +320,7 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 
 - A syntax layer that compiles to SQL
 - Useful for analytics queries that benefit from pipeline structure
+- Enforces correctness by default (gap-filling prevents missing data in reports)
 - Compatible with any SQL database via transpilation
 
 ## What ASQL Is Not
