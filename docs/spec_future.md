@@ -101,26 +101,6 @@ when amount == 0 then null else amount
 
 ---
 
-## Automatic Column Namespace Resolution
-
-**Status**: ✅ **Partially Implemented**
-
-**What it is**: When column names conflict across joined tables, automatically qualify them with table context.
-
-**Current behavior**: `SELECT *` with joins is automatically expanded to `table.*` for each table:
-```asql
-from users
-  & orders
--- SELECT * automatically becomes:
--- SELECT users.*, orders.*
--- Columns can be referenced as users.id, orders.id, etc.
-```
-
-**Future enhancement**: Automatically rename conflicting columns (e.g., `users_id`, `orders_id`) would require schema information to detect which columns actually conflict. Currently, columns are accessible as `table.column` through the `table.*` expansion.
-
-**Note**: The current implementation expands `SELECT *` to table-qualified columns, allowing you to reference columns with table qualification to avoid conflicts. Full automatic renaming (e.g., `users_id`, `orders_id`) would require schema awareness and is a potential future enhancement.
-
----
 
 ## Shorthand Natural Language (50/50 on implementation)
 
