@@ -36,25 +36,18 @@ from users where email matches "%@gmail.com"  -- LIKE syntax, not regex
 ## Medium Priority
 
 ### 2. Dynamic Pivot
-**Status**: Not Implemented  
+**Status**: ✅ Implemented  
 **GitHub Issue**: [#37](https://github.com/davefowler/asql/issues/37)  
 **Spec Section**: 13.3 (Pivot)
 
 **What it is**: Pivot where the values come from a subquery instead of being hardcoded at compile time.
 
-**Current limitation**: Pivot requires explicit values:
-```asql
-pivot sum(amount) by status values ('pending', 'shipped', 'delivered')
-```
-
-**Desired**: Get values dynamically:
+**Implementation**: Dynamic pivot is now supported using subqueries in the values clause:
 ```asql
 pivot sum(amount) by status values (from orders select distinct status)
 ```
 
-**Difficulty**: Medium - requires two-pass compilation or dynamic SQL generation.
-
-**Workaround**: Use raw SQL or warehouse-specific PIVOT syntax.
+The implementation compiles the subquery to SQL and uses it in a CTE to generate pivot expressions. Note that pure SQL compilation has limitations - individual columns per value require knowing values at compile time. For full dynamic pivoting with individual columns, consider using warehouse-specific PIVOT operators (e.g., Snowflake's `PIVOT` operator).
 
 ---
 
