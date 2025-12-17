@@ -344,3 +344,4 @@ If you can write:
     ```
 
 The parentheses after `group by` contain the aggregations - clearer than mixing them in SELECT.
+

@@ -290,3 +290,4 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     from sales
     pivot amount by category
     ```
+

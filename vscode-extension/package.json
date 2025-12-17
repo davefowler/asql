@@ -49,6 +49,5 @@
     "type": "git",
     "url": "https://github.com/asql-lang/asql"
   },
-  "license": "MIT",
-  "icon": "icon.png"
+  "license": "MIT"
 }

@@ -60,3 +60,4 @@ Choose your background:
 | Left join | `merge(how='left')` | `left_join()` | `LEFT JOIN` | `LEFT JOIN` | `&?` |
 | Pivot | `pivot_table()` | `pivot_wider()` | `{{ pivot() }}` | `PIVOT` | `pivot ... by` |
 | Unpivot | `melt()` | `pivot_longer()` | `{{ unpivot() }}` | `UNPIVOT` | `unpivot ... into` |
+
