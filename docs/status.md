@@ -110,12 +110,13 @@ These features are documented in `SPEC.md` but not yet implemented:
 
 **Workaround**: Use explicit `join` with `on` condition.
 
-### Column Operators (Section 13.1)
-- `except email, phone` - exclude columns
-- `rename id as user_id` - rename columns
-- `prefix user_` - prefix column names
+### Column Operators (Section 13.1) ✅
+- `except email, phone` - exclude columns ✅
+- `rename id as user_id` - rename columns ✅
+- `replace name with upper(name)` - replace column values ✅
+- Column override via `select *, expr as col` ✅
 
-**Workaround**: Explicitly list columns in `select`.
+**Dialect note**: Uses SQL's `EXCEPT`/`EXCLUDE` syntax (BigQuery, Snowflake, DuckDB). Other dialects will error at runtime.
 
 ### Deduplicate Operator (Section 13.2)
 - `deduplicate by user_id order by -created_at`
@@ -188,6 +189,14 @@ compile('set active = from users where status == "active" from active group by c
 - Edge cases and error handling
 - Dialect-specific SQL generation
 - Real-world query patterns
+
+## Dialect Limitations
+
+Some ASQL features have limited support across SQL dialects. See [DIALECT_LIMITATIONS.md](../DIALECT_LIMITATIONS.md) for details on:
+
+- Column override with `select *` (BigQuery, Snowflake, DuckDB only)
+- Auto-spine edge cases with ROLLUP/CUBE
+- Dialect-specific SQL generation differences
 
 ## Next Steps
 

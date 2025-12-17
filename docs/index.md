@@ -205,13 +205,16 @@ from users
   rename id as user_id
 ```
 
-### Prefix After Join
+### Replace Column Values
+
+Transform column values in-place:
 
 ```asql
 from users
-  & orders on users.id == orders.user_id
-  prefix orders.* with order_
+  replace name with upper(name), salary with round(salary, 2)
 ```
+
+Compiles to: `SELECT * EXCEPT(name, salary), upper(name) AS name, round(salary, 2) AS salary`
 
 ---
 
