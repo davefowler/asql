@@ -133,16 +133,13 @@ Try ASQL in your browser! The playground lets you write ASQL queries and see the
 ### Start the Playground
 
 ```bash
-# Install playground dependencies
-pip install -e ".[playground]"
-
-# Run the playground
-python playground.py
+# Start docs + playground (recommended)
+./serve.sh
 ```
 
-Then open http://localhost:5000 in your browser.
+Then open http://localhost:5001 in your browser.
 
-**Note**: The playground requires Flask. Install it with `pip install -e ".[playground]"` or `pip install flask`.
+**Note**: The playground runs on FastAPI + Uvicorn.
 
 The playground features:
 - ✨ Real-time ASQL → SQL compilation
@@ -271,7 +268,7 @@ asql/
 ├── tests/             # Test suite
 ├── examples/          # Example queries
 ├── docs/              # Documentation
-├── playground.py      # Interactive web playground
+├── playground/        # Interactive web playground (FastAPI)
 └── pyproject.toml     # Project configuration
 ```
 

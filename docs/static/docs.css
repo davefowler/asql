@@ -406,27 +406,8 @@
     margin-right: 0;
 }
 
-/* Fix main content container to use available space properly */
-.md-main {
-    flex: 1;
-    overflow: visible;
-}
-
-.md-main__inner {
-    max-width: 100%;
-}
-
-/* Ensure proper layout structure */
-.md-container {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-}
-
-.md-main__inner {
-    display: flex;
-    flex: 1;
-}
+/* Let Material control overall layout sizing.
+   (Our previous flex overrides were collapsing the sidebars.) */
 
 /* Fix Safari-specific sidebar issues */
 @supports (-webkit-appearance: none) {

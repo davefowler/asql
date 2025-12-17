@@ -55,7 +55,7 @@ Get up and running with ASQL syntax highlighting in VS Code in under 2 minutes!
 - 📖 Read the [full README](README.md) for all features
 - 🔧 See [installation guide](INSTALLATION.md) for detailed setup
 - 🎨 Check [VS Code integration guide](VSCODE_INTEGRATION.md) for advanced features
-- 💻 Try the [ASQL playground](../playground.py) to test queries
+- 💻 Try the [ASQL playground](../docs/playground.md) to test queries
 
 ## Troubleshooting
 

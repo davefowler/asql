@@ -246,6 +246,34 @@
             margin-top: 10px;
             font-size: 13px;
         }
+
+        /* Output error banner (top of right panel) */
+        #error.error-banner {
+            margin: 0;
+            border-radius: 0;
+            border-bottom: 1px solid #f3b8b5;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+
+        #error .error-title {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        #error details {
+            margin-top: 8px;
+        }
+
+        #error pre {
+            margin-top: 8px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: rgba(0, 0, 0, 0.03);
+            padding: 8px;
+            border-radius: 4px;
+        }
         
         /* Modal Styles */
         .modal {
@@ -726,8 +754,8 @@
                     </button>
                 </div>
                 <div class="panel-content">
-                    <div id="output-editor"></div>
                     <div id="error" style="display: none;"></div>
+                    <div id="output-editor"></div>
                 </div>
             </div>
         </div>
@@ -1645,6 +1673,7 @@
             outputEditor.setValue('');
             errorDiv.style.display = 'none';
             errorDiv.className = '';
+            errorDiv.textContent = '';
             detectedDialectSpan.style.display = 'none';
             
             if (!input.trim()) {
@@ -1654,6 +1683,66 @@
             const currentMode = getCurrentMode();
             const fromDialect = document.getElementById('from-dialect').value;
             const toDialect = document.getElementById('to-dialect').value;
+
+            const simplifyErrorMessage = (raw) => {
+                if (!raw) return '';
+                let cleaned = String(raw);
+                // Remove ANSI escape codes (defensive; backend tries too)
+                cleaned = cleaned.replace(/\x1b\[[0-9;]*m/g, '');
+
+                // Remove repeated wrapper prefixes
+                const wrappers = [
+                    /^Error:\s*/i,
+                    /^Compilation Error:\s*/i,
+                    /^Syntax Error:\s*/i,
+                    /^Reverse compilation error:\s*/i,
+                ];
+
+                let changed = true;
+                while (changed) {
+                    changed = false;
+                    for (const re of wrappers) {
+                        if (re.test(cleaned)) {
+                            cleaned = cleaned.replace(re, '');
+                            changed = true;
+                        }
+                    }
+                }
+
+                return cleaned.trim();
+            };
+
+            const showError = (raw) => {
+                const simplified = simplifyErrorMessage(raw);
+                const titleText = "Can't transpile";
+
+                // Build DOM safely (no innerHTML)
+                errorDiv.className = 'error error-banner';
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = '';
+
+                const title = document.createElement('div');
+                title.className = 'error-title';
+                title.textContent = titleText;
+
+                const message = document.createElement('div');
+                message.className = 'error-message';
+                message.textContent = simplified || 'Unknown error';
+
+                errorDiv.appendChild(title);
+                errorDiv.appendChild(message);
+
+                if (raw && simplified && String(raw).trim() !== simplified) {
+                    const details = document.createElement('details');
+                    const summary = document.createElement('summary');
+                    summary.textContent = 'Details';
+                    const pre = document.createElement('pre');
+                    pre.textContent = String(raw).trim();
+                    details.appendChild(summary);
+                    details.appendChild(pre);
+                    errorDiv.appendChild(details);
+                }
+            };
             
             try {
                 if (currentMode === 'asql-to-sql') {
@@ -1677,9 +1766,7 @@
                     const data = await response.json();
                     
                     if (data.error) {
-                        errorDiv.textContent = data.error;
-                        errorDiv.className = 'error';
-                        errorDiv.style.display = 'block';
+                        showError(data.error);
                     } else                     if (data.sql) {
                         outputEditor.setValue(data.sql);
                         // Update URL after successful translation
@@ -1724,9 +1811,7 @@
                     const data = await response.json();
                     
                     if (data.error) {
-                        errorDiv.textContent = data.error;
-                        errorDiv.className = 'error';
-                        errorDiv.style.display = 'block';
+                        showError(data.error);
                     } else {
                         outputEditor.setValue(data.asql);
                         // Update URL after successful translation
@@ -1769,9 +1854,7 @@
                     const reverseData = await reverseResponse.json();
                     
                     if (reverseData.error) {
-                        errorDiv.textContent = reverseData.error;
-                        errorDiv.className = 'error';
-                        errorDiv.style.display = 'block';
+                        showError(reverseData.error);
                         return;
                     }
                     
@@ -1787,9 +1870,7 @@
                     const compileData = await compileResponse.json();
                     
                     if (compileData.error) {
-                        errorDiv.textContent = compileData.error;
-                        errorDiv.className = 'error';
-                        errorDiv.style.display = 'block';
+                        showError(compileData.error);
                     } else {
                         outputEditor.setValue(compileData.sql);
                         // Update URL after successful translation
@@ -1800,9 +1881,7 @@
                     outputEditor.setValue(input);
                 }
             } catch (error) {
-                errorDiv.textContent = 'Error: ' + error.message;
-                errorDiv.className = 'error';
-                errorDiv.style.display = 'block';
+                showError('Error: ' + (error && error.message ? error.message : String(error)));
             }
         }
         
