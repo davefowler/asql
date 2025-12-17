@@ -22,5 +22,6 @@
 - Use SQLGlot's dialect system where possible
 - Follow the architecture in ARCHITECTURE.md
 - Reference SPEC.md for language specification
+- ALWAYS verify your work, with either tests or the browser tool 
 
 

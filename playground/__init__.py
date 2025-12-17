@@ -14,10 +14,13 @@ from .examples import (
     get_all_examples_flat,
 )
 
-# Lazy import app to avoid requiring fastapi for just examples/jinja_utils
-def _get_app():
+# Import app directly for Railway/uvicorn compatibility
+# Lazy import would work but direct import is more reliable for production
+try:
     from .app import app
-    return app
+except ImportError:
+    # Fallback for when FastAPI isn't installed (shouldn't happen in production)
+    app = None
 
 __all__ = [
     "strip_jinja_templates",
@@ -31,10 +34,5 @@ __all__ = [
     "SQL_EXAMPLES",
     "get_all_examples",
     "get_all_examples_flat",
+    "app",
 ]
-
-# For backwards compatibility: `from playground import app`
-def __getattr__(name):
-    if name == "app":
-        return _get_app()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

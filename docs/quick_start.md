@@ -1,13 +1,13 @@
-# Analytic SQL Syntax
+# Quick Start
 
-Learn the syntax of Analytic SQL. This guide covers all the language features you need to write powerful analytic queries.
+Get started with Analytic SQL. This guide covers the essential language features you need to write powerful analytic queries.
 
 ## Table of Contents
 
 - [Basic Operations](#basic-operations)
 - [Filtering](#filtering)
 - [Aggregations](#aggregations)
-- [Ordering & Limiting](#ordering--limiting)
+- [Ordering & Limiting](#ordering-limiting)
 - [Date Functions](#date-functions)
 - [Joins](#joins)
 - [Window Functions](#window-functions)

@@ -578,9 +578,9 @@ cohort by month(users.signup_date)
 
 You've learned the fundamentals of ASQL! To dive deeper:
 
-- **Syntax Reference**: See [syntax documentation](../syntax/index.md) for detailed syntax guides
-- **Examples**: Check out [more examples](../examples.md) for real-world patterns
-- **Specification**: Read the [full specification](../spec.md) for complete language details
+- **Syntax Reference**: See [syntax documentation](syntax/index.md) for detailed syntax guides
+- **Examples**: Check out [more examples](examples.md) for real-world patterns
+- **Specification**: Read the [full specification](spec.md) for complete language details
 - **Playground**: Try queries interactively at [play.analyticsql.com](https://play.analyticsql.com)
 
 Happy querying! 🚀

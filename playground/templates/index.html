@@ -780,36 +780,18 @@
         // Initialize CodeMirror editors (make them global so functions can access them)
         let inputEditor, outputEditor;
         
-        // Example arrays - will be populated from API
-        let asqlExamples = [];
-        let asqlPipelineExamples = [];
-        let cohortExamples = [];
-        let samplingExamples = [];
-        let dataReshapingExamples = [];
-        let columnOperatorExamples = [];
-        let countInferenceExamples = [];
-        let sqlExamples = [];
+        // Example arrays - embedded directly from server
+        // EXAMPLES_DATA_PLACEHOLDER will be replaced by server with actual JSON
+        const EXAMPLES_DATA = /* EXAMPLES_DATA_PLACEHOLDER */ {};
         
-        // Fetch examples from API
-        async function fetchExamples() {
-            try {
-                const response = await fetch('/api/examples');
-                const data = await response.json();
-                asqlExamples = data.asql || [];
-                asqlPipelineExamples = data.pipeline || [];
-                cohortExamples = data.cohort || [];
-                samplingExamples = data.sampling || [];
-                dataReshapingExamples = data.reshaping || [];
-                columnOperatorExamples = data.column_operators || [];
-                countInferenceExamples = data.count_inference || [];
-                console.log('Loaded examples from API:', Object.keys(data).map(k => `${k}: ${data[k].length}`).join(', '));
-            } catch (error) {
-                console.error('Failed to fetch examples:', error);
-            }
-        }
-        
-        // Fetch examples on load
-        fetchExamples();
+        let asqlExamples = EXAMPLES_DATA.asql || [];
+        let asqlPipelineExamples = EXAMPLES_DATA.pipeline || [];
+        let cohortExamples = EXAMPLES_DATA.cohort || [];
+        let samplingExamples = EXAMPLES_DATA.sampling || [];
+        let dataReshapingExamples = EXAMPLES_DATA.reshaping || [];
+        let columnOperatorExamples = EXAMPLES_DATA.column_operators || [];
+        let countInferenceExamples = EXAMPLES_DATA.count_inference || [];
+        let sqlExamples = EXAMPLES_DATA.sql || [];
         
         // ========== Examples Modal Functions (must be global for onclick handlers) ==========
         
@@ -818,7 +800,14 @@
             if (modal) {
                 modal.classList.add('open');
                 document.body.style.overflow = 'hidden';
-                loadExamples();
+                // Use setTimeout to ensure loadExamples is defined (handles script parsing order)
+                setTimeout(() => {
+                    if (typeof loadExamples === 'function') {
+                        loadExamples();
+                    } else {
+                        console.error('loadExamples function not available');
+                    }
+                }, 0);
             }
         }
         
@@ -1013,8 +1002,19 @@
             // Set default query if no URL params (blank by default)
             const defaultQuery = '';
             
-            const initialInput = sql_f ? decodeURIComponent(sql_f) : defaultQuery;
-            const initialOutput = sql_t ? decodeURIComponent(sql_t) : '';
+            // Safely decode URL params (malformed URIs can throw errors)
+            let initialInput = defaultQuery;
+            let initialOutput = '';
+            try {
+                initialInput = sql_f ? decodeURIComponent(sql_f) : defaultQuery;
+            } catch (e) {
+                console.warn('Failed to decode sql_f parameter:', e);
+            }
+            try {
+                initialOutput = sql_t ? decodeURIComponent(sql_t) : '';
+            } catch (e) {
+                console.warn('Failed to decode sql_t parameter:', e);
+            }
             
             // Set dialect selects (defaults: from=asql, to=snowflake)
             if (d_f) {
