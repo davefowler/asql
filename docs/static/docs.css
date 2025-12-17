@@ -130,8 +130,8 @@
    SIMPLIFIED RESPONSIVE BEHAVIOR
    ============================================= */
 
-/* Mobile: Hide sidebar, show hamburger */
-@media screen and (max-width: 959px) {
+/* Mobile: Hide sidebars, show hamburger */
+@media screen and (max-width: 767px) {
     .md-sidebar--primary {
         display: none !important;
     }
@@ -141,70 +141,29 @@
     }
 }
 
-/* Desktop: Always show sidebar, never collapse */
-@media screen and (min-width: 960px) {
-    /* Hide hamburger menu */
+/* Tablet+ Desktop: keep left nav visible (avoid “drill-in”) */
+@media screen and (min-width: 768px) {
+    /* Hide hamburger menu when sidebar is visible */
     .md-header__button[for="__drawer"] {
         display: none !important;
     }
-    
-    /* Force primary sidebar to always show */
+
+    /* Force primary sidebar visible (but don't clobber layout) */
     .md-sidebar--primary {
         display: block !important;
         position: sticky !important;
         top: 0;
-        left: 0 !important;
-        width: 15rem !important;
-        height: auto !important;
         max-height: 100vh;
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
+        overflow: auto !important;
         transform: none !important;
         opacity: 1 !important;
         visibility: visible !important;
         z-index: 1;
     }
-    
-    /* Override drawer transform/animation */
-    .md-sidebar--primary[data-md-state="lock"] {
-        transform: none !important;
-    }
-    
-    /* Force nav to show as normal (not drawer) */
-    .md-nav--primary {
-        position: static !important;
-        width: auto !important;
-        height: auto !important;
-        max-height: none !important;
-        background: transparent !important;
-        box-shadow: none !important;
-        transform: none !important;
-        transition: none !important;
-        overflow: visible !important;
-    }
-    
-    /* Hide drawer overlay */
+
+    /* No overlay when sidebar is always visible */
     .md-overlay {
         display: none !important;
-    }
-    
-    /* Hide back/close buttons used in drawer mode */
-    .md-nav__title[for="__drawer"] {
-        display: none !important;
-    }
-    
-    .md-nav__icon--prev {
-        display: none !important;
-    }
-    
-    /* Adjust main content to account for sidebar */
-    .md-main__inner {
-        display: flex;
-    }
-    
-    .md-content {
-        flex: 1;
-        min-width: 0;
     }
 }
 
@@ -242,80 +201,47 @@
     overflow: visible !important;
 }
 
-/* Navigation visibility */
-@media screen and (min-width: 960px) {
-    /* Show primary nav container */
-    .md-nav--primary {
-        display: block !important;
-        position: static !important;
-    }
-    
-    /* Show the main nav list */
-    .md-nav--primary > .md-nav__list {
-        display: block !important;
-    }
-    
-    /* Show nav items */
-    .md-nav--primary > .md-nav__list > .md-nav__item {
-        display: block !important;
-    }
-    
-    /* CRITICAL: Hide the TOC (secondary nav) when inside primary sidebar */
-    .md-sidebar--primary .md-nav--secondary,
-    .md-sidebar--primary nav[aria-label="Table of contents"],
-    .md-sidebar--primary [aria-label="Table of contents"],
-    .md-nav--primary .md-nav--secondary,
-    .md-nav--primary nav[aria-label="Table of contents"],
-    .md-nav--lifted .md-nav--secondary,
-    nav.md-nav.md-nav--secondary[aria-label="Table of contents"] {
-        display: none !important;
-        visibility: hidden !important;
-        height: 0 !important;
-        overflow: hidden !important;
-    }
-    
-    /* But show TOC in the secondary sidebar (right side) */
-    .md-sidebar--secondary .md-nav--secondary,
-    .md-sidebar--secondary nav[aria-label="Table of contents"] {
-        display: block !important;
-        visibility: visible !important;
-        height: auto !important;
-        overflow: visible !important;
-    }
-    
-    /* Hide toggle checkboxes */
-    .md-nav__toggle {
-        display: none !important;
-    }
-    
-    /* Section navs: collapsed by default */
-    .md-nav--primary .md-nav__item--nested > .md-nav[data-md-level="1"] {
-        display: none;
-    }
-    
-    /* Expand when toggle checked or section active */
-    .md-nav--primary .md-nav__toggle:checked ~ .md-nav[data-md-level="1"],
-    .md-nav--primary .md-nav__item--section.md-nav__item--active > .md-nav[data-md-level="1"] {
-        display: block !important;
-    }
+/* =============================================
+   Dataface-like left accordion styling
+   (relies on Material's navigation.sections)
+   ============================================= */
+
+/* Remove the forced "show everything" behavior (let Material manage state) */
+
+/* Make primary nav more compact + readable */
+.md-sidebar--primary .md-nav {
+    font-size: 0.85rem;
 }
 
-/* Nav font size */
-.md-nav--primary {
-    font-size: 0.75rem;
+/* Section headers (e.g. "Concepts") */
+.md-sidebar--primary .md-nav__item--section > label.md-nav__link {
+    font-weight: 600;
+    padding: 0.45rem 0.6rem;
+    border-radius: 6px;
 }
 
-.md-nav--primary .md-nav__link {
-    padding: 0.35rem 0.6rem;
+/* Active section header: red text (no heavy background) */
+.md-sidebar--primary .md-nav__item--section.md-nav__item--active > label.md-nav__link {
+    color: var(--asql-red) !important;
 }
 
-/* GLOBAL: Always hide TOC in left sidebar, show in right */
-.md-sidebar--primary .md-nav--secondary {
+/* Nested links: indent like Dataface */
+.md-sidebar--primary .md-nav[data-md-level="1"] .md-nav__link {
+    padding-left: 1.2rem;
+}
+
+/* Active page link: subtle background + left border */
+.md-sidebar--primary .md-nav__link--active {
+    color: var(--asql-red) !important;
+    font-weight: 600;
+    background-color: rgba(197, 48, 48, 0.08);
+    border-left: 3px solid var(--asql-red);
+    border-radius: 6px;
+}
+
+/* Don’t show the “Table of contents” title inside the primary nav (only right sidebar) */
+.md-sidebar--primary nav[aria-label="Table of contents"] {
     display: none !important;
-}
-
-.md-sidebar--secondary .md-nav--secondary {
-    display: block !important;
 }
 
 /* Active nav items - only highlight the actual current page, not parent sections */
