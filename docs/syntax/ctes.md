@@ -1,6 +1,8 @@
-# CTEs & Variables
+# CTEs & Settings
 
-ASQL provides two ways to create CTEs (Common Table Expressions): `stash as` for inline pipeline CTEs and `set` for top-level variable definitions.
+ASQL currently provides **one** way to create CTEs (Common Table Expressions): `stash as`.
+
+`SET` is reserved for **compiler settings** (e.g. `SET auto_spine = false;`) and does **not** define CTEs.
 
 ## Why CTEs Are Often Unnecessary
 
@@ -69,54 +71,26 @@ from regional_revenue
 - **Eye-friendly**: Name appears right before usage
 
 ## `set` — Top-Level Variables
+## `SET` — Compiler settings (not CTEs)
 
-Define named CTEs at the top level:
-
-```asql
-set active_users = from users where is_active
-
-from active_users
-  group by country (# as total)
-```
-
-### Nested Variables
-
-Variables can reference other variables:
+Use `SET` statements to control compiler behavior:
 
 ```asql
-set base = from users
-  where plan = "premium"
+SET auto_spine = false;
+SET dialect = 'postgres';
 
-set by_country = from base
-  group by country (# as total)
-
-from by_country
-  order by -total
-  limit 10
+from orders
+  group by month(created_at) as month ( sum(amount) as revenue )
 ```
-
-### When to Use `set`
-
-Use `set` when:
-- You want to define CTEs before any queries
-- You'll reuse the same CTE in multiple separate queries
-- You prefer a SQL-like `WITH ... AS` structure
-
-## `stash as` vs `set`
-
-| Feature | `stash as` | `set` |
-|---------|------------|-------|
-| Position | Inside pipeline | Before queries |
-| Readability | Inline, near usage | Top-level, like SQL |
-| Best for | Single pipeline | Multiple queries |
-| Natural flow | Continues pipeline | Starts new query |
 
 ## Generated SQL
 
-Both compile to SQL's `WITH ... AS` syntax:
+`stash as` compiles to SQL's `WITH ... AS` syntax:
 
 ```asql
-set active = from users where is_active
+from users
+  where is_active
+  stash as active
 
 from active
   group by country (# as total)
@@ -158,24 +132,26 @@ from customer_stats
     customer_id,
     total_spent,
     order_count,
-    when total_spent
-      > 10000 then "platinum"
-      > 5000 then "gold"
-      > 1000 then "silver"
-      otherwise "bronze"
-    as tier
+    CASE
+      WHEN total_spent > 10000 THEN 'platinum'
+      WHEN total_spent > 5000 THEN 'gold'
+      WHEN total_spent > 1000 THEN 'silver'
+      ELSE 'bronze'
+    END as tier
 ```
 
 ### Comparing Datasets
 
 ```asql
-set this_month = from orders
+from orders
   where month(created_at) = month(now())
   group by product_id (sum(amount) as revenue)
+  stash as this_month
 
-set last_month = from orders
+from orders
   where month(created_at) = month(now()) - 1
   group by product_id (sum(amount) as revenue)
+  stash as last_month
 
 from this_month
   &? last_month on this_month.product_id = last_month.product_id
@@ -206,7 +182,7 @@ This keeps the pipeline simple while documenting the logical structure.
 
 1. **Start with pipelines** — Only add CTEs when you need to reuse results
 2. **Use `stash as` for single-use CTEs** — Keeps the CTE close to its usage
-3. **Use `set` for reused CTEs** — When multiple queries need the same intermediate result
+3. **Use `stash as` for reused CTEs** — When multiple queries need the same intermediate result
 4. **Name CTEs descriptively** — `active_premium_users` is better than `temp1`
 5. **Comment logical sections** — Even without CTEs, mark where you'd create one in SQL
 
@@ -216,9 +192,13 @@ This keeps the pipeline simple while documenting the logical structure.
 
 ```asql
 -- ❌ Unnecessary - could be a single pipeline
-set step1 = from users where is_active
-set step2 = from step1 group by country (# as total)
-from step2 order by -total
+from users
+  where is_active
+  stash as step1
+
+from step1
+  group by country (# as total)
+  order by -total
 
 -- ✅ Better - single pipeline
 from users

@@ -3,6 +3,14 @@ site_description: A modern, pipeline-based query language designed for analytics
 site_author: Analytic SQL Contributors
 site_url: https://analyticsql.com
 
+# Exclude internal/notes pages from build (often contain WIP syntax).
+exclude_docs: |
+  github_issues_to_create.md
+  unimplemented_features.md
+  spec_future.md
+  status.md
+  playground.md
+
 # Repository
 repo_name: asql
 repo_url: https://github.com/davefowler/asql

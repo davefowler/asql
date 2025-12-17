@@ -137,7 +137,7 @@ order by -created_at        # Descending (use - prefix)
 
 ```asql
 from orders
-order by -amount, created_at          # Order by amount DESC, then created_at ASC
+order by -amount, created_at          -- Order by amount DESC, then created_at ASC
 ```
 
 ### TAKE - Limit results

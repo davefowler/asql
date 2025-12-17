@@ -17,104 +17,31 @@ All produce a column named `sum_amount`.
 
 ## Where It Applies
 
-### ✅ Functions and Aggregates
+### Natural-language aggregate calls
+
+Spaces (and optional `of`) are normalized to function calls:
 
 ```asql
-sum_revenue           -- → sum(revenue)
-avg_price             -- → avg(price)
-count_orders          -- → count(orders)
-max_amount            -- → max(amount)
+sum amount        -- → sum(amount)
+sum of amount     -- → sum(amount)
+avg price         -- → avg(price)
 ```
 
-### ✅ Date Functions
+### Certain multi-word functions
 
-```asql
-year_created_at       -- → year(created_at)
-month_signup_date     -- → month(signup_date)
-day_of_week_order_date -- → day_of_week(order_date)
-```
-
-### ✅ Multi-Word Functions
+Certain multi-word function names can be written with spaces and normalize to underscored function names:
 
 ```asql
 day of week created_at     -- → day_of_week(created_at)
-running sum revenue        -- → running_sum(revenue)
-rolling avg price          -- → rolling_avg(price)
+week of year created_at    -- → week_of_year(created_at)
+string agg(name, ', ')     -- → string_agg(name, ', ')
 ```
 
-### ❌ Column Names (Literal)
-
-Column names are **not** transformed:
+### Date “since/until” patterns
 
 ```asql
-created_at           -- The column 'created_at', not a function
-user_id              -- The column 'user_id'
-```
-
-### ❌ Table Names
-
-```asql
-user_accounts        -- The table 'user_accounts'
-```
-
-### ❌ String Literals
-
-```asql
-"hello_world"        -- The string "hello_world"
-```
-
-## Auto-Generated Column Names
-
-When using shorthand, column names are auto-generated:
-
-```asql
-from sales
-  select sum_amount, avg_price, month_created_at
-  
--- Equivalent to:
-from sales
-  select 
-    sum(amount) as sum_amount,
-    avg(price) as avg_price,
-    month(created_at) as month_created_at
-```
-
-## The "of" Keyword
-
-`of` can replace parentheses for a natural language feel:
-
-```asql
-sum of amount         -- → sum(amount)
-average of price      -- → avg(price)
-count of orders       -- → count(orders)
-year of created_at    -- → year(created_at)
-```
-
-This makes aggregate expressions read like English:
-
-```asql
-from sales
-  group by region (
-    sum of amount as revenue,
-    average of price as avg_price
-  )
-```
-
-## Function Aliases
-
-Natural language aliases map to SQL functions:
-
-| Alias | SQL Function |
-|-------|--------------|
-| `total` | `SUM` |
-| `average` | `AVG` |
-| `maximum` | `MAX` |
-| `minimum` | `MIN` |
-
-```asql
-total revenue         -- → sum(revenue) as total_revenue
-average price         -- → avg(price) as average_price
-maximum amount        -- → max(amount) as maximum_amount
+days_since_created_at   -- → DATEDIFF('day', created_at, CURRENT_TIMESTAMP)
+days_until_due_date     -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
 ```
 
 ## Ambiguity Resolution
@@ -166,8 +93,8 @@ Good for readability:
 ```asql
 from sales
   group by region (
-    sum_amount,           -- Clear and concise
-    avg_price,            -- Same pattern
+    sum_amount,
+    avg_price,
     # as transactions     -- Count shorthand
   )
 ```

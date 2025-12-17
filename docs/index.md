@@ -67,12 +67,13 @@ from users
   limit 10
 ```
 
-When you actually need to reuse intermediate results, `set` creates CTEs:
+When you actually need to reuse intermediate results, use `stash as` to create a reusable CTE:
 
 ```asql
-set active_users = from users where is_active
+from users
+  where is_active
+  stash as active_users
 
-from active_users
   group by country ( # as total )
 ```
 
@@ -313,7 +314,7 @@ April and May are missing. Data warehousing evolved workarounds: date dimension 
 
 ```asql
 from orders
-  group by month(order_date) as month (
+  group by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```

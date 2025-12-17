@@ -672,12 +672,6 @@ ORDER BY cb.cohort_month, period
 from orders
 group by month(order_date) (sum(total) as revenue)
 cohort by month(customers.first_order_date)
-select
-  cohort_month,
-  period,
-  revenue,
-  running_sum(revenue) as cumulative_revenue,
-  running_sum(revenue) / cohort_size as ltv
 ```
 
 ### Retention with Period-over-Period Change
@@ -687,12 +681,6 @@ select
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
-select
-  cohort_month,
-  period,
-  active,
-  prior(active) as prev_period_active,
-  active - prior(active) as change
 ```
 
 ### Segmented Cohorts by Channel

@@ -350,7 +350,7 @@ function getDialectName(dialect) {
         'mysql': 'MySQL',
         'sqlite': 'SQLite',
         'oracle': 'Oracle',
-        'mssql': 'SQL Server',
+        'tsql': 'SQL Server',
         'presto': 'Presto',
         'trino': 'Trino',
         'spark': 'Spark',
