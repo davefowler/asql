@@ -285,7 +285,7 @@ from orders
 
 This is analytically correct by default. No dimension tables. No extra CTEs. No post-processing. ASQL automatically ensures all expected values appear in your results.
 
-See [Language Specification](spec.md) for details on `guarantee()` and configuration options.
+See [Grouping & Aggregation](group_by.md) for details on `guarantee()` and configuration options.
 
 ---
 
@@ -315,7 +315,8 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 ## Getting Started
 
 - [Syntax Guide](quick_start.md) — Core syntax reference
-- [Window Functions](window_functions.md) — Detailed window function docs
+- [Grouping & Aggregation](group_by.md) — Guaranteed groups, aggregates
+- [Window Functions](window_functions.md) — Running totals, ranking, prior/next
 - [Language Specification](spec.md) — Complete reference
 - [Examples](examples.md) — Real queries with SQL output
 
