@@ -16,19 +16,15 @@ theme:
   name: material
   palette:
     scheme: default
-    primary: blue
-    accent: blue
+    primary: custom
+    accent: custom
   features:
     - navigation.tabs           # Top-level sections as horizontal tabs
     - navigation.tabs.sticky    # Tabs stay visible when scrolling
-    - navigation.sections       # Group items in sidebar by section
-    - navigation.expand         # Auto-expand sidebar sections
     - navigation.indexes        # Section index pages become clickable headers
     - navigation.top            # Back-to-top button
     - navigation.instant        # Faster page loads (SPA-like)
     - navigation.tracking       # URL updates as you scroll
-    - navigation.sidebar        # Sticky sidebar navigation
-    - toc.integrate             # Table of contents in left sidebar
     - toc.follow                # TOC follows scroll position
     - search.suggest
     - search.highlight
@@ -52,6 +48,7 @@ extra_javascript:
 # Extensions
 markdown_extensions:
   - pymdownx.highlight:
+      use_pygments: false  # Disable server-side highlighting - use highlight.js instead
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
@@ -80,6 +77,9 @@ markdown_extensions:
 # Plugins
 plugins:
   - search
+  - macros:
+      module_name: docs/macros
+      render_by_default: false  # Don't process {{ }} as Jinja2 - only use hooks
   # - minify:
   #     minify_html: true
 
