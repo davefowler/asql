@@ -55,15 +55,11 @@ from users where phone matches "555-___-____"
 
 ## Dynamic Pivot
 
-**Current limitation**: Pivot requires explicit values at compile time:
+**Status**: ✅ Implemented
 
-```asql
-from sales
-  pivot sum(amount) by category values ('Electronics', 'Clothing', 'Food')
-```
+Dynamic pivot allows the pivot column values to come from a subquery instead of being hardcoded. This is useful when you don't know all possible values at compile time.
 
-**Desired**: Get values dynamically from a subquery:
-
+**Syntax**:
 ```asql
 from sales
   pivot sum(amount) by category values (
@@ -71,14 +67,7 @@ from sales
   )
 ```
 
-**What it is**: Dynamic pivot allows the pivot column values to come from a subquery instead of being hardcoded. This is useful when you don't know all possible values at compile time.
-
-**Implementation Difficulty**: Medium - requires either:
-- Two-pass compilation (first pass to get values, second to generate CASE expressions)
-- Dynamic SQL generation (warehouse-specific)
-- Runtime evaluation (not possible in pure SQL)
-
-**Workaround**: Use raw SQL or warehouse-specific PIVOT syntax (e.g., Snowflake's `PIVOT` operator).
+**Implementation**: The subquery is compiled to SQL and used in a CTE to generate pivot expressions. Note that pure SQL compilation has limitations - individual columns per value require knowing values at compile time. For full dynamic pivoting with individual columns per value, consider using warehouse-specific PIVOT operators (e.g., Snowflake's `PIVOT` operator).
 
 ---
 
