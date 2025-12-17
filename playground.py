@@ -1327,6 +1327,136 @@ group by user_id (
             },
         ];
         
+        const samplingExamples = [
+            {
+                title: "Random Sample",
+                desc: "Get 100 random rows",
+                query: `from orders
+sample 100`
+            },
+            {
+                title: "Percentage Sample",
+                desc: "Get ~10% of rows",
+                query: `from orders
+sample 10%`
+            },
+            {
+                title: "Stratified Sample",
+                desc: "100 random rows per category",
+                query: `from products
+sample 100 per category`
+            },
+            {
+                title: "Sample with Filter",
+                desc: "Sample from filtered data",
+                query: `from orders
+where status == "completed"
+sample 500`
+            },
+        ];
+        
+        const dataReshapingExamples = [
+            {
+                title: "Pivot Rows to Columns",
+                desc: "Transform status values into columns",
+                query: `from orders
+pivot sum(amount) by status values ('pending', 'shipped', 'delivered')
+group by customer_id`
+            },
+            {
+                title: "Unpivot Columns to Rows",
+                desc: "Turn quarterly columns into rows",
+                query: `from quarterly_metrics
+unpivot q1, q2, q3, q4 into quarter, value`
+            },
+            {
+                title: "Explode Array",
+                desc: "Expand array column into rows",
+                query: `from posts
+explode tags as tag
+select post_id, title, tag`
+            },
+            {
+                title: "Explode and Aggregate",
+                desc: "Count items per tag",
+                query: `from posts
+explode tags as tag
+group by tag (
+    # as post_count
+)
+order by -post_count`
+            },
+        ];
+        
+        const columnOperatorExamples = [
+            {
+                title: "Exclude Columns",
+                desc: "Remove sensitive columns",
+                query: `from users
+except password_hash, internal_notes`
+            },
+            {
+                title: "Rename Columns",
+                desc: "Rename for clarity",
+                query: `from users
+rename id as user_id, name as full_name`
+            },
+            {
+                title: "Replace Values",
+                desc: "Transform column values",
+                query: `from users
+replace name with upper(name), email with lower(email)`
+            },
+            {
+                title: "Combined Column Ops",
+                desc: "Exclude, rename, and replace together",
+                query: `from customers
+except internal_id
+rename name as customer_name
+replace email with lower(email)`
+            },
+        ];
+        
+        const countInferenceExamples = [
+            {
+                title: "Count Rows",
+                desc: "Basic COUNT(*)",
+                query: `from orders
+group by status (
+    # as order_count
+)`
+            },
+            {
+                title: "Count Distinct Users",
+                desc: "Infer primary key from table name",
+                query: `from orders
+group by status (
+    # as total_orders,
+    # users as unique_customers
+)`
+            },
+            {
+                title: "Multiple Entity Counts",
+                desc: "Count different entities",
+                query: `from order_items
+group by category (
+    # as line_items,
+    # orders as unique_orders,
+    # products as unique_products
+)`
+            },
+            {
+                title: "Explicit vs Inferred",
+                desc: "Compare explicit and inferred counts",
+                query: `from orders
+group by region (
+    # as total_rows,
+    # users as unique_users,
+    #(distinct product_id) as unique_products_explicit
+)`
+            },
+        ];
+        
         const sqlExamples = [];
         
         // Wait for DOM and ensure ASQL mode is loaded
@@ -1929,6 +2059,182 @@ group by user_id (
                             }, 1000);
                         };
                         cohortExamplesDiv.appendChild(btn);
+                        });
+                    }
+                    
+                    // Sampling Examples section
+                    const samplingSection = document.createElement('div');
+                    samplingSection.className = 'example-section';
+                    const samplingH3 = document.createElement('h3');
+                    samplingH3.textContent = 'Sampling Examples';
+                    samplingSection.appendChild(samplingH3);
+                    const samplingP = document.createElement('p');
+                    samplingP.style.color = '#666';
+                    samplingP.style.marginBottom = '15px';
+                    samplingP.style.fontSize = '13px';
+                    samplingP.textContent = 'Random sampling for data exploration. Fixed counts, percentages, and stratified sampling per group.';
+                    samplingSection.appendChild(samplingP);
+                    const samplingExamplesDiv = document.createElement('div');
+                    samplingExamplesDiv.className = 'example-list';
+                    samplingExamplesDiv.id = 'sampling-examples';
+                    samplingSection.appendChild(samplingExamplesDiv);
+                    container.appendChild(samplingSection);
+                    
+                    if (typeof samplingExamples !== 'undefined' && Array.isArray(samplingExamples)) {
+                        samplingExamples.forEach(example => {
+                        const btn = document.createElement('button');
+                        btn.className = 'example-btn';
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'example-title';
+                        titleDiv.textContent = example.title;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'example-desc';
+                        descDiv.textContent = example.desc;
+                        btn.appendChild(titleDiv);
+                        btn.appendChild(descDiv);
+                        btn.onclick = () => {
+                            const fromDialect = document.getElementById('from-dialect').value;
+                            if (fromDialect !== 'asql') {
+                                document.getElementById('from-dialect').value = 'asql';
+                                updateUITitles();
+                            }
+                            inputEditor.setValue(example.query);
+                            translateQuery();
+                            setTimeout(() => { updateURL(); }, 1000);
+                        };
+                        samplingExamplesDiv.appendChild(btn);
+                        });
+                    }
+                    
+                    // Data Reshaping Examples section
+                    const reshapingSection = document.createElement('div');
+                    reshapingSection.className = 'example-section';
+                    const reshapingH3 = document.createElement('h3');
+                    reshapingH3.textContent = 'Data Reshaping Examples';
+                    reshapingSection.appendChild(reshapingH3);
+                    const reshapingP = document.createElement('p');
+                    reshapingP.style.color = '#666';
+                    reshapingP.style.marginBottom = '15px';
+                    reshapingP.style.fontSize = '13px';
+                    reshapingP.textContent = 'Pivot (rows to columns), unpivot (columns to rows), and explode (arrays to rows) operations for reshaping data.';
+                    reshapingSection.appendChild(reshapingP);
+                    const reshapingExamplesDiv = document.createElement('div');
+                    reshapingExamplesDiv.className = 'example-list';
+                    reshapingExamplesDiv.id = 'reshaping-examples';
+                    reshapingSection.appendChild(reshapingExamplesDiv);
+                    container.appendChild(reshapingSection);
+                    
+                    if (typeof dataReshapingExamples !== 'undefined' && Array.isArray(dataReshapingExamples)) {
+                        dataReshapingExamples.forEach(example => {
+                        const btn = document.createElement('button');
+                        btn.className = 'example-btn';
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'example-title';
+                        titleDiv.textContent = example.title;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'example-desc';
+                        descDiv.textContent = example.desc;
+                        btn.appendChild(titleDiv);
+                        btn.appendChild(descDiv);
+                        btn.onclick = () => {
+                            const fromDialect = document.getElementById('from-dialect').value;
+                            if (fromDialect !== 'asql') {
+                                document.getElementById('from-dialect').value = 'asql';
+                                updateUITitles();
+                            }
+                            inputEditor.setValue(example.query);
+                            translateQuery();
+                            setTimeout(() => { updateURL(); }, 1000);
+                        };
+                        reshapingExamplesDiv.appendChild(btn);
+                        });
+                    }
+                    
+                    // Column Operators Examples section
+                    const columnOpsSection = document.createElement('div');
+                    columnOpsSection.className = 'example-section';
+                    const columnOpsH3 = document.createElement('h3');
+                    columnOpsH3.textContent = 'Column Operator Examples';
+                    columnOpsSection.appendChild(columnOpsH3);
+                    const columnOpsP = document.createElement('p');
+                    columnOpsP.style.color = '#666';
+                    columnOpsP.style.marginBottom = '15px';
+                    columnOpsP.style.fontSize = '13px';
+                    columnOpsP.textContent = 'Except (exclude columns), rename, and replace operators for column manipulation without listing all columns.';
+                    columnOpsSection.appendChild(columnOpsP);
+                    const columnOpsExamplesDiv = document.createElement('div');
+                    columnOpsExamplesDiv.className = 'example-list';
+                    columnOpsExamplesDiv.id = 'column-ops-examples';
+                    columnOpsSection.appendChild(columnOpsExamplesDiv);
+                    container.appendChild(columnOpsSection);
+                    
+                    if (typeof columnOperatorExamples !== 'undefined' && Array.isArray(columnOperatorExamples)) {
+                        columnOperatorExamples.forEach(example => {
+                        const btn = document.createElement('button');
+                        btn.className = 'example-btn';
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'example-title';
+                        titleDiv.textContent = example.title;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'example-desc';
+                        descDiv.textContent = example.desc;
+                        btn.appendChild(titleDiv);
+                        btn.appendChild(descDiv);
+                        btn.onclick = () => {
+                            const fromDialect = document.getElementById('from-dialect').value;
+                            if (fromDialect !== 'asql') {
+                                document.getElementById('from-dialect').value = 'asql';
+                                updateUITitles();
+                            }
+                            inputEditor.setValue(example.query);
+                            translateQuery();
+                            setTimeout(() => { updateURL(); }, 1000);
+                        };
+                        columnOpsExamplesDiv.appendChild(btn);
+                        });
+                    }
+                    
+                    // Count Inference Examples section
+                    const countSection = document.createElement('div');
+                    countSection.className = 'example-section';
+                    const countH3 = document.createElement('h3');
+                    countH3.textContent = 'Smart Count Examples';
+                    countSection.appendChild(countH3);
+                    const countP = document.createElement('p');
+                    countP.style.color = '#666';
+                    countP.style.marginBottom = '15px';
+                    countP.style.fontSize = '13px';
+                    countP.textContent = 'The # shorthand with table names infers primary keys. "# users" becomes COUNT(DISTINCT user_id).';
+                    countSection.appendChild(countP);
+                    const countExamplesDiv = document.createElement('div');
+                    countExamplesDiv.className = 'example-list';
+                    countExamplesDiv.id = 'count-inference-examples';
+                    countSection.appendChild(countExamplesDiv);
+                    container.appendChild(countSection);
+                    
+                    if (typeof countInferenceExamples !== 'undefined' && Array.isArray(countInferenceExamples)) {
+                        countInferenceExamples.forEach(example => {
+                        const btn = document.createElement('button');
+                        btn.className = 'example-btn';
+                        const titleDiv = document.createElement('div');
+                        titleDiv.className = 'example-title';
+                        titleDiv.textContent = example.title;
+                        const descDiv = document.createElement('div');
+                        descDiv.className = 'example-desc';
+                        descDiv.textContent = example.desc;
+                        btn.appendChild(titleDiv);
+                        btn.appendChild(descDiv);
+                        btn.onclick = () => {
+                            const fromDialect = document.getElementById('from-dialect').value;
+                            if (fromDialect !== 'asql') {
+                                document.getElementById('from-dialect').value = 'asql';
+                                updateUITitles();
+                            }
+                            inputEditor.setValue(example.query);
+                            translateQuery();
+                            setTimeout(() => { updateURL(); }, 1000);
+                        };
+                        countExamplesDiv.appendChild(btn);
                         });
                     }
                 } else {
