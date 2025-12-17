@@ -303,11 +303,17 @@ def process_asql_blocks(markdown_content: str) -> str:
         # If there are multiple independent examples in one fenced block (e.g. multiple `from ...`),
         # leave it as a normal code block.
         query_starters = 0
+        order_by_lines = 0
         for line in non_comment_lines:
             lowered = line.lower()
             if lowered.startswith("from ") or lowered.startswith("with "):
                 query_starters += 1
+            if lowered.startswith("order by"):
+                order_by_lines += 1
         if query_starters != 1:
+            return False
+        # Multiple ORDER BY clauses in one fenced block are usually documentation snippets.
+        if order_by_lines > 1:
             return False
 
         # Multi-line SELECT blocks ("select" on its own line + indented columns)
@@ -328,6 +334,9 @@ def process_asql_blocks(markdown_content: str) -> str:
         for line in non_comment_lines:
             if line.lower().startswith("if "):
                 return False
+            # WIP / not-implemented keywords sometimes appear in reference docs.
+            if line.lower().startswith("sample "):
+                return False
 
         # Spec-only pseudo syntax (pipeline/object literal examples) should not be compiled.
         for line in non_comment_lines:
@@ -341,6 +350,9 @@ def process_asql_blocks(markdown_content: str) -> str:
                 return False
             # Ellipsis placeholders are documentation-only.
             if "..." in line:
+                return False
+            # Placeholder templates like <table> / <col> are documentation-only.
+            if "<" in line and ">" in line:
                 return False
 
         first = non_comment_lines[0].lower()

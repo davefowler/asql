@@ -112,7 +112,7 @@ from sales
 
 Multiple arguments:
 ```asql
-coalesce(primary_email, secondary_email, "unknown")
+primary_email ?? secondary_email ?? "unknown"
 ```
 
 ## Real-World Examples
@@ -146,7 +146,7 @@ from sales
   group by region (
     sum_revenue,
     avg_price,
-    count distinct customer_id as unique_customers
+    #(distinct customer_id) as unique_customers
   )
 ```
 

@@ -106,7 +106,7 @@ where name starts with "John" or name starts with "Jane"
 **With function calls:**
 ```asql
 where upper(name) contains "JOHN"
-where coalesce(email, "") contains "@"
+where (email ?? "") contains "@"
 ```
 
 ## Logical Operators
