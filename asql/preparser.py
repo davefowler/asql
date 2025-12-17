@@ -55,6 +55,9 @@ FUNCTION_REGISTRY: Set[str] = {
     
     # Ordered aggregates
     'first', 'last', 'arg_max', 'arg_min',
+    
+    # Spine control
+    'guarantee',  # Explicit spine for a column with optional values
 }
 
 # Function aliases

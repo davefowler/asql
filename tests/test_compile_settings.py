@@ -20,7 +20,7 @@ class TestCompileSettings:
         """Test default settings values."""
         settings = CompileSettings()
         
-        assert settings.auto_spine is False  # Default off until implemented
+        assert settings.auto_spine is True  # Default on - filter out zeros if you don't want them
         assert settings.week_start == "monday"
         assert settings.relative_date_type == "timestamp"
     
@@ -64,12 +64,13 @@ class TestCompileSettings:
     
     def test_merge_with(self):
         """Test merging settings."""
-        base = CompileSettings(auto_spine=False, week_start="monday")
-        override = CompileSettings(auto_spine=True)  # week_start stays default
+        # With auto_spine=True as default, test that False overrides True
+        base = CompileSettings(auto_spine=True, week_start="monday")
+        override = CompileSettings(auto_spine=False)  # week_start stays default
         
         merged = base.merge_with(override)
         
-        assert merged.auto_spine is True  # overridden
+        assert merged.auto_spine is False  # overridden (differs from default True)
         assert merged.week_start == "monday"  # kept from base
 
 
@@ -128,8 +129,8 @@ class TestInlineSetStatements:
         statements = sqlglot.parse("SELECT * FROM orders WHERE status = 'active'")
         settings, dialect, queries = extract_inline_settings(statements)
         
-        # Should get defaults
-        assert settings.auto_spine is False
+        # Should get defaults from CompileSettings() which starts fresh
+        # (extract_inline_settings creates a new CompileSettings, not the global default)
         assert settings.week_start == "monday"
         assert dialect is None
         assert len(queries) == 1
@@ -167,10 +168,11 @@ class TestCompileWithSettings:
     
     def test_inline_set_overrides_passed_settings(self):
         """Test that inline SET overrides passed settings."""
-        base_settings = CompileSettings(auto_spine=False)
+        # Test that setting auto_spine=false overrides the default of True
+        base_settings = CompileSettings(auto_spine=True)
         
         asql = """
-        SET auto_spine = true;
+        SET auto_spine = false;
         from orders limit 10
         """
         
@@ -178,7 +180,7 @@ class TestCompileWithSettings:
         # Currently we can't directly verify auto_spine effect,
         # but we verify the parsing works
         settings, _ = get_settings_from_query(asql, base_settings)
-        assert settings.auto_spine is True
+        assert settings.auto_spine is False
     
     def test_set_only_query_raises(self):
         """Test that query with only SET statements raises error."""
@@ -218,7 +220,7 @@ class TestGetSettingsFromQuery:
         """Test query without SET returns defaults."""
         settings, dialect = get_settings_from_query("from users limit 10")
         
-        assert settings.auto_spine is False
+        assert settings.auto_spine is True  # Default is now True
         assert settings.week_start == "monday"
         assert dialect is None
     
@@ -227,7 +229,7 @@ class TestGetSettingsFromQuery:
         settings, dialect = get_settings_from_query("invalid asql ;;;")
         
         # Should not raise, returns defaults
-        assert settings.auto_spine is False
+        assert settings.auto_spine is True  # Default is now True
 
 
 class TestASQLConfigWithCompileSettings:

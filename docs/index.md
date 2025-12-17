@@ -242,6 +242,53 @@ select
 
 ---
 
+## Guaranteed Groups (including dates)
+
+SQL doesn't guarantee your grouped results are complete. If a dimension value has no data, it simply won't appear in your results.
+
+This isn't a bug—it's a design decision. SQL was created in the 1970s for transactional systems (OLTP): banking, inventory, order processing. In that context, you're asking "what happened?" and showing non-existent data would be wrong. The relational model is based on set theory: you can only group rows that exist.
+
+But analytics is different. When you ask "what's the trend?" or build a time-series chart, missing data points cause real problems. The line jumps. Month-over-month calculations use the wrong prior month. The dashboard looks broken.
+
+```sql
+SELECT month, SUM(amount) as revenue
+FROM orders
+GROUP BY month;
+```
+
+| month | revenue |
+|-------|---------|
+| Jan   | 1000    |
+| Feb   | 1500    |
+| Mar   | 800     | 
+| Jun   | 1200    |
+
+April and May are missing. Data warehousing evolved workarounds: date dimension tables, calendar CTEs, CROSS JOINs, Kimball-style star schemas. Every analytics team reinvents this wheel. It's easy to forget until something breaks in production.
+
+**ASQL guarantees complete results:**
+
+```asql
+from orders
+  group by month(order_date) as month (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+| month | revenue |
+|-------|---------|
+| Jan   | 1000    |
+| Feb   | 1500    |
+| Mar   | 800     |
+| Apr   | 0       |
+| May   | 0       |
+| Jun   | 1200    |
+
+This is analytically correct by default. No dimension tables. No extra CTEs. No post-processing. ASQL automatically ensures all expected values appear in your results.
+
+See [Grouping & Aggregation](group_by.md) for details on `guarantee()` and configuration options.
+
+---
+
 ## Multi-Dialect Output
 
 ASQL uses [SQLGlot](https://github.com/tobymao/sqlglot) for transpilation. Supported dialects include:
@@ -254,6 +301,7 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 
 - A syntax layer that compiles to SQL
 - Useful for analytics queries that benefit from pipeline structure
+- Analytically correct by default (guaranteed grouping prevents missing data in reports)
 - Compatible with any SQL database via transpilation
 
 ## What ASQL Is Not
@@ -267,7 +315,8 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 ## Getting Started
 
 - [Syntax Guide](quick_start.md) — Core syntax reference
-- [Window Functions](window_functions.md) — Detailed window function docs
+- [Grouping & Aggregation](group_by.md) — Guaranteed groups, aggregates
+- [Window Functions](window_functions.md) — Running totals, ranking, prior/next
 - [Language Specification](spec.md) — Complete reference
 - [Examples](examples.md) — Real queries with SQL output
 
