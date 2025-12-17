@@ -28,31 +28,6 @@ when amount == 0 then null else amount
 
 ---
 
-## Automatic Column Namespace Resolution
-
-**What it is**: When column names conflict across joined tables, automatically rename them with table context (e.g., `users.id` and `orders.id` both become `id` but get auto-qualified as `users_id` and `orders_id`).
-
-**Current behavior**: Requires explicit qualification:
-```asql
-from users
-  & orders
--- If both have 'id', you must explicitly qualify:
-select users.id as user_id, orders.id as order_id
-```
-
-**Proposed behavior**: Automatically namespace conflicting names:
-```asql
-from users
-  & orders
--- Both tables have 'id', automatically becomes:
-select users_id, orders_id  -- or users.id, orders.id (qualified)
-```
-
-**Status**: Might not be implemented in the initial version. Explicit qualification is safer and clearer.
-
-**Recommendation**: In v1.0, require explicit qualification for ambiguous columns. Auto-qualification could be added later if there's clear demand.
-
----
 
 ## Shorthand Natural Language (50/50 on implementation)
 
