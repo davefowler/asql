@@ -359,6 +359,7 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 ## Getting Started
 
 - [Quick Start](quick_start.md) — Get up and running quickly
+- [Tutorial](tutorial.md) — Hands-on, step-by-step learning guide
 - [Grouping & Aggregation](group_by.md) — Guaranteed groups, aggregates
 - [Window Functions](window_functions.md) — Running totals, ranking, prior/next
 - [Examples](examples.md) — Real queries with SQL output
