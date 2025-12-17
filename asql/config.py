@@ -41,7 +41,8 @@ class CompileSettings:
     
     # Auto-spine: automatically add gap-filling for date truncations in GROUP BY
     # When True, date columns in GROUP BY will include all dates in the range
-    auto_spine: bool = False  # Default off until fully implemented
+    # This ensures charts have no gaps and all periods appear even with zero values
+    auto_spine: bool = True  # Default on - filter out zeros if you don't want them
     
     # Week start day: affects week() function output
     week_start: Literal["monday", "sunday"] = "monday"
