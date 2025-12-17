@@ -152,34 +152,6 @@ Avg Users.age by country
 
 ---
 
-## Cohort Analysis Features
-
-**Source**: `ai_notes/COHORT_ANALYSIS.md`
-
-Cohort analysis is notoriously complex in SQL, typically requiring 3-5 CTEs for even basic queries. ASQL could dramatically simplify this.
-
-**Vision**: A cohort analysis that takes 50+ lines of SQL should be expressible in 5-10 lines of ASQL.
-
-**Key Features Needed**:
-- Cohort assignment operators
-- Retention calculation helpers
-- Period-over-period comparisons
-- Cohort rollup syntax
-
-**Note**: Many building blocks are already implemented (`first()`, `prior()`, `running_sum()`, `month()`, etc.), but high-level cohort operators are not yet implemented.
-
-**Example** (proposed):
-```asql
-from events
-  cohort by user_id using first(event_date)
-  group by cohort_month, activity_month (
-    count(distinct user_id) as active_users
-  )
-```
-
-**Status**: Not implemented - see `ai_notes/COHORT_ANALYSIS.md` for full design.
-
----
 
 ## Future Considerations
 
