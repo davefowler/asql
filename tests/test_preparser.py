@@ -63,10 +63,32 @@ class TestCountShorthand:
         result = preparse_asql("from users select #(id)")
         assert "COUNT(ID)" in result.upper()
     
-    def test_hash_of_keyword(self):
-        """# of users becomes COUNT(*)."""
+    def test_hash_of_table_name(self):
+        """# of users becomes COUNT(DISTINCT user_id)."""
         result = preparse_asql("from users select # of users")
+        assert "COUNT(DISTINCT USER_ID)" in result.upper()
+        assert "COUNT(*)" not in result.upper()
+    
+    def test_hash_table_name(self):
+        """# users becomes COUNT(DISTINCT user_id)."""
+        result = preparse_asql("from users select # users")
+        assert "COUNT(DISTINCT USER_ID)" in result.upper()
+        assert "COUNT(*)" not in result.upper()
+    
+    def test_hash_explicit_star(self):
+        """# * becomes COUNT(*) (explicit row count)."""
+        result = preparse_asql("from users select # *")
         assert "COUNT(*)" in result.upper()
+    
+    def test_hash_orders_table(self):
+        """# orders becomes COUNT(DISTINCT order_id)."""
+        result = preparse_asql("from orders select # orders")
+        assert "COUNT(DISTINCT ORDER_ID)" in result.upper()
+    
+    def test_hash_singular_table(self):
+        """# user becomes COUNT(DISTINCT user_id) (singular form)."""
+        result = preparse_asql("from user select # user")
+        assert "COUNT(DISTINCT USER_ID)" in result.upper()
 
 
 class TestCoalesceOperator:
