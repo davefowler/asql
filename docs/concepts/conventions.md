@@ -219,6 +219,54 @@ If your schema is non-standard, consider:
 2. Renaming columns in dbt transformations
 3. Creating a clean semantic layer
 
+## Column Name Conflict Resolution
+
+ASQL automatically handles column name conflicts in joined queries:
+
+### Automatic Expansion
+
+When `SELECT *` is used with joins, ASQL automatically expands it to `table.*` for each joined table:
+
+```asql
+-- Before: Would cause ambiguous column errors
+from users & orders on users.id = orders.user_id
+-- SELECT * → Ambiguous: which table's 'id'?
+
+-- After: Automatic expansion prevents conflicts
+from users & orders on users.id = orders.user_id
+-- SELECT * → SELECT users.*, orders.*
+-- Columns accessible as users.id, orders.id, etc.
+```
+
+### How It Works
+
+- **With joins**: `SELECT *` expands to `SELECT table1.*, table2.*, ...`
+- **Without joins**: `SELECT *` remains as-is
+- **Explicit SELECT**: No expansion (uses your explicit columns)
+
+### Benefits
+
+- ✅ No ambiguous column errors
+- ✅ Columns remain accessible with table qualification
+- ✅ Works automatically with all join types
+- ✅ Respects table aliases
+
+### Example
+
+```asql
+-- Multiple joins: All tables get table.* expansion
+from orders
+  & customers on orders.customer_id = customers.id
+  & order_items on orders.id = order_items.order_id
+-- → SELECT orders.*, customers.*, order_items.* FROM ...
+
+-- With aliases: Uses alias names
+from users &? orders as o on users.id = o.user_id
+-- → SELECT users.*, o.* FROM users LEFT JOIN orders AS o ON ...
+```
+
+**Note**: This convention-based approach means you don't need to explicitly qualify every column when using `SELECT *` with joins. ASQL handles it automatically.
+
 ## Summary
 
 | Convention | ASQL Behavior |
@@ -228,6 +276,7 @@ If your schema is non-standard, consider:
 | Plural table names | Auto-pluralization in FK inference |
 | `sum_amount` | Interpreted as `sum(amount)` |
 | Case variations | Matched case-insensitively |
+| `SELECT *` with joins | Auto-expands to `table.*` for each table |
 
 **Philosophy**: Good modeling makes ASQL magical. Non-standard modeling requires explicit configuration.
 
