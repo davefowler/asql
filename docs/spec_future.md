@@ -127,31 +127,6 @@ select users_id, orders_id  -- or users.id, orders.id (qualified)
 
 ---
 
-## Shorthand Natural Language (50/50 on implementation)
-
-For very simple exploratory queries, you can omit the `from` clause and infer it from the aggregation:
-
-```asql
-# of Users by country
-Sum of revenue by region
-Avg Users.age by country
-```
-
-**Note**: This shorthand is nice for a big percentage of exploratory queries, but it's different from other queries that start with `from`. In these examples, the `from` table is inferred from its use in `# of Users`. It's really nice shorthand, but also potentially confusing.
-
-**Status**: Marked as 50/50 on implementation - may or may not make it into v1.0.
-
-**Pros**:
-- Very concise for exploratory queries
-- Natural language feel
-
-**Cons**:
-- Different syntax from other queries
-- Potentially confusing
-- Requires inference logic
-
----
-
 ## Cohort Analysis Features
 
 **Source**: `ai_notes/COHORT_ANALYSIS.md`

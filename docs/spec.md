@@ -2293,6 +2293,57 @@ avg age of user by country
 # Reads beautifully: "average age of user, grouped by country"
 ```
 
+### Example 11: Shorthand Natural Language
+
+For very simple exploratory queries, you can omit the `from` clause and let ASQL infer the table from the aggregation:
+
+```asql
+# of Users by country
+Sum of Users.revenue by region
+Avg Users.age by country
+```
+
+**How it works**: ASQL transforms these shorthand queries into full `FROM ... GROUP BY` syntax:
+- `# of Users by country` → `from Users group by country ( COUNT(DISTINCT user_id) )`
+- `Sum of Users.revenue by region` → `from Users group by region ( SUM(Users.revenue) )`
+- `Avg Users.age by country` → `from Users group by country ( AVG(Users.age) )`
+
+**Table inference**:
+- When using `# of <table>`, the table name is explicit
+- When using `Table.column` notation (e.g., `Users.age`), the table is inferred from the qualified column name
+- For unqualified columns (e.g., `Sum of revenue`), ASQL attempts to infer the table from common column-to-table mappings, but explicit table qualification is preferred
+
+**When to use shorthand**:
+- ✅ Quick exploratory queries
+- ✅ Simple aggregations with clear table references
+- ✅ When you want maximum conciseness
+
+**When to use explicit `from` syntax**:
+- ✅ Complex queries with multiple transformations
+- ✅ Queries with joins, filters, or other clauses
+- ✅ When table inference might be ambiguous
+- ✅ Production queries where clarity is more important than brevity
+
+**Trailing clauses**: Shorthand queries support `order by` and `limit`:
+
+```asql
+# of Users by country order by -total_users limit 10
+```
+
+**Trade-offs**:
+
+**Pros**:
+- Very concise for exploratory queries
+- Natural language feel
+- Reduces boilerplate for simple aggregations
+
+**Cons**:
+- Different syntax from other queries (starts with aggregation, not `from`)
+- Requires inference logic (may fail if table can't be inferred)
+- Less explicit than full `from ... group by` syntax
+
+**Recommendation**: Use shorthand for quick exploration and ad-hoc queries. Use explicit `from` syntax for complex queries, production code, and when clarity is paramount.
+
 ---
 
 ## 19. Compilation & Transpilation

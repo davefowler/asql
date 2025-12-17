@@ -119,6 +119,28 @@ group by product (
 - `min(column)` - minimum value
 - `max(column)` - maximum value
 
+### Shorthand Natural Language (Exploratory Queries)
+
+For very simple exploratory queries, you can omit the `from` clause and start with an aggregation:
+
+```asql
+# of Users by country
+Sum of Users.revenue by region
+Avg Users.age by country
+```
+
+These shorthand queries are transformed into full `FROM ... GROUP BY` syntax automatically. Perfect for quick data exploration!
+
+**When to use shorthand:**
+- ✅ Quick exploratory queries
+- ✅ Simple aggregations with clear table references
+
+**When to use explicit `from` syntax:**
+- ✅ Complex queries with filters, joins, or multiple transformations
+- ✅ Production queries where clarity is important
+
+See the [Shorthand Natural Language](../concepts/shorthand.md#shorthand-natural-language-queries) guide for more details.
+
 ## Ordering & Limiting
 
 ### ORDER BY

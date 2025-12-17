@@ -118,21 +118,21 @@ select users.id as user_id, orders.id as order_id
 
 ---
 
-### 6. Shorthand Natural Language (50/50)
-**Status**: Maybe  
+### 6. Shorthand Natural Language
+**Status**: ✅ Implemented (December 2025)  
 **GitHub Issue**: [#40](https://github.com/davefowler/asql/issues/40)  
 **Spec Section**: Example 11
 
 **What it is**: Omit `from` clause and infer table from aggregation:
 ```asql
 # of Users by country
-Sum of revenue by region
+Sum of Users.revenue by region
+Avg Users.age by country
 ```
 
-**Pros**: Nice shorthand for exploratory queries  
-**Cons**: Different from other queries, potentially confusing
+**Implementation**: Transforms shorthand queries into full `FROM ... GROUP BY` syntax early in the pre-parser pipeline. Supports table inference from explicit table names or qualified column references.
 
-**Decision**: Marked as 50/50 - may or may not make it into v1.0.
+**See**: [Shorthand Natural Language documentation](../concepts/shorthand.md#shorthand-natural-language-queries)
 
 ---
 

@@ -81,6 +81,30 @@ from orders
 
 The `# users` becomes `COUNT(DISTINCT user_id)` — ASQL infers the primary key!
 
+### Shorthand Natural Language (Quick Exploration)
+
+For very simple exploratory queries, you can skip the `from` clause entirely:
+
+```asql
+# of Users by country
+Sum of Users.revenue by region
+Avg Users.age by country
+```
+
+These shorthand queries are automatically transformed into full `FROM ... GROUP BY` syntax. Perfect for quick data exploration!
+
+**Example:**
+```asql
+# Quick check: users by country
+# of Users by country
+
+# Top regions by revenue
+Sum of Sales.revenue by region order by -revenue limit 10
+```
+
+**When to use:** Quick exploration, ad-hoc queries, simple aggregations  
+**When not to use:** Complex queries with filters, joins, or multiple transformations
+
 ---
 
 ## Part 3: Sorting & Limiting

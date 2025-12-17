@@ -235,6 +235,167 @@ from sales
 
 The goal: write queries that read like natural language while maintaining precision.
 
+## Shorthand Natural Language Queries
+
+For very simple exploratory queries, ASQL allows you to omit the `from` clause entirely and start with an aggregation. The table is inferred from the aggregation expression.
+
+### Basic Syntax
+
+```asql
+# of Users by country
+Sum of Users.revenue by region
+Avg Users.age by country
+```
+
+These shorthand queries are transformed into full `FROM ... GROUP BY` syntax:
+
+```asql
+# of Users by country
+# Transforms to:
+from Users group by country ( COUNT(DISTINCT user_id) )
+
+Sum of Users.revenue by region
+# Transforms to:
+from Users group by region ( SUM(Users.revenue) )
+
+Avg Users.age by country
+# Transforms to:
+from Users group by country ( AVG(Users.age) )
+```
+
+### Table Inference
+
+ASQL infers the table name in different ways depending on the aggregation pattern:
+
+**Pattern 1: Count with explicit table**
+```asql
+# of Users by country
+# users by country, region
+```
+The table name is explicit (`Users` or `users`), and ASQL infers the primary key column (`user_id`).
+
+**Pattern 2: Aggregation with qualified column**
+```asql
+Sum of Users.revenue by region
+Avg Users.age by country
+```
+The table is inferred from the qualified column name (`Users.revenue` → `Users` table).
+
+**Pattern 3: Aggregation with unqualified column**
+```asql
+Sum of revenue by region
+```
+ASQL attempts to infer the table from common column-to-table mappings (e.g., `revenue` → `sales`), but **explicit table qualification is preferred** for clarity.
+
+### Supported Aggregation Functions
+
+All standard aggregation functions work with shorthand syntax:
+
+```asql
+# of Users by country              -- COUNT(DISTINCT user_id)
+Sum of Users.revenue by region      -- SUM(Users.revenue)
+Avg Users.age by country            -- AVG(Users.age)
+Total of Users.amount by status     -- SUM(Users.amount)
+Min Users.created_at by country    -- MIN(Users.created_at)
+Max Users.updated_at by region     -- MAX(Users.updated_at)
+```
+
+### Multiple Group Columns
+
+You can group by multiple columns:
+
+```asql
+# of Users by country, region
+Sum of Users.revenue by region, month(order_date)
+```
+
+### Trailing Clauses
+
+Shorthand queries support `order by` and `limit`:
+
+```asql
+# of Users by country order by -total_users
+Sum of Users.revenue by region limit 10
+Avg Users.age by country order by -avg_age limit 5
+```
+
+### When to Use Shorthand
+
+**✅ Good for:**
+- Quick exploratory queries
+- Simple aggregations with clear table references
+- Ad-hoc analysis where brevity matters
+- Natural language feel for non-technical users
+
+**❌ Prefer explicit `from` syntax for:**
+- Complex queries with multiple transformations
+- Queries with joins, filters, or other clauses
+- Production queries where clarity is paramount
+- When table inference might be ambiguous
+
+### Examples
+
+**Exploratory analysis:**
+```asql
+# Quick check: users by country
+# of Users by country
+
+# Revenue by region
+Sum of Sales.revenue by region
+
+# Average age by country
+Avg Users.age by country
+```
+
+**With ordering:**
+```asql
+# Top countries by user count
+# of Users by country order by -total_users limit 10
+
+# Highest revenue regions
+Sum of Sales.revenue by region order by -revenue limit 5
+```
+
+**Multiple dimensions:**
+```asql
+# Users by country and status
+# of Users by country, status
+
+# Revenue by region and month
+Sum of Sales.revenue by region, month(order_date)
+```
+
+### Trade-offs
+
+**Pros:**
+- Very concise for exploratory queries
+- Natural language feel
+- Reduces boilerplate for simple aggregations
+- Great for quick data exploration
+
+**Cons:**
+- Different syntax from other queries (starts with aggregation, not `from`)
+- Requires inference logic (may fail if table can't be inferred)
+- Less explicit than full `from ... group by` syntax
+- Not suitable for complex queries
+
+**Recommendation**: Use shorthand for quick exploration and ad-hoc queries. Use explicit `from` syntax for complex queries, production code, and when clarity is more important than brevity.
+
+### Comparison with Explicit Syntax
+
+**Shorthand:**
+```asql
+# of Users by country
+```
+
+**Explicit (equivalent):**
+```asql
+from Users
+  group by country ( COUNT(DISTINCT user_id) as total_users )
+```
+
+Both produce the same SQL, but shorthand is more concise for simple queries while explicit syntax is clearer for complex ones.
+
 ## Next Steps
 
 - **[Aggregations](../syntax/aggregations.md)** — Using shorthand in GROUP BY
