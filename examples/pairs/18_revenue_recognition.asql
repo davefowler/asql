@@ -11,5 +11,5 @@ from subscriptions
       else 0 
     end) as deferred_revenue
   )
-  sort -deferred_revenue
+  order by -deferred_revenue
 

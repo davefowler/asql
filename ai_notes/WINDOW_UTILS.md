@@ -238,7 +238,7 @@ from orders
 
 ```asql
 from monthly_sales
-  sort month
+  order by month
   select
     month,
     revenue,
@@ -260,7 +260,7 @@ running amount        # shorthand with space
 
 # Full example
 from transactions
-  sort date
+  order by date
   select
     date,
     amount,
@@ -280,7 +280,7 @@ rolling avg(revenue, 7)
 
 # Full example
 from daily_sales
-  sort date
+  order by date
   select
     date,
     revenue,
@@ -296,7 +296,7 @@ from daily_sales
 # Get each customer's most recent order with running totals
 from orders
   per customer_id number by -order_date    # Adds row_num
-  sort customer_id, -order_date
+  order by customer_id, -order_date
   select
     customer_id,
     order_id,

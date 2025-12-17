@@ -692,6 +692,113 @@ PLAYGROUND_HTML = """
             background: #f8f9fa;
             border-top: 1px solid #dadce0;
         }
+        
+        /* Settings Panel Styles */
+        .settings-panel {
+            background: white;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        
+        .settings-header {
+            padding: 10px 16px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dadce0;
+            font-weight: 500;
+            font-size: 13px;
+        }
+        
+        .settings-header:hover {
+            background: #f1f3f4;
+        }
+        
+        .settings-content {
+            padding: 16px;
+            display: none;
+        }
+        
+        .settings-content.open {
+            display: block;
+        }
+        
+        .settings-toggle {
+            transition: transform 0.2s;
+        }
+        
+        .settings-toggle.open {
+            transform: rotate(180deg);
+        }
+        
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        
+        .setting-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .setting-group label {
+            font-size: 11px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .setting-group select {
+            padding: 6px 10px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            font-size: 12px;
+            background: white;
+        }
+        
+        .settings-presets {
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #e8eaed;
+        }
+        
+        .settings-presets label {
+            font-size: 11px;
+            color: #666;
+            font-weight: 500;
+            display: block;
+            margin-bottom: 6px;
+        }
+        
+        .preset-buttons {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .preset-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+        }
+        
+        .preset-btn:hover {
+            background: #f8f9fa;
+            border-color: #f28b82;
+        }
+        
+        .preset-btn.active {
+            background: #ea4335;
+            color: white;
+            border-color: #ea4335;
+        }
     </style>
 </head>
 <body>
@@ -735,10 +842,100 @@ PLAYGROUND_HTML = """
             </div>
         </div>
         
+        <!-- ASQL Style Settings Panel -->
+        <div class="settings-panel" id="settings-panel">
+            <div class="settings-header" onclick="toggleSettings()">
+                <span>⚙️ ASQL Style Settings</span>
+                <span class="settings-toggle" id="settings-toggle">▼</span>
+            </div>
+            <div class="settings-content" id="settings-content">
+                <div class="settings-presets">
+                    <label>Presets:</label>
+                    <div class="preset-buttons">
+                        <button class="preset-btn active" id="preset-default" onclick="applyPreset('default')">Default</button>
+                        <button class="preset-btn" id="preset-sql-compat" onclick="applyPreset('sql-compat')">SQL Compatible</button>
+                        <button class="preset-btn" id="preset-concise" onclick="applyPreset('concise')">Concise</button>
+                    </div>
+                </div>
+                <div class="settings-grid">
+                    <div class="setting-group">
+                        <label>Equality:</label>
+                        <select id="setting-equality" onchange="updateStyleConfig()">
+                            <option value="single">= (SQL style)</option>
+                            <option value="double">== (Python style)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Count:</label>
+                        <select id="setting-count" onchange="updateStyleConfig()">
+                            <option value="hash"># (shorthand)</option>
+                            <option value="function">count(*)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Null coalescing:</label>
+                        <select id="setting-coalesce" onchange="updateStyleConfig()">
+                            <option value="operator">?? (operator)</option>
+                            <option value="function">coalesce()</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Descending:</label>
+                        <select id="setting-descending" onchange="updateStyleConfig()">
+                            <option value="prefix">-column (prefix)</option>
+                            <option value="suffix">column DESC</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Type cast:</label>
+                        <select id="setting-cast" onchange="updateStyleConfig()">
+                            <option value="double_colon">::TYPE</option>
+                            <option value="function">CAST()</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>String quotes:</label>
+                        <select id="setting-quotes" onchange="updateStyleConfig()">
+                            <option value="double">"double"</option>
+                            <option value="single">'single'</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Sort keyword:</label>
+                        <select id="setting-sort-keyword" onchange="updateStyleConfig()">
+                            <option value="order_by">order by</option>
+                            <option value="sort">sort</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Week starts:</label>
+                        <select id="setting-week-start" onchange="updateStyleConfig()">
+                            <option value="monday">Monday (ISO)</option>
+                            <option value="sunday">Sunday (US)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Squash empty CTEs:</label>
+                        <select id="setting-squash-empty-ctes" onchange="updateStyleConfig()">
+                            <option value="true">Yes (remove pass-through)</option>
+                            <option value="false">No (keep all)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Keep final empty CTE:</label>
+                        <select id="setting-keep-final-empty-cte" onchange="updateStyleConfig()">
+                            <option value="false">No (squash all)</option>
+                            <option value="true">Yes (dbt style)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="controls">
             <button class="translate-btn" onclick="translateQuery()">Translate</button>
         </div>
-        
+
         <div class="playground">
             <div class="panel" id="input-panel">
                 <div class="panel-header" id="input-header">
@@ -832,13 +1029,13 @@ group by region (
                 desc: "Order by descending",
                 query: `from users
 group by country ( # as total_users )
-sort -total_users`
+order by -total_users`
             },
             {
                 title: "TAKE/LIMIT",
                 desc: "Limit results",
                 query: `from users
-take 10`
+limit 10`
             },
             {
                 title: "Complex Query",
@@ -849,8 +1046,8 @@ group by region (
     sum(amount) as revenue, 
     # as orders 
 )
-sort -revenue
-take 10`
+order by -revenue
+limit 10`
             },
             {
                 title: "Multiple Conditions",
@@ -893,8 +1090,8 @@ group by customer_id (
     # as order_count,
     avg(total) as avg_order_value 
 )
-sort -total_spent
-take 10`
+order by -total_spent
+limit 10`
             },
             {
                 title: "Customer Analytics Pipeline",
@@ -908,60 +1105,59 @@ group by customers.id, customers.country (
     # as total_orders,
     max(orders.created_at) as last_order_date 
 )
-sort -lifetime_value
-take 50`
+order by -lifetime_value
+limit 50`
             },
             {
                 title: "Sales Funnel Analysis",
                 desc: "Multi-stage sales pipeline with joins",
                 query: `from leads
-where source == "website"
-    and created_at >= "2024-01-01"
 join opportunities on leads.id == opportunities.lead_id
-where opportunities.stage != "lost"
 join deals on opportunities.id == deals.opportunity_id
-where deals.status == "closed"
+where leads.source == "website"
+    and leads.created_at >= "2024-01-01"
+    and opportunities.stage != "lost"
+    and deals.status == "closed"
 group by leads.source, deals.region ( 
     sum(deals.amount) as revenue,
     # as closed_deals,
     avg(deals.amount) as avg_deal_size 
 )
-sort -revenue`
+order by -revenue`
             },
             {
                 title: "Product Performance Pipeline",
                 desc: "Product analysis with multiple filters and aggregations",
                 query: `from products
-where category == "electronics"
-    and in_stock == true
 join order_items on products.id == order_items.product_id
 join orders on order_items.order_id == orders.id
-where orders.status == "completed"
+where products.category == "electronics"
+    and products.in_stock == true
+    and orders.status == "completed"
     and orders.created_at >= "2024-01-01"
 group by products.id, products.name ( 
     sum(order_items.quantity) as units_sold,
     sum(order_items.price * order_items.quantity) as revenue,
     # as order_count 
 )
-sort -revenue
-take 20`
+order by -revenue
+limit 20`
             },
             {
                 title: "User Engagement Pipeline",
-                desc: "User activity analysis with multiple CTEs",
+                desc: "User activity analysis with aggregation and filtering",
                 query: `from users
-where created_at >= "2023-01-01"
 join events on users.id == events.user_id
-where events.event_type == "purchase"
+where users.created_at >= "2023-01-01"
+    and events.event_type == "purchase"
     and events.timestamp >= "2024-01-01"
 group by users.id, users.country ( 
     # as purchase_count,
     sum(events.value) as total_spent,
     max(events.timestamp) as last_purchase_date 
 )
-where total_spent > 100
-sort -total_spent
-take 100`
+order by -total_spent
+limit 100`
             },
             {
                 title: "Time-Series Aggregation Pipeline",
@@ -976,23 +1172,22 @@ group by date_trunc(transaction_date, "month"), region (
     min(amount) as min_transaction,
     max(amount) as max_transaction 
 )
-sort transaction_date desc, -monthly_revenue`
+order by transaction_date desc, -monthly_revenue`
             },
             {
                 title: "Cohort Analysis Pipeline",
                 desc: "User cohort analysis with complex joins",
                 query: `from users
-where signup_date >= "2023-01-01"
 join orders on users.id == orders.user_id
-where orders.status == "completed"
-group by 
+where users.signup_date >= "2023-01-01"
+    and orders.status == "completed"
+group by date_trunc(users.signup_date, "month"), users.country ( 
     date_trunc(users.signup_date, "month") as cohort_month,
-    users.country ( 
     # as users_in_cohort,
     sum(orders.total) as cohort_revenue,
     avg(orders.total) as avg_order_value 
 )
-sort cohort_month desc, -cohort_revenue`
+order by cohort_month desc, -cohort_revenue`
             },
             {
                 title: "Multi-Table Join Pipeline",
@@ -1008,9 +1203,8 @@ group by customers.id, customers.name (
     # as products_purchased,
     count(distinct products.category) as categories_bought 
 )
-where total_spent > 500
-sort -total_spent
-take 25`
+order by -total_spent
+limit 25`
             },
         ];
         
@@ -1040,43 +1234,38 @@ group by customer_id (
                 title: "Cohort Size by Month",
                 desc: "Count users in each signup cohort",
                 query: `from users
-group by month(signup_date) as cohort_month (
+group by month(signup_date) (
+    month(signup_date) as cohort_month,
     # as cohort_size,
     avg(age) as avg_age
 )
-sort cohort_month`
+order by cohort_month`
             },
             {
-                title: "Cumulative LTV (Lifetime Value)",
-                desc: "Running sum of revenue per cohort",
+                title: "Revenue by Signup Cohort",
+                desc: "Total revenue grouped by customer signup month",
                 query: `from orders
 join customers on orders.customer_id == customers.id
-group by month(customers.signup_date) as cohort_month, month(orders.order_date) as order_month (
-    sum(orders.total) as revenue,
-    # as orders
+group by month(customers.signup_date) (
+    month(customers.signup_date) as cohort_month,
+    sum(orders.total) as total_revenue,
+    # as order_count,
+    count(distinct orders.customer_id) as customers
 )
-sort cohort_month, order_month
-select 
-    cohort_month,
-    order_month,
-    revenue,
-    running_sum(revenue) as cumulative_revenue`
+order by cohort_month`
             },
             {
-                title: "Period-over-Period Retention",
-                desc: "Compare activity to prior period using prior()",
+                title: "Monthly Active by Cohort",
+                desc: "Track active users by signup cohort and activity month",
                 query: `from events
 join users on events.user_id == users.id
-group by month(users.signup_date) as cohort_month, month(events.event_date) as activity_month (
-    count(distinct events.user_id) as active_users
+group by month(users.signup_date), month(events.event_date) (
+    month(users.signup_date) as cohort_month,
+    month(events.event_date) as activity_month,
+    count(distinct events.user_id) as active_users,
+    # as total_events
 )
-sort cohort_month, activity_month
-select
-    cohort_month,
-    activity_month,
-    active_users,
-    prior(active_users) as prev_month_active,
-    active_users - prior(active_users) as change`
+order by cohort_month, activity_month`
             },
             {
                 title: "First Event per User",
@@ -1090,54 +1279,51 @@ select user_id, event_date as first_event_date, event_type`
                 desc: "Track how each cohort spends over time",
                 query: `from orders
 join customers on orders.customer_id == customers.id
-group by 
+group by month(customers.first_order_date), month(orders.order_date) (
     month(customers.first_order_date) as cohort_month,
-    month(orders.order_date) as order_month (
+    month(orders.order_date) as order_month,
     sum(orders.total) as revenue,
     count(distinct orders.customer_id) as buyers,
     avg(orders.total) as avg_order_value
 )
-sort cohort_month, order_month`
+order by cohort_month, order_month`
             },
             {
-                title: "Rolling Average Retention",
-                desc: "Smooth retention curve with rolling_avg()",
+                title: "Weekly Activity by Cohort",
+                desc: "Track weekly active users by signup cohort",
                 query: `from events
 join users on events.user_id == users.id  
-group by month(users.signup_date) as cohort_month, week(events.event_date) as activity_week (
-    count(distinct events.user_id) as active_users
+group by month(users.signup_date), week(events.event_date) (
+    month(users.signup_date) as cohort_month,
+    week(events.event_date) as activity_week,
+    count(distinct events.user_id) as active_users,
+    # as total_events
 )
-sort cohort_month, activity_week
-select
-    cohort_month,
-    activity_week,
-    active_users,
-    rolling_avg(active_users, 4) as four_week_avg`
+order by cohort_month, activity_week`
             },
             {
                 title: "Cohort with Channel Segment",
                 desc: "Segment cohorts by acquisition channel",
                 query: `from events
 join users on events.user_id == users.id
-group by users.channel, month(users.signup_date) as cohort_month (
+group by users.channel, month(users.signup_date) (
+    users.channel,
+    month(users.signup_date) as cohort_month,
     count(distinct events.user_id) as active_users,
     # as total_events
 )
-sort users.channel, cohort_month`
+order by users.channel, cohort_month`
             },
             {
                 title: "Feature Adoption Cohort",
-                desc: "Track when users first adopted a feature",
+                desc: "Find when each user first adopted a feature",
                 query: `from events
 where event_type == "feature_used"
 group by user_id (
     first(event_date order by event_date) as first_feature_use,
-    month(first(event_date order by event_date)) as adoption_month
-)
-group by adoption_month (
-    # as users_adopted
-)
-sort adoption_month`
+    month(first(event_date order by event_date)) as adoption_month,
+    # as times_used
+)`
             },
         ];
         
@@ -1361,26 +1547,204 @@ sort adoption_month`
             }
         }
         
+        // ========== ASQL Style Settings ==========
+        
+        // Style configuration state
+        let styleConfig = {
+            equality: 'single',
+            count: 'hash',
+            coalesce: 'operator',
+            descending: 'prefix',
+            cast: 'double_colon',
+            quotes: 'double',
+            sort_keyword: 'order_by',
+            week_start: 'monday',
+            squash_empty_ctes: true,
+            keep_final_empty_cte: false,
+        };
+        
+        // Preset definitions
+        const STYLE_PRESETS = {
+            'default': {
+                equality: 'single',
+                count: 'hash',
+                coalesce: 'operator',
+                descending: 'prefix',
+                cast: 'double_colon',
+                quotes: 'double',
+                sort_keyword: 'order_by',
+                week_start: 'monday',
+                squash_empty_ctes: true,
+                keep_final_empty_cte: false,
+            },
+            'sql-compat': {
+                equality: 'single',
+                count: 'function',
+                coalesce: 'function',
+                descending: 'suffix',
+                cast: 'function',
+                quotes: 'single',
+                sort_keyword: 'order_by',
+                week_start: 'monday',
+                squash_empty_ctes: true,
+                keep_final_empty_cte: false,
+            },
+            'concise': {
+                equality: 'single',
+                count: 'hash',
+                coalesce: 'operator',
+                descending: 'prefix',
+                cast: 'double_colon',
+                quotes: 'double',
+                sort_keyword: 'sort',
+                week_start: 'monday',
+                squash_empty_ctes: true,
+                keep_final_empty_cte: false,
+            },
+        };
+        
+        // Load style config from localStorage
+        function loadStyleConfig() {
+            const saved = localStorage.getItem('asql_style_config');
+            if (saved) {
+                try {
+                    styleConfig = { ...styleConfig, ...JSON.parse(saved) };
+                    applyConfigToUI();
+                } catch (e) {
+                    console.warn('Failed to load style config:', e);
+                }
+            }
+        }
+        
+        // Save style config to localStorage
+        function saveStyleConfig() {
+            localStorage.setItem('asql_style_config', JSON.stringify(styleConfig));
+        }
+        
+        // Apply config to UI dropdowns
+        function applyConfigToUI() {
+            document.getElementById('setting-equality').value = styleConfig.equality;
+            document.getElementById('setting-count').value = styleConfig.count;
+            document.getElementById('setting-coalesce').value = styleConfig.coalesce;
+            document.getElementById('setting-descending').value = styleConfig.descending;
+            document.getElementById('setting-cast').value = styleConfig.cast;
+            document.getElementById('setting-quotes').value = styleConfig.quotes;
+            document.getElementById('setting-sort-keyword').value = styleConfig.sort_keyword;
+            document.getElementById('setting-week-start').value = styleConfig.week_start;
+            document.getElementById('setting-squash-empty-ctes').value = String(styleConfig.squash_empty_ctes);
+            document.getElementById('setting-keep-final-empty-cte').value = String(styleConfig.keep_final_empty_cte);
+
+            // Update preset button states
+            updatePresetButtons();
+        }
+
+        // Read config from UI dropdowns
+        function readConfigFromUI() {
+            styleConfig = {
+                equality: document.getElementById('setting-equality').value,
+                count: document.getElementById('setting-count').value,
+                coalesce: document.getElementById('setting-coalesce').value,
+                descending: document.getElementById('setting-descending').value,
+                cast: document.getElementById('setting-cast').value,
+                quotes: document.getElementById('setting-quotes').value,
+                sort_keyword: document.getElementById('setting-sort-keyword').value,
+                week_start: document.getElementById('setting-week-start').value,
+                squash_empty_ctes: document.getElementById('setting-squash-empty-ctes').value === 'true',
+                keep_final_empty_cte: document.getElementById('setting-keep-final-empty-cte').value === 'true',
+            };
+        }
+        
+        // Toggle settings panel
+        function toggleSettings() {
+            const content = document.getElementById('settings-content');
+            const toggle = document.getElementById('settings-toggle');
+            content.classList.toggle('open');
+            toggle.classList.toggle('open');
+        }
+        
+        // Apply preset
+        function applyPreset(presetName) {
+            if (STYLE_PRESETS[presetName]) {
+                styleConfig = { ...STYLE_PRESETS[presetName] };
+                applyConfigToUI();
+                saveStyleConfig();
+            }
+        }
+        
+        // Update preset button states
+        function updatePresetButtons() {
+            // Remove active class from all preset buttons
+            document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('active'));
+            
+            // Check if current config matches any preset
+            for (const [name, preset] of Object.entries(STYLE_PRESETS)) {
+                if (JSON.stringify(styleConfig) === JSON.stringify(preset)) {
+                    document.getElementById('preset-' + name).classList.add('active');
+                    return;
+                }
+            }
+        }
+        
+        // Called when any individual setting changes
+        function updateStyleConfig() {
+            readConfigFromUI();
+            saveStyleConfig();
+            updatePresetButtons();
+        }
+        
+        // Normalize ASQL to user's preferred style
+        async function normalizeASQL(asqlInput) {
+            if (!asqlInput || !asqlInput.trim()) return asqlInput;
+            
+            try {
+                const response = await fetch('/api/normalize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        asql: asqlInput,
+                        style: styleConfig,
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    console.warn('Normalize error:', data.error);
+                    return asqlInput;  // Return original on error
+                }
+                
+                return data.asql;
+            } catch (error) {
+                console.warn('Normalize failed:', error);
+                return asqlInput;  // Return original on error
+            }
+        }
+        
+        // ========== End ASQL Style Settings ==========
+        
         function swapLanguages() {
             const fromSelect = document.getElementById('from-dialect');
             const toSelect = document.getElementById('to-dialect');
             const fromValue = fromSelect.value;
             const toValue = toSelect.value;
-            
+
             fromSelect.value = toValue;
             toSelect.value = fromValue;
-            
+
             // Swap editor contents
             const temp = inputEditor.getValue();
             inputEditor.setValue(outputEditor.getValue());
             outputEditor.setValue(temp);
-            
+
             updateUITitles();
             translateQuery();
         }
-        
+
         // Update UI when dialects change (set up after DOM is ready)
         document.addEventListener('DOMContentLoaded', function() {
+            // Load saved style config
+            loadStyleConfig();
+            
             document.getElementById('from-dialect').addEventListener('change', () => {
                 ensureFromNotPostgresWhenToEmpty();
                 updateUITitles();
@@ -2002,15 +2366,57 @@ def api_detect_dialect():
     try:
         data = request.get_json()
         sql_query = data.get('sql', '')
-        
+
         if not sql_query.strip():
             return jsonify({'dialect': None})
-        
+
         dialect = detect_dialect(sql_query)
         return jsonify({'dialect': dialect})
-        
+
     except Exception as e:
         return jsonify({'dialect': None, 'error': str(e)})
+
+@app.route('/api/normalize', methods=['POST'])
+def api_normalize():
+    """Normalize ASQL to configured style."""
+    try:
+        data = request.get_json()
+        asql_query = data.get('asql', '')
+        style_config = data.get('style', {})
+        
+        if not asql_query.strip():
+            return jsonify({'error': 'Empty ASQL query'})
+        
+        # Build config from style options
+        from asql.config import ASQLConfig, StyleConfig
+        
+        style = StyleConfig(
+            equality=style_config.get('equality', 'single'),
+            count=style_config.get('count', 'hash'),
+            coalesce=style_config.get('coalesce', 'operator'),
+            descending=style_config.get('descending', 'prefix'),
+            cast=style_config.get('cast', 'double_colon'),
+            quotes=style_config.get('quotes', 'double'),
+            week_start=style_config.get('week_start', 'monday'),
+            sort_keyword=style_config.get('sort_keyword', 'order_by'),
+            squash_empty_ctes=style_config.get('squash_empty_ctes', True),
+            keep_final_empty_cte=style_config.get('keep_final_empty_cte', False),
+        )
+        
+        config = ASQLConfig(style=style)
+        
+        # Normalize: ASQL → SQL → ASQL (with config)
+        sql = compile(asql_query, dialect='snowflake')
+        normalized = reverse_compile(sql, config=config)
+        
+        return jsonify({'asql': normalized})
+        
+    except ASQLSyntaxError as e:
+        return jsonify({'error': f'Syntax Error: {str(e)}'})
+    except ASQLCompilationError as e:
+        return jsonify({'error': f'Compilation Error: {str(e)}'})
+    except Exception as e:
+        return jsonify({'error': f'Error: {str(e)}'})
 
 @app.route('/api/debug/examples-path', methods=['GET'])
 def api_debug_examples_path():

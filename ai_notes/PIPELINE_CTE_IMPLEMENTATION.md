@@ -17,7 +17,7 @@ This document explains how to implement pipelined SQL transformations in ASQL, w
 from users
   where status == "active"
   group by country ( # as total_users )
-  sort -total_users
+  order by -total_users
 ```
 
 ### Desired SQL Output (CTE Approach)
@@ -564,7 +564,7 @@ asql/
 ### Test Cases
 
 1. **Simple pipeline**: `from users where status == "active"`
-2. **Multi-step**: `from users where X group by Y sort Z`
+2. **Multi-step**: `from users where X group by Y order by Z`
 3. **With JOINs**: `from users join orders group by country`
 4. **Complex**: Multiple WHEREs, JOINs, GROUP BYs
 5. **Edge cases**: Single step, empty steps, only SELECT

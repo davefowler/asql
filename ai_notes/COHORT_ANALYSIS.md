@@ -194,7 +194,7 @@ from user_cohorts
     count(distinct monthly_activity.user_id) as active_users,
     round(count(distinct monthly_activity.user_id)::numeric / count(distinct user_cohorts.user_id) * 100, 2) as retention_rate
   )
-  sort -user_cohorts.cohort_month
+  order by -user_cohorts.cohort_month
 ```
 
 **~22% reduction** - better, but still complex. The structure mirrors SQL. Let's do better.
@@ -247,7 +247,7 @@ from users
 ```asql
 -- Month-over-month retention change
 from cohort_metrics
-  sort cohort_month, period
+  order by cohort_month, period
   select
     cohort_month,
     period,
@@ -261,7 +261,7 @@ from cohort_metrics
 ```asql
 -- Cumulative revenue per cohort (LTV curve)
 from cohort_revenue
-  sort cohort_month, period
+  order by cohort_month, period
   select
     cohort_month,
     period,
@@ -284,7 +284,7 @@ from events
 -- PostgreSQL-style: first event per user
 from events
   distinct on (user_id)
-  sort user_id, event_date
+  order by user_id, event_date
 ```
 
 ### Improved Cohort Query with Current Features
@@ -312,7 +312,7 @@ from activity
   group by cohort_month, period (
     count(distinct user_id) as active_users
   )
-  sort cohort_month, period
+  order by cohort_month, period
   select
     cohort_month,
     period,
@@ -868,7 +868,7 @@ from orders
     count(distinct customer_id) as active,
     sum(total) as revenue
   )
-  sort cohort_month, period
+  order by cohort_month, period
   select *, prior(active) as prev, running_sum(revenue) as cum_rev
 ```
 

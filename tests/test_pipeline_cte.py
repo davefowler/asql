@@ -47,7 +47,7 @@ def test_pipeline_with_group_by() -> None:
 
 def test_pipeline_with_sort() -> None:
     """Test pipeline with SORT."""
-    asql = 'from users where status == "active" sort -created_at'
+    asql = 'from users where status == "active" order by -created_at'
     sql = compile(asql)
     
     assert "WITH" not in sql.upper()
@@ -61,8 +61,8 @@ def test_pipeline_complete() -> None:
     from users
     where status == "active"
     group by country ( # as total_users )
-    sort -total_users
-    take 10
+    order by -total_users
+    limit 10
     """
     sql = compile(asql)
     

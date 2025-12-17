@@ -62,8 +62,8 @@ def example_complete_pipeline() -> None:
     from users
     where status == "active"
     group by country ( # as total_users )
-    sort -total_users
-    take 10
+    order by -total_users
+    limit 10
     """
     sql = compile(asql, pretty=True)
     

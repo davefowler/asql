@@ -1167,7 +1167,7 @@ from daily_sales
 | Next row value | `next(col)` |
 | Cumulative sum | `running_sum(col)` or `running col` |
 | 7-day moving average | `rolling_avg(col, 7)` |
-| First value in group | `first(col order by sort)` (in GROUP BY) |
+| First value in group | `first(col order by order_col)` (in GROUP BY) |
 
 ---
 
@@ -1828,7 +1828,7 @@ operator := filter_op
           | group_by_op
           | join_op
           | select_op
-          | sort_op
+          | order_op
           | take_op
           | set_op
 

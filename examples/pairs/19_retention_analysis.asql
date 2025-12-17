@@ -18,5 +18,5 @@ from monthly_users
     round(count(distinct case when user_first_month.first_month < monthly_users.activity_month then monthly_users.user_id end)::numeric 
       / nullif(count(distinct monthly_users.user_id), 0) * 100, 2) as retention_rate
   )
-  sort -monthly_users.activity_month
+  order by -monthly_users.activity_month
 

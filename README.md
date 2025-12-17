@@ -63,8 +63,8 @@ asql = """
 from users
 where status == "active"
 group by country ( # as total_users )
-sort -total_users
-take 10
+order by -total_users
+limit 10
 """
 
 sql = compile(asql, dialect="postgres")
@@ -211,8 +211,8 @@ where status == "active"      # Filter rows
 group by country (            # Group and aggregate
     # as total_users
 )
-sort -total_users            # Sort descending
-take 10                      # Limit results
+order by -total_users            # Sort descending
+limit 10                      # Limit results
 ```
 
 ### Comparison Operators
@@ -255,17 +255,17 @@ from sales group by region (
 
 ### Sorting
 
-- `sort column` - ascending
-- `sort -column` - descending (use `-` prefix)
+- `order by column` - ascending
+- `order by -column` - descending (use `-` prefix)
 
 ```asql
-from users sort -total_users, name
+from users order by -total_users, name
 ```
 
 ### Limiting
 
 ```asql
-from users take 10
+from users limit 10
 ```
 
 ## Development

@@ -30,11 +30,11 @@ Get up and running with ASQL syntax highlighting in VS Code in under 2 minutes!
    from users
    where status == "active"
    group by country ( # as total_users )
-   sort -total_users
+   order by -total_users
    ```
 
 3. **You should see**:
-   - `from`, `where`, `group by`, `sort` highlighted as keywords
+   - `from`, `where`, `group by`, `order by` highlighted as keywords
    - `==` highlighted as an operator
    - `"active"` highlighted as a string
    - `#` highlighted as a special symbol

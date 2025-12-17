@@ -64,12 +64,12 @@ ASQL Text → Custom Parser (asql/parser.py) → SQLGlot AST → SQLGlot Generat
    - Generate proper SQL GROUP BY with aggregations
 
 2. **SORT/ORDER BY** (Priority: HIGH)
-   - Parse `sort -total_users` (descending)
-   - Parse `sort total_users` (ascending)
-   - Multiple sort columns
+   - Parse `order by -total_users` (descending)
+   - Parse `order by total_users` (ascending)
+   - Multiple order by columns
 
 3. **TAKE/LIMIT** (Priority: MEDIUM)
-   - Parse `take 10`
+   - Parse `limit 10`
    - Generate SQL LIMIT
 
    - Generate SQL SELECT with computed columns

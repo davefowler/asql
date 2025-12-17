@@ -14,5 +14,5 @@ from customers
     orders.order_id,
     orders.order_date,
     orders.total_amount
-  sort -orders.total_amount
+  order by -orders.total_amount
 

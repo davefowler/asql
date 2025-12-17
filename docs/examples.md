@@ -419,7 +419,7 @@ GROUP BY region
 **ASQL:**
 ```asql
 from users
-sort name
+order by name
 ```
 
 **SQL (PostgreSQL):**
@@ -432,7 +432,7 @@ SELECT * FROM users ORDER BY name ASC
 **ASQL:**
 ```asql
 from users
-sort -total_users
+order by -total_users
 ```
 
 **SQL (PostgreSQL):**
@@ -445,7 +445,7 @@ SELECT * FROM users ORDER BY total_users DESC
 **ASQL:**
 ```asql
 from users
-sort -total_users, name
+order by -total_users, name
 ```
 
 **SQL (PostgreSQL):**
@@ -458,7 +458,7 @@ SELECT * FROM users ORDER BY total_users DESC, name ASC
 **ASQL:**
 ```asql
 from users
-take 10
+limit 10
 ```
 
 **SQL (PostgreSQL):**
@@ -472,7 +472,7 @@ SELECT * FROM users LIMIT 10
 ```asql
 from users
 group by country ( # as total_users )
-sort -total_users
+order by -total_users
 ```
 
 **SQL (PostgreSQL):**
@@ -490,8 +490,8 @@ ORDER BY total_users DESC
 from users 
 where status == "active" 
 group by country ( # as total_users ) 
-sort -total_users 
-take 10
+order by -total_users 
+limit 10
 ```
 
 **SQL (PostgreSQL):**
@@ -509,7 +509,7 @@ LIMIT 10
 **ASQL:**
 ```asql
 from users
-sort -updated_at
+order by -updated_at
 ```
 
 **SQL (PostgreSQL):**
@@ -520,7 +520,7 @@ SELECT * FROM users ORDER BY updated_at DESC
 **ASQL:**
 ```asql
 from users
-sort -updated_at, name
+order by -updated_at, name
 ```
 
 **SQL (PostgreSQL):**
@@ -528,7 +528,7 @@ sort -updated_at, name
 SELECT * FROM users ORDER BY updated_at DESC, name ASC
 ```
 
-The `-` prefix makes it easy to sort by columns in descending order. It also works with function calls like `sort -month(created_at)`.
+The `-` prefix makes it easy to order by by columns in descending order. It also works with function calls like `order by -month(created_at)`.
 
 ---
 
@@ -545,8 +545,8 @@ group by region, month (
     # as order_count,
     avg(amount) as avg_order
 )
-sort -revenue
-take 20
+order by -revenue
+limit 20
 ```
 
 **SQL (PostgreSQL):**
@@ -574,7 +574,7 @@ group by country (
     # as total_users,
     avg(age) as avg_age
 )
-sort -total_users
+order by -total_users
 ```
 
 **SQL (PostgreSQL):**
@@ -603,8 +603,8 @@ group by product_category (
     avg(amount) as avg_order_value,
     max(amount) as max_order_value
 )
-sort -total_revenue
-take 10
+order by -total_revenue
+limit 10
 ```
 
 **SQL (PostgreSQL):**
@@ -639,8 +639,8 @@ asql_query = """
 from users 
 where status == "active" 
 group by country ( # as total_users ) 
-sort -total_users 
-take 10
+order by -total_users 
+limit 10
 """
 
 sql = compile(asql_query, dialect="postgres")

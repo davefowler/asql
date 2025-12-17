@@ -50,10 +50,11 @@
 - **first() / last()**: `first(col order by x)`
 - **arg_max() / arg_min()**: ClickHouse-style aggregates
 
-### Variables & CTEs
-- **set**: `set active_users = from users where is_active`
-- **with**: `with active_users = from users where is_active`
+### CTEs
 - **stash as**: `... stash as cte_name` for mid-pipeline CTEs
+
+### Compile Settings
+- **SET**: `SET auto_spine = true` for inline configuration
 
 ### Utility Functions
 - **safe_divide()**: Returns NULL on divide-by-zero

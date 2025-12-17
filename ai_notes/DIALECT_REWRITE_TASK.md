@@ -215,7 +215,7 @@ def parse(asql_text: str, dialect: str = "postgres") -> str:
 | Equality | `=` (also accepts `==`) | `=` is preferred |
 | COALESCE | `??` | Not `\|\|` |
 | Sort | `order by -col` | `-` prefix for DESC |
-| Limit | `limit 10` | Not `take` |
+| Limit | `limit 10` | Not `limit` |
 | CTEs | `set x = ...` or `stash as x` | |
 | Conditionals | `when status is "active" then 1 otherwise 0` | Not `case` |
 | Dates | `7 days ago`, `days(end - start)` | See dates.md |

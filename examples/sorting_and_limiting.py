@@ -5,7 +5,7 @@ from asql import compile
 # Example 1: Simple SORT ascending
 def example_sort_ascending():
     """SORT in ascending order."""
-    asql = "from users sort name"
+    asql = "from users order by name"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -14,16 +14,16 @@ def example_sort_ascending():
 # Example 2: SORT descending
 def example_sort_descending():
     """SORT in descending order."""
-    asql = "from users sort -total_users"
+    asql = "from users order by -total_users"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
 
-# Example 3: Multiple sort columns
+# Example 3: Multiple order by columns
 def example_sort_multiple():
     """SORT with multiple columns."""
-    asql = "from users sort -total_users, name"
+    asql = "from users order by -total_users, name"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -32,7 +32,7 @@ def example_sort_multiple():
 # Example 4: TAKE/LIMIT
 def example_take():
     """TAKE to limit results."""
-    asql = "from users take 10"
+    asql = "from users limit 10"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -41,7 +41,7 @@ def example_take():
 # Example 5: GROUP BY + SORT
 def example_group_by_sort():
     """GROUP BY followed by SORT."""
-    asql = "from users group by country ( # as total_users ) sort -total_users"
+    asql = "from users group by country ( # as total_users ) order by -total_users"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -53,8 +53,8 @@ def example_complete_pipeline():
     asql = """from users 
 where status == "active" 
 group by country ( # as total_users ) 
-sort -total_users 
-take 10"""
+order by -total_users 
+limit 10"""
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -63,7 +63,7 @@ take 10"""
 # Example 7: Top N by revenue
 def example_top_n():
     """Top N results by revenue."""
-    asql = "from sales group by region ( sum(amount) as revenue ) sort -revenue take 5"
+    asql = "from sales group by region ( sum(amount) as revenue ) order by -revenue limit 5"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -72,7 +72,7 @@ def example_top_n():
 # Example 8: Sort by column descending
 def example_sort_by_column_descending():
     """SORT by column in descending order."""
-    asql = "from users sort -updated_at"
+    asql = "from users order by -updated_at"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
@@ -81,7 +81,7 @@ def example_sort_by_column_descending():
 # Example 9: Sort by column with multiple columns
 def example_sort_column_multiple():
     """SORT by column with multiple columns."""
-    asql = "from users sort -updated_at, name"
+    asql = "from users order by -updated_at, name"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
