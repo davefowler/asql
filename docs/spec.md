@@ -946,6 +946,56 @@ Avg Users.age by country
 
 **Note**: These are syntactic shortcuts. For complex queries, the explicit `group by` syntax with parentheses (Section 6.1) is recommended for clarity and consistency.
 
+### 6.4 Guaranteed Groups
+
+By default, ASQL ensures all expected dimension values appear in grouped results—even if they have no data. This prevents the common analytics bug where missing data creates gaps in charts and incorrect calculations.
+
+#### How It Works
+
+- **Date truncations** (`month()`, `year()`, `week()`, etc.): ASQL infers the date range from your WHERE clause and fills all periods
+- **Non-date columns**: Uses DISTINCT values from the source data
+- **Cross-joins multiple columns**: All combinations of dimension values are guaranteed
+
+```asql
+-- All months from Jan-Jun will appear, even with zero revenue
+from orders
+  where order_date >= @2024-01-01 and order_date < @2024-07-01
+  group by month(order_date) as month (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+#### Explicit Values with guarantee()
+
+Use `guarantee()` to specify exactly which values should appear:
+
+```asql
+from orders
+  group by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
+    count(*) ?? 0 as order_count
+  )
+```
+
+This ensures all four statuses appear in results, even if some have zero orders.
+
+#### Disabling Guaranteed Groups
+
+**Filter the results** (most common):
+```asql
+from orders
+  group by month(order_date) as month ( sum(amount) as revenue )
+  where revenue > 0
+```
+
+**Disable for a query**:
+```asql
+SET auto_spine = false;
+from orders
+  group by month(order_date) as month ( sum(amount) as revenue )
+```
+
+**Disable globally** via config file or API.
+
 ---
 
 ## 7. Joins & Relationships
