@@ -242,12 +242,13 @@ select
 
 ---
 
-## Guaranteed Grouping
+## Guaranteed Groups (including dates)
 
-SQL doesn't guarantee your grouped results are complete. If a dimension value has no data, it simply won't appear in your results. This has caused countless bugs in dashboards, reports, and analytics pipelines.
+SQL doesn't guarantee your grouped results are complete. If a dimension value has no data, it simply won't appear in your results.
 
-**The Problem with SQL:**
+This isn't a bug—it's a design decision. SQL was created in the 1970s for transactional systems (OLTP): banking, inventory, order processing. In that context, you're asking "what happened?" and showing non-existent data would be wrong. The relational model is based on set theory: you can only group rows that exist.
 
+But analytics is different. When you ask "what's the trend?" or build a time-series chart, missing data points cause real problems. The line jumps. Month-over-month calculations use the wrong prior month. The dashboard looks broken.
 ```sql
 SELECT month, SUM(amount) as revenue
 FROM orders
@@ -258,12 +259,10 @@ GROUP BY month;
 |-------|---------|
 | Jan   | 1000    |
 | Feb   | 1500    |
-| Mar   | 800     |
+| Mar   | 800     | 
 | Jun   | 1200    |
 
-April and May are missing. Your chart shows a line jumping from March to June. Your month-over-month calculation divides by the wrong prior month. Your report looks broken.
-
-For decades, analysts have worked around this with date dimension tables, calendar CTEs, complex CROSS JOINs, and post-processing in Python or Excel. Every team reinvents this wheel, and it's easy to forget until something breaks in production.
+April and May are missing. Data warehousing evolved workarounds: date dimension tables, calendar CTEs, CROSS JOINs, Kimball-style star schemas. Every analytics team reinvents this wheel. It's easy to forget until something breaks in production.
 
 **ASQL guarantees complete results:**
 
