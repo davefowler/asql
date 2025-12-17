@@ -1,6 +1,6 @@
 # ASQL: Analytic SQL — Language Specification
 
-**Version:** 0.1  
+**Version:** 0.3  
 **Status:** Draft  
 **Last Updated:** December 2025
 

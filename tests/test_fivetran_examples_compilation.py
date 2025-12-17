@@ -1,6 +1,6 @@
 """Test that Fivetran examples compile correctly to ASQL.
 
-This test file is auto-generated. Run test_fivetran_examples.py to regenerate.
+This test file is auto-generated. Run scripts/generate_fivetran_tests.py to regenerate.
 """
 
 import pytest
