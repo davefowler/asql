@@ -139,6 +139,13 @@
     padding-left: calc(1rem - 3px);
 }
 
+/* Match Dataface: don't use a big active background in the LEFT nav */
+.md-sidebar--primary .md-nav__item--active > .md-nav__link {
+    background: none !important;
+    border-left: none !important;
+    padding-left: 0.6rem !important;
+}
+
 /* =============================================
    SIMPLIFIED RESPONSIVE BEHAVIOR
    ============================================= */
@@ -241,7 +248,16 @@
 
 /* Never show the actual checkbox toggles */
 .md-sidebar--primary .md-nav__toggle {
-    display: none !important;
+    /* Keep it functional (label toggles), but visually hidden */
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
 }
 
 /* The Material TOC gets inlined under the active page inside the PRIMARY nav.
@@ -256,14 +272,24 @@
 
 /* Make primary nav more compact + readable */
 .md-sidebar--primary .md-nav {
-    font-size: 0.8rem;
-    line-height: 1.35;
+    font-size: 0.75rem;
+    line-height: 1.3;
+}
+
+/* Top-level rows align like Dataface */
+.md-sidebar--primary .md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__link,
+.md-sidebar--primary .md-nav--primary > .md-nav__list > .md-nav__item > label.md-nav__link {
+    padding: 0.35rem 0.6rem !important;
+}
+
+/* Subtle hover (Dataface-like) */
+.md-sidebar--primary .md-nav__link:hover {
+    background-color: rgba(0, 0, 0, 0.03) !important;
 }
 
 /* Section headers (e.g. "Concepts") */
 .md-sidebar--primary .md-nav__item--section > label.md-nav__link {
-    font-weight: 600;
-    padding: 0.45rem 0.6rem;
+    font-weight: 500;
     border-radius: 6px;
 }
 
@@ -279,9 +305,19 @@
     opacity: 0.7;
 }
 
-/* Active section header: red text (no heavy background) */
-.md-sidebar--primary .md-nav__item--section.md-nav__item--active > label.md-nav__link {
-    color: var(--asql-red) !important;
+/* Dataface-style: section headers stay neutral (active page is highlighted, not the section label) */
+.md-sidebar--primary .md-nav__item--section > label.md-nav__link {
+    color: #333 !important;
+}
+
+/* Chevron rotation on expand (Dataface-like cue) */
+.md-sidebar--primary .md-nav__item--section > input.md-nav__toggle ~ label.md-nav__link .md-nav__icon {
+    transform: rotate(-90deg);
+    transition: transform 0.15s ease;
+}
+
+.md-sidebar--primary .md-nav__item--section > input.md-nav__toggle:checked ~ label.md-nav__link .md-nav__icon {
+    transform: rotate(0deg);
 }
 
 /* Nested links: indent like Dataface */
@@ -311,6 +347,14 @@
     background-color: rgba(197, 48, 48, 0.08);
     border-left: 3px solid var(--asql-red);
     padding-left: calc(0.6rem - 3px) !important;
+}
+
+/* Override Material active styles in the LEFT nav (Dataface: red text only) */
+.md-sidebar--primary .md-nav__link--active,
+.md-sidebar--primary .md-nav__item--active > .md-nav__link {
+    background: none !important;
+    border-left: none !important;
+    padding-left: 0.6rem !important;
 }
 
 /* Section labels (like "Getting Started") should NOT be highlighted even when active */
