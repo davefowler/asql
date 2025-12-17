@@ -339,6 +339,144 @@ group by region ( sum(revenue) as total_revenue )
 
 ---
 
+### Joins: Symbolic operators over SQL `JOIN`
+
+**Preferred**: `&`, `&?`, `?&`, `*` operators  
+**Alternative**: SQL `JOIN` syntax (also accepted)
+
+```asql
+-- Preferred (ASQL operators)
+from opportunities &? owners
+from orders & customers on orders.customer_id = customers.id
+
+-- Also works (SQL style)
+from opportunities LEFT JOIN owners ON ...
+from orders INNER JOIN customers ON orders.customer_id = customers.id
+```
+
+**Rationale**: Symbolic operators (`&` for inner, `&?` for left, etc.) are more concise and visually clear. The `?` marks the nullable side.
+
+---
+
+### Foreign Key Traversal: Dot notation over explicit joins
+
+**Preferred**: Dot notation (`.owner.name`)  
+**Alternative**: Explicit joins (also work)
+
+```asql
+-- Preferred (dot notation)
+from opportunities
+  select amount, owner.name, owner.email
+
+-- Also works (explicit join)
+from opportunities &? owners on opportunities.owner_id = owners.id
+  select amount, owners.name, owners.email
+```
+
+**Rationale**: Dot notation is more concise and leverages FK naming conventions automatically. It reads naturally: "opportunities.owner.name" means "the name of the owner of this opportunity".
+
+---
+
+### Date Literals: `@` prefix over string dates
+
+**Preferred**: `@2025-01-10`  
+**Alternative**: String dates `"2025-01-10"` (also work)
+
+```asql
+-- Preferred
+where created_at >= @2025-01-10
+where order_date between @2025-01-01 and @2025-01-31
+
+-- Also works
+where created_at >= "2025-01-10"
+```
+
+**Rationale**: The `@` prefix makes it clear this is a date literal, not a string, and avoids ambiguity.
+
+---
+
+### Window Functions: Simplified functions over SQL equivalents
+
+**Preferred**: `prior()`, `next()`, `running_sum()`, `running_avg()`, `arg_max()`, `arg_min()`  
+**Alternative**: SQL `LAG()`, `LEAD()`, `SUM() OVER()`, etc. (also accepted)
+
+```asql
+-- Preferred (ASQL functions)
+select prior(revenue) as prev_revenue
+select running_sum(amount) as cumulative
+select arg_max(order_id, order_date) as latest_order_id
+
+-- Also works (SQL window functions)
+select lag(revenue, 1) over (order by date) as prev_revenue
+select sum(amount) over (order by date rows unbounded preceding) as cumulative
+```
+
+**Rationale**: ASQL functions are more concise and readable. They handle common patterns without verbose `OVER()` clauses.
+
+---
+
+### Max/Min: `max()`/`min()` over `greatest()`/`least()`
+
+**Preferred**: `max()`, `min()` for multiple values  
+**Alternative**: `greatest()`, `least()` (SQL style, also accepted)
+
+```asql
+-- Preferred
+select max(price1, price2, price3) as highest_price
+select min(start_date, end_date) as earliest_date
+
+-- Also works (SQL style)
+select greatest(price1, price2, price3) as highest_price
+select least(start_date, end_date) as earliest_date
+```
+
+**Rationale**: `max()` and `min()` are more intuitive and consistent with aggregation functions.
+
+---
+
+### Column Operators: `except`, `rename`, `replace` over explicit SELECT
+
+**Preferred**: Column operators  
+**Alternative**: Explicit SELECT lists (also work)
+
+```asql
+-- Preferred (column operators)
+from users
+  except password, ssn
+  rename id as user_id
+  replace name with upper(name)
+
+-- Also works (explicit SELECT)
+from users
+  select id as user_id, upper(name) as name, email, ...
+```
+
+**Rationale**: Column operators are more concise and work well with `select *`. They're especially useful when you want most columns with a few modifications.
+
+**Note**: `except` requires dialect support (BigQuery, Snowflake, DuckDB). For unsupported dialects, explicit SELECT is necessary.
+
+---
+
+### Date Arithmetic: Natural syntax over functions
+
+**Preferred**: `date + 7 days`, `date - 1 month`  
+**Alternative**: `DATEADD()`, `INTERVAL` (SQL style, also accepted)
+
+```asql
+-- Preferred
+where created_at >= 7 days ago
+where delivery_date = order_date + 3 days
+select order_date + 1 month as next_month
+
+-- Also works (SQL style)
+where created_at >= CURRENT_DATE - INTERVAL '7 days'
+where delivery_date = DATEADD(day, 3, order_date)
+```
+
+**Rationale**: Natural date arithmetic reads better: "7 days ago" vs "CURRENT_DATE - INTERVAL '7 days'". It's also dialect-portable.
+
+---
+
 ## Part 3: Style Summary Table
 
 | Category | Preferred | Alternative | Notes |
@@ -357,6 +495,13 @@ group by region ( sum(revenue) as total_revenue )
 | **Pipelines** | Indentation | `\|` | Cleaner |
 | **String matching** | `contains` | `LIKE` | Natural language |
 | **Window functions** | `per` syntax | `OVER()` | More concise |
+| **Joins** | `&`, `&?` operators | `JOIN` | More concise |
+| **FK traversal** | `.owner.name` | Explicit joins | Leverages conventions |
+| **Date literals** | `@2025-01-10` | `"2025-01-10"` | Clearer type |
+| **Window helpers** | `prior()`, `running_sum()` | `LAG()`, `SUM() OVER()` | More concise |
+| **Max/Min** | `max()`, `min()` | `greatest()`, `least()` | More intuitive |
+| **Column ops** | `except`, `rename` | Explicit SELECT | More concise |
+| **Date arithmetic** | `+ 7 days` | `DATEADD()`, `INTERVAL` | More readable |
 
 ---
 
