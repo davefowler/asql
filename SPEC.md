@@ -116,7 +116,6 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 |----------|---------|----------------|---------|
 | `where` | Filter rows | `WHERE` | `where status = "active"` |
 | `group by` | Group and aggregate | `GROUP BY` | `group by country ( # as total_users )` |
-| `&`, `&?`, `?&`, `*` | Join datasets | `JOIN` | `& owners on owner_id = owners.id` |
 | `select` / `project` | Choose final columns | `SELECT` | `select country, users, avg_age` |
 | `order by` | Sort rows | `ORDER BY` | `order by -users` (descending), `order by name` (ascending) |
 | `limit` | Limit rows | `LIMIT` | `limit 10` |

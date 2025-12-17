@@ -346,6 +346,107 @@ If we support SQL inside ASQL, we need to consider dialect-specific syntax:
 
 ---
 
+## JOIN as a Pipeline Operator: Design Consideration
+
+**Question**: Should `JOIN` be supported as a pipeline operator, allowing syntax like:
+
+```asql
+from accounts
+| where created_at > 1 year ago
+| JOIN users as owners on accounts.owner_user_id = owners.id
+```
+
+### The Problem
+
+This pattern is interesting because it **would work if we wrap in a CTE**:
+
+```sql
+-- ASQL input
+from accounts
+| where created_at > 1 year ago
+| JOIN users as owners on accounts.owner_user_id = owners.id
+
+-- Could compile to:
+WITH __pipeline_1 AS (
+  SELECT * FROM accounts WHERE created_at > '2023-12-16'
+)
+SELECT * FROM __pipeline_1
+JOIN users AS owners ON __pipeline_1.owner_user_id = owners.id
+```
+
+JOINs absolutely work on CTEs. The preparser could detect `JOIN` after a pipeline boundary and wrap the preceding query in a CTE.
+
+### The Concern: Keyword Explosion
+
+If we support `JOIN` as a pipeline operator, we'd logically need to support:
+- `JOIN` (INNER)
+- `LEFT JOIN`
+- `RIGHT JOIN`  
+- `FULL OUTER JOIN`
+- `CROSS JOIN`
+
+That's **5 new pipeline commands** to document, test, and explain - when the preferred ASQL way is to use the `&` shorthand operators in the FROM clause:
+
+```asql
+-- Preferred: Join operators in FROM
+from accounts &? users as owner on accounts.owner_user_id = owner.id
+| where created_at > 1 year ago
+| select account.name, owner.email
+```
+
+### Current Design Decision
+
+**ASQL restricts `&`, `&?`, `?&`, `?&?`, `*` operators to the FROM clause only.**
+
+These are not general pipeline operators - they're FROM clause modifiers for establishing the data source. Pipeline operators (`where`, `group by`, `order by`, etc.) transform data after the source is established.
+
+**Rationale:**
+1. **Keeps pipeline operators focused** - Pipeline = data transformation, FROM = data source
+2. **Avoids keyword explosion** - Don't need to document 5 JOIN variants as pipeline ops
+3. **Matches SQL semantics** - JOINs happen in FROM, logically before WHERE
+4. **CTEs solve the edge case** - If you really need late joining, use `stash as`:
+
+```asql
+-- If you need to filter before joining:
+from accounts
+| where created_at > 1 year ago
+| stash as recent_accounts
+
+from recent_accounts
+| &? users as owner on recent_accounts.owner_user_id = owner.id
+| select *
+```
+
+### What About Raw SQL JOINs?
+
+If someone writes raw SQL `JOIN` in an ASQL query:
+
+```asql
+from accounts
+| where created_at > 1 year ago
+JOIN users as owners on accounts.owner_user_id = owners.id  -- Raw SQL
+```
+
+This would currently produce invalid SQL (`FROM accounts WHERE ... JOIN ...`).
+
+**Options:**
+1. **Error clearly** - "JOIN must be in FROM clause; use `stash as` for late joining"
+2. **Auto-CTE (future)** - Detect and wrap in CTE automatically
+3. **Leave broken** - Let SQLGlot fail with parse error
+
+**Current recommendation:** Option 1 (clear error message) for now. Auto-CTE could be future enhancement if there's demand.
+
+### Summary
+
+| Syntax | Status | Notes |
+|--------|--------|-------|
+| `from a &? b on ...` | ✅ Supported | Preferred way |
+| `from a \| &? b on ...` | ❌ Not supported | `&` operators only in FROM |
+| `from a \| where x \| JOIN b on ...` | ❌ Not supported | Use `stash as` instead |
+| `from a JOIN b on ...` | ✅ Pass-through | Standard SQL syntax works |
+
+---
+
 ## Recommendation
 
 ### ⭐ Recommended: Approach 5 (Protect SQL Regions)

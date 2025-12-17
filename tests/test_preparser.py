@@ -463,5 +463,123 @@ class TestSampleClause:
         assert "LIMIT" in result.upper()
 
 
+class TestExplode:
+    """Test explode clause transformation."""
+    
+    def test_explode_basic(self):
+        """explode col as alias creates marker for compiler."""
+        result = preparse_asql("from posts explode tags as tag")
+        assert "__ASQL_EXPLODE_START__" in result
+        assert "__ASQL_EXPLODE_SEP__" in result
+        assert "__ASQL_EXPLODE_END__" in result
+        assert "tags" in result
+        assert "tag" in result
+    
+    def test_explode_with_select(self):
+        """explode with explicit select."""
+        result = preparse_asql("from posts explode tags as tag select id, tag")
+        assert "__ASQL_EXPLODE_START__" in result
+        assert "id" in result.lower()
+    
+    def test_explode_with_function(self):
+        """explode with split function."""
+        result = preparse_asql("from posts explode split(tags_csv, ',') as tag")
+        assert "__ASQL_EXPLODE_START__" in result
+        assert "split(tags_csv, ',')" in result.lower()
+    
+    def test_explode_compiled_postgres(self):
+        """explode compiles to UNNEST for postgres."""
+        from asql.compiler import compile
+        result = compile("from posts explode tags as tag select id, tag", dialect="postgres")
+        assert "UNNEST(tags)" in result
+        assert "AS tag" in result
+    
+    def test_explode_compiled_bigquery(self):
+        """explode compiles to UNNEST for bigquery."""
+        from asql.compiler import compile
+        result = compile("from posts explode tags as tag select id, tag", dialect="bigquery")
+        assert "UNNEST(tags)" in result
+    
+    def test_explode_compiled_snowflake(self):
+        """explode compiles to FLATTEN for snowflake."""
+        from asql.compiler import compile
+        result = compile("from posts explode tags as tag select id, tag", dialect="snowflake")
+        assert "FLATTEN" in result
+        assert "tag" in result.lower()
+
+
+class TestUnpivot:
+    """Test unpivot clause transformation."""
+    
+    def test_unpivot_basic(self):
+        """unpivot cols into name, value creates UNION ALL."""
+        result = preparse_asql("from metrics unpivot jan, feb, mar into month, value")
+        assert "UNION ALL" in result.upper()
+        assert "'jan'" in result.lower()
+        assert "'feb'" in result.lower()
+        assert "'mar'" in result.lower()
+        assert "as month" in result.lower()  # lowercase comparison
+        assert "as value" in result.lower()
+    
+    def test_unpivot_two_columns(self):
+        """unpivot with two columns."""
+        result = preparse_asql("from data unpivot col_a, col_b into name, val")
+        assert "UNION ALL" in result.upper()
+        assert "'col_a'" in result.lower()
+        assert "'col_b'" in result.lower()
+    
+    def test_unpivot_creates_subquery(self):
+        """unpivot wraps result in subquery."""
+        result = preparse_asql("from metrics unpivot jan, feb into month, value")
+        assert "as __unpivot__" in result.lower()  # lowercase comparison
+        assert "SELECT * FROM" in result.upper()
+    
+    def test_unpivot_compiled(self):
+        """unpivot compiles correctly."""
+        from asql.compiler import compile
+        result = compile("from metrics unpivot jan, feb, mar into month, value", dialect="postgres")
+        assert "UNION ALL" in result.upper()
+        assert "__unpivot__" in result.lower()
+
+
+class TestPivot:
+    """Test pivot clause transformation."""
+    
+    def test_pivot_with_values(self):
+        """pivot with explicit values creates CASE expressions."""
+        result = preparse_asql("from sales pivot amount by category values ('A', 'B')")
+        assert "CASE WHEN" in result.upper()
+        assert "category = 'a'" in result.lower()  # values get lowercased
+        assert "category = 'b'" in result.lower()
+        assert "AS A" in result.upper()
+        assert "AS B" in result.upper()
+    
+    def test_pivot_aggregate(self):
+        """pivot with aggregate function."""
+        result = preparse_asql("from sales pivot sum(amount) by category values ('A', 'B')")
+        assert "SUM(CASE WHEN" in result.upper()
+        assert "amount" in result.lower()
+    
+    def test_pivot_with_group_by(self):
+        """pivot with group by clause."""
+        result = preparse_asql("from sales group by region pivot sum(amount) by category values ('X', 'Y')")
+        assert "GROUP BY" in result.upper()
+        assert "CASE WHEN" in result.upper()
+    
+    def test_pivot_without_values_raises(self):
+        """pivot without values raises helpful error."""
+        import pytest
+        with pytest.raises(ValueError, match="pivot requires explicit values"):
+            preparse_asql("from sales pivot amount by category")
+    
+    def test_pivot_compiled(self):
+        """pivot compiles correctly."""
+        from asql.compiler import compile
+        result = compile("from sales pivot sum(amount) by category values ('A', 'B')", dialect="postgres")
+        assert "SUM(CASE WHEN" in result.upper()
+        assert "AS A" in result.upper()
+        assert "AS B" in result.upper()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

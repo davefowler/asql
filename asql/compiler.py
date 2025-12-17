@@ -1069,6 +1069,43 @@ def extract_inline_settings(
     return settings, dialect_override, queries
 
 
+def _process_explode_markers(preparsed: str, dialect: Optional[str]) -> str:
+    """
+    Process __ASQL_EXPLODE__ markers and replace with dialect-specific SQL.
+    
+    The preparser marks explode clauses as:
+    __ASQL_EXPLODE_START__array_col__ASQL_EXPLODE_SEP__alias__ASQL_EXPLODE_END__
+    
+    This function replaces them with appropriate UNNEST/FLATTEN syntax.
+    """
+    result = preparsed
+    dialect_lower = (dialect or '').lower()
+    
+    # Pattern to find explode markers
+    pattern = r'__ASQL_EXPLODE_START__(.+?)__ASQL_EXPLODE_SEP__(.+?)__ASQL_EXPLODE_END__'
+    
+    def replace_explode(match: re.Match) -> str:
+        array_expr = match.group(1)
+        alias = match.group(2)
+        
+        if dialect_lower == 'snowflake':
+            # Snowflake: use FLATTEN with subquery to expose value as alias
+            # This allows the alias to be used directly in the query
+            return f" CROSS JOIN (SELECT value AS {alias} FROM TABLE(FLATTEN(INPUT => {array_expr}))) AS _{alias}_exploded"
+        elif dialect_lower == 'bigquery':
+            # BigQuery: simple UNNEST with alias (element becomes the alias directly)
+            return f", UNNEST({array_expr}) AS {alias}"
+        elif dialect_lower in ('postgres', 'postgresql', 'redshift', 'duckdb'):
+            # Postgres-like: UNNEST with alias
+            return f", UNNEST({array_expr}) AS {alias}"
+        else:
+            # Default: standard UNNEST syntax
+            return f", UNNEST({array_expr}) AS {alias}"
+    
+    result = re.sub(pattern, replace_explode, result)
+    return result
+
+
 def _extract_dialect_from_comment(asql_query: str) -> Optional[str]:
     """
     Extract dialect from comment directive in ASQL query.
@@ -1153,6 +1190,9 @@ def compile(
         
         # Pre-parse the entire query first (handles CTEs, FROM-first, etc.)
         preparsed = preparse_asql(asql_query)
+        
+        # Process explode markers with dialect-specific SQL
+        preparsed = _process_explode_markers(preparsed, dialect)
         
         # Parse with SQLGlot to get statement list
         try:
