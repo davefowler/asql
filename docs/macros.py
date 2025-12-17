@@ -10,7 +10,12 @@ import json
 import base64
 import html
 import hashlib
+import warnings
+import logging
 from typing import Dict
+
+# Suppress SQLGlot warnings during compilation (they're noisy for unsupported features)
+logging.getLogger('sqlglot').setLevel(logging.ERROR)
 
 
 # Top 4 dialects (most commonly used, shown as tabs)
@@ -54,13 +59,23 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
     
     Returns a dict mapping dialect -> SQL string.
     """
+    import sys
+    import io
     from asql import compile
     
     results = {"asql": asql_query}
     
     for dialect in ALL_DIALECTS:
         try:
-            sql = compile(asql_query, dialect=dialect)
+            # Suppress all output during compilation (SQLGlot prints warnings to stdout/stderr)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                old_stdout, old_stderr = sys.stdout, sys.stderr
+                sys.stdout = sys.stderr = io.StringIO()
+                try:
+                    sql = compile(asql_query, dialect=dialect)
+                finally:
+                    sys.stdout, sys.stderr = old_stdout, old_stderr
             results[dialect] = sql
         except Exception as e:
             # If compilation fails, store error message
