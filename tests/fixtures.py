@@ -1,5 +1,9 @@
 """Test fixtures and example datasets for ASQL tests."""
 
+import sqlglot
+from sqlglot import exp
+from typing import Optional
+
 # Example table schemas and sample data descriptions
 # These are used for testing query generation and validation
 
@@ -111,3 +115,82 @@ EDGE_CASES = [
     # Function calls in ORDER BY
     "from users order by -month(updated_at), year(created_at), name",
 ]
+
+
+def assert_valid_sql(sql: str, dialect: Optional[str] = None) -> None:
+    """
+    Assert that SQL can be parsed by SQLGlot.
+    
+    Args:
+        sql: SQL string to validate
+        dialect: Optional SQL dialect (defaults to None for auto-detection)
+    
+    Raises:
+        AssertionError: If SQL cannot be parsed
+    """
+    try:
+        parsed = sqlglot.parse_one(sql, dialect=dialect)
+        assert parsed is not None, f"SQLGlot returned None for SQL: {sql}"
+        assert hasattr(parsed, 'sql'), "Parsed result doesn't have sql() method"
+    except sqlglot.errors.ParseError as e:
+        raise AssertionError(f"SQLGlot couldn't parse generated SQL: {e}\nSQL: {sql}") from e
+
+
+def assert_sql_contains(sql: str, *substrings: str, case_sensitive: bool = False) -> None:
+    """
+    Assert that SQL contains all specified substrings.
+    
+    Args:
+        sql: SQL string to check
+        *substrings: Substrings that must be present
+        case_sensitive: Whether to do case-sensitive matching
+    
+    Raises:
+        AssertionError: If any substring is not found
+    """
+    check_sql = sql if case_sensitive else sql.lower()
+    for substring in substrings:
+        check_substring = substring if case_sensitive else substring.lower()
+        assert check_substring in check_sql, (
+            f"Expected substring '{substring}' not found in SQL:\n{sql}"
+        )
+
+
+def assert_sql_structure(sql: str, **kwargs: str) -> None:
+    """
+    Assert that SQL has correct structural elements in order.
+    
+    Args:
+        sql: SQL string to check
+        **kwargs: Keyword arguments mapping element names to their expected order
+                   e.g., FROM=0, WHERE=1, GROUP_BY=2 means FROM comes before WHERE, etc.
+    
+    Raises:
+        AssertionError: If structure is incorrect
+    """
+    sql_upper = sql.upper()
+    positions = {}
+    for element, _ in kwargs.items():
+        pos = sql_upper.find(element.replace('_', ' '))
+        if pos == -1:
+            raise AssertionError(f"Element '{element}' not found in SQL:\n{sql}")
+        positions[element] = pos
+    
+    # Check ordering
+    sorted_elements = sorted(positions.items(), key=lambda x: x[1])
+    expected_order = list(kwargs.keys())
+    actual_order = [elem for elem, _ in sorted_elements]
+    
+    # Verify order matches (allowing for elements that can be in any order)
+    for i, expected in enumerate(expected_order):
+        if expected in actual_order:
+            expected_pos = actual_order.index(expected)
+            # Check that elements that should come before this one do
+            for j in range(i):
+                if expected_order[j] in actual_order:
+                    prev_pos = actual_order.index(expected_order[j])
+                    if prev_pos > expected_pos:
+                        raise AssertionError(
+                            f"Element '{expected_order[j]}' should come before '{expected}' "
+                            f"in SQL:\n{sql}"
+                        )
