@@ -70,7 +70,9 @@ class TestWhenExpressions:
   as is_not_deleted'''
         sql = compile(asql)
         
-        assert_sql_contains(sql, "CASE", "WHEN", "status", "!=", "deleted", "THEN", "1")
+        # sqlglot may render != as <> depending on dialect/normalization
+        assert_sql_contains(sql, "CASE", "WHEN", "status", "deleted", "THEN", "1")
+        assert ("!=" in sql) or ("<>" in sql), f"Expected != or <>, got: {sql}"
         assert_sql_contains(sql, "ELSE", "0")
         assert_valid_sql(sql)
     

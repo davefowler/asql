@@ -1751,7 +1751,20 @@ This is the inverse of `array_agg()` / `array agg`.
 
 ### 13.6 Surrogate Keys
 
-**Not implemented yet**: `key(...)` / surrogate key helpers are not currently supported (see `docs/spec_future.md`).
+ASQL provides `key(col1, col2, ...)` to generate deterministic surrogate keys (inspired by dbt_utils).
+
+```asql
+from orders
+  select key(user_id, order_id) as order_key
+```
+
+**Semantics**:
+- Deterministic hashing with delimiter injection between values
+- Consistent NULL handling (NULLs become empty strings before hashing)
+- Type normalization (values are cast to strings before concatenation)
+
+**Compiles to** (conceptually):
+`MD5(CONCAT(COALESCE(CAST(col1 AS VARCHAR), ''), '||', COALESCE(CAST(col2 AS VARCHAR), ''), ...))`
 
 ### 13.7 Operator Quick Reference
 
@@ -2193,9 +2206,8 @@ from opportunities
 ```asql
 from sessions
   group by week(start_time) (
-    # of distinct user_id as active_users
+    #(distinct user_id) as active_users
   )
-  select week, active_users
 ```
 
 ### Example 4: Natural Language Aggregates

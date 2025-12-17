@@ -22,70 +22,50 @@ class WindowMixin:
         
         This is syntax sugar for the per ... first by pattern.
         """
-        result = text
-        
-        # Find all deduplicate by clauses
-        # Match: deduplicate by <cols> [order by <order_cols>]
-        # Allow order by to be on same line or next line
-        # Pattern matches partition cols (can have commas/spaces) and optional inline order by
-        deduplicate_pattern = r'\bdeduplicate\s+by\s+([a-zA-Z_][a-zA-Z0-9_,\s]*?)(?:\s+order\s+by\s+(-?[a-zA-Z_][a-zA-Z0-9_,\s-]*(?:\s*,\s*-?[a-zA-Z_][a-zA-Z0-9_,\s-]*)*))?(?=\s|$|\n)'
-        
-        # Process matches in reverse order to preserve positions
-        matches = list(re.finditer(deduplicate_pattern, result, re.IGNORECASE | re.MULTILINE))
-        matches.reverse()
-        
-        for match in matches:
-            partition_cols = match.group(1).strip()
-            order_by_inline = match.group(2)
-            
-            if order_by_inline:
-                # Order by is inline - simple replacement
-                order_cols = order_by_inline.strip()
-                replacement = f"per {partition_cols} first by {order_cols}"
-                result = result[:match.start()] + replacement + result[match.end():]
+        # Use a line-oriented transform (much less brittle than complex regexes).
+        lines = text.splitlines(keepends=True)
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            match = re.match(r"^(\s*)deduplicate\s+by\s+(.+?)\s*$", line, re.IGNORECASE)
+            if not match:
+                i += 1
+                continue
+
+            indent = match.group(1)
+            rest = match.group(2).strip()
+
+            partition_cols: str
+            order_cols: Optional[str] = None
+
+            # Inline: "deduplicate by <cols> order by <order>"
+            split = re.split(r"\border\s+by\b", rest, maxsplit=1, flags=re.IGNORECASE)
+            if len(split) == 2:
+                partition_cols = split[0].strip().rstrip(",")
+                order_cols = split[1].strip()
             else:
-                # Look ahead for order by clause (may be on next line)
-                remaining = result[match.end():]
-                # Find order by that appears before other major clauses
-                # Stop at: limit, where, group by, select, having, union, etc.
-                order_match = re.search(
-                    r'\border\s+by\s+(-?[a-zA-Z_][a-zA-Z0-9_,\s-]*(?:\s*,\s*-?[a-zA-Z_][a-zA-Z0-9_,\s-]*)*)',
-                    remaining,
-                    re.IGNORECASE | re.MULTILINE
+                partition_cols = rest.rstrip(",")
+                # Next-line order by
+                j = i + 1
+                while j < len(lines) and lines[j].strip() == "":
+                    j += 1
+                if j < len(lines):
+                    order_match = re.match(r"^\s*order\s+by\s+(.+?)\s*$", lines[j], re.IGNORECASE)
+                    if order_match:
+                        order_cols = order_match.group(1).strip()
+                        lines[j] = ""  # remove the order by line
+
+            if not order_cols:
+                raise ASQLSyntaxError(
+                    "deduplicate by requires an order by clause. "
+                    f"Use: deduplicate by {partition_cols} order by <column>"
                 )
-                
-                if order_match:
-                    order_cols = order_match.group(1).strip()
-                    # Replace deduplicate by with per ... first by
-                    replacement = f"per {partition_cols} first by {order_cols}"
-                    result = result[:match.start()] + replacement + result[match.end():]
-                    
-                    # Remove the order by clause
-                    # Find it again in the modified string
-                    search_start = match.start() + len(replacement)
-                    remaining_after = result[search_start:]
-                    order_match_after = re.search(
-                        r'\border\s+by\s+(-?[a-zA-Z_][a-zA-Z0-9_,\s-]*(?:\s*,\s*-?[a-zA-Z_][a-zA-Z0-9_,\s-]*)*)',
-                        remaining_after,
-                        re.IGNORECASE | re.MULTILINE
-                    )
-                    if order_match_after:
-                        order_start = search_start + order_match_after.start()
-                        order_end = search_start + order_match_after.end()
-                        # Remove order by and any leading whitespace/newlines
-                        before_order = result[:order_start]
-                        # Find start of line containing order by
-                        line_start = max(before_order.rfind('\n'), before_order.rfind('\r')) + 1
-                        # Remove from line start to end of order by
-                        result = result[:line_start] + result[order_end:].lstrip()
-                else:
-                    # No order by found - raise error
-                    raise ASQLSyntaxError(
-                        f"deduplicate by requires an order by clause. "
-                        f"Use: deduplicate by {partition_cols} order by <column>"
-                    )
-        
-        return result
+
+            lines[i] = f"{indent}per {partition_cols} first by {order_cols}\n"
+            i += 1
+
+        return "".join(lines)
 
     def _transform_per_commands(self, text: str) -> str:
         """
