@@ -2,7 +2,7 @@
 
 **Version:** 0.1  
 **Status:** Draft  
-**Last Updated:** November 16, 2025
+**Last Updated:** December 2025
 
 ---
 
