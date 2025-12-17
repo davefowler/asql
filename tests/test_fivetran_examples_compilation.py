@@ -4,7 +4,7 @@ This test file is auto-generated. Run scripts/generate_fivetran_tests.py to rege
 """
 
 import pytest
-from playground import strip_jinja_templates
+from playground import strip_jinja_templates  # exported from playground package
 from asql.reverse_compiler import reverse_compile
 from asql.errors import ASQLCompilationError
 from pathlib import Path
