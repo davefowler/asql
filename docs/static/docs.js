@@ -175,9 +175,10 @@ function showMoreDialects(blockId) {
         const btn = document.createElement('button');
         btn.textContent = getDialectName(dialect);
         btn.onclick = () => {
+            // Reorder tabs to include this dialect as visible and active
+            reorderTabs(blockId, dialect);
+            // Show the dialect content
             showDialect(blockId, dialect);
-            // Reorder tabs based on new view count
-            reorderTabs(blockId);
         };
         menu.appendChild(btn);
     });
@@ -233,10 +234,9 @@ function getDialectName(dialect) {
 }
 
 // Reorder tabs after a dialect is viewed (called from showDialect)
-function reorderTabs(blockId) {
-    // Just reorder on load, don't dynamically reorder during session
-    // This prevents confusion from tabs moving around
-    reorderTabsOnLoad(blockId);
+function reorderTabs(blockId, activeDialect = null) {
+    // Rebuild tabs with the active dialect visible
+    reorderTabsOnLoad(blockId, activeDialect);
 }
 
 // Add WIP warning banner
@@ -453,9 +453,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Start initialization
     initHighlighting();
     
-    // Setup accordion navigation - only expand active section
-    setupAccordionNavigation();
-    
     // Close more dialects menu when clicking outside
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.more-tab') && !e.target.closest('.more-dialects-menu')) {
@@ -572,7 +569,7 @@ function setupAccordionNavigation() {
 }
 
 // Reorder tabs on page load based on view counts
-function reorderTabsOnLoad(blockId) {
+function reorderTabsOnLoad(blockId, forceActiveDialect = null) {
     const block = document.querySelector(`[data-block-id="${blockId}"]`);
     if (!block) return;
     
@@ -581,10 +578,10 @@ function reorderTabsOnLoad(blockId) {
     
     const { dialects } = initDialectTracking();
     const topDialects = ['postgres', 'snowflake', 'bigquery', 'databricks'];
-    const topDialectsAvailable = topDialects.filter(d => d in compiled);
+    let topDialectsAvailable = topDialects.filter(d => d in compiled);
     
     // Sort top dialects by view count
-    const sortedTopDialects = topDialectsAvailable.sort((a, b) => {
+    topDialectsAvailable = topDialectsAvailable.sort((a, b) => {
         const countA = dialects[a] || 0;
         const countB = dialects[b] || 0;
         if (countB !== countA) {
@@ -598,9 +595,19 @@ function reorderTabsOnLoad(blockId) {
     if (!tabsContainer) return;
     
     // Get current active dialect before rebuilding
-    // Always default to asql
     const activeTab = tabsContainer.querySelector('.tab-btn.active');
-    const activeDialect = activeTab ? activeTab.getAttribute('data-dialect') : 'asql';
+    let activeDialect = forceActiveDialect || (activeTab ? activeTab.getAttribute('data-dialect') : 'asql');
+    
+    // If active dialect is not in top dialects (and not asql), add it to the visible tabs
+    const dialectsToShow = [...topDialectsAvailable];
+    if (activeDialect !== 'asql' && !topDialects.includes(activeDialect) && activeDialect in compiled) {
+        // Add the active dialect to the beginning of visible dialects
+        dialectsToShow.unshift(activeDialect);
+        // Limit to 4 visible SQL dialects (plus ASQL)
+        if (dialectsToShow.length > 4) {
+            dialectsToShow.pop();
+        }
+    }
     
     // Clear and rebuild
     tabsContainer.innerHTML = '';
@@ -616,8 +623,8 @@ function reorderTabsOnLoad(blockId) {
     }
     tabsContainer.appendChild(asqlTab);
     
-    // Add sorted top dialects
-    sortedTopDialects.forEach(dialect => {
+    // Add visible dialects
+    dialectsToShow.forEach(dialect => {
         const tab = document.createElement('button');
         tab.className = 'tab-btn';
         tab.setAttribute('data-dialect', dialect);
@@ -629,10 +636,9 @@ function reorderTabsOnLoad(blockId) {
         tabsContainer.appendChild(tab);
     });
     
-    // Add more tab if there are other dialects
-    const otherDialects = Object.keys(compiled).filter(
-        d => d !== 'asql' && !topDialects.includes(d)
-    );
+    // Add more tab if there are other dialects not shown
+    const shownDialects = new Set(['asql', ...dialectsToShow]);
+    const otherDialects = Object.keys(compiled).filter(d => !shownDialects.has(d));
     if (otherDialects.length > 0) {
         const newMoreTab = document.createElement('button');
         newMoreTab.className = 'tab-btn more-tab';

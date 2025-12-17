@@ -551,13 +551,24 @@
     border: 1px solid rgba(0, 0, 0, 0.15);
     border-radius: 6px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 100;
+    z-index: 1000;
     min-width: 150px;
     padding: 4px 0;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .more-dialects-menu.show {
     display: block;
+}
+
+/* Ensure parent containers don't clip the menu */
+.asql-code-block {
+    overflow: visible !important;
+}
+
+.dialect-tabs {
+    overflow: visible !important;
 }
 
 [data-md-color-scheme="slate"] .more-dialects-menu {
@@ -596,7 +607,7 @@
 .play-button {
     position: absolute;
     top: 8px;
-    right: 8px;
+    right: 42px;  /* Position left of the copy button */
     display: flex;
     align-items: center;
     justify-content: center;
