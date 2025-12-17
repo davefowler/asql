@@ -67,22 +67,11 @@ from users where phone matches "555-___-____"
 
 ---
 
-## 2. Dynamic Pivot
+## 2. Dynamic Pivot ✅ Implemented
 
-**Title**: Support dynamic pivot values from subquery
+**Status**: ✅ Implemented - See `docs/spec.md` section 13.3 and `docs/syntax/pivot-unpivot.md` for documentation.
 
-**Labels**: `enhancement`, `medium-priority`
-
-**Description**:
-
-Currently, pivot requires explicit values at compile time:
-
-```asql
-from sales
-  pivot sum(amount) by category values ('Electronics', 'Clothing', 'Food')
-```
-
-Support getting values dynamically from a subquery:
+Dynamic pivot is now supported using subqueries in the values clause:
 
 ```asql
 from sales
@@ -91,21 +80,7 @@ from sales
   )
 ```
 
-**What it is**: Dynamic pivot allows the pivot column values to come from a subquery instead of being hardcoded. This is useful when you don't know all possible values at compile time.
-
-**Implementation Difficulty**: Medium - requires either:
-- Two-pass compilation (first pass to get values, second to generate CASE expressions)
-- Dynamic SQL generation (warehouse-specific)
-- Runtime evaluation (not possible in pure SQL)
-
-**Current Status**: Static pivot is implemented. Dynamic pivot is not.
-
-**Workaround**: Use raw SQL or warehouse-specific PIVOT syntax (e.g., Snowflake's `PIVOT` operator).
-
-**Related**:
-- `docs/spec_future.md` - Dynamic Pivot section
-- `docs/unimplemented_features.md` - Tracking document
-- `asql/preparser.py` - Current pivot implementation
+The subquery is compiled to a CTE and used to generate pivot expressions.
 
 ---
 

@@ -1817,7 +1817,11 @@ SELECT * FROM ranked WHERE rn = 1
 
 #### `pivot` - Rows to Columns
 
-Transform row values into columns. Requires explicit values at compile time:
+Transform row values into columns. Supports both static values (known at compile time) and dynamic values (from subquery).
+
+**Static Pivot (Explicit Values)**
+
+When you know the pivot values at compile time, specify them explicitly:
 
 ```asql
 # Pivot with explicit values
@@ -1829,6 +1833,27 @@ from sales
   pivot amount by category values ('A', 'B', 'C')
 ```
 
+**Dynamic Pivot (Values from Subquery)**
+
+When pivot values are unknown at compile time, use a subquery to get them dynamically:
+
+```asql
+# Get pivot values from a subquery
+from sales
+  pivot sum(amount) by category values (
+    from sales select distinct category
+  )
+
+# With filtering in the subquery
+from orders
+  pivot sum(total) by status values (
+    from orders 
+    where order_date >= '2024-01-01'
+    select distinct status
+  )
+  group by customer_id
+```
+
 **Example use case - denormalizing custom fields:**
 
 ```asql
@@ -1837,8 +1862,16 @@ from sales
 # | PROJ-123 | priority     | High        |
 # | PROJ-123 | sprint       | Sprint 5    |
 
+# Static pivot (known fields)
 from issue_custom_fields
   pivot field_value by field_name values ('priority', 'sprint')
+  group by issue_id
+
+# Dynamic pivot (unknown fields)
+from issue_custom_fields
+  pivot field_value by field_name values (
+    from issue_custom_fields select distinct field_name
+  )
   group by issue_id
 
 # Result:
@@ -1846,9 +1879,7 @@ from issue_custom_fields
 # | PROJ-123 | High     | Sprint 5 |
 ```
 
-**Compiles to**: `CASE WHEN` expressions with aggregation, which works across all dialects.
-
-**Note**: Dynamic pivot (values from subquery) is not yet supported. See `spec_future.md` for details. Use raw SQL for dynamic cases.
+**Compiles to**: `CASE WHEN` expressions with aggregation. For dynamic pivot, the subquery is compiled to a CTE and used to generate pivot expressions, which works across all dialects.
 
 #### `unpivot` - Columns to Rows
 

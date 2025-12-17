@@ -104,8 +104,10 @@ class PivotMixin:
         For static pivots (known values), this generates CASE expressions that work
         across all SQL dialects.
         
-        For dynamic pivots (unknown values at compile time), users should use
-        raw SQL or the sql() escape hatch.
+        Note: Dynamic pivot (values from subquery) is not supported in pure SQL
+        compilation, as it requires knowing all pivot values at compile time to generate
+        individual CASE expressions. For dynamic pivoting, use warehouse-specific PIVOT
+        operators (e.g., Snowflake's PIVOT) or raw SQL.
         """
         result = text
         
