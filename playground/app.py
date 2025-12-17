@@ -35,6 +35,10 @@ STATIC_DIR = Path(__file__).parent.parent / "static"
 SYNTAX_DIR = Path(__file__).parent.parent / "syntax"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
+# Mount syntax files first (more specific path)
+if SYNTAX_DIR.exists():
+    app.mount("/static/syntax", StaticFiles(directory=str(SYNTAX_DIR)), name="syntax")
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -69,15 +73,6 @@ async def index() -> HTMLResponse:
     if template_path.exists():
         return HTMLResponse(content=template_path.read_text())
     return HTMLResponse(content="<h1>Template not found</h1>", status_code=500)
-
-
-@app.get("/static/syntax/{filename:path}")
-async def serve_syntax(filename: str) -> FileResponse:
-    """Serve syntax highlighter files."""
-    file_path = SYNTAX_DIR / filename
-    if file_path.exists():
-        return FileResponse(file_path)
-    return FileResponse(file_path, status_code=404)
 
 
 @app.post("/api/compile")

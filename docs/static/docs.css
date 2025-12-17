@@ -76,20 +76,6 @@
 }
 
 /* Table of contents - right sidebar */
-/* Hide TOC on screens below 1220px for cleaner layout */
-@media (max-width: 1219px) {
-    .md-sidebar--secondary {
-        display: none;
-    }
-}
-
-/* Show TOC only on wide screens */
-@media (min-width: 1220px) {
-    .md-sidebar--secondary {
-        width: 12rem;
-    }
-}
-
 [data-md-color-scheme="default"] .md-sidebar--secondary .md-nav__link {
     color: #333 !important;
 }
@@ -140,92 +126,47 @@
     padding-left: calc(1rem - 3px);
 }
 
-/* Left navigation sidebar - show on all but mobile screens */
-@media screen and (min-width: 768px) {
-    /* Force sidebar to be visible */
-    .md-sidebar--primary {
-        display: block !important;
-        position: sticky !important;
-        top: 0;
-        width: 12rem;
-        height: 100vh;
-        overflow-y: auto;
-    }
-    
-    .md-sidebar--primary .md-sidebar__scrollwrap {
-        display: block !important;
-        overflow: visible;
-    }
-    
-    .md-sidebar--primary .md-nav--primary {
-        display: block !important;
-    }
-    
-    /* Hide the hamburger menu toggle on wider screens */
-    .md-header__button[for="__drawer"] {
-        display: none !important;
-    }
-    
-    /* Ensure main content doesn't overlap sidebar */
-    .md-main__inner {
-        margin-left: 12rem;
-    }
+/* Sidebar padding - give content more room */
+.md-sidebar {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
 }
 
-/* Wider sidebar on larger screens */
-@media screen and (min-width: 1024px) {
-    .md-sidebar--primary {
-        width: 14rem;
-    }
-    
-    .md-main__inner {
-        margin-left: 14rem;
-    }
+.md-sidebar--secondary {
+    padding-left: 0.8rem;
+    padding-right: 0.8rem;
 }
 
-/* Section labels in left nav */
-.md-nav--primary > .md-nav__list > .md-nav__item > .md-nav__link {
+/* Increase content max-width for more space */
+.md-content {
+    --md-content-max-width: 75rem;
+}
+
+.md-content__inner {
+    max-width: 100%;
+}
+
+/* Ensure active navigation items are clearly highlighted */
+.md-nav__link--active {
+    color: var(--asql-red) !important;
     font-weight: 600;
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #666;
-    padding: 0.6rem 0.8rem 0.3rem;
 }
 
-/* Child items in left nav */
-.md-nav--primary .md-nav__item .md-nav__item > .md-nav__link {
-    font-size: 0.85rem;
-    padding: 0.35rem 0.8rem;
+.md-nav__item--active > .md-nav__link {
+    color: var(--asql-red) !important;
+    font-weight: 600;
 }
 
-/* Nav link styling */
-.md-nav__link {
-    border-radius: 4px;
-    transition: all 0.15s;
+/* Ensure parent sections of active items are visible and expanded */
+.md-nav__item--active .md-nav {
+    display: block;
 }
 
-.md-nav__link:hover {
-    background-color: rgba(197, 48, 48, 0.05);
+/* Make sure top-level sections are always visible */
+.md-nav--primary .md-nav__item {
+    display: block;
 }
 
-/* Wider content area for better readability */
-@media (min-width: 76.25em) {
-    .md-content {
-        max-width: 50rem;
-    }
-}
-
-/* Better spacing for wide screens */
-@media (min-width: 89.9375em) {
-    .md-sidebar--primary {
-        width: 15rem;
-    }
-    
-    .md-content {
-        max-width: 55rem;
-    }
-}
 
 /* Code blocks - light mode */
 [data-md-color-scheme="default"] .md-typeset pre > code,

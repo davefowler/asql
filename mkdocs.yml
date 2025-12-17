@@ -19,14 +19,10 @@ theme:
     primary: custom
     accent: custom
   features:
-    - navigation.tabs           # Top-level sections as horizontal tabs
-    - navigation.tabs.sticky    # Tabs stay visible when scrolling
-    - navigation.sections       # Render section headers in sidebar
-    - navigation.indexes        # Section index pages become clickable headers
+    - navigation.sections       # Render sections in sidebar
     - navigation.top            # Back-to-top button
-    - navigation.instant        # Faster page loads (SPA-like)
+    - navigation.instant        # Faster page loads
     - navigation.tracking       # URL updates as you scroll
-    - toc.follow                # TOC follows scroll position
     - search.suggest
     - search.highlight
     - content.code.annotate
