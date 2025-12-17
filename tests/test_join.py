@@ -1,7 +1,11 @@
 """Tests for JOIN functionality in ASQL."""
 
 import pytest
+import sqlglot
+from sqlglot import exp
 from asql import compile
+from asql.errors import ASQLSyntaxError
+from tests.fixtures import assert_valid_sql, assert_sql_contains
 
 
 class TestJoinOperators:
@@ -11,18 +15,31 @@ class TestJoinOperators:
         """Test & operator for INNER JOIN."""
         asql = "from users & orders on users.id = orders.user_id"
         sql = compile(asql)
-        assert "JOIN" in sql.upper()
-        assert "users" in sql.lower()
-        assert "orders" in sql.lower()
-        assert "ON" in sql.upper()
+        
+        assert_sql_contains(sql, "JOIN", "users", "orders", "ON")
+        assert_valid_sql(sql)
+        
+        # Verify JOIN structure
+        parsed = sqlglot.parse_one(sql)
+        join = parsed.find(exp.Join)
+        assert join is not None, "JOIN expression not found"
+        assert join.kind == "INNER" or join.kind is None, "Expected INNER JOIN"
+        # Verify ON condition
+        assert join.args.get("on") is not None, "ON condition not found in JOIN"
     
     def test_left_join_operator(self) -> None:
         """Test &? operator for LEFT JOIN."""
         asql = "from users &? orders on users.id = orders.user_id"
         sql = compile(asql)
-        assert "LEFT JOIN" in sql.upper()
-        assert "users" in sql.lower()
-        assert "orders" in sql.lower()
+        
+        assert_sql_contains(sql, "LEFT JOIN", "users", "orders")
+        assert_valid_sql(sql)
+        
+        # Verify LEFT JOIN structure
+        parsed = sqlglot.parse_one(sql)
+        join = parsed.find(exp.Join)
+        assert join is not None, "JOIN expression not found"
+        assert join.kind.upper() == "LEFT", f"Expected LEFT JOIN, got {join.kind}"
     
     def test_right_join_operator(self) -> None:
         """Test ?& operator for RIGHT JOIN."""
@@ -88,9 +105,16 @@ class TestChainedJoins:
             & customers on orders.customer_id = customers.id 
             & order_items on orders.id = order_items.order_id"""
         sql = compile(asql)
-        assert sql.upper().count("JOIN") >= 2
-        assert "customers" in sql.lower()
-        assert "order_items" in sql.lower()
+        
+        join_count = sql.upper().count("JOIN")
+        assert join_count >= 2, f"Expected at least 2 JOINs, got {join_count}"
+        assert_sql_contains(sql, "customers", "order_items", "orders")
+        assert_valid_sql(sql)
+        
+        # Verify multiple JOINs in structure
+        parsed = sqlglot.parse_one(sql)
+        joins = parsed.find_all(exp.Join)
+        assert len(joins) >= 2, f"Expected at least 2 JOIN expressions, got {len(joins)}"
     
     def test_mixed_join_types(self) -> None:
         """Test mixing INNER and LEFT joins."""
@@ -209,12 +233,18 @@ class TestJoinEdgeCases:
     def test_join_without_on(self) -> None:
         """Test that JOIN without ON is treated as cross/comma join."""
         sql = compile("from users & orders")
+        
+        assert_sql_contains(sql, "FROM", "users", "orders")
+        assert_valid_sql(sql)
+        
         # SQLGlot converts this to a cross/comma join
-        assert "FROM" in sql.upper()
+        parsed = sqlglot.parse_one(sql)
+        # Should have both tables in FROM
+        from_clause = parsed.find(exp.From)
+        assert from_clause is not None, "FROM clause not found"
     
     def test_join_without_table(self) -> None:
         """Test that JOIN without table name raises error."""
-        from asql.errors import ASQLSyntaxError
         with pytest.raises(ASQLSyntaxError):
             compile("from users &? on users.id = orders.user_id")
     
