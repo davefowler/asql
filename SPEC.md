@@ -385,35 +385,36 @@ from sales
 
 ### 5.2 Count Aggregation (`#`)
 
-The `#` symbol is a shortcut for `count(*)`. Multiple syntaxes are supported:
+The `#` symbol is a shortcut for counting. When followed by a table name, it infers the primary key and performs a distinct count.
 
 ```asql
 # Basic count syntaxes
-#                    -- count(*)
-#(Users)             -- count(*) from Users
-# of Users           -- count(*) from Users (natural language)
-Users.#              -- count(*) from Users
-Total # of Users     -- count(*) from Users (with label)
+#                    -- COUNT(*)
+# *                  -- COUNT(*) (explicit row count)
+#(col)               -- COUNT(col)
+#(distinct col)      -- COUNT(DISTINCT col)
+
+# Table name → distinct count with inferred primary key
+# users              -- COUNT(DISTINCT user_id)
+# of users           -- COUNT(DISTINCT user_id)
+# orders             -- COUNT(DISTINCT order_id)
 
 # In select statements
 from Users
   select #, birthday
-  -- Returns: count(*) as #, birthday
-
-# Count with conditions
-#(Users.birthday)    -- count(Users.birthday)
-# of Users.birthday  -- count(Users.birthday)
+  -- Returns: COUNT(*) as #, birthday
 ```
 
-**Syntax flexibility**: The `of` keyword is treated as filler and ignored. These are all equivalent:
-- `# id` → `count(id)`
-- `#(id)` → `count(id)`
-- `# of id` → `count(id)`
+**Primary key inference**: When a table name follows `#`, ASQL infers the primary key using the convention `{singular_table_name}_id`:
+- `# users` → `COUNT(DISTINCT user_id)` (users → user_id)
+- `# orders` → `COUNT(DISTINCT order_id)` (orders → order_id)
+- `# activity` → `COUNT(DISTINCT activity_id)` (already singular)
 
-**Table name substitution**: When a table name is used instead of a column name, it's replaced with `*`:
-- `# Users` → `count(*)`
-- `#(Users)` → `count(*)`
-- `# of Users` → `count(*)`
+**Explicit column syntax** for when you don't want inference:
+- `#(col)` → `COUNT(col)`
+- `#(distinct col)` → `COUNT(DISTINCT col)`
+
+**Explicit row count**: Use `# *` when you want `COUNT(*)` explicitly (not distinct count).
 
 ### 5.3 Sum & Total Aggregation
 
