@@ -53,32 +53,6 @@ from users where phone matches "555-___-____"
 
 ---
 
-## Dynamic Pivot
-
-**Status**: Not Implemented (Not Feasible)
-
-**Current limitation**: Pivot requires explicit values at compile time:
-
-```asql
-from sales
-  pivot sum(amount) by category values ('Electronics', 'Clothing', 'Food')
-```
-
-**Why not implemented**: Dynamic pivot (values from subquery) is fundamentally incompatible with pure SQL compilation. To generate individual `CASE` expressions for each pivot value, the compiler would need to:
-1. Execute the subquery at compile time (requires database connection)
-2. Know all pivot values to generate individual columns
-
-Pure SQL compilation generates SQL without executing queries, so this approach is not feasible.
-
-**Recommended alternatives**:
-- Use static pivot with explicit values (works for known value sets)
-- Use warehouse-specific PIVOT operators (Snowflake, SQL Server support dynamic pivoting)
-- Use raw SQL with dynamic SQL generation
-- Perform pivoting at the application layer
-
-**Workaround**: Use raw SQL or warehouse-specific PIVOT syntax (e.g., Snowflake's `PIVOT` operator).
-
----
 
 ## Ternary-Style Conditionals (Future Consideration)
 

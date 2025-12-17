@@ -125,10 +125,9 @@ These features are documented in `SPEC.md` but not yet implemented:
 
 ### ~~Pivot/Unpivot (Section 13.3)~~ ✅ Implemented!
 - ✅ `pivot sum(amount) by category values ('A', 'B', 'C')` - static pivot with explicit values
+- ✅ `pivot sum(amount) by category values (from sales select distinct category)` - dynamic pivot with subquery
 - ✅ `unpivot jan, feb, mar into month, value` - columns to rows
 - ✅ `explode tags as tag` - array to rows (not in spec yet, but implemented)
-
-**Note**: Pivot requires explicit values at compile time. For dynamic pivots, use raw SQL.
 
 ### Safe Cast (Section 13.7)
 - `value::integer?` - returns NULL on cast failure
