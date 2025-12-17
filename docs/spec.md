@@ -2046,15 +2046,29 @@ from union(users_2022, users_2023, fill_missing = null)
 Generate consistent surrogate keys:
 
 ```asql
-select key(user_id, order_id) as order_key
+from orders
+  select key(user_id, order_id) as order_key
 ```
 
 **Semantics**:
-- Stable hashing algorithm across runs
-- Consistent NULL handling (NULLs hash consistently)
-- Type normalization before hashing
+- **Stable hashing algorithm**: Uses MD5 (or dialect-appropriate hash) for deterministic output
+- **Consistent NULL handling**: NULLs are converted to empty strings via `COALESCE` before hashing, ensuring identical inputs always produce identical outputs
+- **Type normalization**: All values are cast to VARCHAR before concatenation for consistent hashing across mixed types
+- **Delimiter injection**: Uses `'||'` as delimiter between values to prevent collisions (e.g., `key('a', 'bc')` vs `key('ab', 'c')`)
 
-**Compiles to**: Warehouse-appropriate hash function with delimiter injection and null handling.
+**Implementation details**:
+- Concatenates values with `'||'` delimiter: `CONCAT(COALESCE(CAST(col1 AS VARCHAR), ''), '||', COALESCE(CAST(col2 AS VARCHAR), ''), ...)`
+- Hashes the result: `MD5(...)` (or dialect-equivalent)
+- Works with any number of columns: `key(col1)`, `key(col1, col2)`, `key(col1, col2, col3)`, etc.
+
+**Compiles to**: Warehouse-appropriate hash function with delimiter injection and null handling. For dialects that don't support MD5 (like BigQuery), SQLGlot transpiles to equivalent hash functions (e.g., `SHA256`).
+
+**Example with NULLs**:
+```asql
+from orders
+  select key(user_id, order_id, status) as order_key
+```
+Even if `status` is NULL for some rows, those rows will still get a deterministic hash (NULL becomes empty string in the concatenation).
 
 ### 13.7 Safe Casting
 
