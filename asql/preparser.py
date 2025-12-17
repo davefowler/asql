@@ -11,6 +11,7 @@ This module handles structural transformations that fundamentally differ from SQ
 8. Date expressions (N days ago, date + N days, etc.)
 9. Count shorthand (# → COUNT(*))
 10. Order by -col (DESC indicator)
+11. Join operators (&, &?, ?&, ?&?, *) transformation
 """
 
 import re
@@ -112,6 +113,7 @@ class ASQLPreParser:
         # Apply transformations in order
         result = self._transform_set_statements(result)
         result = self._transform_pipeline(result)
+        result = self._transform_join_operators(result)  # Early: transform join operators before other processing
         result = self._transform_stash_as(result)  # Early: split query at stash points before other transforms
         result = self._transform_count_shorthand(result)
         result = self._transform_order_desc_prefix(result)
@@ -122,12 +124,19 @@ class ASQLPreParser:
         result = self._transform_since_until_patterns(result)
         result = self._transform_per_commands(result)
         result = self._transform_aggregate_blocks(result)
+        result = self._transform_column_operators(result)  # except, rename, replace - before from_first
         result = self._transform_multiple_where(result)  # Combine multiple WHERE clauses
+        result = self._transform_explode(result)  # explode array as alias
+        result = self._transform_unpivot(result)  # unpivot cols into name, value
+        result = self._transform_pivot(result)  # pivot value by key - creates __PIVOT_COLS__ marker
         result = self._transform_from_first(result)
+        result = self._transform_pivot_marker(result)  # Expand __PIVOT_COLS__ markers after from_first
         result = self._transform_distinct_on(result)  # Move DISTINCT ON to after SELECT
+        result = self._transform_star_column_override(result)  # select *, col as name → select * EXCEPT(name), col as name
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
         result = self._transform_qualify_clause(result)  # qualify rn == 1
         result = self._transform_coalesce_operator(result)  # After FROM-first for proper structure
+        result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
         result = self._normalize_function_spaces(result)
         result = self._transform_equality_operators(result)
         
@@ -278,6 +287,164 @@ class ASQLPreParser:
             segments.append(''.join(current))
         
         return segments
+    
+    def _transform_join_operators(self, text: str) -> str:
+        """
+        Transform ASQL join operators to SQL JOIN syntax.
+        
+        &   → INNER JOIN (both sides must match)
+        &?  → LEFT JOIN (right side is optional)
+        ?&  → RIGHT JOIN (left side is optional)
+        ?&? → FULL OUTER JOIN (both sides are optional)
+        *   → CROSS JOIN (cartesian product)
+        
+        Examples:
+        from users &? orders on users.id = orders.user_id
+        → FROM users LEFT JOIN orders ON users.id = orders.user_id
+        
+        from opportunities & owners
+        → FROM opportunities INNER JOIN owners
+        
+        from users &? accounts as account on users.id = account.user_id
+        → FROM users LEFT JOIN accounts AS account ON users.id = account.user_id
+        """
+        result = text
+        
+        # Process join operators in a specific order to handle overlapping patterns
+        # Order matters: ?&? before ?& and &? before &
+        
+        # Pattern components:
+        # - Join operator: ?&?, &?, ?&, &, *
+        # - Table name: identifier
+        # - Optional alias: as <identifier>
+        # - Optional condition: on <condition>
+        
+        # ?&? → FULL OUTER JOIN
+        result = self._replace_join_operator(result, r'\?\s*&\s*\?', 'FULL OUTER JOIN')
+        
+        # &? → LEFT JOIN  
+        result = self._replace_join_operator(result, r'&\s*\?', 'LEFT JOIN')
+        
+        # ?& → RIGHT JOIN
+        result = self._replace_join_operator(result, r'\?\s*&', 'RIGHT JOIN')
+        
+        # & → INNER JOIN (but not &&, and not &? or ?&)
+        # Use negative lookahead/lookbehind to avoid matching &? or ?& or &&
+        result = self._replace_join_operator(result, r'(?<!\?)&(?!\?|&)', 'JOIN')
+        
+        # * → CROSS JOIN (but not ** or *=)
+        # Must be careful to distinguish from multiplication
+        # Cross join should have a table name after it
+        result = self._replace_cross_join(result)
+        
+        return result
+    
+    def _replace_join_operator(self, text: str, operator_pattern: str, join_type: str) -> str:
+        """
+        Replace a join operator with SQL JOIN syntax.
+        
+        Handles patterns like:
+        - table1 &? table2
+        - table1 &? table2 as alias
+        - table1 &? table2 on condition
+        - table1 &? table2 as alias on condition
+        """
+        result = text
+        
+        # Build the pattern:
+        # <operator> <table_name> [as <alias>] [on <condition>]
+        # The condition extends until the next join operator, clause keyword, or end
+        
+        # Pattern for table with optional alias
+        table_pattern = r'([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
+        
+        # Full pattern: operator table [as alias] [on condition]
+        # Condition continues until next join op, clause keyword, or end of line/query
+        full_pattern = (
+            operator_pattern + 
+            r'\s+' + 
+            table_pattern +
+            r'(?:\s+on\s+(.+?))?'
+            r'(?=\s*(?:' +
+            r'(?:\?\s*&\s*\?|\&\s*\?|\?\s*&|(?<!\?)&(?!\?|&)|\*)' +  # Next join operator
+            r'|\bwhere\b|\bgroup\b|\border\b|\blimit\b|\bselect\b|\bstash\b|\bhaving\b|\bqualify\b' +  # Clause keywords
+            r'|$))'  # End of string
+        )
+        
+        def replace_match(match: re.Match) -> str:
+            table_name = match.group(1)
+            alias = match.group(2)
+            condition = match.group(3)
+            
+            # Build the replacement
+            parts = [join_type, table_name]
+            
+            if alias:
+                parts.append(f'AS {alias}')
+            
+            if condition:
+                parts.append(f'ON {condition.strip()}')
+            
+            return ' ' + ' '.join(parts)
+        
+        result = re.sub(full_pattern, replace_match, result, flags=re.IGNORECASE | re.DOTALL)
+        
+        return result
+    
+    def _replace_cross_join(self, text: str) -> str:
+        """
+        Replace * cross join operator with SQL CROSS JOIN syntax.
+        
+        Pattern: table1 * table2
+        → FROM table1 CROSS JOIN table2
+        
+        Must be careful to distinguish from multiplication in expressions.
+        Cross join * is only valid:
+        - After FROM clause table name
+        - After another join clause
+        
+        NOT valid:
+        - Inside expressions (arithmetic)
+        - Inside parentheses (could be subexpression)
+        """
+        result = text
+        
+        # Only look for * that appears in a "from" context
+        # Pattern: after FROM table or after a previous join (ending with identifier or ))
+        # We need to look for:
+        # - "from <table> *" 
+        # - "on <condition> *" (after a join condition)
+        
+        # The cross join must:
+        # 1. Follow a table identifier (not inside parens for arithmetic)
+        # 2. Precede a table identifier
+        # 3. Not be inside a select expression context
+        
+        # Strategy: Only replace * when it's preceded by:
+        # - "from <table>"
+        # - Another JOIN clause pattern
+        # And followed by a table name
+        
+        # This is a conservative pattern that only matches * after "from X" or after
+        # a previous join's table/alias, NOT inside select expressions
+        
+        # Pattern: from <table> * <table2> OR from <table> as <alias> * <table2>
+        pattern = r'\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?\s+\*\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
+        
+        def replace_from_cross(match: re.Match) -> str:
+            table1 = match.group(1)
+            table2 = match.group(2)
+            alias = match.group(3)
+            
+            parts = [f'from {table1} CROSS JOIN {table2}']
+            if alias:
+                parts[0] += f' AS {alias}'
+            
+            return parts[0]
+        
+        result = re.sub(pattern, replace_from_cross, result, flags=re.IGNORECASE)
+        
+        return result
     
     def _transform_count_shorthand(self, text: str) -> str:
         """
@@ -459,12 +626,14 @@ class ASQLPreParser:
             
             order_clause = remaining[:clause_end]
             
-            # Transform -col to col DESC
+            # Transform -col to col DESC (handles dotted identifiers like table.column)
             def transform_col(col_match: re.Match) -> str:
                 col = col_match.group(1)
                 return f"{col} DESC"
             
-            transformed = re.sub(r'-\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)', transform_col, order_clause)
+            # Pattern for identifiers: simple or dotted (e.g., orders.created_at)
+            # Also handles function calls like year(created_at)
+            transformed = re.sub(r'-\s*([a-zA-Z_][a-zA-Z0-9_.]*(?:\s*\([^)]*\))?)', transform_col, order_clause)
             
             # Rebuild result
             result = result[:match.start()] + match.group(0) + transformed + remaining[clause_end:]
@@ -860,14 +1029,178 @@ class ASQLPreParser:
         # Format: SELECT group_cols, aggs FROM ... GROUP BY group_cols [ORDER BY ...]
         before_group = result[:match.start()].strip()
         
+        # Extract comment placeholders from before_group to preserve them at the start
+        comment_prefix_pattern = r'^(\s*(?:__COMMENT_\d+__\s*)*)'
+        comment_match = re.match(comment_prefix_pattern, before_group)
+        comment_prefix = comment_match.group(1) if comment_match else ''
+        before_group_no_comments = before_group[len(comment_prefix):].strip() if comment_prefix else before_group
+        
         # Build SELECT clause
         select_clause = f"SELECT {group_cols}, {aggs_text}"
         
         # Build GROUP BY clause
         group_clause = f"GROUP BY {group_cols}"
         
-        # Combine: SELECT ... FROM ... GROUP BY ... [remaining clauses]
-        result = f"{select_clause} {before_group} {group_clause} {after_block}"
+        # Combine: [comments] SELECT ... FROM ... GROUP BY ... [remaining clauses]
+        result = f"{comment_prefix}{select_clause} {before_group_no_comments} {group_clause} {after_block}"
+        
+        return result
+    
+    def _transform_column_operators(self, text: str) -> str:
+        """
+        Transform column operators: except, rename, replace.
+        
+        except col1, col2 → adds EXCEPT(col1, col2) to SELECT *
+        rename old as new → transforms to: old AS new in SELECT
+        replace col with expr → adds expr AS col and EXCEPT(col)
+        
+        These must run before _transform_from_first.
+        """
+        result = text
+        
+        # Track columns to except and expressions to add
+        except_cols: List[str] = []
+        rename_mappings: List[Tuple[str, str]] = []  # (old, new)
+        replace_exprs: List[Tuple[str, str]] = []  # (col, expr)
+        
+        # Process 'except col1, col2, ...'
+        except_pattern = r'\bexcept\s+([a-zA-Z_][\w.,\s]*?)(?=\s+(?:from|where|group|order|limit|join|left|right|inner|outer|rename|replace|select|$)|\s*$)'
+        except_match = re.search(except_pattern, result, re.IGNORECASE)
+        if except_match:
+            cols_str = except_match.group(1).strip()
+            # Split by comma and clean
+            cols = [c.strip() for c in cols_str.split(',') if c.strip()]
+            except_cols.extend(cols)
+            # Remove the except clause from result
+            result = result[:except_match.start()] + result[except_match.end():]
+        
+        # Process 'rename old as new, old2 as new2, ...'
+        rename_pattern = r'\brename\s+(.+?)(?=\s+(?:from|where|group|order|limit|join|left|right|inner|outer|except|replace|select|$)|\s*$)'
+        rename_match = re.search(rename_pattern, result, re.IGNORECASE)
+        if rename_match:
+            mappings_str = rename_match.group(1).strip()
+            # Split by comma (but not inside parens)
+            # Simple approach: split by comma, then parse each "old as new"
+            mapping_pattern = r'(\w+)\s+as\s+(\w+)'
+            for m in re.finditer(mapping_pattern, mappings_str, re.IGNORECASE):
+                old_name = m.group(1)
+                new_name = m.group(2)
+                rename_mappings.append((old_name, new_name))
+            # Remove the rename clause from result
+            result = result[:rename_match.start()] + result[rename_match.end():]
+        
+        # Process 'replace col with expr' - supports chaining:
+        # replace name with upper(name), price with round(price, 2)
+        # Also supports multiple replace statements
+        while True:
+            replace_clause_pattern = r'\breplace\s+(.+?)(?=\s+(?:from|where|group|order|limit|join|left|right|inner|outer|except|rename|replace|select|$)|\s*$)'
+            replace_clause_match = re.search(replace_clause_pattern, result, re.IGNORECASE)
+            if not replace_clause_match:
+                break
+            
+            replace_content = replace_clause_match.group(1).strip()
+            # Parse individual "col with expr" pairs
+            # Pattern: word "with" expression, where expression ends at ", word with" or end
+            # Handle nested parens in expressions
+            individual_pattern = r'(\w+)\s+with\s+'
+            pairs = []
+            for m in re.finditer(individual_pattern, replace_content, re.IGNORECASE):
+                col_name = m.group(1)
+                expr_start = m.end()
+                # Find where this expression ends (next "col with" or end)
+                next_match = re.search(r',\s*(\w+)\s+with\s+', replace_content[expr_start:], re.IGNORECASE)
+                if next_match:
+                    expr_end = expr_start + next_match.start()
+                else:
+                    expr_end = len(replace_content)
+                expr = replace_content[expr_start:expr_end].strip().rstrip(',')
+                pairs.append((col_name, expr))
+            
+            for col_name, expr in pairs:
+                replace_exprs.append((col_name, expr))
+                except_cols.append(col_name)
+            
+            # Remove the replace clause from result
+            result = result[:replace_clause_match.start()] + result[replace_clause_match.end():]
+        
+        # Now apply transformations to the query
+        # If we have any column operators, we need to modify the SELECT clause
+        
+        if not except_cols and not rename_mappings and not replace_exprs:
+            return result
+        
+        # Check if there's already a SELECT clause
+        select_match = re.search(r'\bselect\s+', result, re.IGNORECASE)
+        
+        if select_match:
+            # There's already a SELECT - need to modify it
+            # For now, add EXCEPT and expressions after the select columns
+            select_pos = select_match.end()
+            
+            # Find what follows SELECT until FROM or other clause
+            rest = result[select_pos:]
+            from_match = re.search(r'\bfrom\b', rest, re.IGNORECASE)
+            if from_match:
+                select_clause = rest[:from_match.start()].strip()
+                after_select = rest[from_match.start():]
+            else:
+                select_clause = rest.strip()
+                after_select = ""
+            
+            # Build new select clause
+            new_parts = []
+            
+            # Handle star with EXCEPT
+            if '*' in select_clause and except_cols:
+                # Replace * with * EXCEPT(...)
+                except_str = ', '.join(except_cols)
+                select_clause = re.sub(r'\*', f'* EXCEPT({except_str})', select_clause, count=1)
+            elif except_cols and '*' not in select_clause:
+                # No star but have except - need to add * EXCEPT
+                except_str = ', '.join(except_cols)
+                select_clause = f"* EXCEPT({except_str}), {select_clause}"
+            
+            new_parts.append(select_clause)
+            
+            # Add rename mappings (old AS new)
+            for old, new in rename_mappings:
+                new_parts.append(f"{old} AS {new}")
+            
+            # Add replace expressions (expr AS col)
+            for col, expr in replace_exprs:
+                new_parts.append(f"{expr} AS {col}")
+            
+            new_select_clause = ', '.join(p for p in new_parts if p)
+            result = result[:select_match.start()] + f"SELECT {new_select_clause} " + after_select
+        else:
+            # No SELECT yet - we're in from-first mode
+            # Build select parts that will be used after from-first transform
+            select_parts = []
+            
+            if except_cols:
+                except_str = ', '.join(except_cols)
+                select_parts.append(f"* EXCEPT({except_str})")
+            else:
+                select_parts.append("*")
+            
+            for old, new in rename_mappings:
+                select_parts.append(f"{old} AS {new}")
+                # If we have renames but no except, we need to except the original
+                if old not in except_cols:
+                    # Update the first part to include this in EXCEPT
+                    if "EXCEPT" in select_parts[0]:
+                        select_parts[0] = select_parts[0].replace(")", f", {old})")
+                    else:
+                        select_parts[0] = f"* EXCEPT({old})"
+            
+            for col, expr in replace_exprs:
+                select_parts.append(f"{expr} AS {col}")
+            
+            # Insert SELECT clause before FROM
+            from_match = re.search(r'\bfrom\b', result, re.IGNORECASE)
+            if from_match:
+                select_clause = ', '.join(select_parts)
+                result = f"SELECT {select_clause} " + result[from_match.start():]
         
         return result
     
@@ -951,45 +1284,54 @@ class ASQLPreParser:
         """
         result = text.strip()
         
+        # Skip over comment placeholders at the start to find actual query start
+        # Comment placeholders look like: __COMMENT_N__
+        query_start_pattern = r'^(\s*(?:__COMMENT_\d+__\s*)*)'
+        query_start_match = re.match(query_start_pattern, result)
+        prefix = query_start_match.group(1) if query_start_match else ''
+        query_without_prefix = result[len(prefix):].strip() if prefix else result
+        
         # Check if query starts with FROM (not SELECT, WITH, etc.)
-        if not re.match(r'^\s*(select|with|insert|update|delete|create|alter|drop)\b', result, re.IGNORECASE):
-            if re.match(r'^\s*from\b', result, re.IGNORECASE):
+        if not re.match(r'^\s*(select|with|insert|update|delete|create|alter|drop)\b', query_without_prefix, re.IGNORECASE):
+            if re.match(r'^\s*from\b', query_without_prefix, re.IGNORECASE):
                 # Check if SELECT appears later (for "from x select y" syntax)
-                select_match = re.search(r'\bselect\s+', result, re.IGNORECASE)
+                # Search in the query without prefix to avoid matching select in comments
+                select_match = re.search(r'\bselect\s+', query_without_prefix, re.IGNORECASE)
                 if select_match:
                     # Find the extent of the SELECT clause
                     # We need to find where the SELECT clause ends, which is at
                     # a keyword like WHERE, GROUP BY, LIMIT, QUALIFY, etc.
                     # But we need to skip keywords inside parentheses (like in OVER clauses)
                     select_start = select_match.end()
-                    select_end = len(result)
+                    select_end = len(query_without_prefix)
                     
                     paren_depth = 0
                     i = select_start
-                    while i < len(result):
-                        char = result[i]
+                    while i < len(query_without_prefix):
+                        char = query_without_prefix[i]
                         if char == '(':
                             paren_depth += 1
                         elif char == ')':
                             paren_depth -= 1
                         elif paren_depth == 0:
                             # Check for clause keywords at this position
-                            remaining = result[i:].lower()
+                            remaining = query_without_prefix[i:].lower()
                             for kw in ['where ', 'group by ', 'order by ', 'limit ', 'having ', 'qualify ']:
                                 if remaining.startswith(kw):
                                     select_end = i
                                     break
-                            if select_end != len(result):
+                            if select_end != len(query_without_prefix):
                                 break
                         i += 1
                     
-                    select_clause = result[select_start:select_end].strip()
-                    before_select = result[:select_match.start()]
-                    after_select = result[select_end:]
-                    result = f"SELECT {select_clause} {before_select}{after_select}"
+                    select_clause = query_without_prefix[select_start:select_end].strip()
+                    before_select = query_without_prefix[:select_match.start()]
+                    after_select = query_without_prefix[select_end:]
+                    # Keep prefix (comments) at the front
+                    result = f"{prefix}SELECT {select_clause} {before_select}{after_select}"
                 else:
-                    # Add SELECT * at front
-                    result = "SELECT * " + result
+                    # Add SELECT * at front, keeping prefix
+                    result = f"{prefix}SELECT * {query_without_prefix}"
         
         return result
     
@@ -1014,6 +1356,70 @@ class ASQLPreParser:
             
             # Add DISTINCT ON after SELECT
             result = re.sub(r'\bSELECT\s+', f'SELECT DISTINCT ON ({cols}) ', result, count=1, flags=re.IGNORECASE)
+        
+        return result
+    
+    def _transform_star_column_override(self, text: str) -> str:
+        """
+        Transform SELECT *, expr AS col to SELECT * EXCEPT(col), expr AS col.
+        
+        This allows columns to be "overwritten" by explicit definitions.
+        When you write `select *, upper(name) as name`, the explicit `name`
+        definition should replace the original column, not create a duplicate.
+        
+        This uses SQL's EXCEPT/EXCLUDE syntax which is supported by:
+        - BigQuery: * EXCEPT(col)
+        - Snowflake: * EXCLUDE(col)  
+        - DuckDB: * EXCLUDE(col)
+        
+        SQLGlot handles dialect translation automatically.
+        
+        Note: For dialects without EXCEPT support (PostgreSQL, MySQL, SQLite),
+        the generated SQL will error at runtime - users need to list columns explicitly.
+        """
+        result = text
+        
+        # Find SELECT ... FROM pattern
+        select_pattern = r'\bSELECT\s+(.*?)\s+FROM\b'
+        select_match = re.search(select_pattern, result, re.IGNORECASE | re.DOTALL)
+        
+        if not select_match:
+            return result
+            
+        select_clause = select_match.group(1)
+        
+        # Check if there's a bare * or table.* in the select
+        star_pattern = r'(?:^|,\s*)(\*|[\w]+\.\*)(?:\s*,|\s*$)'
+        star_match = re.search(star_pattern, select_clause)
+        
+        if not star_match:
+            return result
+            
+        star_expr = star_match.group(1)  # Either "*" or "table.*"
+        
+        # Find all explicit aliases: "expr AS alias" patterns
+        # Be careful to handle nested parens and complex expressions
+        alias_pattern = r'\bAS\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:,|$)'
+        aliases = re.findall(alias_pattern, select_clause, re.IGNORECASE)
+        
+        if not aliases:
+            return result
+            
+        # Build EXCEPT clause
+        except_cols = ', '.join(aliases)
+        new_star = f'{star_expr} EXCEPT({except_cols})'
+        
+        # Replace the star in the select clause
+        new_select_clause = re.sub(
+            r'(?:^|(?<=,\s))(\*|[\w]+\.\*)(?=\s*,|\s*$)',
+            new_star,
+            select_clause,
+            count=1
+        )
+        
+        # Only apply if we actually made a change
+        if new_select_clause != select_clause:
+            result = result[:select_match.start(1)] + new_select_clause + result[select_match.end(1):]
         
         return result
     
@@ -1123,6 +1529,280 @@ class ASQLPreParser:
         # Transform qualify keyword to QUALIFY (SQL standard for some dialects)
         # Just uppercase it and fix the equality operator
         result = re.sub(r'\bqualify\s+', 'QUALIFY ', result, flags=re.IGNORECASE)
+        
+        return result
+    
+    def _transform_sample_clause(self, text: str) -> str:
+        """
+        Transform ASQL sample clause to SQL.
+        
+        sample N → ORDER BY RANDOM() LIMIT N (or TABLESAMPLE for dialects that support it)
+        sample N% → TABLESAMPLE SYSTEM(N) or ORDER BY RANDOM() LIMIT (N% of count)
+        sample N per col → stratified sampling via window functions
+        
+        The transformation creates portable SQL that works across dialects:
+        - For fixed N: ORDER BY RANDOM() LIMIT N (universally supported)
+        - For percentage: Uses TABLESAMPLE where available, otherwise approximates
+        - For stratified: Uses window functions with QUALIFY or subquery
+        """
+        result = text
+        
+        # Pattern 1: sample N per column (stratified sampling)
+        # sample 100 per category → get N random rows per group value
+        pattern_per = r'\bsample\s+(\d+)\s+per\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
+        match_per = re.search(pattern_per, result, re.IGNORECASE)
+        if match_per:
+            n = match_per.group(1)
+            partition_col = match_per.group(2)
+            # Transform to window function with QUALIFY
+            # This selects N random rows per partition
+            stratified_sql = (
+                f"QUALIFY ROW_NUMBER() OVER (PARTITION BY {partition_col} ORDER BY RANDOM()) <= {n}"
+            )
+            result = result[:match_per.start()] + stratified_sql + result[match_per.end():]
+            return result
+        
+        # Pattern 2: sample N% (percentage sampling)
+        # sample 10% → random 10% of rows
+        pattern_pct = r'\bsample\s+(\d+(?:\.\d+)?)\s*%'
+        match_pct = re.search(pattern_pct, result, re.IGNORECASE)
+        if match_pct:
+            pct = match_pct.group(1)
+            # Use TABLESAMPLE for efficiency where supported
+            # Falls back to RANDOM() filter for dialects without TABLESAMPLE
+            # TABLESAMPLE BERNOULLI(pct) is SQL standard
+            sample_sql = f"TABLESAMPLE BERNOULLI({pct})"
+            result = result[:match_pct.start()] + sample_sql + result[match_pct.end():]
+            return result
+        
+        # Pattern 3: sample N (fixed number of rows)
+        # sample 100 → random 100 rows
+        pattern_n = r'\bsample\s+(\d+)\b(?!\s*%|\s+per\b)'
+        match_n = re.search(pattern_n, result, re.IGNORECASE)
+        if match_n:
+            n = match_n.group(1)
+            # Use ORDER BY RANDOM() LIMIT N for portability
+            # This is slower than TABLESAMPLE but universally supported
+            sample_sql = f"ORDER BY RANDOM() LIMIT {n}"
+            result = result[:match_n.start()] + sample_sql + result[match_n.end():]
+            return result
+        
+        return result
+    
+    def _transform_explode(self, text: str) -> str:
+        """
+        Transform ASQL explode clause to a marker for the compiler.
+        
+        explode array_col as alias → __ASQL_EXPLODE_START__array_col__ASQL_EXPLODE_SEP__alias__ASQL_EXPLODE_END__
+        
+        The compiler will then generate dialect-specific UNNEST/FLATTEN syntax.
+        We use a marker approach because:
+        1. UNNEST syntax varies significantly across dialects
+        2. SQLGlot's translation of UNNEST aliases differs between read dialects
+        3. The compiler knows the target dialect and can generate correct syntax
+        """
+        result = text
+        
+        # Pattern: explode column as alias
+        # Handles: explode tags as tag
+        #          explode split(tags_csv, ',') as tag
+        pattern = r'\bexplode\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
+        
+        def replace_explode(match: re.Match) -> str:
+            array_expr = match.group(1).strip()
+            alias = match.group(2).strip()
+            # Use a marker that the compiler will process
+            return f"__ASQL_EXPLODE_START__{array_expr}__ASQL_EXPLODE_SEP__{alias}__ASQL_EXPLODE_END__"
+        
+        result = re.sub(pattern, replace_explode, result, flags=re.IGNORECASE)
+        
+        return result
+    
+    def _transform_unpivot(self, text: str) -> str:
+        """
+        Transform ASQL unpivot clause to SQL UNION ALL.
+        
+        unpivot col1, col2, col3 into name, value 
+        → UNION ALL approach that works across all dialects
+        
+        This uses a portable UNION ALL approach rather than native UNPIVOT
+        because native UNPIVOT has varying syntax across dialects.
+        """
+        result = text
+        
+        # Pattern: unpivot col1, col2, ... into name_col, value_col
+        pattern = r'\bunpivot\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*,\s*[a-zA-Z_][a-zA-Z0-9_]*)+)\s+into\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*,\s*([a-zA-Z_][a-zA-Z0-9_]*)\b'
+        
+        match = re.search(pattern, result, re.IGNORECASE)
+        if not match:
+            return result
+        
+        cols_str = match.group(1)
+        name_col = match.group(2)
+        value_col = match.group(3)
+        
+        # Parse the column list
+        cols = [c.strip() for c in cols_str.split(',')]
+        
+        # Find the table source - look backwards for FROM clause
+        before_unpivot = result[:match.start()]
+        after_unpivot = result[match.end():]
+        
+        # Extract FROM table - simple pattern for common case
+        from_match = re.search(r'\bFROM\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s+(?:AS\s+)?[a-zA-Z_][a-zA-Z0-9_]*)?)\s*$', 
+                               before_unpivot, re.IGNORECASE)
+        
+        if not from_match:
+            # Can't parse the source, return unchanged
+            return result
+        
+        table_ref = from_match.group(1).strip()
+        before_from = before_unpivot[:from_match.start()].strip()
+        
+        # Build UNION ALL query for unpivot
+        # Each column becomes a row with (column_name, column_value)
+        union_parts = []
+        for col in cols:
+            union_parts.append(
+                f"SELECT *, '{col}' AS {name_col}, {col} AS {value_col} FROM {table_ref}"
+            )
+        
+        unpivot_sql = " UNION ALL ".join(union_parts)
+        
+        # Generate a complete SELECT * FROM (unpivot_sql) AS __unpivot__ query
+        # This way from_first won't add another SELECT *
+        result = f"SELECT * FROM ({unpivot_sql}) AS __unpivot__{after_unpivot}"
+        
+        return result
+    
+    def _transform_pivot(self, text: str) -> str:
+        """
+        Transform ASQL pivot clause to SQL with CASE/GROUP BY.
+        
+        Syntax:
+        pivot value by category values ('A', 'B', 'C')  -- static with explicit values
+        pivot sum(value) by category values ('A', 'B')  -- with aggregation
+        
+        For static pivots (known values), this generates CASE expressions that work
+        across all SQL dialects.
+        
+        For dynamic pivots (unknown values at compile time), users should use
+        raw SQL or the sql() escape hatch.
+        """
+        result = text
+        
+        # Pattern 1: pivot value by category values ('A', 'B', 'C')
+        # With explicit values list
+        pattern_values = r"\bpivot\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)\s+by\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+values\s*\(([^)]+)\)"
+        
+        match = re.search(pattern_values, result, re.IGNORECASE)
+        if match:
+            value_expr = match.group(1).strip()
+            pivot_col = match.group(2).strip()
+            values_str = match.group(3).strip()
+            
+            # Parse the values - they should be quoted strings
+            # Handle both 'value' and "value" formats
+            values = re.findall(r"'([^']*)'|\"([^\"]*)\"", values_str)
+            values = [v[0] or v[1] for v in values]  # Get the non-empty capture group
+            
+            if not values:
+                # Couldn't parse values, return unchanged
+                return result
+            
+            # Check if value_expr is an aggregate function
+            is_aggregate = bool(re.match(r'(sum|avg|count|min|max|total|average)\s*\(', value_expr, re.IGNORECASE))
+            
+            # Generate CASE expressions for each pivot value
+            case_exprs = []
+            for val in values:
+                # Sanitize the value to make it a valid column name
+                col_name = re.sub(r'[^a-zA-Z0-9_]', '_', val)
+                if is_aggregate:
+                    # Wrap aggregate around CASE
+                    agg_func = value_expr.split('(')[0].strip()
+                    inner_col = re.search(r'\(([^)]+)\)', value_expr).group(1)
+                    case_exprs.append(
+                        f"{agg_func}(CASE WHEN {pivot_col} = '{val}' THEN {inner_col} END) AS {col_name}"
+                    )
+                else:
+                    case_exprs.append(
+                        f"MAX(CASE WHEN {pivot_col} = '{val}' THEN {value_expr} END) AS {col_name}"
+                    )
+            
+            pivot_sql = ", ".join(case_exprs)
+            
+            # Replace pivot clause with marker - the CASE expressions will be added
+            # We use a marker that _transform_from_first will handle
+            before_pivot = result[:match.start()]
+            after_pivot = result[match.end():]
+            
+            # Store the pivot expressions in a special marker format
+            # The from_first transform will pick this up and add to SELECT
+            result = f"{before_pivot}__PIVOT_COLS__({pivot_sql})__{after_pivot}"
+            
+            return result
+        
+        # Pattern 2: pivot value by category (no values specified)
+        # Leave a helpful error message
+        pattern_basic = r'\bpivot\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)\s+by\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
+        
+        match = re.search(pattern_basic, result, re.IGNORECASE)
+        if match:
+            # Raise a helpful error
+            value_expr = match.group(1).strip()
+            pivot_col = match.group(2).strip()
+            raise ValueError(
+                f"pivot requires explicit values. Use: pivot {value_expr} by {pivot_col} values ('val1', 'val2', ...)"
+            )
+        
+        return result
+    
+    def _transform_pivot_marker(self, text: str) -> str:
+        """
+        Expand __PIVOT_COLS__ markers in the SELECT clause.
+        
+        After from_first has run, the query has SELECT * or SELECT cols.
+        We need to append the pivot columns to the SELECT.
+        
+        __PIVOT_COLS__(col1, col2)__ → SELECT existing, col1, col2
+        """
+        result = text
+        
+        # Pattern to find pivot markers
+        pattern = r'__PIVOT_COLS__\((.+?)\)__'
+        
+        match = re.search(pattern, result)
+        if not match:
+            return result
+        
+        pivot_cols = match.group(1)
+        
+        # Remove the marker from its current position
+        before_marker = result[:match.start()]
+        after_marker = result[match.end():]
+        result_no_marker = before_marker.strip() + " " + after_marker.strip()
+        
+        # Find SELECT clause and append pivot columns
+        select_match = re.match(r'^(.*?\bSELECT\s+)(.*?)(\s+FROM\b.*)$', result_no_marker, re.IGNORECASE | re.DOTALL)
+        
+        if select_match:
+            before_select = select_match.group(1)
+            select_clause = select_match.group(2).strip()
+            after_select = select_match.group(3)
+            
+            # Append pivot columns to the select clause
+            if select_clause == '*':
+                # Replace * with pivot columns only (pivot implies aggregation)
+                new_select = pivot_cols
+            else:
+                # Append to existing columns
+                new_select = f"{select_clause}, {pivot_cols}"
+            
+            result = f"{before_select}{new_select}{after_select}"
+        else:
+            # Couldn't find SELECT, leave marker in place (will cause error)
+            pass
         
         return result
     

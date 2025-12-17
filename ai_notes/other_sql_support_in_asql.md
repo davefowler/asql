@@ -221,6 +221,111 @@ def preparse_segmented(query: str) -> str:
 **Pros**: Respects SQL structure, reuses existing preparser  
 **Cons**: Requires reliable segment detection
 
+### Approach 5: Protect SQL Regions (NEW - RECOMMENDED) ⭐
+
+**Complexity**: Low-Medium  
+**Reliability**: High
+
+Detect and protect SQL subqueries before preparsing, then restore after:
+
+```python
+def smart_compile(query: str) -> str:
+    # Step 1: Check for ASQL patterns
+    if not has_asql_patterns(query):
+        # Pure SQL - parse directly
+        return sqlglot.parse_one(query).sql()
+    
+    # Step 2: Protect SQL regions (parenthesized SELECT subqueries)
+    protected_query, protected = protect_sql_regions(query)
+    
+    # Step 3: Preparse (safe - SQL regions are placeholder tokens)
+    preparsed = preparse_asql(protected_query)
+    
+    # Step 4: Restore SQL regions
+    restored = restore_sql_regions(preparsed, protected)
+    
+    # Step 5: Parse with SQLGlot
+    return sqlglot.parse_one(restored).sql()
+
+def protect_sql_regions(text: str) -> tuple:
+    """Replace (SELECT ...) subqueries with placeholders."""
+    protected = {}
+    # Find parenthesized regions at depth 0
+    for start, end in find_paren_regions(text):
+        content = text[start:end]
+        inner = content[1:-1].strip()
+        # If it's a valid SQL SELECT, protect it
+        if re.match(r'^\s*SELECT\b', inner, re.IGNORECASE):
+            try:
+                sqlglot.parse_one(inner)
+                placeholder = f'__SQL_REGION_{len(protected)}__'
+                protected[placeholder] = content
+                text = text[:start] + placeholder + text[end:]
+            except:
+                pass  # Not valid SQL, don't protect
+    return text, protected
+```
+
+**Tested Results:**
+
+| Query | Result |
+|-------|--------|
+| `SELECT * FROM orders WHERE id IN (SELECT id FROM items WHERE active)` | ✅ Works |
+| `from users where active limit 10` | ✅ Works |
+| `from sales group by region (sum(amount) as total)` | ✅ Works |
+| `SELECT * FROM users u WHERE EXISTS (SELECT 1 FROM orders o WHERE ...)` | ✅ Works |
+| `from orders where customer_id IN (SELECT id FROM vip WHERE status = 'active')` | ✅ Works |
+| `WITH base AS (SELECT ...) from base where active order by -created_at` | ✅ Works |
+
+**Pros**: 
+- Low complexity, minimal changes to existing preparser
+- Handles all common SQL subquery patterns
+- ASQL patterns still get full transformation
+- No user-facing syntax changes required
+
+**Cons**: 
+- Only protects `(SELECT ...)` patterns, not CTE bodies
+- Relies on SQLGlot to validate SQL regions
+
+---
+
+## Ideas Considered But Not Recommended
+
+### Idea A: Add More SQL Keywords to ASQL Dialect
+
+**Question**: Would registering more SQL commands/keywords in the ASQL dialect help?
+
+**Answer**: No. The problem isn't the dialect - it's the **preparser running before SQLGlot**. The ASQL dialect already inherits all SQL keywords. The issue is:
+
+```
+Input → Preparser (regex, breaks things) → SQLGlot (sees mangled SQL) → Output
+```
+
+Adding keywords to the dialect doesn't help because the preparser doesn't use the dialect's keyword list.
+
+### Idea B: Require Parens Around SQL Chunks
+
+**Question**: Could we require users to wrap raw SQL in parens and give helpful warnings?
+
+**Answer**: Not needed! SQL subqueries are **already** wrapped in parens by SQL syntax:
+- `WHERE id IN (SELECT ...)` 
+- `WHERE EXISTS (SELECT ...)`
+- `FROM (SELECT ...) AS subq`
+
+The "Protect SQL Regions" approach (Approach 5) leverages this - we detect `(SELECT ...)` patterns and protect them automatically. No user-facing syntax change needed.
+
+### Idea C: Smart Recovery on Parse Failure
+
+**Question**: On error/failure, try more advanced splitting or send chunks to SQLGlot?
+
+**Answer**: This is partially incorporated into Approach 5:
+
+1. **Check for ASQL patterns first** - if none found, try pure SQL parsing
+2. **Protect SQL regions** - uses SQLGlot to validate each `(SELECT ...)` block
+3. **Fall through** - if protection + preparse still fails, report error
+
+The key insight is: **don't wait for failure** - proactively detect and protect SQL regions before they can be mangled.
+
 ---
 
 ## Dialect Considerations
@@ -241,32 +346,132 @@ If we support SQL inside ASQL, we need to consider dialect-specific syntax:
 
 ---
 
+## JOIN as a Pipeline Operator: Design Consideration
+
+**Question**: Should `JOIN` be supported as a pipeline operator, allowing syntax like:
+
+```asql
+from accounts
+| where created_at > 1 year ago
+| JOIN users as owners on accounts.owner_user_id = owners.id
+```
+
+### The Problem
+
+This pattern is interesting because it **would work if we wrap in a CTE**:
+
+```sql
+-- ASQL input
+from accounts
+| where created_at > 1 year ago
+| JOIN users as owners on accounts.owner_user_id = owners.id
+
+-- Could compile to:
+WITH __pipeline_1 AS (
+  SELECT * FROM accounts WHERE created_at > '2023-12-16'
+)
+SELECT * FROM __pipeline_1
+JOIN users AS owners ON __pipeline_1.owner_user_id = owners.id
+```
+
+JOINs absolutely work on CTEs. The preparser could detect `JOIN` after a pipeline boundary and wrap the preceding query in a CTE.
+
+### The Concern: Keyword Explosion
+
+If we support `JOIN` as a pipeline operator, we'd logically need to support:
+- `JOIN` (INNER)
+- `LEFT JOIN`
+- `RIGHT JOIN`  
+- `FULL OUTER JOIN`
+- `CROSS JOIN`
+
+That's **5 new pipeline commands** to document, test, and explain - when the preferred ASQL way is to use the `&` shorthand operators in the FROM clause:
+
+```asql
+-- Preferred: Join operators in FROM
+from accounts &? users as owner on accounts.owner_user_id = owner.id
+| where created_at > 1 year ago
+| select account.name, owner.email
+```
+
+### Current Design Decision
+
+**ASQL restricts `&`, `&?`, `?&`, `?&?`, `*` operators to the FROM clause only.**
+
+These are not general pipeline operators - they're FROM clause modifiers for establishing the data source. Pipeline operators (`where`, `group by`, `order by`, etc.) transform data after the source is established.
+
+**Rationale:**
+1. **Keeps pipeline operators focused** - Pipeline = data transformation, FROM = data source
+2. **Avoids keyword explosion** - Don't need to document 5 JOIN variants as pipeline ops
+3. **Matches SQL semantics** - JOINs happen in FROM, logically before WHERE
+4. **CTEs solve the edge case** - If you really need late joining, use `stash as`:
+
+```asql
+-- If you need to filter before joining:
+from accounts
+| where created_at > 1 year ago
+| stash as recent_accounts
+
+from recent_accounts
+| &? users as owner on recent_accounts.owner_user_id = owner.id
+| select *
+```
+
+### What About Raw SQL JOINs?
+
+If someone writes raw SQL `JOIN` in an ASQL query:
+
+```asql
+from accounts
+| where created_at > 1 year ago
+JOIN users as owners on accounts.owner_user_id = owners.id  -- Raw SQL
+```
+
+This would currently produce invalid SQL (`FROM accounts WHERE ... JOIN ...`).
+
+**Options:**
+1. **Error clearly** - "JOIN must be in FROM clause; use `stash as` for late joining"
+2. **Auto-CTE (future)** - Detect and wrap in CTE automatically
+3. **Leave broken** - Let SQLGlot fail with parse error
+
+**Current recommendation:** Option 1 (clear error message) for now. Auto-CTE could be future enhancement if there's demand.
+
+### Summary
+
+| Syntax | Status | Notes |
+|--------|--------|-------|
+| `from a &? b on ...` | ✅ Supported | Preferred way |
+| `from a \| &? b on ...` | ❌ Not supported | `&` operators only in FROM |
+| `from a \| where x \| JOIN b on ...` | ❌ Not supported | Use `stash as` instead |
+| `from a JOIN b on ...` | ✅ Pass-through | Standard SQL syntax works |
+
+---
+
 ## Recommendation
 
-### Short Term: Approach 2 (Try-SQLGlot-First) + Targeted Fixes
+### ⭐ Recommended: Approach 5 (Protect SQL Regions)
 
-1. **Implement try-SQLGlot-first** as a quick win:
-   - Pure SQL queries work perfectly
-   - Low risk, minimal code change
-   - Immediate benefit for users with existing SQL
+This approach has been tested and works well for all common patterns:
 
-2. **Fix `_transform_multiple_where`** to respect parenthesis depth:
-   - Fixes the most common failure (subqueries in WHERE)
-   - Localized change
+1. **Detect ASQL patterns first** - only preparse if query contains ASQL syntax
+2. **Protect SQL subqueries** - replace `(SELECT ...)` with placeholders before preparse
+3. **Normal preparse** - all ASQL transformations run safely
+4. **Restore SQL regions** - put the original SQL subqueries back
+5. **Parse with SQLGlot** - final SQL generation
 
-### Medium Term: Consider Approach 4 (Segment-Based)
+**Implementation effort**: ~50 lines of code added to preparser  
+**Risk**: Low - additive change, doesn't modify existing transformations
 
-If users want to mix ASQL features inside CTEs/UNIONs, we'd need to:
-- Parse top-level structure (WITH, UNION, subqueries)
-- Apply ASQL transforms to each segment
-- Reassemble
+### Alternative: Targeted Fixes
 
-### Long Term: Consider Approach 3 (AST-Based)
+If Approach 5 is too broad, we could fix specific transforms:
 
-For maximum reliability, move ASQL transformations from text-based regex to AST-based transformations. This is a significant architecture change but would:
-- Eliminate all nesting issues
-- Enable better error messages
-- Support more complex mixing
+1. **Fix `_transform_multiple_where`** to respect parenthesis depth
+2. Add paren-awareness to other problematic transforms
+
+### Future: AST-Based (if needed)
+
+For maximum reliability, move ASQL transformations from text-based regex to AST-based transformations. Only pursue this if Approach 5 proves insufficient.
 
 ---
 
