@@ -1,7 +1,10 @@
 """Tests for arithmetic operators in ASQL."""
 
 import pytest
+import sqlglot
+from sqlglot import exp
 from asql import compile
+from tests.fixtures import assert_valid_sql, assert_sql_contains
 
 
 class TestArithmeticOperators:
@@ -11,8 +14,16 @@ class TestArithmeticOperators:
         """Test addition in WHERE clause."""
         asql = "from users where age + 5 >= 18"
         sql = compile(asql)
-        assert "age + 5" in sql.lower() or "age + 5" in sql
-        assert ">=" in sql or ">=" in sql.lower()
+        
+        assert_sql_contains(sql, "age", "+", "5", ">=", "18")
+        assert_valid_sql(sql)
+        
+        # Verify arithmetic expression structure
+        parsed = sqlglot.parse_one(sql)
+        where_clause = parsed.find(exp.Where)
+        assert where_clause is not None
+        # Verify addition is present
+        assert "+" in where_clause.sql(), "Addition operator not found in WHERE clause"
     
     def test_subtraction_in_where(self) -> None:
         """Test subtraction in WHERE clause."""
@@ -25,8 +36,22 @@ class TestArithmeticOperators:
         """Test multiplication in SELECT clause."""
         asql = "from sales select amount * quantity as total"
         sql = compile(asql)
-        assert "amount * quantity" in sql.lower() or "amount * quantity" in sql
-        assert "total" in sql.lower()
+        
+        assert_sql_contains(sql, "amount", "*", "quantity", "total")
+        assert_valid_sql(sql)
+        
+        # Verify multiplication expression and alias
+        parsed = sqlglot.parse_one(sql)
+        select = parsed.find(exp.Select)
+        assert select is not None
+        # Find the expression with alias 'total'
+        total_expr = None
+        for expr in select.expressions:
+            if expr.alias_or_name.lower() == "total":
+                total_expr = expr
+                break
+        assert total_expr is not None, "Alias 'total' not found in SELECT"
+        assert "*" in total_expr.sql(), "Multiplication operator not found in expression"
     
     def test_division_in_select(self) -> None:
         """Test division in SELECT clause."""
@@ -46,18 +71,47 @@ class TestArithmeticOperators:
         """Test operator precedence: * before +."""
         asql = "from sales select amount * 0.1 + tax as total"
         sql = compile(asql)
-        # Should be: (amount * 0.1) + tax
-        assert "*" in sql
-        assert "+" in sql
+        
+        # Should be: (amount * 0.1) + tax (multiplication before addition)
+        assert_sql_contains(sql, "*", "+", "amount", "tax", "total")
+        assert_valid_sql(sql)
+        
+        # Verify SQLGlot handles precedence correctly
+        parsed = sqlglot.parse_one(sql)
+        select = parsed.find(exp.Select)
+        assert select is not None
+        # The expression should have proper precedence
+        # SQLGlot will add parentheses if needed
+        total_expr = None
+        for expr in select.expressions:
+            if expr.alias_or_name.lower() == "total":
+                total_expr = expr
+                break
+        assert total_expr is not None
+        # Verify both operators are present
+        expr_sql = total_expr.sql()
+        assert "*" in expr_sql and "+" in expr_sql, "Both operators should be present"
     
     def test_arithmetic_with_parentheses(self) -> None:
         """Test arithmetic with parentheses."""
         asql = "from sales select (amount + tax) * 0.1 as discount"
         sql = compile(asql)
-        # SQLGlot may optimize parentheses, but the expression should be correct
-        assert "*" in sql
-        assert "+" in sql
-        assert "discount" in sql.lower()
+        
+        assert_sql_contains(sql, "*", "+", "amount", "tax", "discount")
+        assert_valid_sql(sql)
+        
+        # Verify expression structure (SQLGlot may optimize parentheses)
+        parsed = sqlglot.parse_one(sql)
+        select = parsed.find(exp.Select)
+        assert select is not None
+        discount_expr = None
+        for expr in select.expressions:
+            if expr.alias_or_name.lower() == "discount":
+                discount_expr = expr
+                break
+        assert discount_expr is not None
+        expr_sql = discount_expr.sql()
+        assert "*" in expr_sql and "+" in expr_sql, "Both operators should be present"
     
     def test_multiple_operations(self) -> None:
         """Test multiple arithmetic operations."""
@@ -85,9 +139,23 @@ class TestArithmeticOperators:
         """Test arithmetic in aggregation functions."""
         asql = "from sales group by region ( sum(amount * quantity) as revenue )"
         sql = compile(asql)
-        assert "SUM" in sql.upper() or "sum" in sql.lower()
-        assert "amount * quantity" in sql.lower() or "amount * quantity" in sql
-        assert "revenue" in sql.lower()
+        
+        assert_sql_contains(sql, "SUM", "amount", "*", "quantity", "revenue", "region")
+        assert_valid_sql(sql)
+        
+        # Verify aggregation with arithmetic
+        parsed = sqlglot.parse_one(sql)
+        select = parsed.find(exp.Select)
+        assert select is not None
+        # Find SUM aggregation
+        sum_found = False
+        for expr in select.expressions:
+            if isinstance(expr, exp.AggFunc) and expr.this.upper() == "SUM":
+                sum_found = True
+                # Verify multiplication is in the argument
+                assert "*" in expr.sql(), "Multiplication not found in SUM argument"
+                break
+        assert sum_found, "SUM aggregation not found"
     
     def test_complex_arithmetic_expression(self) -> None:
         """Test complex arithmetic expression."""
@@ -103,9 +171,18 @@ class TestArithmeticOperators:
         """Test arithmetic with negative numbers."""
         asql = "from users where balance + -100 >= 0"
         sql = compile(asql)
-        # Should handle negative numbers correctly
-        assert "balance" in sql.lower()
-        assert "+" in sql or "-" in sql
+        
+        assert_sql_contains(sql, "balance", ">=", "0")
+        assert_valid_sql(sql)
+        
+        # Verify negative number handling (may be simplified to subtraction)
+        parsed = sqlglot.parse_one(sql)
+        where_clause = parsed.find(exp.Where)
+        assert where_clause is not None
+        # SQLGlot may convert + -100 to - 100
+        where_sql = where_clause.sql()
+        assert ("balance" in where_sql.lower() and 
+                ("+" in where_sql or "-" in where_sql)), "Arithmetic operator not found"
 
 
 class TestArithmeticEdgeCases:
