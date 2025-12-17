@@ -14,9 +14,13 @@ extension model (custom tokens, function parsers, etc.).
 Settings can be configured via:
 - asql.config.yaml file
 - Inline SET statements in the query
+
+Auto-spine feature:
+When auto_spine is enabled (default), date truncation functions in GROUP BY
+automatically include gap-filling CTEs to ensure all dates appear in results.
 """
 
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Set
 import sqlglot
 from sqlglot import exp
 from sqlglot.dialects import Dialect
@@ -29,6 +33,839 @@ from asql.config import CompileSettings, KNOWN_COMPILE_SETTINGS
 
 # Ensure ASQL dialect is registered
 register_asql_dialect()
+
+# Date truncation functions that trigger auto-spine
+DATE_TRUNC_FUNCTIONS = {
+    'year', 'month', 'week', 'day', 'hour', 'quarter',
+    'date_trunc',
+}
+
+# Mapping from truncation unit to interval for generate_series
+TRUNC_TO_INTERVAL = {
+    'year': '1 year',
+    'month': '1 month',
+    'week': '1 week',
+    'day': '1 day',
+    'hour': '1 hour',
+    'quarter': '3 months',
+}
+
+
+def _is_guarantee_wrapped(expr: exp.Expression) -> Tuple[bool, Optional[List[str]]]:
+    """
+    Check if an expression is wrapped in guarantee() for explicit spine.
+    
+    Returns: (is_guarantee, explicit_values)
+    - is_guarantee: True if wrapped in guarantee()
+    - explicit_values: List of values if provided, None otherwise
+    """
+    inner = expr.this if isinstance(expr, exp.Alias) else expr
+    
+    if isinstance(inner, exp.Anonymous):
+        if inner.name and inner.name.lower() == 'guarantee':
+            # Check for explicit values (second arg could be array or subquery)
+            if len(inner.expressions) > 1:
+                values_expr = inner.expressions[1]
+                # Handle array literal: ['a', 'b', 'c']
+                if isinstance(values_expr, exp.Array):
+                    values = [str(e.this).strip("'\"") for e in values_expr.expressions]
+                    return True, values
+                # For now, return True but no explicit values for other cases
+                return True, None
+            return True, None
+    return False, None
+
+
+def _unwrap_guarantee(expr: exp.Expression) -> exp.Expression:
+    """Unwrap guarantee() wrapper and return the inner expression."""
+    if isinstance(expr, exp.Alias):
+        inner = expr.this
+        if isinstance(inner, exp.Anonymous) and inner.name and inner.name.lower() == 'guarantee':
+            # Get the first inner expression (the column/function) and re-wrap with alias
+            if inner.expressions:
+                return exp.Alias(this=inner.expressions[0], alias=expr.alias)
+        return expr
+    
+    if isinstance(expr, exp.Anonymous) and expr.name and expr.name.lower() == 'guarantee':
+        if expr.expressions:
+            return expr.expressions[0]
+    return expr
+
+
+def _remove_guarantee_wrappers(stmt: exp.Expression) -> exp.Expression:
+    """
+    Remove all guarantee() wrappers from a statement before SQL generation.
+    
+    guarantee(expr) -> expr
+    guarantee(expr, values) AS alias -> expr AS alias
+    """
+    if not isinstance(stmt, exp.Select):
+        return stmt
+    
+    # Process GROUP BY clause
+    group = stmt.find(exp.Group)
+    if group:
+        new_exprs = []
+        for expr in group.expressions:
+            is_guarantee, _ = _is_guarantee_wrapped(expr)
+            if is_guarantee:
+                new_exprs.append(_unwrap_guarantee(expr))
+            else:
+                new_exprs.append(expr)
+        group.set("expressions", new_exprs)
+    
+    # Process SELECT clause (in case guarantee appears there too)
+    if stmt.expressions:
+        new_exprs = []
+        for expr in stmt.expressions:
+            is_guarantee, _ = _is_guarantee_wrapped(expr)
+            if is_guarantee:
+                new_exprs.append(_unwrap_guarantee(expr))
+            else:
+                new_exprs.append(expr)
+        stmt.set("expressions", new_exprs)
+    
+    return stmt
+
+
+def _find_non_date_group_by_columns(stmt: exp.Expression) -> List[Tuple[str, exp.Expression]]:
+    """
+    Find non-date columns in GROUP BY that need cross-join with distinct values.
+    
+    For mixed GROUP BY (date + non-date), we cross-join the date spine
+    with all distinct values of non-date columns to get complete combinations.
+    
+    Returns list of tuples: (alias, expression)
+    """
+    results = []
+    
+    if not isinstance(stmt, exp.Select):
+        return results
+    
+    group_by = stmt.find(exp.Group)
+    if not group_by:
+        return results
+    
+    for group_expr in group_by.expressions:
+        # Get the inner expression
+        if isinstance(group_expr, exp.Alias):
+            alias = group_expr.alias
+            inner = group_expr.this
+        else:
+            inner = group_expr
+            alias = inner.name if isinstance(inner, exp.Column) else None
+        
+        # Check if wrapped in guarantee() - handled separately
+        is_guarantee, _ = _is_guarantee_wrapped(group_expr)
+        if is_guarantee:
+            continue
+        
+        # Check for date truncation functions
+        func_name = None
+        if isinstance(inner, exp.Anonymous):
+            func_name = inner.name.lower() if inner.name else None
+        elif isinstance(inner, exp.Func):
+            func_name = inner.sql_name().lower() if hasattr(inner, 'sql_name') else type(inner).__name__.lower()
+        
+        # If it's NOT a date truncation function, it's a non-date column
+        if func_name not in DATE_TRUNC_FUNCTIONS and alias:
+            results.append((alias, group_expr))
+    
+    return results
+
+
+def _find_date_trunc_in_group_by(
+    stmt: exp.Expression
+) -> List[Tuple[str, str, exp.Expression, Optional[List[str]]]]:
+    """
+    Find date truncation expressions in GROUP BY clause.
+    
+    Returns list of tuples: (alias, trunc_unit, original_expression, explicit_values)
+    - explicit_values is set when guarantee() is used with an array
+    """
+    results = []
+    
+    if not isinstance(stmt, exp.Select):
+        return results
+    
+    group_by = stmt.find(exp.Group)
+    if not group_by:
+        return results
+    
+    for group_expr in group_by.expressions:
+        # Check if this is a date truncation function
+        func_name = None
+        trunc_unit = None
+        alias = None
+        explicit_values = None
+        
+        # Check for guarantee() wrapper
+        is_guarantee, values = _is_guarantee_wrapped(group_expr)
+        if is_guarantee:
+            explicit_values = values
+        
+        # Handle aliased expressions: month(created_at) as month
+        if isinstance(group_expr, exp.Alias):
+            alias = group_expr.alias
+            inner = group_expr.this
+            # If guarantee-wrapped, unwrap to get the actual function
+            if is_guarantee and isinstance(inner, exp.Anonymous):
+                inner = inner.expressions[0] if inner.expressions else inner
+        else:
+            inner = group_expr
+            # If guarantee-wrapped, unwrap
+            if is_guarantee and isinstance(inner, exp.Anonymous):
+                inner = inner.expressions[0] if inner.expressions else inner
+            # Try to derive alias from expression
+            if isinstance(inner, exp.Column):
+                alias = inner.name
+            elif hasattr(inner, 'alias') and inner.alias:
+                alias = inner.alias
+        
+        # Check for date truncation functions
+        if isinstance(inner, exp.Anonymous):
+            func_name = inner.name.lower() if inner.name else None
+        elif isinstance(inner, exp.Func):
+            func_name = inner.sql_name().lower() if hasattr(inner, 'sql_name') else type(inner).__name__.lower()
+        
+        if func_name in DATE_TRUNC_FUNCTIONS:
+            # Determine the truncation unit
+            if func_name == 'date_trunc':
+                # date_trunc('month', col) - first arg is unit
+                if inner.expressions:
+                    unit_arg = inner.expressions[0]
+                    if isinstance(unit_arg, exp.Literal):
+                        trunc_unit = unit_arg.this.strip("'\"").lower()
+            else:
+                # year(col), month(col), etc. - function name is unit
+                trunc_unit = func_name
+            
+            if trunc_unit and alias:
+                results.append((alias, trunc_unit, group_expr, explicit_values))
+    
+    return results
+
+
+def _find_guarantee_in_group_by(
+    stmt: exp.Expression
+) -> List[Tuple[str, exp.Expression, Optional[List[str]]]]:
+    """
+    Find guarantee() expressions in GROUP BY clause for categorical columns.
+    
+    Returns list of tuples: (alias, original_expression, explicit_values)
+    """
+    results = []
+    
+    if not isinstance(stmt, exp.Select):
+        return results
+    
+    group_by = stmt.find(exp.Group)
+    if not group_by:
+        return results
+    
+    for group_expr in group_by.expressions:
+        is_guarantee, explicit_values = _is_guarantee_wrapped(group_expr)
+        if not is_guarantee:
+            continue
+        
+        alias = None
+        if isinstance(group_expr, exp.Alias):
+            alias = group_expr.alias
+        else:
+            # Try to derive alias from inner expression
+            inner = group_expr
+            if isinstance(inner, exp.Anonymous) and inner.expressions:
+                first_arg = inner.expressions[0]
+                if isinstance(first_arg, exp.Column):
+                    alias = first_arg.name
+        
+        if alias:
+            results.append((alias, group_expr, explicit_values))
+    
+    return results
+
+
+def _extract_date_bounds_from_where(
+    stmt: exp.Expression,
+    column_expr: exp.Expression
+) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract date bounds from WHERE clause for a given column expression.
+    
+    Returns: (min_date, max_date) as string literals or None
+    """
+    where = stmt.find(exp.Where)
+    if not where:
+        return None, None
+    
+    min_date = None
+    max_date = None
+    
+    # Walk the WHERE clause looking for date comparisons
+    def check_condition(node):
+        nonlocal min_date, max_date
+        
+        if isinstance(node, (exp.GTE, exp.GT)):
+            # col >= date or col > date
+            if _columns_match(node.this, column_expr):
+                if isinstance(node.expression, (exp.Literal, exp.Cast)):
+                    min_date = node.expression.sql()
+        elif isinstance(node, (exp.LTE, exp.LT)):
+            # col <= date or col < date
+            if _columns_match(node.this, column_expr):
+                if isinstance(node.expression, (exp.Literal, exp.Cast)):
+                    max_date = node.expression.sql()
+        elif isinstance(node, exp.Between):
+            # col BETWEEN date1 AND date2
+            if _columns_match(node.this, column_expr):
+                if isinstance(node.args.get('low'), (exp.Literal, exp.Cast)):
+                    min_date = node.args['low'].sql()
+                if isinstance(node.args.get('high'), (exp.Literal, exp.Cast)):
+                    max_date = node.args['high'].sql()
+        elif isinstance(node, exp.And):
+            check_condition(node.this)
+            check_condition(node.expression)
+    
+    check_condition(where.this)
+    return min_date, max_date
+
+
+def _columns_match(expr1: exp.Expression, expr2: exp.Expression) -> bool:
+    """Check if two expressions refer to the same column."""
+    # Simple name matching for now
+    if isinstance(expr1, exp.Column) and isinstance(expr2, exp.Column):
+        return expr1.name == expr2.name
+    return expr1.sql() == expr2.sql()
+
+
+def _get_source_column_from_trunc(trunc_expr: exp.Expression) -> Optional[exp.Expression]:
+    """Extract the source column from a date truncation expression."""
+    if isinstance(trunc_expr, exp.Alias):
+        trunc_expr = trunc_expr.this
+    
+    # Get the column argument from the function
+    if isinstance(trunc_expr, (exp.Anonymous, exp.Func)):
+        if trunc_expr.expressions:
+            # For date_trunc('unit', col), column is second arg
+            if hasattr(trunc_expr, 'name') and trunc_expr.name and trunc_expr.name.lower() == 'date_trunc':
+                if len(trunc_expr.expressions) > 1:
+                    return trunc_expr.expressions[1]
+            else:
+                # For year(col), month(col), etc., column is first arg
+                return trunc_expr.expressions[0]
+    return None
+
+
+def _get_all_group_by_columns(stmt: exp.Expression) -> List[Tuple[str, exp.Expression, bool, Optional[str], Optional[List[str]]]]:
+    """
+    Get all GROUP BY columns with their spine information.
+    
+    Returns list of tuples: (alias, expression, is_date, trunc_unit, explicit_values)
+    - is_date: True if this is a date truncation function
+    - trunc_unit: The truncation unit (month, year, etc.) if is_date
+    - explicit_values: Values from guarantee() if provided
+    """
+    results = []
+    
+    if not isinstance(stmt, exp.Select):
+        return results
+    
+    group_by = stmt.find(exp.Group)
+    if not group_by:
+        return results
+    
+    for group_expr in group_by.expressions:
+        alias = None
+        is_date = False
+        trunc_unit = None
+        explicit_values = None
+        
+        # Check for guarantee() wrapper
+        is_guarantee, values = _is_guarantee_wrapped(group_expr)
+        if is_guarantee:
+            explicit_values = values
+        
+        # Handle aliased expressions
+        if isinstance(group_expr, exp.Alias):
+            alias = group_expr.alias
+            inner = group_expr.this
+            if is_guarantee and isinstance(inner, exp.Anonymous):
+                inner = inner.expressions[0] if inner.expressions else inner
+        else:
+            inner = group_expr
+            if is_guarantee and isinstance(inner, exp.Anonymous):
+                inner = inner.expressions[0] if inner.expressions else inner
+            if isinstance(inner, exp.Column):
+                alias = inner.name
+        
+        if not alias:
+            # Generate alias from expression
+            alias = f"col_{len(results)}"
+        
+        # Check if this is a date truncation function
+        func_name = None
+        if isinstance(inner, exp.Anonymous):
+            func_name = inner.name.lower() if inner.name else None
+        elif isinstance(inner, exp.Func):
+            func_name = inner.sql_name().lower() if hasattr(inner, 'sql_name') else type(inner).__name__.lower()
+        
+        if func_name in DATE_TRUNC_FUNCTIONS:
+            is_date = True
+            if func_name == 'date_trunc':
+                if inner.expressions:
+                    unit_arg = inner.expressions[0]
+                    if isinstance(unit_arg, exp.Literal):
+                        trunc_unit = unit_arg.this.strip("'\"").lower()
+            else:
+                trunc_unit = func_name
+        
+        results.append((alias, group_expr, is_date, trunc_unit, explicit_values))
+    
+    return results
+
+
+def _apply_auto_spine(
+    stmt: exp.Expression,
+    settings: CompileSettings,
+    dialect: Optional[str] = None
+) -> exp.Expression:
+    """
+    Apply auto-spine transformation to ALL GROUP BY columns.
+    
+    Every GROUP BY column gets a spine:
+    - Date columns: spine from date range (inferred from WHERE or MIN/MAX)
+    - Non-date columns: spine from DISTINCT values in data
+    - guarantee() columns: spine from explicit values provided
+    
+    All spines are cross-joined to create complete (col1 × col2 × ...) combinations.
+    The data is then left-joined to fill in actual values.
+    
+    This ensures all expected dimension values appear in results, which is
+    what analysts typically want for charts and reports.
+    """
+    if not settings.auto_spine:
+        return stmt
+    
+    if not isinstance(stmt, exp.Select):
+        return stmt
+    
+    # Get all GROUP BY columns
+    group_cols = _get_all_group_by_columns(stmt)
+    
+    if not group_cols:
+        return stmt
+    
+    # Get source table for DISTINCT queries
+    from_clause = stmt.find(exp.From)
+    if not from_clause:
+        return stmt
+    source_table = from_clause.this.sql()
+    
+    # Get WHERE clause for date bounds and for filtering DISTINCT
+    where_clause = stmt.find(exp.Where)
+    where_sql = f"WHERE {where_clause.this.sql()}" if where_clause else ""
+    
+    # Build spine CTEs for each column
+    spine_ctes = []
+    spine_columns = []
+    
+    for alias, group_expr, is_date, trunc_unit, explicit_values in group_cols:
+        spine_cte_name = f"{alias}_spine"
+        
+        if explicit_values:
+            # Use explicit values from guarantee()
+            spine_sql = _build_categorical_spine_sql(alias, explicit_values, dialect)
+        elif is_date and trunc_unit:
+            # Use date range
+            source_col = _get_source_column_from_trunc(group_expr)
+            min_date, max_date = _extract_date_bounds_from_where(stmt, source_col) if source_col else (None, None)
+            interval = TRUNC_TO_INTERVAL.get(trunc_unit, '1 day')
+            
+            if min_date and max_date:
+                spine_sql = _build_date_spine_sql(alias, trunc_unit, min_date, max_date, interval, dialect)
+            else:
+                # Fall back to MIN/MAX from data
+                spine_sql = _build_date_spine_from_data_sql(
+                    alias, trunc_unit, source_col.sql() if source_col else alias, 
+                    source_table, where_sql, interval, dialect
+                )
+        else:
+            # Use DISTINCT from data (this is a no-op but maintains consistency)
+            inner_expr = group_expr.this if isinstance(group_expr, exp.Alias) else group_expr
+            if _is_guarantee_wrapped(group_expr)[0]:
+                # Unwrap guarantee to get the actual expression
+                inner = inner_expr
+                if isinstance(inner, exp.Anonymous):
+                    inner = inner.expressions[0] if inner.expressions else inner
+                col_expr = inner.sql()
+            else:
+                col_expr = inner_expr.sql()
+            spine_sql = f"SELECT DISTINCT {col_expr} AS {alias} FROM {source_table} {where_sql}"
+        
+        try:
+            spine_select = sqlglot.parse_one(spine_sql.strip(), dialect=dialect)
+            spine_ctes.append((spine_cte_name, spine_select))
+            spine_columns.append((alias, spine_cte_name))
+        except Exception:
+            # If parsing fails, skip this column
+            continue
+    
+    if not spine_ctes:
+        return stmt
+    
+    # Build the combined spine (cross-join all spines)
+    combined_spine_name = "combined_spine"
+    if len(spine_columns) == 1:
+        combined_spine_sql = f"SELECT * FROM {spine_columns[0][1]}"
+    else:
+        # Cross-join all spines
+        selects = [f"{cte_name}.{alias}" for alias, cte_name in spine_columns]
+        froms = [spine_columns[0][1]]
+        for alias, cte_name in spine_columns[1:]:
+            froms.append(f"CROSS JOIN {cte_name}")
+        combined_spine_sql = f"SELECT {', '.join(selects)} FROM {' '.join(froms)}"
+    
+    # Build the data CTE (original query)
+    data_cte_name = "spine_data"
+    
+    # Build the final join
+    join_conditions = [f"{combined_spine_name}.{alias} = {data_cte_name}.{alias}" for alias, _ in spine_columns]
+    
+    # Get all SELECT columns from original query
+    select_cols = []
+    for sel_expr in stmt.expressions:
+        if isinstance(sel_expr, exp.Alias):
+            col_name = sel_expr.alias
+        elif isinstance(sel_expr, exp.Column):
+            col_name = sel_expr.name
+        else:
+            col_name = sel_expr.sql()
+        
+        # Use spine column for group-by columns, coalesce for aggregates
+        if col_name in [alias for alias, _ in spine_columns]:
+            select_cols.append(f"{combined_spine_name}.{col_name}")
+        else:
+            select_cols.append(f"COALESCE({data_cte_name}.{col_name}, 0) AS {col_name}")
+    
+    if not select_cols:
+        select_cols = [f"{combined_spine_name}.*"]
+    
+    final_sql = f"""
+        SELECT {', '.join(select_cols)}
+        FROM {combined_spine_name}
+        LEFT JOIN {data_cte_name} ON {' AND '.join(join_conditions)}
+    """
+    
+    try:
+        final_select = sqlglot.parse_one(final_sql.strip(), dialect=dialect)
+    except Exception:
+        return stmt
+    
+    # Build the complete WITH clause
+    try:
+        # Start building the result
+        result_sql_parts = ["WITH"]
+        cte_parts = []
+        
+        # Add individual spine CTEs
+        for cte_name, cte_select in spine_ctes:
+            cte_parts.append(f"{cte_name} AS ({cte_select.sql(dialect=dialect)})")
+        
+        # Add combined spine CTE
+        cte_parts.append(f"{combined_spine_name} AS ({combined_spine_sql})")
+        
+        # Add data CTE
+        cte_parts.append(f"{data_cte_name} AS ({stmt.sql(dialect=dialect)})")
+        
+        result_sql = "WITH " + ", ".join(cte_parts) + " " + final_sql
+        
+        return sqlglot.parse_one(result_sql.strip(), dialect=dialect)
+    except Exception:
+        return stmt
+
+
+def _build_categorical_spine_sql(alias: str, values: List[str], dialect: Optional[str] = None) -> str:
+    """Build SQL for a categorical spine with explicit values."""
+    dialect_lower = dialect.lower() if dialect else ""
+    
+    values_sql = ", ".join([f"'{v}'" for v in values])
+    
+    if dialect_lower in ('postgres', 'postgresql', 'redshift', 'duckdb'):
+        return f"SELECT unnest(ARRAY[{values_sql}]) AS {alias}"
+    elif dialect_lower == 'bigquery':
+        return f"SELECT {alias} FROM UNNEST([{values_sql}]) AS {alias}"
+    elif dialect_lower == 'snowflake':
+        # Snowflake uses FLATTEN with SPLIT
+        return f"SELECT value AS {alias} FROM TABLE(FLATTEN(INPUT => SPLIT('{','.join(values)}', ',')))"
+    else:
+        # Default: UNION ALL approach (works everywhere)
+        unions = [f"SELECT '{v}' AS {alias}" for v in values]
+        return " UNION ALL ".join(unions)
+
+
+def _build_date_spine_sql(
+    alias: str,
+    trunc_unit: str,
+    min_date: str,
+    max_date: str,
+    interval: str,
+    dialect: Optional[str] = None
+) -> str:
+    """Build SQL for a date spine with explicit bounds."""
+    dialect_lower = dialect.lower() if dialect else ""
+    
+    if dialect_lower in ('postgres', 'postgresql', 'redshift'):
+        return f"""
+            SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
+            FROM generate_series({min_date}::date, {max_date}::date, INTERVAL '{interval}') AS d
+        """
+    elif dialect_lower == 'bigquery':
+        return f"""
+            SELECT DATE_TRUNC(d, {trunc_unit.upper()}) AS {alias}
+            FROM UNNEST(GENERATE_DATE_ARRAY({min_date}, {max_date})) AS d
+        """
+    elif dialect_lower == 'snowflake':
+        return f"""
+            SELECT DISTINCT DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), {min_date})) AS {alias}
+            FROM TABLE(GENERATOR(ROWCOUNT => 10000))
+            WHERE DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), {min_date})) <= {max_date}
+        """
+    elif dialect_lower == 'duckdb':
+        return f"""
+            SELECT DATE_TRUNC('{trunc_unit}', d) AS {alias}
+            FROM generate_series({min_date}::date, {max_date}::date, INTERVAL '{interval}') AS t(d)
+        """
+    else:
+        return f"""
+            SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
+            FROM generate_series({min_date}::date, {max_date}::date, INTERVAL '{interval}') AS d
+        """
+
+
+def _build_date_spine_from_data_sql(
+    alias: str,
+    trunc_unit: str,
+    col_expr: str,
+    source_table: str,
+    where_sql: str,
+    interval: str,
+    dialect: Optional[str] = None
+) -> str:
+    """Build SQL for a date spine derived from data MIN/MAX."""
+    dialect_lower = dialect.lower() if dialect else ""
+    
+    if dialect_lower in ('postgres', 'postgresql', 'redshift'):
+        return f"""
+            WITH bounds AS (
+                SELECT MIN({col_expr}) as min_d, MAX({col_expr}) as max_d
+                FROM {source_table}
+                {where_sql}
+            )
+            SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
+            FROM bounds, generate_series(min_d::date, max_d::date, INTERVAL '{interval}') AS d
+        """
+    elif dialect_lower == 'duckdb':
+        return f"""
+            WITH bounds AS (
+                SELECT MIN({col_expr}) as min_d, MAX({col_expr}) as max_d
+                FROM {source_table}
+                {where_sql}
+            )
+            SELECT DATE_TRUNC('{trunc_unit}', d) AS {alias}
+            FROM bounds, generate_series(min_d::date, max_d::date, INTERVAL '{interval}') AS t(d)
+        """
+    else:
+        # Fallback: just use DISTINCT (no gap filling, but at least works)
+        return f"SELECT DISTINCT DATE_TRUNC('{trunc_unit}', {col_expr}) AS {alias} FROM {source_table} {where_sql}"
+
+
+def _build_spine_select_with_bounds(
+    alias: str,
+    trunc_unit: str,
+    min_date: str,
+    max_date: str,
+    interval: str,
+    dialect: Optional[str] = None
+) -> exp.Expression:
+    """Build a spine SELECT using explicit date bounds."""
+    # Generate SQL for the spine CTE
+    # Different dialects have different date generation functions
+    
+    dialect_lower = dialect.lower() if dialect else ""
+    
+    if dialect_lower in ('postgres', 'postgresql', 'redshift'):
+        # PostgreSQL/Redshift: generate_series
+        spine_sql = f"""
+            SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
+            FROM generate_series({min_date}::date, {max_date}::date, INTERVAL '{interval}') AS d
+        """
+    elif dialect_lower == 'bigquery':
+        # BigQuery: GENERATE_DATE_ARRAY
+        if trunc_unit in ('hour',):
+            spine_sql = f"""
+                SELECT DATE_TRUNC(TIMESTAMP(d), {trunc_unit.upper()}) AS {alias}
+                FROM UNNEST(GENERATE_TIMESTAMP_ARRAY({min_date}, {max_date}, INTERVAL 1 {trunc_unit.upper()})) AS d
+            """
+        else:
+            spine_sql = f"""
+                SELECT DATE_TRUNC(d, {trunc_unit.upper()}) AS {alias}
+                FROM UNNEST(GENERATE_DATE_ARRAY({min_date}, {max_date}, INTERVAL 1 {trunc_unit.upper() if trunc_unit != 'quarter' else 'MONTH'})) AS d
+            """
+    elif dialect_lower == 'snowflake':
+        # Snowflake: TABLE(GENERATOR()) + DATEADD
+        # Calculate approximate row count for generator
+        spine_sql = f"""
+            SELECT DISTINCT DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, ROW_NUMBER() OVER (ORDER BY 1) - 1, {min_date})) AS {alias}
+            FROM TABLE(GENERATOR(ROWCOUNT => 10000))
+            WHERE {alias} <= {max_date}
+        """
+    elif dialect_lower in ('mysql', 'mariadb'):
+        # MySQL: recursive CTE
+        spine_sql = f"""
+            WITH RECURSIVE dates AS (
+                SELECT {min_date} AS d
+                UNION ALL
+                SELECT DATE_ADD(d, INTERVAL {interval}) FROM dates WHERE d < {max_date}
+            )
+            SELECT DATE_FORMAT(d, '%Y-%m-01') AS {alias} FROM dates
+        """
+    elif dialect_lower in ('duckdb',):
+        # DuckDB: generate_series
+        spine_sql = f"""
+            SELECT DATE_TRUNC('{trunc_unit}', d) AS {alias}
+            FROM generate_series({min_date}::date, {max_date}::date, INTERVAL '{interval}') AS t(d)
+        """
+    else:
+        # Default: PostgreSQL-style
+        spine_sql = f"""
+            SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
+            FROM generate_series({min_date}::date, {max_date}::date, INTERVAL '{interval}') AS d
+        """
+    
+    return sqlglot.parse_one(spine_sql.strip(), dialect=dialect)
+
+
+def _build_spine_select_from_data(
+    stmt: exp.Expression,
+    alias: str,
+    trunc_unit: str,
+    source_col: Optional[exp.Expression],
+    interval: str,
+    dialect: Optional[str] = None
+) -> Optional[exp.Expression]:
+    """Build a spine SELECT deriving bounds from the data itself."""
+    if not source_col:
+        return None
+    
+    # Get the FROM clause to know what table to query
+    from_clause = stmt.find(exp.From)
+    if not from_clause:
+        return None
+    
+    col_sql = source_col.sql()
+    table_sql = from_clause.this.sql()
+    
+    # Get the WHERE clause if any
+    where_clause = stmt.find(exp.Where)
+    where_sql = f"WHERE {where_clause.this.sql()}" if where_clause else ""
+    
+    dialect_lower = dialect.lower() if dialect else ""
+    
+    if dialect_lower in ('postgres', 'postgresql', 'redshift'):
+        spine_sql = f"""
+            WITH bounds AS (
+                SELECT MIN({col_sql}) as min_d, MAX({col_sql}) as max_d
+                FROM {table_sql}
+                {where_sql}
+            )
+            SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
+            FROM bounds, generate_series(min_d::date, max_d::date, INTERVAL '{interval}') AS d
+        """
+    elif dialect_lower == 'snowflake':
+        spine_sql = f"""
+            WITH bounds AS (
+                SELECT MIN({col_sql}) as min_d, MAX({col_sql}) as max_d
+                FROM {table_sql}
+                {where_sql}
+            )
+            SELECT DISTINCT DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, seq4(), min_d)) AS {alias}
+            FROM bounds, TABLE(GENERATOR(ROWCOUNT => 10000))
+            WHERE DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, seq4(), min_d)) <= max_d
+        """
+    elif dialect_lower == 'bigquery':
+        spine_sql = f"""
+            WITH bounds AS (
+                SELECT MIN({col_sql}) as min_d, MAX({col_sql}) as max_d
+                FROM {table_sql}
+                {where_sql}
+            )
+            SELECT DATE_TRUNC(d, {trunc_unit.upper()}) AS {alias}
+            FROM bounds, UNNEST(GENERATE_DATE_ARRAY(min_d, max_d)) AS d
+        """
+    else:
+        # Default PostgreSQL-style
+        spine_sql = f"""
+            WITH bounds AS (
+                SELECT MIN({col_sql}) as min_d, MAX({col_sql}) as max_d
+                FROM {table_sql}
+                {where_sql}
+            )
+            SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias}
+            FROM bounds, generate_series(min_d::date, max_d::date, INTERVAL '{interval}') AS d
+        """
+    
+    try:
+        return sqlglot.parse_one(spine_sql.strip(), dialect=dialect)
+    except Exception:
+        return None
+
+
+def _build_spine_join_query(
+    spine_cte_name: str,
+    data_cte_name: str,
+    alias: str,
+    original_stmt: exp.Expression,
+    dialect: Optional[str] = None
+) -> exp.Expression:
+    """Build the final query that left-joins spine with data."""
+    # Get all columns from the original SELECT except the group-by column
+    original_select = original_stmt.find(exp.Select)
+    
+    # Build column list for final select
+    columns = []
+    for sel_expr in original_select.expressions:
+        if isinstance(sel_expr, exp.Alias):
+            col_name = sel_expr.alias
+        elif isinstance(sel_expr, exp.Column):
+            col_name = sel_expr.name
+        else:
+            col_name = sel_expr.sql()
+        
+        if col_name == alias:
+            # Use spine column for the date
+            columns.append(f"{spine_cte_name}.{alias}")
+        else:
+            # Use data column (with COALESCE for aggregates)
+            columns.append(f"COALESCE({data_cte_name}.{col_name}, 0) AS {col_name}")
+    
+    if not columns:
+        columns = [f"{spine_cte_name}.{alias}", f"{data_cte_name}.*"]
+    
+    join_sql = f"""
+        SELECT {', '.join(columns)}
+        FROM {spine_cte_name}
+        LEFT JOIN {data_cte_name} ON {spine_cte_name}.{alias} = {data_cte_name}.{alias}
+    """
+    
+    try:
+        return sqlglot.parse_one(join_sql.strip(), dialect=dialect)
+    except Exception:
+        # Fallback to simple join
+        return sqlglot.parse_one(f"""
+            SELECT *
+            FROM {spine_cte_name}
+            LEFT JOIN {data_cte_name} USING ({alias})
+        """, dialect=dialect)
 
 
 def extract_inline_settings(
@@ -213,9 +1050,21 @@ def compile(
         sql_parts = []
         
         for stmt in query_statements:
-            # TODO: Apply settings-based transformations here (e.g., auto_spine)
-            # For now, just generate SQL
-            sql = stmt.sql(dialect=sql_dialect, pretty=pretty)
+            # Apply settings-based transformations
+            transformed_stmt = stmt
+            
+            # Apply auto-spine for date truncations in GROUP BY
+            if final_settings.auto_spine:
+                try:
+                    transformed_stmt = _apply_auto_spine(stmt, final_settings, dialect)
+                except Exception:
+                    # If spine transformation fails, use original statement
+                    transformed_stmt = stmt
+            
+            # Remove guarantee() wrappers before SQL generation
+            transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
+            
+            sql = transformed_stmt.sql(dialect=sql_dialect, pretty=pretty)
             sql_parts.append(sql)
         
         return ";\n\n".join(sql_parts)
