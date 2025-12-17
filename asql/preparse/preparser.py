@@ -22,6 +22,7 @@ from asql.preparse.normalize import NormalizeMixin
 from asql.preparse.cohort import CohortMixin
 from asql.preparse.key import KeyMixin
 from asql.preparse.when import WhenMixin
+from asql.preparse.ternary import TernaryMixin
 
 @dataclass
 class PreParseResult:
@@ -46,6 +47,7 @@ class ASQLPreParser(
     WindowMixin,
     NormalizeMixin,
     CohortMixin,
+    TernaryMixin,
     WhenMixin,
     KeyMixin,
 ):
@@ -93,6 +95,7 @@ class ASQLPreParser(
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
         result = self._transform_qualify_clause(result)  # qualify rn == 1
         result = self._transform_coalesce_operator(result)  # After FROM-first for proper structure
+        result = self._transform_ternary_expressions(result)  # ternary ? : expressions to CASE WHEN
         result = self._transform_when_expressions(result)  # when expressions to CASE WHEN
         result = self._transform_key_function(result)  # key(col1, col2, ...) surrogate key generation
         result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
