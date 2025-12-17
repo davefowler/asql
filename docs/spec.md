@@ -1953,45 +1953,7 @@ from monthly_metrics
 
 **Compiles to**: Native `PIVOT`/`UNPIVOT` where supported (Snowflake, BigQuery), `CASE`/`WHEN` + `GROUP BY` fallback elsewhere.
 
-### 13.4 Fill (Gap Filling)
-
-Fill gaps in time series data after grouping:
-
-```asql
-# Auto-detect range from data, NULL for missing values
-from orders
-  group by month(created_at) as month (
-    sum(amount) as revenue
-  )
-  fill month
-
-# Specify default values for filled rows
-from orders
-  group by month(created_at) as month (
-    sum(amount) as revenue
-  )
-  fill month with {revenue: 0}
-
-# Explicit range bounds (both inclusive)
-from orders
-  group by month(created_at) as month (
-    sum(amount) as revenue
-  )
-  fill month start '2024-01-01' stop '2024-12-01'
-
-# Combined: explicit range with defaults
-from orders
-  group by month(created_at) as month (
-    sum(amount) as revenue
-  )
-  fill month with {revenue: 0} start '2024-01-01' stop today()
-```
-
-**Range detection**: By default, `fill` auto-detects the range using `MIN()`/`MAX()` of the grouped column. Use `start`/`stop` for explicit bounds (e.g., always show full year).
-
-**Why `start`/`stop`?** We use these instead of `from`/`to` to avoid confusion with the `from` clause.
-
-### 13.5 Date Spine / Series
+### 13.4 Date Spine / Series
 
 Generate sequences as table sources:
 
@@ -2014,7 +1976,7 @@ from date_spine(start = '2024-01-01', end = '2024-12-31', grain = month) as date
 
 **Compilation**: Uses native `generate_series()` where available, numbers table or recursive CTE fallback elsewhere.
 
-### 13.6 Union with Schema Alignment
+### 13.5 Union with Schema Alignment
 
 Union tables with automatic column alignment:
 
@@ -2028,7 +1990,7 @@ from union(users_2022, users_2023, fill_missing = null)
 
 **Compilation**: Reads schemas, produces aligned `SELECT` lists with missing columns filled as `NULL`, then `UNION ALL`.
 
-### 13.7 Surrogate Keys
+### 13.6 Surrogate Keys
 
 Generate consistent surrogate keys:
 
@@ -2043,7 +2005,7 @@ select key(user_id, order_id) as order_key
 
 **Compiles to**: Warehouse-appropriate hash function with delimiter injection and null handling.
 
-### 13.8 Safe Casting
+### 13.7 Safe Casting
 
 ASQL supports safe type casting that returns `NULL` on failure instead of erroring:
 
@@ -2074,7 +2036,7 @@ from form_submissions
 - `value::integer?` → `TRY_CAST(value AS INTEGER)` (or `SAFE_CAST` on BigQuery)
 - `value::integer? ?? 0` → `COALESCE(TRY_CAST(value AS INTEGER), 0)`
 
-### 13.9 Safe Divide
+### 13.8 Safe Divide
 
 Avoid divide-by-zero errors:
 
@@ -2094,7 +2056,6 @@ select safe_divide(revenue, users) as revenue_per_user
 | `deduplicate by` | Remove duplicates | `deduplicate by user_id order by -date` |
 | `pivot ... by` | Rows to columns | `pivot amount by category` |
 | `unpivot ... into` | Columns to rows | `unpivot jan, feb into month, value` |
-| `fill` | Gap fill time series | `fill month with {revenue: 0}` |
 | `date_spine()` | Generate date sequence | `from date_spine(start='2024-01-01', end=today(), grain=day)` |
 | `series()` | Generate number sequence | `from series(1, 100)` |
 | `union()` | Union with alignment | `from union(t1, t2, t3)` |

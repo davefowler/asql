@@ -128,13 +128,7 @@ These features are documented in `SPEC.md` but not yet implemented:
 
 **Workaround**: Write SQL pivot queries directly.
 
-### Fill / Gap Filling (Section 13.4)
-- `fill month` - auto-fill time series gaps
-- `fill month with {revenue: 0}`
-
-**Workaround**: Join with a date spine manually.
-
-### Safe Cast (Section 13.8)
+### Safe Cast (Section 13.7)
 - `value::integer?` - returns NULL on cast failure
 
 **Workaround**: Use database-specific `TRY_CAST` or `SAFE_CAST`.
