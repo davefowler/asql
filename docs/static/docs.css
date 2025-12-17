@@ -160,17 +160,25 @@
         display: none !important;
     }
 
-    /* Force primary sidebar visible (but don't clobber layout) */
+    /* Force the primary sidebar to behave like a real sidebar (not an off-canvas drawer) */
     .md-sidebar--primary {
         display: block !important;
         position: sticky !important;
-        top: 0;
-        max-height: 100vh;
-        overflow: auto !important;
+        left: 0 !important;
         transform: none !important;
         opacity: 1 !important;
         visibility: visible !important;
-        z-index: 1;
+
+        /* Keep the sidebar below the WIP banner + header */
+        top: calc(var(--asql-banner-height, 0px) + var(--md-header-height)) !important;
+        height: calc(100vh - var(--asql-banner-height, 0px) - var(--md-header-height)) !important;
+    }
+
+    /* Ensure the sidebar can actually scroll (Material uses an absolutely-positioned scrollwrap) */
+    .md-sidebar--primary .md-sidebar__scrollwrap {
+        height: 100% !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
     }
 
     /* No overlay when sidebar is always visible */
@@ -199,12 +207,7 @@
    NAVIGATION STYLING
    ============================================= */
 
-/* Fix double scrollbar issue - ensure single scroll container */
-.md-sidebar--primary {
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-}
-
+/* Avoid nested scrollbars: let the scrollwrap handle scrolling */
 .md-nav--primary {
     overflow: visible !important;
 }
