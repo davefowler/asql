@@ -264,6 +264,13 @@ function syncBannerHeightVar() {
     document.documentElement.style.setProperty('--asql-banner-height', `${height}px`);
 }
 
+// Keep CSS variable in sync with header height (Material's header height variable isn't always exposed)
+function syncHeaderHeightVar() {
+    const header = document.querySelector('.md-header');
+    const height = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty('--asql-header-height', `${height}px`);
+}
+
 // Add playground button to header
 function addPlaygroundButton() {
     // Check if button already exists
@@ -374,7 +381,9 @@ document.addEventListener('DOMContentLoaded', () => {
     addWIPBanner();
     // Sync banner height CSS variable (and keep it updated on resize)
     syncBannerHeightVar();
+    syncHeaderHeightVar();
     window.addEventListener('resize', syncBannerHeightVar);
+    window.addEventListener('resize', syncHeaderHeightVar);
     // Add playground button to header
     addPlaygroundButton();
     // Wait a bit for highlight.js and ASQL language to be fully loaded
