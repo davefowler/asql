@@ -1135,24 +1135,21 @@
         
         // ensureFromNotPostgresWhenToEmpty, updateUITitles, and swapLanguages are now defined globally above
 
-        // Update UI when dialects change (set up after DOM is ready)
-        document.addEventListener('DOMContentLoaded', function() {
-            // Load saved style config
-            loadStyleConfig();
-            
-            document.getElementById('from-dialect').addEventListener('change', () => {
-                ensureFromNotPostgresWhenToEmpty();
-                updateUITitles();
-                translateQuery();
-                updateURL();
-            });
-            
-            document.getElementById('to-dialect').addEventListener('change', () => {
-                ensureFromNotPostgresWhenToEmpty();
-                updateUITitles();
-                translateQuery();
-                updateURL();
-            });
+        // Update UI when dialects change
+        // Note: We're already inside a DOMContentLoaded handler via initializeEditors,
+        // so we can attach these listeners directly
+        document.getElementById('from-dialect').addEventListener('change', () => {
+            ensureFromNotPostgresWhenToEmpty();
+            updateUITitles();
+            translateQuery();
+            updateURL();
+        });
+        
+        document.getElementById('to-dialect').addEventListener('change', () => {
+            ensureFromNotPostgresWhenToEmpty();
+            updateUITitles();
+            translateQuery();
+            updateURL();
         });
         
         function loadExamples() {
@@ -1560,6 +1557,9 @@
                 container.innerHTML = '<p style="color: var(--asql-red-dark); padding: 20px;">Error loading examples. Please refresh the page.</p>';
             }
         }
+
+        // Expose for global onclick handlers (openExamplesModal)
+        window.loadExamples = loadExamples;
         
         async function loadFivetranExamples() {
             const container = document.getElementById('examples-container');
