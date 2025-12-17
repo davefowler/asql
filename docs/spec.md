@@ -1844,32 +1844,36 @@ from users
   rename users.id as user_id
 ```
 
-**Compiles to**: `SELECT id AS user_id, name AS user_name, ...`
+**Compiles to**: `SELECT * EXCEPT(id, name), id AS user_id, name AS user_name FROM users`
 
-#### `prefix` - Prefix Column Names
+#### `replace` - Replace Column Values
 
-Add a prefix to column names (especially useful after joins):
+Replace column values with new expressions:
 
 ```asql
 from users
-  prefix user_
+  replace name with upper(name)
 
-# Prefix specific table's columns
+# Chained replacements (comma-separated)
 from users
-  & orders on users.id = orders.user_id
-  prefix orders.* with order_
+  replace name with upper(name), email with lower(email), salary with round(salary, 2)
+
+# Or separate statements
+from users
+  replace name with upper(name)
+  replace email with lower(email)
 ```
 
-**Compiles to**: `SELECT id AS user_id, name AS user_name, ...`
+**Compiles to**: `SELECT * EXCEPT(name, email, salary), upper(name) AS name, lower(email) AS email, round(salary, 2) AS salary FROM users`
 
 #### Combining Column Operators
 
 ```asql
 from users
   & orders on users.id = orders.user_id
-  except users.password_hash, orders.internal_notes
+  except password_hash, internal_notes
   rename users.id as user_id
-  prefix orders.* with order_
+  replace name with upper(name)
 ```
 
 ### 13.2 Deduplicate
@@ -1904,29 +1908,23 @@ WITH ranked AS (
 SELECT * FROM ranked WHERE rn = 1
 ```
 
-### 13.3 Pivot / Unpivot
+### 13.3 Pivot / Unpivot / Explode
 
 #### `pivot` - Rows to Columns
 
-Transform row values into columns:
+Transform row values into columns. Requires explicit values at compile time:
 
 ```asql
-# Basic pivot
+# Pivot with explicit values
 from sales
-  pivot amount by category
+  pivot sum(amount) by category values ('Electronics', 'Clothing', 'Food')
 
-# Pivot with aggregation
+# Non-aggregate pivot (uses MAX)
 from sales
-  pivot sum(amount) by category
-
-# Dynamic pivot (values from subquery)
-from sales
-  pivot amount by category from (select distinct category from products)
+  pivot amount by category values ('A', 'B', 'C')
 ```
 
 **Example use case - denormalizing custom fields:**
-
-Many SaaS platforms store custom fields in EAV (Entity-Attribute-Value) tables:
 
 ```asql
 # Jira custom fields table:
@@ -1935,12 +1933,17 @@ Many SaaS platforms store custom fields in EAV (Entity-Attribute-Value) tables:
 # | PROJ-123 | sprint       | Sprint 5    |
 
 from issue_custom_fields
-  pivot field_value by field_name
+  pivot field_value by field_name values ('priority', 'sprint')
+  group by issue_id
 
 # Result:
 # | issue_id | priority | sprint   |
 # | PROJ-123 | High     | Sprint 5 |
 ```
+
+**Compiles to**: `CASE WHEN` expressions with aggregation, which works across all dialects.
+
+**Note**: Dynamic pivot (values from subquery) is not yet supported - use raw SQL for dynamic cases.
 
 #### `unpivot` - Columns to Rows
 
@@ -1951,47 +1954,30 @@ from monthly_metrics
   unpivot jan, feb, mar, apr into month, value
 ```
 
-**Compiles to**: Native `PIVOT`/`UNPIVOT` where supported (Snowflake, BigQuery), `CASE`/`WHEN` + `GROUP BY` fallback elsewhere.
+**Compiles to**: `UNION ALL` subquery that works across all dialects.
 
-### 13.4 Fill (Gap Filling)
+#### `explode` - Array to Rows
 
-Fill gaps in time series data after grouping:
+Expand array-typed columns into multiple rows:
 
 ```asql
-# Auto-detect range from data, NULL for missing values
-from orders
-  group by month(created_at) as month (
-    sum(amount) as revenue
-  )
-  fill month
+# Explode array column
+from posts
+  explode tags as tag
 
-# Specify default values for filled rows
-from orders
-  group by month(created_at) as month (
-    sum(amount) as revenue
-  )
-  fill month with {revenue: 0}
-
-# Explicit range bounds (both inclusive)
-from orders
-  group by month(created_at) as month (
-    sum(amount) as revenue
-  )
-  fill month start '2024-01-01' stop '2024-12-01'
-
-# Combined: explicit range with defaults
-from orders
-  group by month(created_at) as month (
-    sum(amount) as revenue
-  )
-  fill month with {revenue: 0} start '2024-01-01' stop today()
+# Split string and explode
+from posts
+  explode split(tags_csv, ',') as tag
 ```
 
-**Range detection**: By default, `fill` auto-detects the range using `MIN()`/`MAX()` of the grouped column. Use `start`/`stop` for explicit bounds (e.g., always show full year).
+**Compiles to**:
+- **Postgres/DuckDB**: `UNNEST(array) AS alias`
+- **BigQuery**: `CROSS JOIN UNNEST(array) AS alias`
+- **Snowflake**: `CROSS JOIN (SELECT value AS alias FROM TABLE(FLATTEN(...)))`
 
-**Why `start`/`stop`?** We use these instead of `from`/`to` to avoid confusion with the `from` clause.
+This is the inverse of `array_agg()` / `array agg`.
 
-### 13.5 Date Spine / Series
+### 13.4 Date Spine / Series
 
 Generate sequences as table sources:
 
@@ -2014,7 +2000,7 @@ from date_spine(start = '2024-01-01', end = '2024-12-31', grain = month) as date
 
 **Compilation**: Uses native `generate_series()` where available, numbers table or recursive CTE fallback elsewhere.
 
-### 13.6 Union with Schema Alignment
+### 13.5 Union with Schema Alignment
 
 Union tables with automatic column alignment:
 
@@ -2028,7 +2014,7 @@ from union(users_2022, users_2023, fill_missing = null)
 
 **Compilation**: Reads schemas, produces aligned `SELECT` lists with missing columns filled as `NULL`, then `UNION ALL`.
 
-### 13.7 Surrogate Keys
+### 13.6 Surrogate Keys
 
 Generate consistent surrogate keys:
 
@@ -2043,7 +2029,7 @@ select key(user_id, order_id) as order_key
 
 **Compiles to**: Warehouse-appropriate hash function with delimiter injection and null handling.
 
-### 13.8 Safe Casting
+### 13.7 Safe Casting
 
 ASQL supports safe type casting that returns `NULL` on failure instead of erroring:
 
@@ -2074,7 +2060,7 @@ from form_submissions
 - `value::integer?` → `TRY_CAST(value AS INTEGER)` (or `SAFE_CAST` on BigQuery)
 - `value::integer? ?? 0` → `COALESCE(TRY_CAST(value AS INTEGER), 0)`
 
-### 13.9 Safe Divide
+### 13.8 Safe Divide
 
 Avoid divide-by-zero errors:
 
@@ -2090,11 +2076,11 @@ select safe_divide(revenue, users) as revenue_per_user
 |----------|---------|---------|
 | `except` | Exclude columns | `except email, phone` |
 | `rename` | Rename columns | `rename id as user_id` |
-| `prefix` | Prefix column names | `prefix user_` |
+| `replace` | Replace column values | `replace name with upper(name)` |
 | `deduplicate by` | Remove duplicates | `deduplicate by user_id order by -date` |
-| `pivot ... by` | Rows to columns | `pivot amount by category` |
+| `pivot ... by ... values` | Rows to columns | `pivot sum(amount) by category values ('A', 'B')` |
 | `unpivot ... into` | Columns to rows | `unpivot jan, feb into month, value` |
-| `fill` | Gap fill time series | `fill month with {revenue: 0}` |
+| `explode ... as` | Array to rows | `explode tags as tag` |
 | `date_spine()` | Generate date sequence | `from date_spine(start='2024-01-01', end=today(), grain=day)` |
 | `series()` | Generate number sequence | `from series(1, 100)` |
 | `union()` | Union with alignment | `from union(t1, t2, t3)` |
