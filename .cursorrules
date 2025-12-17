@@ -21,7 +21,23 @@
 - Use TDD: Write tests first, then implement
 - Use SQLGlot's dialect system where possible
 - Follow the architecture in ARCHITECTURE.md
-- Reference SPEC.md for language specification
+- Reference docs/spec.md for language specification
 - ALWAYS verify your work, with either tests or the browser tool 
+
+## Important links (source of truth)
+- **Language spec**: `docs/spec.md`
+- **Future / maybe features**: `docs/spec_future.md`
+- **Not-implemented backlog**: `docs/unimplemented_features.md`
+
+
+## Issues / PR naming (to avoid duplicates)
+- When creating a GH issue, include an explicit PR title and branch name in the issue body:
+  - PR Title: "<product>: <description> (#<issue-number>)"
+  - Branch: "issue-<issue-number>-<short-slug>"
+- Prefer using `scripts/create_github_issue.sh` so the PR title + branch format is always correct.
+- When starting an agent via @cursor, repeat the PR title + branch name in the @cursor comment and require the agent to use them verbatim.
+- PR titles MUST include the issue number "(#123)".
+- Branch names MUST include the issue number "issue-123-...".
+- Commits must use "Fixes #<issue-number>" (exact phrase) so GitHub auto-closes the issue.
 
 

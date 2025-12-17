@@ -808,3 +808,232 @@
     background: var(--asql-red);
     color: white;
 }
+
+/* ========================================
+   ASQL Mini Playground (Split Pane)
+   ======================================== */
+
+/* Mini playground should keep rounded-corner clipping */
+.asql-code-block.asql-mini-playground {
+    overflow: hidden !important;
+}
+
+.asql-mini-playground .asql-mp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+
+@media screen and (max-width: 767px) {
+    .asql-mini-playground .asql-mp-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.asql-mini-playground .asql-mp-pane {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.asql-mini-playground .asql-mp-pane + .asql-mp-pane {
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-pane + .asql-mp-pane {
+    border-left-color: rgba(255, 255, 255, 0.08);
+}
+
+.asql-mini-playground .asql-mp-pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    font-size: 12px;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-pane-header {
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.asql-mini-playground .asql-mp-pane-title {
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.75);
+    letter-spacing: 0.02em;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-pane-title {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.asql-mini-playground .asql-mp-pane-title-muted {
+    font-weight: 500;
+    opacity: 0.7;
+}
+
+.asql-mini-playground pre {
+    margin: 0 !important;
+    border-radius: 0 !important;
+}
+
+.asql-mini-playground code {
+    display: block;
+    padding: 1rem !important;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow: visible;
+}
+
+/* Inline play button in the ASQL header (right aligned) */
+.asql-mini-playground .asql-mp-play-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-decoration: none !important;
+    background: transparent;
+    border: none;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.asql-mini-playground .asql-mp-play-label {
+    display: none;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--asql-red);
+    line-height: 1;
+}
+
+.asql-mini-playground .asql-mp-play-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--asql-red);
+    background: transparent;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.asql-mini-playground .asql-mp-play-button:hover {
+    background: transparent;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-play-button {
+    color: var(--asql-red-light);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-play-button:hover {
+    background: transparent;
+}
+
+/* Show "Playground" label only on hover */
+.asql-mini-playground .asql-mp-play-button:hover .asql-mp-play-label {
+    display: inline;
+}
+
+/* Hover state: icon becomes red circle with white glyph */
+.asql-mini-playground .asql-mp-play-button:hover .asql-mp-play-icon {
+    background: var(--asql-red);
+    color: white;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-play-label {
+    color: var(--asql-red-light);
+}
+
+/* Subtle dialect dropdown */
+.asql-mini-playground .asql-mp-to-select {
+    font-size: 12px;
+    padding: 0;
+    border-radius: 0;
+    border: none;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.75);
+    outline: none;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+}
+
+.asql-mini-playground .asql-mp-to-select:focus {
+    color: rgba(0, 0, 0, 0.9);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-select {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-select:focus {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+/* Right header should be left-aligned and tight */
+.asql-mini-playground .asql-mp-pane-right .asql-mp-pane-header {
+    justify-content: flex-start;
+}
+
+.asql-mini-playground .asql-mp-to-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: flex-start;
+    padding: 2px 14px 2px 6px; /* a little touch target + caret room */
+    line-height: 1.1;
+    border-radius: 6px;
+}
+
+/* Subtle hover affordance without a white pill */
+.asql-mini-playground .asql-mp-to-wrap:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-wrap:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* "Caret under it" */
+.asql-mini-playground .asql-mp-to-wrap::after {
+    content: "▾";
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    font-size: 11px;
+    opacity: 0.65;
+    color: rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-wrap::after {
+    color: rgba(255, 255, 255, 0.65);
+}
+
+/* Make panes feel full-height and avoid white gutters */
+.asql-mini-playground .asql-mp-pane pre {
+    flex: 1;
+    background: #f6f8fa;
+    overflow: auto;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-pane pre {
+    background: #1e1e2e;
+}
+
+/* Make code fill pane height so horizontal scrollbar sits at bottom */
+.asql-mini-playground .asql-mp-pane pre code {
+    min-height: 100%;
+}
+
+/* Word-wrapping for the "To" (SQL) pane to avoid one-line overflow */
+.asql-mini-playground .asql-mp-pane-right pre code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
