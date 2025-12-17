@@ -27,45 +27,52 @@
     margin-right: 8px;
 }
 
-/* Override Material theme colors to use blue */
+/* ASQL Color Variables */
 :root {
-    --md-primary-fg-color: #306bea;
-    --md-primary-fg-color--light: #5a8bef;
-    --md-primary-fg-color--dark: #2255c4;
-    --md-accent-fg-color: #306bea;
+    --asql-red: #c53030;
+    --asql-red-light: #e57373;
+    --asql-red-dark: #9b1c1c;
+}
+
+/* Override Material theme colors to use red */
+:root {
+    --md-primary-fg-color: var(--asql-red);
+    --md-primary-fg-color--light: var(--asql-red-light);
+    --md-primary-fg-color--dark: var(--asql-red-dark);
+    --md-accent-fg-color: var(--asql-red);
 }
 
 [data-md-color-scheme="default"] {
-    --md-primary-fg-color: #306bea;
-    --md-accent-fg-color: #306bea;
+    --md-primary-fg-color: var(--asql-red);
+    --md-accent-fg-color: var(--asql-red);
 }
 
 [data-md-color-scheme="slate"] {
-    --md-primary-fg-color: #306bea;
-    --md-accent-fg-color: #306bea;
+    --md-primary-fg-color: var(--asql-red);
+    --md-accent-fg-color: var(--asql-red);
 }
 
 /* Header styling */
 .md-header {
-    background-color: #306bea !important;
+    background-color: var(--asql-red) !important;
 }
 
 /* Inline code color */
 .md-typeset code {
-    color: #306bea;
+    color: var(--asql-red);
 }
 
 .md-typeset a code {
-    color: #306bea;
+    color: var(--asql-red);
 }
 
 /* Links */
 .md-typeset a {
-    color: #306bea;
+    color: var(--asql-red);
 }
 
 .md-typeset a:hover {
-    color: #2255c4;
+    color: var(--asql-red-dark);
 }
 
 /* Table of contents - right sidebar (light mode) */
@@ -74,11 +81,11 @@
 }
 
 .md-sidebar--secondary .md-nav__link:hover {
-    color: #306bea !important;
+    color: var(--asql-red) !important;
 }
 
 .md-sidebar--secondary .md-nav__link--active {
-    color: #306bea !important;
+    color: var(--asql-red) !important;
 }
 
 /* Navigation sidebar - left (light mode) */
@@ -87,11 +94,11 @@
 }
 
 .md-nav__link:hover {
-    color: #306bea;
+    color: var(--asql-red);
 }
 
 .md-nav__item--active > .md-nav__link {
-    color: #306bea;
+    color: var(--asql-red);
     font-weight: 600;
 }
 
@@ -145,7 +152,7 @@
 
 .md-typeset .highlight .md-clipboard:hover,
 .md-clipboard:hover {
-    color: #306bea !important;
+    color: var(--asql-red) !important;
 }
 
 /* Admonitions */
@@ -165,12 +172,12 @@
 }
 
 .md-typeset .tabbed-labels > label:hover {
-    color: #306bea;
+    color: var(--asql-red);
 }
 
 .md-typeset .tabbed-set > input:checked + label {
-    color: #306bea;
-    border-color: #306bea;
+    color: var(--asql-red);
+    border-color: var(--asql-red);
 }
 
 /* Playground button in header */
@@ -185,9 +192,11 @@
     font-weight: 500;
     font-size: 13px;
     text-decoration: none !important;
-    margin-left: 24px;
+    margin-left: 16px;
     transition: all 0.2s;
     border: 1px solid rgba(255, 255, 255, 0.3);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .playground-btn:hover {
