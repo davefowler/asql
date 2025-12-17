@@ -80,6 +80,85 @@ from users
   limit 100
 ```
 
+### sample
+
+Random sampling of rows:
+
+```asql
+from users
+  sample 100              -- N random rows
+  sample 10%              -- N percent of rows
+  sample 5 per category   -- Stratified sampling
+```
+
+---
+
+## Data Manipulation Keywords
+
+| Keyword | Description | SQL Equivalent |
+|---------|-------------|----------------|
+| `sample` | Random sampling | `ORDER BY RANDOM() LIMIT` / `TABLESAMPLE` |
+| `except` | Exclude columns | `SELECT * EXCEPT(...)` |
+| `rename` | Rename columns | `col AS new_name` |
+| `replace` | Replace column values | `expression AS col` |
+| `pivot` | Rows to columns | `CASE WHEN ... GROUP BY` |
+| `unpivot` | Columns to rows | `UNION ALL` |
+| `explode` | Array to rows | `CROSS JOIN UNNEST` |
+
+### except
+
+Exclude columns from result:
+
+```asql
+from users
+  except password_hash, internal_notes
+```
+
+### rename
+
+Rename columns inline:
+
+```asql
+from users
+  rename id as user_id, name as full_name
+```
+
+### replace
+
+Replace column values with expressions:
+
+```asql
+from users
+  replace name with upper(name), email with lower(email)
+```
+
+### pivot
+
+Transform row values into columns:
+
+```asql
+from sales
+  pivot sum(amount) by category values ('Electronics', 'Clothing')
+```
+
+### unpivot
+
+Transform columns into rows:
+
+```asql
+from metrics
+  unpivot jan, feb, mar into month, value
+```
+
+### explode
+
+Expand array columns into rows:
+
+```asql
+from posts
+  explode tags as tag
+```
+
 ---
 
 ## Join Keywords
@@ -249,6 +328,8 @@ These words have special meaning and cannot be used as unquoted identifiers:
 - `stash`, `set`
 - `per`, `first`, `last`, `number`, `rank`
 - `qualify`, `over`, `partition`, `rows`
+- `sample`, `except`, `rename`, `replace`, `with`
+- `pivot`, `unpivot`, `explode`, `into`, `values`
 
 To use a reserved word as an identifier, quote it:
 

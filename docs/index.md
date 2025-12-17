@@ -205,12 +205,55 @@ from users
   rename id as user_id
 ```
 
-### Prefix After Join
+### Replace Column Values
+
+Transform column values in-place:
 
 ```asql
 from users
-  & orders on users.id == orders.user_id
-  prefix orders.* with order_
+  replace name with upper(name), salary with round(salary, 2)
+```
+
+Compiles to: `SELECT * EXCEPT(name, salary), upper(name) AS name, round(salary, 2) AS salary`
+
+---
+
+## Sampling
+
+Get random subsets of your data:
+
+```asql
+-- Fixed sample size
+from orders
+  sample 100
+
+-- Percentage sample
+from orders
+  sample 10%
+
+-- Stratified sampling (N per group)
+from orders
+  sample 100 per category
+```
+
+---
+
+## Pivot & Unpivot
+
+Reshape data between wide and long formats:
+
+```asql
+-- Rows to columns
+from sales
+  pivot sum(amount) by category values ('Electronics', 'Clothing')
+
+-- Columns to rows
+from metrics
+  unpivot jan, feb, mar into month, value
+
+-- Expand arrays
+from posts
+  explode tags as tag
 ```
 
 ---
@@ -333,6 +376,8 @@ Detailed documentation on ASQL syntax:
 - [Dates & Time](syntax/dates.md) — Date functions, arithmetic
 - [Window Functions](syntax/window-functions.md) — Ranking, running totals
 - [CTEs & Variables](syntax/ctes.md) — stash as, set
+- [Sampling](syntax/sampling.md) — Random, percentage, stratified sampling
+- [Pivot, Unpivot & Explode](syntax/pivot-unpivot.md) — Data reshaping, array expansion
 
 ### Concepts
 

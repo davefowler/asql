@@ -92,11 +92,12 @@ ASQL integrates naturally with dbt. Think of ASQL as "what goes inside your dbt 
 
 === "ASQL"
     ```asql
+    # Auto-spine fills gaps automatically for date GROUP BYs
     from orders
+    where created_at >= @2024-01-01 and created_at < @2025-01-01
     group by month(created_at) as month (
-        sum(amount) as revenue
+        sum(amount) ?? 0 as revenue  # ?? 0 sets default for filled rows
     )
-    fill month with {revenue: 0}
     ```
 
 ---

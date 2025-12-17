@@ -1,6 +1,6 @@
 -- User segmentation: RFM analysis
 with customer_rfm = from customers
-  left join orders on customers.customer_id == orders.customer_id and orders.status == "completed"
+  &? orders on customers.customer_id = orders.customer_id and orders.status = "completed"
   group by customers.customer_id, customers.customer_name (
     max(orders.order_date) as last_order_date,
     count(distinct orders.order_id) as frequency,

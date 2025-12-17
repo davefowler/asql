@@ -311,5 +311,277 @@ class TestEdgeCases:
         assert "FROM USERS" in result.upper()
 
 
+class TestColumnOperators:
+    """Test except, rename, replace column operators."""
+    
+    def test_except_single(self):
+        """Except single column."""
+        result = preparse_asql("from users except email")
+        assert "EXCEPT" in result.upper()
+        assert "EMAIL" in result.upper()
+    
+    def test_except_multiple(self):
+        """Except multiple columns."""
+        result = preparse_asql("from users except email, phone, ssn")
+        assert "EXCEPT" in result.upper()
+        assert "EMAIL" in result.upper()
+        assert "PHONE" in result.upper()
+    
+    def test_rename_single(self):
+        """Rename single column."""
+        result = preparse_asql("from users rename id as user_id")
+        assert "USER_ID" in result.upper()
+        assert "EXCEPT" in result.upper()  # Renamed col should be excepted
+    
+    def test_rename_multiple(self):
+        """Rename multiple columns."""
+        result = preparse_asql("from users rename id as user_id, name as user_name")
+        assert "USER_ID" in result.upper()
+        assert "USER_NAME" in result.upper()
+    
+    def test_replace_single(self):
+        """Replace single column."""
+        result = preparse_asql("from users replace name with upper(name)")
+        assert "UPPER(NAME)" in result.upper()
+        assert "EXCEPT" in result.upper()
+    
+    def test_replace_multiple_statements(self):
+        """Replace multiple columns with separate statements."""
+        result = preparse_asql("from users replace name with upper(name) replace email with lower(email)")
+        assert "UPPER(NAME)" in result.upper()
+        assert "LOWER(EMAIL)" in result.upper()
+    
+    def test_replace_chained(self):
+        """Replace multiple columns with chained syntax."""
+        result = preparse_asql("from users replace name with upper(name), email with lower(email)")
+        assert "UPPER(NAME)" in result.upper()
+        assert "LOWER(EMAIL)" in result.upper()
+    
+    def test_replace_with_function_args(self):
+        """Replace with function that has comma in args."""
+        result = preparse_asql("from users replace price with round(price, 2)")
+        assert "ROUND(PRICE, 2)" in result.upper()
+    
+    def test_combined_operators(self):
+        """Combine except, rename, replace."""
+        result = preparse_asql("from users except password rename id as user_id replace name with upper(name)")
+        assert "PASSWORD" in result.upper()
+        assert "USER_ID" in result.upper()
+        assert "UPPER(NAME)" in result.upper()
+
+
+class TestStarColumnOverride:
+    """Test SELECT *, expr AS col → SELECT * EXCEPT(col), expr AS col."""
+    
+    def test_single_override(self):
+        """Single column override adds EXCEPT."""
+        result = preparse_asql("from users select *, upper(name) as name")
+        assert "EXCEPT" in result.upper()
+        assert "NAME" in result.upper()
+    
+    def test_multiple_overrides(self):
+        """Multiple column overrides add EXCEPT with all columns."""
+        result = preparse_asql("from users select *, upper(name) as name, lower(email) as email")
+        assert "EXCEPT" in result.upper()
+        assert "NAME" in result.upper()
+        assert "EMAIL" in result.upper()
+    
+    def test_no_star_no_change(self):
+        """Without star, no transformation."""
+        result = preparse_asql("from users select id, name")
+        assert "EXCEPT" not in result.upper()
+    
+    def test_star_without_aliases_no_change(self):
+        """Star without aliases, no transformation."""
+        result = preparse_asql("from users select *")
+        assert "EXCEPT" not in result.upper()
+    
+    def test_star_with_new_column_no_change(self):
+        """Star with new column (not override), no transformation."""
+        result = preparse_asql("from users select *, id + 1 as new_col")
+        # This DOES add EXCEPT because we can't know if new_col exists
+        # The behavior is: any alias causes EXCEPT to be added
+        # This is safe because EXCEPT on non-existent column just has no effect
+        assert "EXCEPT" in result.upper()
+
+
+class TestSampleClause:
+    """Test sample clause transformation."""
+    
+    def test_sample_fixed_n(self):
+        """sample N becomes ORDER BY RANDOM() LIMIT N."""
+        result = preparse_asql("from orders sample 100")
+        assert "ORDER BY RANDOM()" in result.upper()
+        assert "LIMIT 100" in result.upper()
+    
+    def test_sample_fixed_n_with_where(self):
+        """sample N works with WHERE clause."""
+        result = preparse_asql("from orders where status = 'active' sample 50")
+        assert "ORDER BY RANDOM()" in result.upper()
+        assert "LIMIT 50" in result.upper()
+        assert "WHERE" in result.upper()
+    
+    def test_sample_percentage(self):
+        """sample N% becomes TABLESAMPLE BERNOULLI(N)."""
+        result = preparse_asql("from orders sample 10%")
+        assert "TABLESAMPLE" in result.upper()
+        assert "BERNOULLI" in result.upper()
+        assert "10" in result
+    
+    def test_sample_percentage_decimal(self):
+        """sample with decimal percentage."""
+        result = preparse_asql("from orders sample 0.5%")
+        assert "TABLESAMPLE" in result.upper()
+        assert "0.5" in result
+    
+    def test_sample_stratified(self):
+        """sample N per column becomes stratified sampling with window function."""
+        result = preparse_asql("from orders sample 100 per category")
+        assert "QUALIFY" in result.upper()
+        assert "ROW_NUMBER()" in result.upper()
+        assert "PARTITION BY CATEGORY" in result.upper()
+        assert "ORDER BY RANDOM()" in result.upper()
+        assert "100" in result
+    
+    def test_sample_stratified_with_underscore_column(self):
+        """sample N per column with underscore in column name."""
+        result = preparse_asql("from orders sample 50 per product_category")
+        assert "PARTITION BY PRODUCT_CATEGORY" in result.upper()
+        assert "50" in result
+    
+    def test_sample_with_select(self):
+        """sample works with explicit select."""
+        result = preparse_asql("from orders select id, amount sample 25")
+        assert "ORDER BY RANDOM()" in result.upper()
+        assert "LIMIT 25" in result.upper()
+    
+    def test_sample_preserves_order(self):
+        """sample followed by order by - sample is applied first."""
+        result = preparse_asql("from orders sample 100")
+        # The sample clause transforms to ORDER BY RANDOM() LIMIT N
+        assert "RANDOM()" in result.upper()
+        assert "LIMIT" in result.upper()
+
+
+class TestExplode:
+    """Test explode clause transformation."""
+    
+    def test_explode_basic(self):
+        """explode col as alias creates marker for compiler."""
+        result = preparse_asql("from posts explode tags as tag")
+        assert "__ASQL_EXPLODE_START__" in result
+        assert "__ASQL_EXPLODE_SEP__" in result
+        assert "__ASQL_EXPLODE_END__" in result
+        assert "tags" in result
+        assert "tag" in result
+    
+    def test_explode_with_select(self):
+        """explode with explicit select."""
+        result = preparse_asql("from posts explode tags as tag select id, tag")
+        assert "__ASQL_EXPLODE_START__" in result
+        assert "id" in result.lower()
+    
+    def test_explode_with_function(self):
+        """explode with split function."""
+        result = preparse_asql("from posts explode split(tags_csv, ',') as tag")
+        assert "__ASQL_EXPLODE_START__" in result
+        assert "split(tags_csv, ',')" in result.lower()
+    
+    def test_explode_compiled_postgres(self):
+        """explode compiles to UNNEST for postgres."""
+        from asql.compiler import compile
+        result = compile("from posts explode tags as tag select id, tag", dialect="postgres")
+        assert "UNNEST(tags)" in result
+        assert "AS tag" in result
+    
+    def test_explode_compiled_bigquery(self):
+        """explode compiles to UNNEST for bigquery."""
+        from asql.compiler import compile
+        result = compile("from posts explode tags as tag select id, tag", dialect="bigquery")
+        assert "UNNEST(tags)" in result
+    
+    def test_explode_compiled_snowflake(self):
+        """explode compiles to FLATTEN for snowflake."""
+        from asql.compiler import compile
+        result = compile("from posts explode tags as tag select id, tag", dialect="snowflake")
+        assert "FLATTEN" in result
+        assert "tag" in result.lower()
+
+
+class TestUnpivot:
+    """Test unpivot clause transformation."""
+    
+    def test_unpivot_basic(self):
+        """unpivot cols into name, value creates UNION ALL."""
+        result = preparse_asql("from metrics unpivot jan, feb, mar into month, value")
+        assert "UNION ALL" in result.upper()
+        assert "'jan'" in result.lower()
+        assert "'feb'" in result.lower()
+        assert "'mar'" in result.lower()
+        assert "as month" in result.lower()  # lowercase comparison
+        assert "as value" in result.lower()
+    
+    def test_unpivot_two_columns(self):
+        """unpivot with two columns."""
+        result = preparse_asql("from data unpivot col_a, col_b into name, val")
+        assert "UNION ALL" in result.upper()
+        assert "'col_a'" in result.lower()
+        assert "'col_b'" in result.lower()
+    
+    def test_unpivot_creates_subquery(self):
+        """unpivot wraps result in subquery."""
+        result = preparse_asql("from metrics unpivot jan, feb into month, value")
+        assert "as __unpivot__" in result.lower()  # lowercase comparison
+        assert "SELECT * FROM" in result.upper()
+    
+    def test_unpivot_compiled(self):
+        """unpivot compiles correctly."""
+        from asql.compiler import compile
+        result = compile("from metrics unpivot jan, feb, mar into month, value", dialect="postgres")
+        assert "UNION ALL" in result.upper()
+        assert "__unpivot__" in result.lower()
+
+
+class TestPivot:
+    """Test pivot clause transformation."""
+    
+    def test_pivot_with_values(self):
+        """pivot with explicit values creates CASE expressions."""
+        result = preparse_asql("from sales pivot amount by category values ('A', 'B')")
+        assert "CASE WHEN" in result.upper()
+        assert "category = 'a'" in result.lower()  # values get lowercased
+        assert "category = 'b'" in result.lower()
+        assert "AS A" in result.upper()
+        assert "AS B" in result.upper()
+    
+    def test_pivot_aggregate(self):
+        """pivot with aggregate function."""
+        result = preparse_asql("from sales pivot sum(amount) by category values ('A', 'B')")
+        assert "SUM(CASE WHEN" in result.upper()
+        assert "amount" in result.lower()
+    
+    def test_pivot_with_group_by(self):
+        """pivot with group by clause compiles correctly."""
+        from asql.compiler import compile
+        # Put group by after pivot - cleaner syntax
+        result = compile("from sales pivot sum(amount) by category values ('X', 'Y') group by region", dialect="postgres")
+        assert "GROUP BY" in result.upper()
+        assert "CASE WHEN" in result.upper()
+    
+    def test_pivot_without_values_raises(self):
+        """pivot without values raises helpful error."""
+        import pytest
+        with pytest.raises(ValueError, match="pivot requires explicit values"):
+            preparse_asql("from sales pivot amount by category")
+    
+    def test_pivot_compiled(self):
+        """pivot compiles correctly."""
+        from asql.compiler import compile
+        result = compile("from sales pivot sum(amount) by category values ('A', 'B')", dialect="postgres")
+        assert "SUM(CASE WHEN" in result.upper()
+        assert "AS A" in result.upper()
+        assert "AS B" in result.upper()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

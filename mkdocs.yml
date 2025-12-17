@@ -88,6 +88,8 @@ nav:
     - Dates & Time: syntax/dates.md
     - Window Functions: syntax/window-functions.md
     - CTEs & Variables: syntax/ctes.md
+    - Sampling: syntax/sampling.md
+    - Pivot, Unpivot & Explode: syntax/pivot-unpivot.md
   - Concepts:
     - Overview: concepts/index.md
     - Pipeline Semantics: concepts/pipelines.md

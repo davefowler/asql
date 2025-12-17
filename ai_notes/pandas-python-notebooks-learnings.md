@@ -85,44 +85,39 @@ This is **very verbose** for a common time series pattern.
 
 #### Proposed Enhancement
 
-#### Naming Confusion: Two Different "Fill" Operations
+#### Clarification: Two Different "Fill" Operations
 
-ASQL currently has a `fill` command, but it does something completely different from forward fill. Let's clarify:
+There are two distinct "fill" operations in data analysis - ASQL handles them differently:
 
-| Operation | What it does | Example |
-|-----------|--------------|---------|
-| **Gap Fill (current `fill`)** | Adds missing ROWS to time series | Jan, Mar, Apr → Jan, **Feb**, Mar, Apr |
-| **Forward Fill** | Fills NULL VALUES with previous value | [100, NULL, NULL] → [100, 100, 100] |
+| Operation | What it does | Example | ASQL Solution |
+|-----------|--------------|---------|---------------|
+| **Gap Fill** | Adds missing ROWS to time series | Jan, Mar, Apr → Jan, **Feb**, Mar, Apr | **auto_spine** (automatic) |
+| **Forward Fill** | Fills NULL VALUES with previous value | [100, NULL, NULL] → [100, 100, 100] | Not yet implemented |
 
 These are fundamentally different:
 - **Gap fill** = generate missing date rows, add them to the result
 - **Forward fill** = propagate values within existing rows
 
-**Current ASQL `fill` (gap filling):**
+**ASQL auto_spine (gap filling) - IMPLEMENTED:**
+
+Gap filling is now handled **automatically** by auto_spine. Date truncations in GROUP BY are automatically gap-filled:
+
 ```asql
 from orders
-group by month(created_at) as month (sum(amount) as revenue)
-fill month with {revenue: 0}
--- If Feb has no orders, adds a Feb row with revenue=0
+where created_at >= @2024-01-01 and created_at < @2025-01-01
+group by month(created_at) as month (
+  sum(amount) ?? 0 as revenue  # ?? 0 sets default for filled rows
+)
+-- All 12 months appear, even those with $0 revenue
 ```
 
-This is implemented via date_spine/generator + left join. Alternative names to consider:
+The `fill` command was originally proposed but never implemented - auto_spine made it unnecessary.
+
+**Forward Fill (not yet implemented):**
 
 | Name | Pros | Cons |
 |------|------|------|
-| `fill` (current) | Short | Ambiguous with value filling |
-| `gap_fill` | Descriptive | Longer |
-| `complete` | R/tidyr uses this | Less SQL-like |
-| `densify` | Used in time series DBs | Unfamiliar |
-| `expand` | Describes adding rows | Vague |
-| `fill gaps` | Very explicit | Two words |
-| `spine` | Describes mechanism | Too technical |
-
-**Forward Fill (proposed):**
-
-| Name | Pros | Cons |
-|------|------|------|
-| `fill_forward` | Pandas-familiar | Conflicts with `fill` |
+| `fill_forward` | Pandas-familiar | Clear intent |
 | `ffill` | Short, pandas-style | Cryptic |
 | `carry_forward` | Very descriptive | Longer |
 | `propagate` | Describes action | Unfamiliar |
@@ -144,23 +139,27 @@ This is technically correct (there were no rows to aggregate) but **wrong for an
 
 **For analytics, you almost always want complete date ranges.**
 
-#### Should ASQL Auto-Spine Dates?
+#### Should ASQL Auto-Spine Dates? → ✅ DECIDED: Yes, auto_spine is ON by default
+
+> **IMPLEMENTED**: Auto-spine is now on by default (`auto_spine = true`). Date truncations in GROUP BY are automatically gap-filled. Range is inferred from WHERE clause bounds, falling back to MIN/MAX from data. Use `SET auto_spine = false` to disable, or filter with `WHERE revenue > 0` to remove filled rows.
+>
+> See `ai_notes/spines.md` for full implementation details.
 
 | Approach | Pros | Cons |
 |----------|------|------|
-| Auto-spine all date GROUP BYs | Zero effort, matches analyst intent | Implicit magic, row count changes unexpectedly |
+| **Auto-spine all date GROUP BYs** ✅ | Zero effort, matches analyst intent | Implicit magic, row count changes unexpectedly |
 | Opt-in via function | Explicit intent | Extra syntax |
 | Opt-out (auto by default) | Matches 90% use case | Surprising for SQL users |
 
-**The case for auto-spine:**
+**The case for auto-spine (why we chose this):**
 - Analytics queries almost always want complete date ranges
 - It's what every BI tool does (Looker, Tableau, etc.)
 - The current SQL behavior is a constant source of bugs
 
-**The case against auto-spine by default:**
-- Implicit behavior that differs from SQL could confuse veterans
-- Need to infer date range (min/max from data? what if data is sparse?)
-- Not all queries need complete ranges (see below)
+**The case against auto-spine by default (addressed):**
+- Implicit behavior that differs from SQL could confuse veterans → Can disable with `SET auto_spine = false`
+- Need to infer date range (min/max from data? what if data is sparse?) → Inferred from WHERE clause, fallback to MIN/MAX
+- Not all queries need complete ranges (see below) → Filter with `WHERE col > 0` to remove filled rows
 
 #### When Spining is Good vs. Not
 
@@ -179,28 +178,25 @@ This is technically correct (there were no rows to aggregate) but **wrong for an
 
 **Key insight: Analytics queries usually want spining, transformation/modeling steps often don't.**
 
-This suggests:
-- `guarantee()` should be explicit opt-in, not default
-- But make it dead simple when you want it
-- Maybe a project/file-level setting for "analytics mode" vs "modeling mode"?
+> **IMPLEMENTED SOLUTION**: Auto-spine is ON by default for date truncations. For non-date columns, use `guarantee()` with explicit values. To opt out: `SET auto_spine = false` or filter results.
 
 ```asql
--- Modeling context: no auto-spine, preserve sparsity
+-- Default: auto-spine fills all months (dates gap-filled automatically)
+from orders
+where created_at >= @2024-01-01 and created_at < @2025-01-01
+group by month(created_at) as month (sum(amount) ?? 0 as revenue)
+
+-- Non-dates: use guarantee() for explicit spine values
+from sales
+group by guarantee(region, ['North', 'South', 'East', 'West']) (
+  sum(amount) ?? 0 as total
+)
+
+-- Opt-out: disable auto-spine for this query
+SET auto_spine = false;
 from raw_orders
 group by month(created_at) as month (sum(amount) as revenue)
-
--- Analytics context: use guarantee for complete ranges
-from orders
-where created_at >= '2024-01-01'
-group by guarantee(month(created_at)) as month (
-  sum(amount) ?? 0 as revenue
-)
 ```
-
-**Note:** These concerns apply to **auto-spining by default**. If we use an explicit `guarantee()` function:
-- Row count changes are expected (you opted in)
-- Range can be explicit: `guarantee(month(...), '2024-01-01' to '2024-12-01')`
-- Or auto-detect from data with clear semantics: uses MIN/MAX of the grouped column
 
 #### Smart Range Detection: Use the WHERE Clause!
 
@@ -677,7 +673,7 @@ SELECT * FROM orders ORDER BY RANDOM() LIMIT n
 
 ---
 
-### 11. Explode / Unnest Arrays
+### 11. Explode / Unnest Arrays ✅ IMPLEMENTED
 
 #### Pandas
 ```python
@@ -685,21 +681,7 @@ df.explode('tags')                    # One row per array element
 df['col'].str.split(',').explode()    # Split string, then explode
 ```
 
-#### Current ASQL (No Abstraction Yet)
-You'd write dialect-specific SQL:
-
-```sql
--- BigQuery
-SELECT *, tag FROM posts, UNNEST(tags) as tag
-
--- Postgres
-SELECT *, tag FROM posts, LATERAL unnest(tags) as tag
-
--- Snowflake
-SELECT *, t.value as tag FROM posts, LATERAL FLATTEN(tags) t
-```
-
-#### Proposed Enhancement
+#### ASQL ✅
 ```asql
 from posts
 explode tags as tag
@@ -709,7 +691,12 @@ from posts
 explode split(tags_csv, ',') as tag
 ```
 
-**Value:** High. Array handling syntax varies wildly between warehouses. A single keyword would handle cross-dialect complexity.
+**Compiles to dialect-specific SQL:**
+- **Postgres/DuckDB:** `FROM posts, UNNEST(tags) AS tag`
+- **BigQuery:** `FROM posts CROSS JOIN UNNEST(tags) AS tag`
+- **Snowflake:** `FROM posts CROSS JOIN (SELECT value AS tag FROM TABLE(FLATTEN(...)))`
+
+**Status:** Implemented! Single keyword handles cross-dialect complexity.
 
 ---
 

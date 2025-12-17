@@ -12,6 +12,11 @@ This section provides detailed documentation on ASQL syntax. Each page covers a 
 - **[Window Functions](window-functions.md)** — Ranking, running totals, prior/next, deduplication
 - **[CTEs & Variables](ctes.md)** — `stash as`, `set`, named CTEs, query composition
 
+## Data Manipulation
+
+- **[Sampling](sampling.md)** — Random sampling, percentage sampling, stratified sampling
+- **[Pivot, Unpivot & Explode](pivot-unpivot.md)** — Reshaping data, column operators, array expansion
+
 ## Quick Reference
 
 | Operation | ASQL Syntax | SQL Equivalent |
@@ -22,11 +27,15 @@ This section provides detailed documentation on ASQL syntax. Each page covers a 
 | Group and aggregate | `group by country (# as total)` | `SELECT country, COUNT(*) AS total GROUP BY country` |
 | Sort descending | `order by -created_at` | `ORDER BY created_at DESC` |
 | Limit results | `limit 10` | `LIMIT 10` |
+| Random sample | `sample 100` | `ORDER BY RANDOM() LIMIT 100` |
 | Inner join | `& users on id = user_id` | `INNER JOIN users ON id = user_id` |
 | Left join | `&? users on id = user_id` | `LEFT JOIN users ON id = user_id` |
 | Count rows | `#` | `COUNT(*)` |
 | Date literal | `@2024-01-15` | `DATE '2024-01-15'` |
 | Null coalesce | `value ?? 0` | `COALESCE(value, 0)` |
+| Exclude column | `except password_hash` | `SELECT * EXCEPT(password_hash)` |
+| Pivot | `pivot sum(x) by cat values (...)` | `CASE WHEN ... GROUP BY` |
+| Explode array | `explode tags as tag` | `CROSS JOIN UNNEST(tags)` |
 
 ## Syntax Flexibility
 

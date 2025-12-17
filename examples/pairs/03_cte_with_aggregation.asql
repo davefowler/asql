@@ -1,16 +1,16 @@
 -- CTE: Active users by country with their order totals
 with active_users = from users
-  where status == "active" and last_login_date >= current_date - interval "30 days"
+  where status = "active" and last_login_date >= current_date - interval "30 days"
 
 with user_orders = from orders
-  where status == "completed"
+  where status = "completed"
   group by customer_id (
     count(*) as order_count,
     sum(total_amount) as lifetime_value
   )
 
 from active_users
-  left join user_orders on active_users.user_id == user_orders.customer_id
+  &? user_orders on active_users.user_id = user_orders.customer_id
   group by active_users.country (
     count(distinct active_users.user_id) as active_user_count,
     avg(coalesce(user_orders.order_count, 0)) as avg_orders_per_user,
