@@ -7,7 +7,7 @@ Learn the syntax of Analytic SQL. This guide covers all the language features yo
 - [Basic Operations](#basic-operations)
 - [Filtering](#filtering)
 - [Aggregations](#aggregations)
-- [Ordering & Limiting](#ordering--limiting)
+- [Ordering & Limiting](#ordering-limiting)
 - [Date Functions](#date-functions)
 - [Joins](#joins)
 - [Window Functions](#window-functions)
