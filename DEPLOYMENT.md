@@ -2,7 +2,7 @@
 
 This project deploys to:
 - **Docs**: Netlify (static site from MkDocs)
-- **Playground**: Railway (Flask application)
+- **Playground**: Railway (FastAPI application)
 
 ## Quick Start
 
@@ -11,7 +11,7 @@ This project deploys to:
 1. Go to https://railway.app and create a new project
 2. Connect your GitHub repository
 3. Railway will automatically detect:
-   - `Procfile` → runs `python playground.py`
+   - `Procfile` (or `nixpacks.toml`) → runs `uvicorn playground:app --host 0.0.0.0 --port $PORT`
    - `requirements.txt` → installs dependencies
 4. Railway provides a public URL (e.g., `https://asql-playground-production.up.railway.app`)
 
@@ -36,7 +36,8 @@ Update `netlify.toml` with your Railway playground URL:
 
 | File | Purpose |
 |------|---------|
-| `Procfile` | Railway entry point (`web: python playground.py`) |
+| `Procfile` | Railway entry point (`web: uvicorn playground:app --host 0.0.0.0 --port $PORT`) |
+| `nixpacks.toml` | Forces Railway start command (prevents legacy `playground.py` start) |
 | `requirements.txt` | Railway dependencies |
 | `requirements-docs.txt` | Netlify MkDocs dependencies |
 | `netlify.toml` | Netlify build config |
@@ -46,7 +47,7 @@ Update `netlify.toml` with your Railway playground URL:
 
 ### Railway
 - `PORT` - Automatically set by Railway
-- `FLASK_ENV` - Set to `production` for production mode
+- (No Flask env vars needed — playground is FastAPI + Uvicorn)
 
 ### Netlify
 - `PLAYGROUND_URL` - Your Railway playground URL
