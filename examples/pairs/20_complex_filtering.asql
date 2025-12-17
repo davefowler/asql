@@ -1,14 +1,14 @@
 -- Complex filtering: Multi-condition queries
 from orders
-  join customers on orders.customer_id == customers.customer_id
-  left join order_items on orders.order_id == order_items.order_id
-  where orders.status == "completed"
+  & customers on orders.customer_id = customers.customer_id
+  &? order_items on orders.order_id = order_items.order_id
+  where orders.status = "completed"
     and orders.order_date >= @2024-01-01
     and orders.total_amount >= 100
     and customers.country in ("US", "CA", "UK")
     and exists (
       from order_items as oi2
-      where oi2.order_id == orders.order_id 
+      where oi2.order_id = orders.order_id 
         and oi2.price > 50
     )
   group by orders.order_id, orders.order_date, customers.customer_name, orders.total_amount (

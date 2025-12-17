@@ -11,8 +11,8 @@ with monthly_activity = from user_activities
   )
 
 from user_cohorts
-  left join monthly_activity on user_cohorts.user_id == monthly_activity.user_id 
-    and monthly_activity.activity_month == user_cohorts.cohort_month
+  &? monthly_activity on user_cohorts.user_id = monthly_activity.user_id 
+    and monthly_activity.activity_month = user_cohorts.cohort_month
   group by user_cohorts.cohort_month (
     count(distinct user_cohorts.user_id) as cohort_size,
     count(distinct monthly_activity.user_id) as active_users,

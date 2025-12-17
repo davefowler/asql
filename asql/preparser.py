@@ -11,6 +11,7 @@ This module handles structural transformations that fundamentally differ from SQ
 8. Date expressions (N days ago, date + N days, etc.)
 9. Count shorthand (# → COUNT(*))
 10. Order by -col (DESC indicator)
+11. Join operators (&, &?, ?&, ?&?, *) transformation
 """
 
 import re
@@ -109,6 +110,7 @@ class ASQLPreParser:
         # Apply transformations in order
         result = self._transform_set_statements(result)
         result = self._transform_pipeline(result)
+        result = self._transform_join_operators(result)  # Early: transform join operators before other processing
         result = self._transform_stash_as(result)  # Early: split query at stash points before other transforms
         result = self._transform_count_shorthand(result)
         result = self._transform_sort_keyword(result)  # Convert sort → ORDER BY before DESC prefix
@@ -274,6 +276,164 @@ class ASQLPreParser:
             segments.append(''.join(current))
         
         return segments
+    
+    def _transform_join_operators(self, text: str) -> str:
+        """
+        Transform ASQL join operators to SQL JOIN syntax.
+        
+        &   → INNER JOIN (both sides must match)
+        &?  → LEFT JOIN (right side is optional)
+        ?&  → RIGHT JOIN (left side is optional)
+        ?&? → FULL OUTER JOIN (both sides are optional)
+        *   → CROSS JOIN (cartesian product)
+        
+        Examples:
+        from users &? orders on users.id = orders.user_id
+        → FROM users LEFT JOIN orders ON users.id = orders.user_id
+        
+        from opportunities & owners
+        → FROM opportunities INNER JOIN owners
+        
+        from users &? accounts as account on users.id = account.user_id
+        → FROM users LEFT JOIN accounts AS account ON users.id = account.user_id
+        """
+        result = text
+        
+        # Process join operators in a specific order to handle overlapping patterns
+        # Order matters: ?&? before ?& and &? before &
+        
+        # Pattern components:
+        # - Join operator: ?&?, &?, ?&, &, *
+        # - Table name: identifier
+        # - Optional alias: as <identifier>
+        # - Optional condition: on <condition>
+        
+        # ?&? → FULL OUTER JOIN
+        result = self._replace_join_operator(result, r'\?\s*&\s*\?', 'FULL OUTER JOIN')
+        
+        # &? → LEFT JOIN  
+        result = self._replace_join_operator(result, r'&\s*\?', 'LEFT JOIN')
+        
+        # ?& → RIGHT JOIN
+        result = self._replace_join_operator(result, r'\?\s*&', 'RIGHT JOIN')
+        
+        # & → INNER JOIN (but not &&, and not &? or ?&)
+        # Use negative lookahead/lookbehind to avoid matching &? or ?& or &&
+        result = self._replace_join_operator(result, r'(?<!\?)&(?!\?|&)', 'JOIN')
+        
+        # * → CROSS JOIN (but not ** or *=)
+        # Must be careful to distinguish from multiplication
+        # Cross join should have a table name after it
+        result = self._replace_cross_join(result)
+        
+        return result
+    
+    def _replace_join_operator(self, text: str, operator_pattern: str, join_type: str) -> str:
+        """
+        Replace a join operator with SQL JOIN syntax.
+        
+        Handles patterns like:
+        - table1 &? table2
+        - table1 &? table2 as alias
+        - table1 &? table2 on condition
+        - table1 &? table2 as alias on condition
+        """
+        result = text
+        
+        # Build the pattern:
+        # <operator> <table_name> [as <alias>] [on <condition>]
+        # The condition extends until the next join operator, clause keyword, or end
+        
+        # Pattern for table with optional alias
+        table_pattern = r'([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
+        
+        # Full pattern: operator table [as alias] [on condition]
+        # Condition continues until next join op, clause keyword, or end of line/query
+        full_pattern = (
+            operator_pattern + 
+            r'\s+' + 
+            table_pattern +
+            r'(?:\s+on\s+(.+?))?'
+            r'(?=\s*(?:' +
+            r'(?:\?\s*&\s*\?|\&\s*\?|\?\s*&|(?<!\?)&(?!\?|&)|\*)' +  # Next join operator
+            r'|\bwhere\b|\bgroup\b|\border\b|\blimit\b|\bselect\b|\bstash\b|\bhaving\b|\bqualify\b' +  # Clause keywords
+            r'|$))'  # End of string
+        )
+        
+        def replace_match(match: re.Match) -> str:
+            table_name = match.group(1)
+            alias = match.group(2)
+            condition = match.group(3)
+            
+            # Build the replacement
+            parts = [join_type, table_name]
+            
+            if alias:
+                parts.append(f'AS {alias}')
+            
+            if condition:
+                parts.append(f'ON {condition.strip()}')
+            
+            return ' ' + ' '.join(parts)
+        
+        result = re.sub(full_pattern, replace_match, result, flags=re.IGNORECASE | re.DOTALL)
+        
+        return result
+    
+    def _replace_cross_join(self, text: str) -> str:
+        """
+        Replace * cross join operator with SQL CROSS JOIN syntax.
+        
+        Pattern: table1 * table2
+        → FROM table1 CROSS JOIN table2
+        
+        Must be careful to distinguish from multiplication in expressions.
+        Cross join * is only valid:
+        - After FROM clause table name
+        - After another join clause
+        
+        NOT valid:
+        - Inside expressions (arithmetic)
+        - Inside parentheses (could be subexpression)
+        """
+        result = text
+        
+        # Only look for * that appears in a "from" context
+        # Pattern: after FROM table or after a previous join (ending with identifier or ))
+        # We need to look for:
+        # - "from <table> *" 
+        # - "on <condition> *" (after a join condition)
+        
+        # The cross join must:
+        # 1. Follow a table identifier (not inside parens for arithmetic)
+        # 2. Precede a table identifier
+        # 3. Not be inside a select expression context
+        
+        # Strategy: Only replace * when it's preceded by:
+        # - "from <table>"
+        # - Another JOIN clause pattern
+        # And followed by a table name
+        
+        # This is a conservative pattern that only matches * after "from X" or after
+        # a previous join's table/alias, NOT inside select expressions
+        
+        # Pattern: from <table> * <table2> OR from <table> as <alias> * <table2>
+        pattern = r'\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+[a-zA-Z_][a-zA-Z0-9_]*)?\s+\*\s+([a-zA-Z_][a-zA-Z0-9_]*)(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
+        
+        def replace_from_cross(match: re.Match) -> str:
+            table1 = match.group(1)
+            table2 = match.group(2)
+            alias = match.group(3)
+            
+            parts = [f'from {table1} CROSS JOIN {table2}']
+            if alias:
+                parts[0] += f' AS {alias}'
+            
+            return parts[0]
+        
+        result = re.sub(pattern, replace_from_cross, result, flags=re.IGNORECASE)
+        
+        return result
     
     def _transform_count_shorthand(self, text: str) -> str:
         """
@@ -455,12 +615,14 @@ class ASQLPreParser:
             
             order_clause = remaining[:clause_end]
             
-            # Transform -col to col DESC
+            # Transform -col to col DESC (handles dotted identifiers like table.column)
             def transform_col(col_match: re.Match) -> str:
                 col = col_match.group(1)
                 return f"{col} DESC"
             
-            transformed = re.sub(r'-\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)', transform_col, order_clause)
+            # Pattern for identifiers: simple or dotted (e.g., orders.created_at)
+            # Also handles function calls like year(created_at)
+            transformed = re.sub(r'-\s*([a-zA-Z_][a-zA-Z0-9_.]*(?:\s*\([^)]*\))?)', transform_col, order_clause)
             
             # Rebuild result
             result = result[:match.start()] + match.group(0) + transformed + remaining[clause_end:]
@@ -856,14 +1018,20 @@ class ASQLPreParser:
         # Format: SELECT group_cols, aggs FROM ... GROUP BY group_cols [ORDER BY ...]
         before_group = result[:match.start()].strip()
         
+        # Extract comment placeholders from before_group to preserve them at the start
+        comment_prefix_pattern = r'^(\s*(?:__COMMENT_\d+__\s*)*)'
+        comment_match = re.match(comment_prefix_pattern, before_group)
+        comment_prefix = comment_match.group(1) if comment_match else ''
+        before_group_no_comments = before_group[len(comment_prefix):].strip() if comment_prefix else before_group
+        
         # Build SELECT clause
         select_clause = f"SELECT {group_cols}, {aggs_text}"
         
         # Build GROUP BY clause
         group_clause = f"GROUP BY {group_cols}"
         
-        # Combine: SELECT ... FROM ... GROUP BY ... [remaining clauses]
-        result = f"{select_clause} {before_group} {group_clause} {after_block}"
+        # Combine: [comments] SELECT ... FROM ... GROUP BY ... [remaining clauses]
+        result = f"{comment_prefix}{select_clause} {before_group_no_comments} {group_clause} {after_block}"
         
         return result
     
@@ -947,45 +1115,54 @@ class ASQLPreParser:
         """
         result = text.strip()
         
+        # Skip over comment placeholders at the start to find actual query start
+        # Comment placeholders look like: __COMMENT_N__
+        query_start_pattern = r'^(\s*(?:__COMMENT_\d+__\s*)*)'
+        query_start_match = re.match(query_start_pattern, result)
+        prefix = query_start_match.group(1) if query_start_match else ''
+        query_without_prefix = result[len(prefix):].strip() if prefix else result
+        
         # Check if query starts with FROM (not SELECT, WITH, etc.)
-        if not re.match(r'^\s*(select|with|insert|update|delete|create|alter|drop)\b', result, re.IGNORECASE):
-            if re.match(r'^\s*from\b', result, re.IGNORECASE):
+        if not re.match(r'^\s*(select|with|insert|update|delete|create|alter|drop)\b', query_without_prefix, re.IGNORECASE):
+            if re.match(r'^\s*from\b', query_without_prefix, re.IGNORECASE):
                 # Check if SELECT appears later (for "from x select y" syntax)
-                select_match = re.search(r'\bselect\s+', result, re.IGNORECASE)
+                # Search in the query without prefix to avoid matching select in comments
+                select_match = re.search(r'\bselect\s+', query_without_prefix, re.IGNORECASE)
                 if select_match:
                     # Find the extent of the SELECT clause
                     # We need to find where the SELECT clause ends, which is at
                     # a keyword like WHERE, GROUP BY, LIMIT, QUALIFY, etc.
                     # But we need to skip keywords inside parentheses (like in OVER clauses)
                     select_start = select_match.end()
-                    select_end = len(result)
+                    select_end = len(query_without_prefix)
                     
                     paren_depth = 0
                     i = select_start
-                    while i < len(result):
-                        char = result[i]
+                    while i < len(query_without_prefix):
+                        char = query_without_prefix[i]
                         if char == '(':
                             paren_depth += 1
                         elif char == ')':
                             paren_depth -= 1
                         elif paren_depth == 0:
                             # Check for clause keywords at this position
-                            remaining = result[i:].lower()
+                            remaining = query_without_prefix[i:].lower()
                             for kw in ['where ', 'group by ', 'order by ', 'limit ', 'having ', 'qualify ']:
                                 if remaining.startswith(kw):
                                     select_end = i
                                     break
-                            if select_end != len(result):
+                            if select_end != len(query_without_prefix):
                                 break
                         i += 1
                     
-                    select_clause = result[select_start:select_end].strip()
-                    before_select = result[:select_match.start()]
-                    after_select = result[select_end:]
-                    result = f"SELECT {select_clause} {before_select}{after_select}"
+                    select_clause = query_without_prefix[select_start:select_end].strip()
+                    before_select = query_without_prefix[:select_match.start()]
+                    after_select = query_without_prefix[select_end:]
+                    # Keep prefix (comments) at the front
+                    result = f"{prefix}SELECT {select_clause} {before_select}{after_select}"
                 else:
-                    # Add SELECT * at front
-                    result = "SELECT * " + result
+                    # Add SELECT * at front, keeping prefix
+                    result = f"{prefix}SELECT * {query_without_prefix}"
         
         return result
     
