@@ -1,14 +1,95 @@
 """ASQL Configuration System.
 
-This module provides the configuration system for ASQL style preferences.
-Config affects OUTPUT style (reverse_compile, normalize), not input parsing.
+This module provides the configuration system for ASQL:
+1. StyleConfig: Output style preferences (reverse_compile, normalize)
+2. CompileSettings: Compilation behavior settings (affects generated SQL)
+3. ASQLConfig: Complete configuration combining both
+
 ASQL always accepts all valid syntaxes on input.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Dict, Any
+from typing import Literal, Optional, Dict, Any, List, Tuple
 from pathlib import Path
 import json
+
+
+# Registry of known compile settings for SET statement parsing
+KNOWN_COMPILE_SETTINGS = {
+    'auto_spine',
+    'week_start', 
+    'relative_date_type',
+    'dialect',
+}
+
+
+@dataclass
+class CompileSettings:
+    """Compilation behavior settings that affect generated SQL.
+    
+    These settings control how ASQL is compiled to SQL:
+    - Can be set in asql.config.yaml
+    - Can be overridden inline via SET statements
+    
+    Example inline usage:
+        SET auto_spine = false;
+        SET week_start = 'sunday';
+        
+        from orders
+        group by week(created_at) as w (sum(amount) as revenue)
+    """
+    
+    # Auto-spine: automatically add gap-filling for date truncations in GROUP BY
+    # When True, date columns in GROUP BY will include all dates in the range
+    auto_spine: bool = False  # Default off until fully implemented
+    
+    # Week start day: affects week() function output
+    week_start: Literal["monday", "sunday"] = "monday"
+    
+    # Relative date type: what "7 days ago" compiles to
+    # "timestamp" -> CURRENT_TIMESTAMP - INTERVAL '7 days'
+    # "date" -> CURRENT_DATE - INTERVAL '7 days'  
+    relative_date_type: Literal["timestamp", "date"] = "timestamp"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "auto_spine": self.auto_spine,
+            "week_start": self.week_start,
+            "relative_date_type": self.relative_date_type,
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CompileSettings":
+        """Create from dictionary."""
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
+    
+    def merge_with(self, overrides: "CompileSettings") -> "CompileSettings":
+        """Create new settings with overrides applied.
+        
+        Non-default values in overrides take precedence.
+        """
+        result = CompileSettings()
+        defaults = CompileSettings()
+        
+        for field_name in self.__dataclass_fields__:
+            base_value = getattr(self, field_name)
+            override_value = getattr(overrides, field_name)
+            default_value = getattr(defaults, field_name)
+            
+            # Use override if it differs from default, otherwise use base
+            if override_value != default_value:
+                setattr(result, field_name, override_value)
+            else:
+                setattr(result, field_name, base_value)
+        
+        return result
+
+
+# Default compile settings instance
+DEFAULT_COMPILE_SETTINGS = CompileSettings()
 
 
 @dataclass
@@ -96,7 +177,8 @@ class ASQLConfig:
         # Custom config
         config = ASQLConfig(
             dialect="bigquery",
-            style=StyleConfig(equality="single", count="function")
+            style=StyleConfig(equality="single", count="function"),
+            compile=CompileSettings(auto_spine=True)
         )
     """
     
@@ -106,8 +188,11 @@ class ASQLConfig:
     # Target SQL dialect for compile()
     dialect: str = "snowflake"
     
-    # Style configuration
+    # Style configuration (affects ASQL output in reverse_compile)
     style: StyleConfig = field(default_factory=StyleConfig)
+    
+    # Compile settings (affects SQL generation)
+    compile: CompileSettings = field(default_factory=CompileSettings)
     
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "ASQLConfig":
@@ -247,6 +332,12 @@ class ASQLConfig:
                 if hasattr(config.style, key):
                     setattr(config.style, key, value)
         
+        # Override compile settings if provided
+        if "compile" in data and isinstance(data["compile"], dict):
+            for key, value in data["compile"].items():
+                if hasattr(config.compile, key):
+                    setattr(config.compile, key, value)
+        
         return config
     
     def to_dict(self) -> Dict[str, Any]:
@@ -255,8 +346,12 @@ class ASQLConfig:
             "preset": self.preset,
             "dialect": self.dialect,
             "style": self.style.to_dict(),
+            "compile": self.compile.to_dict(),
         }
 
 
 # Default config instance
 DEFAULT_CONFIG = ASQLConfig()
+
+# Re-export for convenience
+DEFAULT_COMPILE_SETTINGS = CompileSettings()

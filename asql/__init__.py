@@ -22,11 +22,11 @@ The compilation pipeline:
 3. Generator: Outputs SQL in the target dialect
 """
 
-from asql.compiler import compile, compile_to_ast, get_preparsed
+from asql.compiler import compile, compile_to_ast, get_preparsed, get_settings_from_query
 from asql.dialect import ASQL, ASQLDialect, register_asql_dialect
 from asql.preparser import preparse_asql, ASQLPreParser
 from asql.reverse_compiler import reverse_compile, detect_dialect
-from asql.config import ASQLConfig, StyleConfig
+from asql.config import ASQLConfig, StyleConfig, CompileSettings
 
 __version__ = "0.1.0"
 
@@ -62,6 +62,7 @@ __all__ = [
     "compile",
     "compile_to_ast",
     "get_preparsed",
+    "get_settings_from_query",
     "normalize",
     
     # Pre-parser
@@ -80,4 +81,5 @@ __all__ = [
     # Configuration
     "ASQLConfig",
     "StyleConfig",
+    "CompileSettings",
 ]

@@ -63,9 +63,9 @@ from users
 where status == 'active'
 """, dialect="postgres")
 
-# Multiple queries (creates CTEs)
+# Query with CTE using stash as
 multi_query = """
-with active_users = from users where status == 'active';
+from users where status == 'active' stash as active_users
 from active_users group by country ( # as total )
 """
 

@@ -225,16 +225,6 @@ class TestStashAs:
         assert "WITH" in result.upper() or "ACTIVE_USERS" in result.upper()
 
 
-class TestSetStatements:
-    """Test set variable = query transformation."""
-    
-    def test_simple_set(self):
-        """set name = query creates CTE."""
-        result = preparse_asql("set base = from users where active")
-        assert "WITH" in result.upper()
-        assert "BASE" in result.upper()
-
-
 class TestFunctionSpaceNormalization:
     """Test underscore/space normalization for functions."""
     
