@@ -137,13 +137,19 @@ where status = 'active'
 
 These are syntax choices that aren't configurable settings, but represent preferred ASQL patterns over SQL alternatives.
 
-### Conditional Expressions: `when` over `CASE WHEN`
+### Conditional Expressions: Ternary vs `when` vs `CASE WHEN`
 
-**Preferred**: `when` expressions  
-**Avoid**: `CASE WHEN ... THEN ... ELSE ... END`
+**Preferred for simple binary conditions**: Ternary `? :` operator  
+**Preferred for multi-branch conditions**: `when` expressions  
+**Avoid**: `CASE WHEN ... THEN ... ELSE ... END` (SQL style)
 
 ```asql
--- Preferred
+-- Preferred: Ternary for simple binary conditions
+select
+  amount > 1000 ? "high" : "low" as tier,
+  status == "active" ? 1 : 0 as is_active
+
+-- Preferred: when for multi-branch conditions
 select
   when status
     is "active" then "Active User"
@@ -160,7 +166,10 @@ select
   END as status_label
 ```
 
-**Rationale**: `when` is more concise, reads naturally, and is ASQL's primary conditional syntax.
+**Rationale**: 
+- Ternary (`? :`) is the most concise for simple binary conditions (condition ? true : false)
+- `when` is better for multi-branch conditions and reads more naturally
+- Both compile to SQL `CASE WHEN`, but ASQL syntax is preferred
 
 ---
 
@@ -208,23 +217,6 @@ when status
 
 ---
 
-### Ternary Expressions: Not Available - Use `when`
-
-**Note**: Ternary-style conditionals (like `condition ? value1 : value2` or `value1 if condition else value2`) are **not implemented** in ASQL.
-
-**Use `when` instead:**
-```asql
--- Preferred (ASQL way)
-when amount = 0 then null otherwise amount
-
--- Not available (ternary syntax)
-amount = 0 ? null : amount              -- ❌ Not supported
-null if amount = 0 else amount          -- ❌ Not supported
-```
-
-**Rationale**: `when` expressions are ASQL's standard conditional syntax. They're more readable for complex conditions and support multiple branches. For simple two-branch cases, `when ... then ... otherwise ...` is still preferred.
-
----
 
 ### CTEs: `stash as` over `WITH ... AS`
 
@@ -487,7 +479,7 @@ where delivery_date = DATEADD(day, 3, order_date)
 | **Descending** | `-col` | `col DESC` | Prefix minus |
 | **Cast** | `::` | `CAST(...)` | PostgreSQL style |
 | **Quotes** | `"` | `'` | Double quotes |
-| **Conditionals** | `when` | `CASE WHEN` | ASQL syntax |
+| **Conditionals** | Ternary `? :` (simple) / `when` (multi-branch) | `CASE WHEN` | ASQL syntax |
 | **Equality in when** | `is` | `=` | More readable |
 | **Default clause** | `otherwise` | `else` | More explicit |
 | **CTEs** | `stash as` | `WITH ... AS` | Inline style |

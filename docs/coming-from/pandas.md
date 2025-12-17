@@ -301,7 +301,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```asql
     from orders
     select *,
-        when amount > 1000 then 'high' else 'low' as tier
+        amount > 1000 ? 'high' : 'low' as tier
 
     -- Multiple conditions
     select *,
