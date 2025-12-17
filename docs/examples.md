@@ -626,6 +626,88 @@ LIMIT 10
 
 ---
 
+## Cohort Analysis
+
+Cohort analysis tracks user behavior over time by grouping users by when they started. Traditional SQL requires 50+ lines with multiple CTEs. ASQL simplifies this to just 3-5 lines.
+
+### User Retention by Cohort
+
+**ASQL (3 lines):**
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+```
+
+**SQL (50+ lines):**
+```sql
+WITH cohort_base AS (
+  SELECT user_id, DATE_TRUNC('month', signup_date) AS cohort_month
+  FROM users
+),
+cohort_sizes AS (
+  SELECT cohort_month, COUNT(DISTINCT user_id) AS cohort_size
+  FROM cohort_base
+  GROUP BY cohort_month
+)
+SELECT 
+  cb.cohort_month,
+  EXTRACT(YEAR FROM AGE(e.event_date, cb.cohort_month)) * 12 + 
+  EXTRACT(MONTH FROM AGE(e.event_date, cb.cohort_month)) AS period,
+  cs.cohort_size,
+  COUNT(DISTINCT e.user_id) AS active
+FROM events e
+JOIN cohort_base cb ON e.user_id = cb.user_id
+JOIN cohort_sizes cs ON cb.cohort_month = cs.cohort_month
+GROUP BY cb.cohort_month, period, cs.cohort_size
+ORDER BY cb.cohort_month, period
+```
+
+**Reduction: 94%** - From 50+ lines to 3 lines!
+
+### Revenue Cohort with LTV
+
+**ASQL:**
+```asql
+from orders
+group by month(order_date) (sum(total) as revenue)
+cohort by month(customers.first_order_date)
+select
+  cohort_month,
+  period,
+  revenue,
+  running_sum(revenue) as cumulative_revenue,
+  running_sum(revenue) / cohort_size as ltv
+```
+
+### Retention with Period-over-Period Change
+
+**ASQL:**
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+select
+  cohort_month,
+  period,
+  active,
+  prior(active) as prev_period_active,
+  active - prior(active) as change
+```
+
+### Segmented Cohorts by Channel
+
+**ASQL:**
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by users.channel, month(users.signup_date)
+```
+
+This creates cohorts segmented by acquisition channel, allowing you to compare retention across different channels.
+
+---
+
 ## Try It Yourself
 
 **The easiest way to try these examples is in the [Interactive Playground](https://play.analyticsql.com)**. Just copy any ASQL query from the examples above and paste it into the playground to see the generated SQL in real-time.

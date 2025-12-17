@@ -2117,7 +2117,179 @@ select safe_divide(revenue, users) as revenue_per_user
 
 ---
 
-## 14. Models (Optional Metadata)
+## 14. Cohort Analysis
+
+Cohort analysis groups users by a shared characteristic (usually when they "started") and tracks their behavior over time. Traditional SQL requires 3-5 CTEs and 50+ lines for even basic cohort queries. ASQL simplifies this dramatically with the `cohort by` operator.
+
+### 14.1 Basic Cohort Syntax
+
+The `cohort by` clause transforms any aggregation query into a cohort analysis:
+
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+```
+
+This automatically:
+- Creates cohort assignment CTEs (`cohort_base`, `cohort_sizes`)
+- Joins the activity table to cohort tables
+- Calculates period (months/weeks/days since cohort start)
+- Modifies GROUP BY to include `cohort_month` and `period`
+- Adds cohort columns to SELECT (`cohort_month`, `period`, `cohort_size`)
+- Orders results by `cohort_month, period`
+
+### 14.2 Cohort Assignment
+
+Cohort assignment determines which group each user belongs to. The `cohort by` clause specifies:
+
+- **Granularity**: `month()`, `week()`, or `day()` function
+- **Cohort column**: The date column that defines the cohort (e.g., `users.signup_date`)
+- **Join key**: Optional explicit join key with `on` clause
+
+```asql
+-- Monthly cohorts by signup date
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+
+-- Weekly cohorts
+from events
+group by week(event_date) (count(distinct user_id) as active)
+cohort by week(users.signup_date)
+
+-- Explicit join key
+from orders
+group by month(order_date) (sum(total) as revenue)
+cohort by month(customers.first_order_date) on customer_id
+```
+
+### 14.3 Period Calculation
+
+Period is automatically calculated based on the granularity function:
+
+- `cohort by month(...)` → period in months since cohort start
+- `cohort by week(...)` → period in weeks since cohort start
+- `cohort by day(...)` → period in days since cohort start
+
+The period calculation uses the activity date column from your `group by` clause and the cohort date to compute the difference.
+
+### 14.4 Retention Calculations
+
+With `cohort by`, retention calculations become straightforward. The `cohort_size` column is automatically available in your results:
+
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+```
+
+This generates SQL that includes:
+- `cohort_month`: The month users signed up
+- `period`: Months since signup (0 = signup month, 1 = first month after, etc.)
+- `active`: Active users in that period
+- `cohort_size`: Total users in the cohort
+
+You can then calculate retention rates using window functions or in your BI tool.
+
+### 14.5 Period-over-Period Comparisons
+
+Use window functions like `prior()` for period-over-period analysis:
+
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+select
+  cohort_month,
+  period,
+  active,
+  prior(active) as prev_period_active,
+  active - prior(active) as change
+```
+
+The `cohort by` clause automatically partitions window functions by cohort and orders by period.
+
+### 14.6 Cohort Rollup Syntax
+
+The `cohort by` syntax works with any aggregation query. Simply add `cohort by` to transform it:
+
+```asql
+-- Revenue cohorts
+from orders
+group by month(order_date) (sum(total) as revenue)
+cohort by month(customers.first_order_date)
+
+-- Multiple metrics
+from events
+group by month(event_date) (
+  count(distinct user_id) as active,
+  count(*) as events,
+  sum(revenue) as revenue
+)
+cohort by month(users.signup_date)
+```
+
+### 14.7 Segmented Cohorts
+
+Add segment dimensions before the time function:
+
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by users.channel, month(users.signup_date)
+```
+
+This creates cohorts segmented by acquisition channel, allowing you to compare retention across different channels.
+
+### 14.8 Example: SQL vs ASQL Comparison
+
+**SQL (50+ lines):**
+```sql
+WITH user_cohorts AS (
+    SELECT user_id, DATE_TRUNC('month', signup_date) AS cohort_month
+    FROM users
+),
+activity_months AS (
+    SELECT user_id, DATE_TRUNC('month', event_date) AS activity_month
+    FROM events
+    GROUP BY 1, 2
+),
+cohort_sizes AS (
+    SELECT cohort_month, COUNT(*) AS size
+    FROM user_cohorts GROUP BY 1
+),
+cohort_activity AS (
+    SELECT 
+        uc.cohort_month,
+        EXTRACT(YEAR FROM AGE(am.activity_month, uc.cohort_month)) * 12 +
+        EXTRACT(MONTH FROM AGE(am.activity_month, uc.cohort_month)) AS period,
+        COUNT(DISTINCT uc.user_id) AS active
+    FROM user_cohorts uc
+    JOIN activity_months am ON uc.user_id = am.user_id
+    WHERE am.activity_month >= uc.cohort_month
+    GROUP BY 1, 2
+)
+SELECT 
+    ca.cohort_month, cs.size, ca.period,
+    ca.active, ROUND(ca.active::numeric / cs.size * 100, 1) AS retention
+FROM cohort_activity ca
+JOIN cohort_sizes cs ON ca.cohort_month = cs.cohort_month
+ORDER BY ca.cohort_month, ca.period;
+```
+
+**ASQL (3 lines):**
+```asql
+from events
+group by month(event_date) (count(distinct user_id) as active)
+cohort by month(users.signup_date)
+```
+
+**Reduction: 94%** 🎉
+
+---
+
+## 15. Models (Optional Metadata)
 
 **Philosophy**: Ideally, ASQL doesn't create its own model format. It should:
 1. Use dbt's existing `schema.yml` files when available
@@ -2166,7 +2338,7 @@ from users
 
 ---
 
-## 15. Nested Results (Optional)
+## 16. Nested Results (Optional)
 
 Inspired by EdgeQL, support nested result shapes:
 
@@ -2182,9 +2354,9 @@ from countries
 
 ---
 
-## 16. Indentation & Multi-line Queries
+## 17. Indentation & Multi-line Queries
 
-### 14.1 Indentation Rules
+### 17.1 Indentation Rules
 
 Every line must return a new table. For multi-line operations, indent:
 
@@ -2195,7 +2367,7 @@ from users
   group by country ( count() as count )
 ```
 
-### 14.2 Nested Selects
+### 17.2 Nested Selects
 
 ```asql
 from users
@@ -2209,9 +2381,9 @@ from users
 
 ---
 
-## 17. Capitalization & Naming
+## 18. Capitalization & Naming
 
-### 15.1 Case-Safe Design
+### 18.1 Case-Safe Design
 
 **ASQL is case-safe by design.** This means you can use capital letters in column and table names without wrapping them in quotes obsessively. However, table/column names must still match the actual database names (case-insensitively).
 
@@ -2240,7 +2412,7 @@ from Users
 
 ASQL eliminates the friction of matching exact case, allowing you to write queries using whatever naming style feels natural while still matching the correct database objects.
 
-### 15.2 Case Handling Strategy
+### 18.2 Case Handling Strategy
 
 ASQL normalizes identifiers internally while preserving the original case for SQL generation:
 
@@ -2264,7 +2436,7 @@ from Users
 SELECT first_name, created_at FROM users
 ```
 
-### 15.3 Column Name Conflicts
+### 18.3 Column Name Conflicts
 
 ASQL automatically handles column name conflicts in joined queries by expanding `SELECT *` to table-qualified columns.
 
@@ -2337,7 +2509,7 @@ from users & orders on users.id = orders.user_id
 select users.id as user_id, orders.id as order_id
 ```
 
-### 15.4 Why Case-Safe is Good
+### 18.4 Why Case-Safe is Good
 
 **Pros:**
 - ✅ Eliminates a common source of errors
@@ -2353,7 +2525,7 @@ select users.id as user_id, orders.id as order_id
 
 ---
 
-## 18. Examples
+## 19. Examples
 
 ### Example 1: Simple Analytic Query
 
@@ -2477,16 +2649,16 @@ avg age of user by country
 
 ---
 
-## 19. Compilation & Transpilation
+## 20. Compilation & Transpilation
 
-### 17.1 Compilation Process
+### 20.1 Compilation Process
 
 1. **Parse**: ASQL → AST (Abstract Syntax Tree)
 2. **Resolve**: AST → Resolved AST (with type info, relationships)
 3. **Transform**: Resolved AST → SQL AST (via SQLGlot)
 4. **Generate**: SQL AST → Target SQL dialect
 
-### 17.2 Intermediate Representation
+### 20.2 Intermediate Representation
 
 Each pipeline step becomes a CTE:
 
@@ -2507,7 +2679,7 @@ FROM step1
 GROUP BY country;
 ```
 
-### 17.3 Target Dialects
+### 20.3 Target Dialects
 
 Via SQLGlot, ASQL can transpile to:
 - ANSI SQL
@@ -2521,7 +2693,7 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 20. Implementation Roadmap
+## 21. Implementation Roadmap
 
 | Stage | Milestone | Description |
 |-------|-----------|-------------|
@@ -2533,25 +2705,25 @@ Via SQLGlot, ASQL can transpile to:
 
 ---
 
-## 21. Design Decisions & Rationale
+## 22. Design Decisions & Rationale
 
-### 19.1 Why Remove SELECT?
+### 22.1 Why Remove SELECT?
 
 Traditional SQL requires `SELECT` at the start, but the columns you need often aren't known until the end of the query. ASQL's pipeline approach lets you build up the query naturally, with `select`/`project` appearing only when needed.
 
-### 19.2 Why Indentation-Based Syntax?
+### 22.2 Why Indentation-Based Syntax?
 
 Indentation-based syntax (with optional pipe operators) is cleaner and more natural than requiring explicit operators. It reads like a conversation: "from users, filter active ones, group by country, count them." The pipe operator (`|`) is available for those who prefer explicit flow markers.
 
-### 19.3 Why Natural Language?
+### 22.3 Why Natural Language?
 
 ASQL is pronounced "Ask-el" - it should feel like asking a question. Natural language syntax (`# of Users`, `Sum of amount`, `Average of age`) makes queries readable to non-technical stakeholders while maintaining precision.
 
-### 19.4 Why Case-Safe?
+### 22.4 Why Case-Safe?
 
 Database conventions (snake_case) conflict with frontend conventions (camelCase). ASQL eliminates this friction by being case-insensitive, allowing developers to write queries using whatever naming style feels natural.
 
-### 19.5 Why Convention Over Configuration?
+### 22.5 Why Convention Over Configuration?
 
 ASQL follows a "convention over configuration" philosophy (inspired by frameworks like Rails and dbt):
 
@@ -2563,21 +2735,21 @@ ASQL follows a "convention over configuration" philosophy (inspired by framework
 
 **Example**: If you have `Accounts.user_id` and a `Users` table, ASQL automatically infers the FK relationship. If you have `Accounts.ownerUserRef`, you'll need to configure it explicitly (encouraging you to rename it to `owner_id`).
 
-### 19.6 Why Not Replace SQL?
+### 22.6 Why Not Replace SQL?
 
 ASQL transpiles to SQL, ensuring compatibility with existing tools, databases, and knowledge. It's an evolution, not a revolution. Maybe one day different databases will adopt ASQL or move toward it, just as JavaScript moved toward CoffeeScript's ideas (async/await, arrow functions, etc.).
 
 ---
 
-## 22. Future Features
+## 23. Future Features
 
 For features that are planned, under consideration, or marked as "maybe" for v1.0, see `spec_future.md`.
 
 ---
 
-## 23. Major Benefits of ASQL
+## 24. Major Benefits of ASQL
 
-### 21.1 Reduced Need for CTEs and Nested Queries
+### 24.1 Reduced Need for CTEs and Nested Queries
 
 Traditional SQL often requires CTEs or nested subqueries to break down complex logic. ASQL's pipeline approach eliminates most of this need:
 
@@ -2605,7 +2777,7 @@ from users
 
 The comment marks where you might have created a CTE in SQL, but the pipeline continues naturally.
 
-### 21.2 More Readable Column Names
+### 24.2 More Readable Column Names
 
 Natural language syntax makes column names more readable without needing explicit aliases:
 
@@ -2621,14 +2793,14 @@ select country, # of Users as total_users, average of age
 
 The natural language makes columns self-documenting - `# of Users` is clearer than `count` or even `total_users`.
 
-### 21.3 Less Boilerplate
+### 24.3 Less Boilerplate
 
 - No need to write `SELECT` at the start when you don't know what columns you need yet
 - No need for explicit joins when FKs follow conventions
 - No need for verbose date extraction functions
 - No need to quote identifiers obsessively
 
-### 21.4 Better for Analytics
+### 24.4 Better for Analytics
 
 - Time functions that work consistently across databases
 - Natural language aggregations that read like questions
