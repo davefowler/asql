@@ -242,13 +242,13 @@ select
 
 ---
 
-## Gap-Filling (Auto-Spine)
+## Guaranteed Grouping
 
-A common analytics bug: your chart shows revenue by month, but months with zero sales are missing entirely—the line jumps from March to June. SQL only returns rows that exist.
+SQL doesn't guarantee your grouped results are complete. If a dimension value has no data, it simply won't appear in your results. This has caused countless bugs in dashboards, reports, and analytics pipelines.
 
-**The Problem:**
+**The Problem with SQL:**
+
 ```sql
--- If April and May had no sales, they won't appear
 SELECT month, SUM(amount) as revenue
 FROM orders
 GROUP BY month;
@@ -259,11 +259,13 @@ GROUP BY month;
 | Jan   | 1000    |
 | Feb   | 1500    |
 | Mar   | 800     |
-| Jun   | 1200    |  ← Where did April and May go?
+| Jun   | 1200    |
 
-**ASQL Solution:**
+April and May are missing. Your chart shows a line jumping from March to June. Your month-over-month calculation divides by the wrong prior month. Your report looks broken.
 
-ASQL automatically generates "spines" for grouped columns, ensuring all expected values appear:
+For decades, analysts have worked around this with date dimension tables, calendar CTEs, complex CROSS JOINs, and post-processing in Python or Excel. Every team reinvents this wheel, and it's easy to forget until something breaks in production.
+
+**ASQL guarantees complete results:**
 
 ```asql
 from orders
@@ -277,15 +279,17 @@ from orders
 | Jan   | 1000    |
 | Feb   | 1500    |
 | Mar   | 800     |
-| Apr   | 0       |  ← Filled in!
-| May   | 0       |  ← Filled in!
+| Apr   | 0       |
+| May   | 0       |
 | Jun   | 1200    |
+
+This is analytically correct by default. No dimension tables. No extra CTEs. No post-processing. ASQL automatically generates "spines" that ensure all expected values appear in your results.
 
 ### How It Works
 
-- **Date columns**: ASQL infers the range from your WHERE clause (or MIN/MAX of data) and fills all gaps
+- **Date columns**: ASQL infers the date range from your WHERE clause and fills all periods
 - **Categorical columns**: Uses DISTINCT values from the data
-- **Explicit values**: Use `guarantee()` to specify exactly what values should appear
+- **Explicit values**: Use `guarantee()` to specify exactly what should appear
 
 ```asql
 from orders
@@ -296,12 +300,12 @@ from orders
 
 ### Opting Out
 
-If you don't want gap-filling, just filter:
+If you don't want guaranteed results, filter them:
 
 ```asql
 from orders
   group by month(order_date) as month ( sum(amount) as revenue )
-  where revenue > 0  -- removes zero-filled rows
+  where revenue > 0  -- removes zero-value rows
 ```
 
 Or disable globally: `SET auto_spine = false`
@@ -320,7 +324,7 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 
 - A syntax layer that compiles to SQL
 - Useful for analytics queries that benefit from pipeline structure
-- Enforces correctness by default (gap-filling prevents missing data in reports)
+- Analytically correct by default (guaranteed grouping prevents missing data in reports)
 - Compatible with any SQL database via transpilation
 
 ## What ASQL Is Not
