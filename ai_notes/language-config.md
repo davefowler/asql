@@ -28,17 +28,27 @@ Design document for ASQL's configuration system.
 │  PARSING (Input)     │  ALWAYS PERMISSIVE                  │
 │  compile()           │  Accept ALL valid ASQL syntaxes     │
 ├──────────────────────┼──────────────────────────────────────┤
-│  OUTPUT (Rendering)  │  CONFIGURABLE                       │
+│  STYLE (Output)      │  CONFIGURABLE                       │
 │  reverse_compile()   │  Output in configured style         │
 │  normalize()         │                                     │
+├──────────────────────┼──────────────────────────────────────┤
+│  COMPILE (Behavior)  │  CONFIGURABLE                       │
+│  compile()           │  Settings affect generated SQL      │
 └──────────────────────┴──────────────────────────────────────┘
 ```
 
-**Key insight**: Config affects HOW ASQL IS WRITTEN (output), not WHAT IS VALID (input).
+**Key insight**: There are two types of configuration:
 
-ASQL will ALWAYS accept all valid syntaxes. Config only controls what the output looks like when:
-- Converting SQL → ASQL (`reverse_compile`)
-- Normalizing ASQL → ASQL (`normalize`)
+1. **Style settings** (`style:`): Affect HOW ASQL IS WRITTEN (output format)
+   - Only affects `reverse_compile()` and `normalize()`
+   - Example: `#` vs `count(*)`, `-col` vs `col DESC`
+
+2. **Compile settings** (`compile:`): Affect HOW SQL IS GENERATED (behavior)
+   - Affects `compile()` output
+   - Example: `auto_spine` (gap-filling), `week_start`
+
+ASQL will ALWAYS accept all valid syntaxes. Style config controls output format.
+Compile config controls SQL generation behavior.
 
 ---
 
@@ -68,8 +78,15 @@ preset: default
 dialect: snowflake
 
 # Override individual style options (optional)
+# These affect OUTPUT style for reverse_compile() and normalize()
 style:
   count: hash           # override specific options
+
+# Compile settings (optional)
+# These affect HOW queries are compiled to SQL
+compile:
+  auto_spine: false     # auto gap-fill date columns in GROUP BY
+  week_start: monday    # monday | sunday
 ```
 
 ---
@@ -145,6 +162,46 @@ style:
 
 ---
 
+## Compile Settings
+
+**Unlike style options, compile settings affect the GENERATED SQL, not just output formatting.**
+
+```yaml
+compile:
+  # Auto-spine: automatically add gap-filling for date truncations in GROUP BY
+  # When true, date columns will include all dates in the range (no gaps)
+  auto_spine: false           # false (default) | true
+  
+  # Week start day: affects week() function output
+  week_start: monday          # monday (default) | sunday
+  
+  # Relative date type: what "7 days ago" compiles to
+  # timestamp -> CURRENT_TIMESTAMP - INTERVAL '7 days'
+  # date -> CURRENT_DATE - INTERVAL '7 days'
+  relative_date_type: timestamp   # timestamp (default) | date
+```
+
+### Inline SET Statements
+
+Compile settings can also be set inline within a query using SQL `SET` statements:
+
+```asql
+SET auto_spine = true;
+SET week_start = 'sunday';
+SET dialect = 'postgres';
+
+from orders
+group by week(created_at) as w (sum(amount) as revenue)
+```
+
+**Priority order** (highest to lowest):
+1. Inline `SET` statements in query
+2. Settings passed to `compile()` function
+3. Settings from config file
+4. Default values
+
+---
+
 ## Full Preset Definitions
 
 ### `default`
@@ -201,11 +258,22 @@ See `asql/config.py` for the actual implementation.
 ### Using Config
 
 ```python
-from asql import compile, reverse_compile, normalize
+from asql import compile, reverse_compile, normalize, CompileSettings
 from asql.config import ASQLConfig, StyleConfig
 
 # Use default config
 sql = compile("from users where status = 'active' limit 10")
+
+# Compile with custom settings
+settings = CompileSettings(auto_spine=True, week_start="sunday")
+sql = compile("from orders group by week(date) (...)", settings=settings)
+
+# Extract settings from a query
+from asql import get_settings_from_query
+settings, dialect = get_settings_from_query('''
+    SET auto_spine = true;
+    from orders ...
+''')
 
 # Reverse compile with config
 config = ASQLConfig.from_preset("sql-compat")
@@ -280,11 +348,15 @@ The empty `stats` CTE is removed and references are inlined.
 | Question | Answer |
 |----------|--------|
 | Config file format? | YAML only (`asql.config.yaml`) |
+| Config sections? | `style:` (output format), `compile:` (SQL generation behavior) |
 | Style affects output? | Yes - only affects `reverse_compile` and `normalize` |
 | Style affects input? | No - input always accepts all valid syntaxes |
+| Compile affects SQL? | Yes - affects generated SQL (e.g., gap-filling, week start) |
+| Inline config? | Yes - use `SET setting = value;` at top of query |
 | Separate lint rules? | No - use `normalize --check` instead |
 | Default equality? | `=` (single) |
-| `limit` keyword? | Removed - use `limit` only |
-| Array syntax? | Not needed if we drop lint rules |
 
-**Design principle**: Keep it simple. Style = output format. No lint rules. To check style, run `normalize --check`.
+**Design principle**: Keep it simple. 
+- `style:` = output format for reverse_compile/normalize
+- `compile:` = SQL generation behavior
+- No lint rules. To check style, run `normalize --check`.

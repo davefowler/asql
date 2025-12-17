@@ -183,40 +183,43 @@ class ASQLPreParser:
     
     def _transform_set_statements(self, text: str) -> str:
         """
-        Transform set/with variable = query or with variable as query to CTE syntax.
+        Handle SET statements for compile settings only.
         
-        set active_users = from users where is_active
-        with active_users = from users where is_active
-        with active_users as from users where is_active
-        → stores CTE and processes remaining query
+        Compile settings (preserved for SQLGlot):
+            SET auto_spine = true
+            SET dialect = 'postgres'
+            → preserved as-is (SQLGlot will parse them)
+        
+        NOTE: CTEs are ONLY created via "stash as" syntax, NOT via "set X = query"
+        or "with X = query". This function only handles compile settings.
         """
         result = text.strip()
+        preserved_sets: List[str] = []
         
-        # Pattern: set/with <name> = <query> OR with <name> as <query>
-        # Note: "as" is the keyword separator, not "="
-        pattern = r'^\s*(?:set|with)\s+(\w+)\s*(?:=|as)\s*(.+?)(?=\s*(?:set|with)\s+\w+\s*(?:=|as)|\s*from\s+\w|$)'
+        # Pattern: SET <setting_name> = <value>
+        # Only matches known compile settings, not arbitrary identifiers
+        known_settings = {'auto_spine', 'dialect', 'week_start', 'relative_date_type'}
+        pattern = r'^\s*set\s+(\w+)\s*=\s*([^;]+?)(?:;|(?=\s*(?:set|from|select)\s)|\s*$)'
         
         while True:
-            match = re.match(pattern, result, re.IGNORECASE | re.DOTALL)
+            match = re.match(pattern, result, re.IGNORECASE)
             if not match:
                 break
             
-            name = match.group(1)
-            query = match.group(2).strip()
+            name = match.group(1).lower()
+            value = match.group(2).strip()
             
-            # Recursively preparse the CTE query
-            sub_parser = ASQLPreParser(query)
-            parsed_query = sub_parser.preparse()
-            
-            self.ctes.append((name, parsed_query))
-            result = result[match.end():].strip()
+            # Only process known compile settings
+            if name in known_settings:
+                preserved_sets.append(f"SET {name} = {value}")
+                result = result[match.end():].strip()
+            else:
+                # Unknown setting - stop processing (don't treat as CTE)
+                break
         
-        # If the whole input was a CTE definition and nothing is left, 
-        # we need to generate a SELECT from the last CTE
-        if not result and self.ctes:
-            # Use the last CTE as the main query result
-            last_cte_name = self.ctes[-1][0]
-            result = f"SELECT * FROM {last_cte_name}"
+        # Prepend preserved SET statements
+        if preserved_sets:
+            result = "; ".join(preserved_sets) + "; " + result
         
         return result
     

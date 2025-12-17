@@ -157,26 +157,19 @@ from orders select first(order_id order by order_date) as first_order
 from orders select arg_max(order_id, order_date) as latest_order_id
 ```
 
-### CTEs & Variables ✅
+### CTEs (stash as) ✅
 
 ```python
-# set
-set active_users = from users where status == "active"
-from active_users group by country ( # as total )
-
-# with
-with active_users = from users where status == "active"
-from active_users select *
-
-# stash as (mid-pipeline)
+# stash as (mid-pipeline CTE)
 from users
 where status == "active"
 stash as active_users
 group by country ( # as total )
 
-# Multiple CTEs
-set base = from users where is_premium
-set by_country = from base group by country ( # as total )
+# Multiple CTEs via stash as chaining
+from users where is_premium stash as base
+from base group by country ( # as total ) stash as by_country
+from by_country select *
 from by_country order by -total limit 10
 ```
 
