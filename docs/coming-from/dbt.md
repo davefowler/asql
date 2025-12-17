@@ -80,6 +80,12 @@ from orders
 select *, key(user_id, order_id) as order_key
 ```
 
+**Features**:
+- **Deterministic**: Same inputs always produce the same hash
+- **NULL handling**: NULLs are converted to empty strings before hashing, ensuring consistent results
+- **Type normalization**: All values are cast to strings before concatenation
+- **Cross-dialect**: Automatically uses appropriate hash function for your SQL dialect (MD5, SHA256, etc.)
+
 ### `deduplicate()` → `per ... first by ...`
 
 Most “latest row per key” / “one row per entity” macros are a window function pattern.
