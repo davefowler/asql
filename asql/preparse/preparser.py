@@ -72,6 +72,7 @@ class ASQLPreParser(
         result = self._transform_relative_dates(result)
         result = self._transform_date_arithmetic(result)
         result = self._transform_since_until_patterns(result)
+        result = self._transform_deduplicate_by(result)  # Transform deduplicate by to per ... first by
         result = self._transform_per_commands(result)
         result = self._transform_aggregate_blocks(result)
         result = self._transform_column_operators(result)  # except, rename, replace - before from_first
