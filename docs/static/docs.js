@@ -257,6 +257,13 @@ function addWIPBanner() {
     document.body.insertBefore(banner, document.body.firstChild);
 }
 
+// Keep CSS variable in sync with banner height (used for sticky sidebar offsets)
+function syncBannerHeightVar() {
+    const banner = document.querySelector('.wip-banner');
+    const height = banner ? Math.ceil(banner.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty('--asql-banner-height', `${height}px`);
+}
+
 // Add playground button to header
 function addPlaygroundButton() {
     // Check if button already exists
@@ -365,6 +372,9 @@ function highlightAllCodeBlocks() {
 document.addEventListener('DOMContentLoaded', () => {
     // Add WIP warning banner
     addWIPBanner();
+    // Sync banner height CSS variable (and keep it updated on resize)
+    syncBannerHeightVar();
+    window.addEventListener('resize', syncBannerHeightVar);
     // Add playground button to header
     addPlaygroundButton();
     // Wait a bit for highlight.js and ASQL language to be fully loaded
