@@ -227,8 +227,8 @@ select
 ```asql
 from orders
   group by customer_id (
-    sum(when status is "completed" then 1 otherwise 0) as completed_count,
-    sum(when status is "returned" then amount otherwise 0) as returned_total
+    sum(status == "completed" ? 1 : 0) as completed_count,
+    sum(status == "returned" ? amount : 0) as returned_total
   )
 ```
 
