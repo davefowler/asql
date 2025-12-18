@@ -119,6 +119,22 @@ group by product (
 - `min(column)` - minimum value
 - `max(column)` - maximum value
 
+### Auto-Generated Column Names
+
+When you use functions without explicit `AS` aliases, ASQL automatically generates meaningful names:
+
+```asql
+from orders
+group by customer_id (
+    sum(amount),     -- → column: sum_amount
+    avg(amount),     -- → column: avg_amount
+    count(*)         -- → column: num
+)
+order by -sum_amount  -- Reference the auto-generated name!
+```
+
+No more SQL's unusable defaults like `count`, `f0_`, or `SUM(amount)`. See the [Auto-Aliasing Reference](reference/auto-aliasing.md) for complete details.
+
 ## Ordering & Limiting
 
 ### ORDER BY

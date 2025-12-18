@@ -73,18 +73,14 @@ def compile(
         for stmt in query_statements:
             transformed_stmt: exp.Expression = stmt
 
+            # Apply auto-aliasing FIRST so auto_spine can use the generated aliases
+            transformed_stmt = apply_auto_aliasing(transformed_stmt, final_settings)
+
             if final_settings.auto_spine:
-                transformed_stmt = _apply_auto_spine(stmt, final_settings, dialect)
+                transformed_stmt = _apply_auto_spine(transformed_stmt, final_settings, dialect)
 
             # Auto-qualify conflicting column names in joins
             transformed_stmt = auto_qualify_columns(transformed_stmt)
-
-            # Apply auto-aliasing to function calls without explicit aliases
-            try:
-                transformed_stmt = apply_auto_aliasing(transformed_stmt, final_settings)
-            except Exception:
-                # If auto-aliasing fails, continue with original statement
-                pass
 
             transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
             sql_parts.append(transformed_stmt.sql(dialect=sql_dialect, pretty=pretty))
@@ -128,12 +124,7 @@ def get_settings_from_query(
     """Extract inline settings from a query without compiling it."""
     base = base_settings or CompileSettings()
 
-    try:
-        preparsed = preparse_asql(asql_query)
-        statements = sqlglot.parse(preparsed)
-        inline_settings, dialect_override, _ = extract_inline_settings(statements)
-        return base.merge_with(inline_settings), dialect_override
-    except Exception:
-        # Intentional: graceful degradation to defaults if settings extraction fails
-        # This is a non-critical helper function used for IDE features
-        return base, None
+    preparsed = preparse_asql(asql_query)
+    statements = sqlglot.parse(preparsed)
+    inline_settings, dialect_override, _ = extract_inline_settings(statements)
+    return base.merge_with(inline_settings), dialect_override

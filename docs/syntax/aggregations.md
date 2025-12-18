@@ -121,6 +121,24 @@ from sales
   )
 ```
 
+## Auto-Aliasing
+
+When you use functions without explicit `AS` aliases, ASQL automatically generates meaningful column names:
+
+```asql-play
+from orders
+  group by region (
+    sum(amount),         -- → column: sum_amount
+    avg(price),          -- → column: avg_price
+    count(*)             -- → column: num
+  )
+  order by -sum_amount   -- Reference the auto-generated alias!
+```
+
+This solves SQL's problem of unusable default names like `count`, `f0_`, or `SUM(amount)`. Auto-aliases follow the `{func}_{col}` pattern and can be referenced in `ORDER BY`, `WHERE`, and subsequent queries.
+
+See the [Auto-Aliasing Reference](../reference/auto-aliasing.md) for the complete mapping table.
+
 ## Function Aliases
 
 Natural language aliases map to SQL functions:

@@ -7,6 +7,7 @@ Quick reference documentation for ASQL syntax, functions, and operators.
 - **[Functions](functions.md)** — Complete list of built-in functions
 - **[Operators](operators.md)** — All operators with examples
 - **[Keywords](keywords.md)** — Reserved keywords and their meanings
+- **[Auto-Aliasing](auto-aliasing.md)** — Automatic column naming for functions
 
 ## Quick Lookup
 

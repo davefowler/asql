@@ -1,9 +1,14 @@
 # Configurable Auto-Aliasing: Design & Implementation Considerations
 
-**Status**: Research document exploring configuration options for ASQL's auto-aliasing system.
+**Status**: ✅ Implemented (December 2025)
+
+**Implementation**: 
+- `asql/compiler/auto_alias.py` - Core auto-aliasing logic
+- `docs/reference/auto-aliasing.md` - User documentation
+- `tests/test_auto_alias.py` - Comprehensive tests (52 tests)
 
 **Related**: 
-- `auto-alias-mapping-table.md` - Current auto-aliasing patterns
+- `auto-alias-mapping-table.md` - Complete alias mapping reference
 - `underscore-notation-edge-cases.md` - Edge cases and potential issues
 
 ---

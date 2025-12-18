@@ -261,18 +261,16 @@ class ASQLConfig:
     @classmethod
     def _load_from_file(cls, path: Path) -> "ASQLConfig":
         """Load config from a file."""
-        try:
-            import yaml
+        if path.suffix == ".json":
             with open(path) as f:
-                data = yaml.safe_load(f)
-            return cls.from_dict(data or {})
-        except ImportError:
-            # YAML not available, try JSON
-            if path.suffix == ".json":
-                with open(path) as f:
-                    data = json.load(f)
-                return cls.from_dict(data)
-            raise ImportError("PyYAML required to load YAML config files")
+                data = json.load(f)
+            return cls.from_dict(data)
+        
+        # YAML files require PyYAML
+        import yaml
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        return cls.from_dict(data or {})
     
     @classmethod
     def from_preset(cls, preset: str) -> "ASQLConfig":

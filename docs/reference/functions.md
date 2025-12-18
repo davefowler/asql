@@ -431,8 +431,23 @@ guarantee(status, ['pending', 'active', 'completed'])
 | `maximum` | `MAX` |
 | `minimum` | `MIN` |
 
+## Auto-Generated Column Names
+
+When functions are used without explicit `AS` aliases, ASQL automatically generates meaningful column names:
+
+| Function | Auto-Alias |
+|----------|-----------|
+| `sum(amount)` | `sum_amount` |
+| `avg(price)` | `avg_price` |
+| `count(*)` / `#` | `num` |
+| `month(created_at)` | `month_created_at` |
+| `upper(name)` | `upper_name` |
+
+See the [Auto-Aliasing Reference](auto-aliasing.md) for the complete mapping table and configuration.
+
 ## See Also
 
+- **[Auto-Aliasing](auto-aliasing.md)** — Automatic column naming
 - **[Operators Reference](operators.md)** — All operators
 - **[Aggregations](../syntax/aggregations.md)** — Using aggregates
 - **[Window Functions](../syntax/window-functions.md)** — Window function patterns

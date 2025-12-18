@@ -1,8 +1,10 @@
 # Auto-Alias Mapping Table
 
-This table documents the proposed auto-aliasing behavior for all ASQL functions/aggregates. When a function is used without an explicit `as` alias, it automatically generates a column name following the pattern shown.
+This table documents the auto-aliasing behavior for all ASQL functions/aggregates. When a function is used without an explicit `as` alias, it automatically generates a column name following the pattern shown.
 
-**Status**: Future feature - see `docs/spec_future.md` for details.
+**Status**: ✅ Implemented (December 2025)
+
+**User documentation**: See `docs/reference/auto-aliasing.md` for configuration and usage.
 
 ---
 
