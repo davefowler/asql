@@ -311,7 +311,7 @@ from orders
 # Pattern 2: Using QUALIFY
 from orders
   select *, row_number() over (partition by customer_id order by -order_date) as rn
-  qualify rn == 1
+  qualify rn = 1
 
 # Pattern 3: Using DISTINCT ON (PostgreSQL-style)
 from orders

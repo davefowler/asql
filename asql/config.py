@@ -137,8 +137,9 @@ class StyleConfig:
     # Only applies to empty CTEs - non-empty CTEs are never squashed
     keep_final_empty_cte: bool = False
     
-    # Function shorthand: parens (sum(amount)), underscore (sum_amount), or space (sum amount)
-    function_shorthand: Literal["parens", "underscore", "space"] = "space"
+    # Function shorthand: underscore (sum_amount), space (sum amount), or parens (sum(amount))
+    # Default is "underscore" for declarative continuity - what you write matches the output column name
+    function_shorthand: Literal["underscore", "space", "parens"] = "underscore"
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""

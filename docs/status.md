@@ -16,7 +16,7 @@
 - **JOIN** - Inner, left, right, outer joins with `on` conditions
 
 ### Expressions & Operators
-- **Comparison**: `==`, `=`, `!=`, `<>`, `<`, `>`, `<=`, `>=`
+- **Comparison**: `=` (preferred), `==` (also works), `!=`, `<>`, `<`, `>`, `<=`, `>=`
 - **NULL checks**: `is null`, `is not null`
 - **Logical**: `and`, `or`, `not`
 - **Membership**: `in`, `not in`
@@ -156,7 +156,7 @@ compile("from users group by country ( # as total_users, avg(age) as avg_age )")
 # → SELECT country, COUNT(*) AS total_users, AVG(age) AS avg_age FROM users GROUP BY country
 
 # JOIN (& for INNER, &? for LEFT, ?& for RIGHT, ?&? for FULL, * for CROSS)
-compile("from orders & users on orders.user_id == users.id")
+compile("from orders & users on orders.user_id = users.id")
 # → SELECT * FROM orders JOIN users ON orders.user_id = users.id
 
 # COALESCE with ??

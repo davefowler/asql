@@ -47,7 +47,7 @@ where status = "active"
 
 ### Comparison Operators
 
-- `==` - equals
+- `=` - equals (preferred; `==` also works)
 - `!=` - not equals
 - `<`, `>`, `<=`, `>=` - comparisons
 - `is null` / `is not null` - null checks
@@ -113,7 +113,7 @@ group by product (
 
 ### Aggregation Functions
 
-- `#` or `count(*)` - count rows
+- `#` (preferred) or `count(*)` - count rows
 - `sum(column)` - sum values
 - `avg(column)` - average values
 - `min(column)` - minimum value

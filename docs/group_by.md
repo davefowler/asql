@@ -10,7 +10,7 @@ ASQL's `group by` works like SQL's—but with guaranteed complete results by def
 from orders
   group by region (
     sum(amount) as revenue,
-    count(*) as order_count
+    # as order_count
   )
 ```
 
@@ -93,7 +93,7 @@ Use `??` (null coalesce) to specify the default value for missing data:
 
 ```asql
 sum(amount) ?? 0 as revenue      -- zeros for missing
-count(*) ?? 0 as orders          -- zeros for missing
+# ?? 0 as orders          -- zeros for missing
 avg(price) ?? null as avg_price  -- null for missing (explicit)
 ```
 
@@ -106,7 +106,7 @@ Sometimes you want specific values guaranteed, not just what's in the data.
 ```asql
 from orders
   group by guarantee(status, ['pending', 'processing', 'shipped', 'delivered', 'cancelled']) (
-    count(*) ?? 0 as order_count
+    # ?? 0 as order_count
   )
 ```
 

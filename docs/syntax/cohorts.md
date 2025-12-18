@@ -122,7 +122,7 @@ Track multiple metrics simultaneously:
 from events
 group by month(event_date) (
   count(distinct user_id) as active,
-  count(*) as events,
+  # as events,
   sum(revenue) as revenue
 )
 cohort by month(users.signup_date)
@@ -263,7 +263,7 @@ select
 
 ```asql
 from feature_events
-where feature_name == "dashboard"
+where feature_name = "dashboard"
 group by week(event_date) (count(distinct user_id) as feature_users)
 cohort by week(users.first_dashboard_use_date)
 ```
@@ -272,7 +272,7 @@ cohort by week(users.first_dashboard_use_date)
 
 ```asql
 from subscription_events
-where status == "active"
+where status = "active"
 group by month(event_date) (count(distinct subscription_id) as active_subs)
 cohort by month(subscriptions.start_date)
 ```

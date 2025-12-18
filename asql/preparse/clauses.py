@@ -153,7 +153,15 @@ class ClausesMixin:
                 items.append(tail)
             return items
 
-        def expand_token(token: str) -> str:
+        def expand_token(token: str, add_alias: bool = True) -> str:
+            """
+            Expand a token if it matches a function pattern.
+            
+            Args:
+                token: The token to expand
+                add_alias: If True, add 'as func_col' alias (for SELECT/GROUP BY).
+                          If False, just return func(col) (for ORDER BY/WHERE).
+            """
             trimmed = token.strip()
             if not trimmed:
                 return token
@@ -173,8 +181,48 @@ class ClausesMixin:
                 if not identifier_pattern.match(arg):
                     return token
                 fn = FUNCTION_ALIASES.get(prefix_lower, prefix_lower)
-                return f"{fn}({arg}) as {trimmed}"
+                if add_alias:
+                    return f"{fn}({arg}) as {trimmed}"
+                else:
+                    return f"{fn}({arg})"
             return token
+        
+        def expand_identifiers_in_expression(expr: str) -> str:
+            """
+            Expand function shorthand identifiers in an expression (ORDER BY, WHERE).
+            Handles both underscore (sum_amount) and space (sum amount) patterns.
+            """
+            # First handle space patterns (func col) - these are already handled globally
+            # by _transform_natural_aggregates, but we need to ensure they work here too.
+            # Actually, _transform_natural_aggregates runs before this, so space patterns
+            # should already be converted. We just need to handle underscore patterns here.
+            
+            # Split expression into tokens, respecting operators and parentheses
+            # We want to find identifiers that match function patterns
+            result_expr = expr
+            
+            # Find all identifiers that could be function patterns
+            # Pattern: word boundary, identifier (func_col pattern), word boundary
+            # But we need to avoid matching inside strings or function calls
+            
+            # Simple approach: find identifiers and check if they match function patterns
+            # This regex finds identifiers (but not inside strings or function calls)
+            identifier_regex = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b'
+            
+            def replace_identifier(match: re.Match) -> str:
+                ident = match.group(1)
+                # Check if this identifier matches a function pattern
+                expanded = expand_token(ident, add_alias=False)
+                if expanded != ident:
+                    return expanded
+                return ident
+            
+            # Only replace identifiers that are standalone (not part of a function call already)
+            # We need to be careful not to replace identifiers inside function calls
+            # For now, do a simple replacement - if it matches a function pattern, expand it
+            result_expr = re.sub(identifier_regex, replace_identifier, result_expr)
+            
+            return result_expr
 
         # Process SELECT clause
         select_match = re.search(r'\bselect\s+', result, re.IGNORECASE)
@@ -202,7 +250,7 @@ class ClausesMixin:
             raw_clause = result[select_start:select_end]
             items = split_csv(raw_clause)
             if items:
-                expanded_items = [expand_token(item) for item in items]
+                expanded_items = [expand_token(item, add_alias=True) for item in items]
                 new_clause = ", ".join(expanded_items)
                 result = result[:select_start] + new_clause + result[select_end:]
 
@@ -213,12 +261,87 @@ class ClausesMixin:
             aggs_text = match.group(2).strip()
             items = split_csv(aggs_text)
             if items:
-                expanded_items = [expand_token(item) for item in items]
+                expanded_items = [expand_token(item, add_alias=True) for item in items]
                 new_aggs = ", ".join(expanded_items)
                 return f"group by {group_cols} ( {new_aggs} )"
             return match.group(0)
 
         result = re.sub(group_by_pattern, expand_group_by_aggs, result, flags=re.IGNORECASE)
+
+        # Process ORDER BY clause: order by col1, col2, ...
+        order_by_pattern = r'\border\s+by\s+([^,\n]+(?:,\s*[^,\n]+)*)'
+        def expand_order_by(match: re.Match) -> str:
+            order_exprs = match.group(1).strip()
+            # Split by comma, but respect parentheses
+            items = split_csv(order_exprs)
+            if items:
+                expanded_items = []
+                for item in items:
+                    # Handle descending prefix (-col)
+                    item = item.strip()
+                    if item.startswith('-'):
+                        # Remove the - prefix, expand, then add it back
+                        inner = expand_identifiers_in_expression(item[1:].strip())
+                        expanded_items.append(f"-{inner}")
+                    else:
+                        # Check for DESC/ASC suffix
+                        item_lower = item.lower()
+                        if item_lower.endswith(' desc'):
+                            inner = expand_identifiers_in_expression(item[:-5].strip())
+                            expanded_items.append(f"{inner} desc")
+                        elif item_lower.endswith(' asc'):
+                            inner = expand_identifiers_in_expression(item[:-4].strip())
+                            expanded_items.append(f"{inner} asc")
+                        else:
+                            expanded_items.append(expand_identifiers_in_expression(item))
+                return f"order by {', '.join(expanded_items)}"
+            return match.group(0)
+
+        result = re.sub(order_by_pattern, expand_order_by, result, flags=re.IGNORECASE)
+
+        # Process WHERE clause: where condition
+        # This is trickier because WHERE can have complex expressions
+        # We'll find identifiers in the WHERE clause and expand them
+        where_pattern = r'\bwhere\s+([^(\n]+(?:\([^)]*\)[^(\n]*)*)'
+        def expand_where(match: re.Match) -> str:
+            where_expr = match.group(1).strip()
+            # Find the end of WHERE clause (next keyword or end of string)
+            # For now, just expand identifiers in the expression
+            expanded_expr = expand_identifiers_in_expression(where_expr)
+            return f"where {expanded_expr}"
+
+        # More careful WHERE expansion - find WHERE and expand until next keyword
+        where_match = re.search(r'\bwhere\s+', result, re.IGNORECASE)
+        if where_match:
+            where_start = where_match.end()
+            where_end = len(result)
+            
+            # Find end of WHERE clause (next keyword)
+            paren_depth = 0
+            i = where_start
+            while i < len(result):
+                char = result[i]
+                if char == '(':
+                    paren_depth += 1
+                elif char == ')':
+                    paren_depth = max(0, paren_depth - 1)
+                elif paren_depth == 0:
+                    remaining = result[i:].lower()
+                    for kw in [' group by ', '\ngroup by ', '\tgroup by ', 
+                              ' order by ', '\norder by ', '\torder by ',
+                              ' limit ', '\nlimit ', '\tlimit ',
+                              ' having ', '\nhaving ', '\thaving ',
+                              ' qualify ', '\nqualify ', '\tqualify ']:
+                        if remaining.startswith(kw):
+                            where_end = i
+                            i = len(result)
+                            break
+                i += 1
+            
+            where_expr = result[where_start:where_end].strip()
+            if where_expr:
+                expanded_expr = expand_identifiers_in_expression(where_expr)
+                result = result[:where_start] + expanded_expr + result[where_end:]
 
         return result
 

@@ -391,7 +391,7 @@ from sales
 group by region (
     sum(amount) as total_revenue,
     avg(amount) as avg_order,
-    count(*) as order_count,
+    # as order_count,
     min(amount) as min_order,
     max(amount) as max_order
 )

@@ -553,15 +553,23 @@ from products
 
 #### NULLIF Alternative
 
-Instead of SQL's `NULLIF()` function, use SQL `NULLIF()` directly (or a `CASE WHEN` expression).
+Instead of SQL's `NULLIF()` function, use ASQL's `when` expression (or SQL `NULLIF()` directly).
 
 ```asql
 from transactions
   select 
-    CASE WHEN amount = 0 THEN NULL ELSE amount END as safe_amount
+    when
+      amount = 0 then null
+      otherwise amount
+    as safe_amount
 ```
 
 This is clearer than `nullif(amount, 0)` for some readers, but either is valid.
+
+**Note**: You can also use SQL `NULLIF()` directly if you prefer:
+```sql
+SELECT NULLIF(amount, 0) AS safe_amount
+```
 
 
 ### 4.13 Function Shorthand (Underscore/Space Principle)
@@ -620,6 +628,23 @@ from sales
     min(amount) as min_order
   )
 ```
+
+**Aliasing behavior**:
+
+| Aggregate Form | With `as` Alias | Without `as` Alias (Current Behavior) | Potential Auto-alias (If Implemented) |
+|----------------|----------------|----------------------------------------|----------------------------------------|
+| `sum(amount)` | `sum(amount) as revenue` → column: `revenue` | Requires explicit `as` | `sum_amount` |
+| `sum_amount` (shorthand) | `sum_amount as revenue` → column: `revenue` | `sum_amount` → column: `sum_amount` ✅ | `sum_amount` (already works) |
+| `first(col order by ...)` | `first(order_id order by -date) as latest_order` → column: `latest_order` | Requires explicit `as` | `first_order_id` (or `last_order_id` if DESC) |
+| `last(col order by ...)` | `last(order_id order by date) as first_order` → column: `first_order` | Requires explicit `as` | `last_order_id` (or `first_order_id` if ASC) |
+| `#` | `# as total_orders` → column: `total_orders` | Requires explicit `as` | `count` (or dialect-specific) |
+| `# orders` | `# orders as unique_orders` → column: `unique_orders` | Requires explicit `as` | `count_orders` |
+
+**Current behavior**: Most aggregates require explicit `as` aliases. Shorthand forms like `sum_amount` automatically create columns with matching names when used without `as`.
+
+**Note on `first()`/`last()`**: These currently require explicit aliases. If auto-aliasing were implemented, the pattern would likely be `{func}_{col}` (e.g., `first_order_id`, `last_order_id`), though the semantic meaning (first vs last) depends on the `order by` direction.
+
+**Future**: See [Universal Auto-Aliasing](spec_future.md#universal-auto-aliasing-for-all-aggregates-future-consideration) for a proposed feature that would auto-alias all aggregates. See the [Complete Auto-Alias Mapping Table](../ai_notes/auto-alias-mapping-table.md) for a comprehensive table of all proposed function → auto-alias mappings.
 
 **Default return behavior**: If no `select` clause is specified, the query returns all grouping columns followed by all aggregations in the order they're listed. `select *` has the same behavior.
 

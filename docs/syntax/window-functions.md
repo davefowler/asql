@@ -172,7 +172,7 @@ from orders
   group by customer_id (
     first(order_id order by -order_date) as latest_order,
     last(order_id order by order_date) as first_order,
-    count(*) as total_orders
+    # as total_orders
   )
 ```
 
