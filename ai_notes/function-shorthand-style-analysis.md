@@ -171,3 +171,4 @@ This gives users choice while establishing a default that matches ASQL's philoso
 - Documentation should show `sum amount` as the preferred form
 - Explicit `sum(amount)` should always be acceptable and preferred for complex expressions
 - The style guide should explain when to use each form
+

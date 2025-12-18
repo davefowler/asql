@@ -164,11 +164,11 @@ The goal: write queries that read like natural language while maintaining precis
 
 ## Auto-Alias Mapping (Future Feature)
 
-**Status**: This is a proposed future feature. See `docs/spec_future.md` for details.
+**Status**: This is a proposed future feature. See [`spec_future.md`](https://github.com/davefowler/asql/blob/main/docs/spec_future.md) for details.
 
 When implemented, all aggregates and transformation functions would automatically generate column names when used without explicit `as` aliases. Many of these auto-aliases can be used as shorthand syntax (the underscore form).
 
-See the [Complete Auto-Alias Mapping Table](../../ai_notes/auto-alias-mapping-table.md) for:
+See the [Complete Auto-Alias Mapping Table](https://github.com/davefowler/asql/blob/main/ai_notes/auto-alias-mapping-table.md) for:
 - All function → auto-alias mappings
 - Which functions support shorthand syntax (can call with auto-alias)
 - Pattern rules and examples

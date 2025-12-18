@@ -12,7 +12,7 @@ This tutorial assumes you're familiar with basic SQL concepts like SELECT, FROM,
 
 Every ASQL query starts with `from`. No more jumping around to find where your data comes from:
 
-```asql-play
+```asql
 from users
 ```
 
@@ -22,7 +22,7 @@ This compiles to `SELECT * FROM users`. Simple.
 
 Chain a `where` clause:
 
-```asql-play
+```asql
 from users
   where status = "active"
 ```
@@ -31,7 +31,7 @@ Notice we indent with 2 spaces. This visual hierarchy shows the data flow.
 
 ### Select Specific Columns
 
-```asql-play
+```asql
 from users
   where status = "active"
   select name, email, created_at
@@ -47,7 +47,7 @@ from users
 
 Use `#` for count:
 
-```asql-play
+```asql
 from orders
   group by status (
     # as order_count
@@ -58,7 +58,7 @@ The `#` symbol is just `COUNT(*)`.
 
 ### Multiple Aggregations
 
-```asql-play
+```asql
 from orders
   group by customer_id (
     sum(amount) as total_spent,
@@ -71,7 +71,7 @@ from orders
 
 When followed by a table name, `#` automatically counts distinct entities:
 
-```asql-play
+```asql
 from orders
   group by status (
     # as total_orders,
@@ -89,7 +89,7 @@ The `# users` becomes `COUNT(DISTINCT user_id)` — ASQL infers the primary key!
 
 Use `-` prefix for descending:
 
-```asql-play
+```asql
 from users
   order by -created_at
 ```
@@ -98,7 +98,7 @@ This is `ORDER BY created_at DESC`.
 
 ### Combine with Limit
 
-```asql-play
+```asql
 from orders
   group by customer_id (sum(amount) as total)
   order by -total
@@ -124,7 +124,7 @@ ASQL uses symbolic operators:
 
 ### Example: Left Join
 
-```asql-play
+```asql
 from users
   &? orders on users.id = orders.user_id
   select users.name, orders.amount
@@ -134,7 +134,7 @@ The `?` marks the "maybe null" side.
 
 ### Multi-Table Joins
 
-```asql-play
+```asql
 from orders
   & customers on orders.customer_id = customers.id
   & products on orders.product_id = products.id
@@ -149,7 +149,7 @@ from orders
 
 Use `@` prefix:
 
-```asql-play
+```asql
 from orders
   where order_date >= @2024-01-01
 ```
@@ -168,10 +168,10 @@ from orders
 
 Group by month:
 
-```asql-play
+```asql
 from orders
   group by month(created_at) (
-    sum_amount  -- No alias needed - column will be named sum_amount
+    sum_amount  -- No alias needed - 
   )
 ```
 
@@ -181,25 +181,25 @@ from orders
 
 ### Get Previous Value
 
-```asql-play
+```asql
 from monthly_sales
-  select month, revenue, prior(revenue) as prev_month
   order by month
+  select month, revenue, prior(revenue) as prev_month
 ```
 
 ### Running Totals
 
-```asql-play
+```asql
 from daily_sales
-  select date, amount, running_sum(amount) as cumulative
   order by date
+  select date, amount, running_sum(amount) as cumulative
 ```
 
 ### First/Last Per Group
 
 Most recent order per customer:
 
-```asql-play
+```asql
 from orders
   per customer_id first by -order_date
 ```
@@ -243,7 +243,7 @@ from products
 
 ### Pivot: Rows to Columns
 
-```asql-play
+```asql
 from sales
   pivot sum_amount by status values ("pending", "shipped", "delivered")
   group by customer_id
@@ -253,7 +253,7 @@ Creates columns `pending`, `shipped`, `delivered` with sum of amounts.
 
 ### Unpivot: Columns to Rows
 
-```asql-play
+```asql
 from quarterly_data
   unpivot q1, q2, q3, q4 into quarter, value
 ```
@@ -262,7 +262,7 @@ Turns wide data into long format.
 
 ### Explode: Arrays to Rows
 
-```asql-play
+```asql
 from posts
   explode tags as tag
   group by tag (# as post_count)
@@ -276,21 +276,21 @@ One row per array element.
 
 ### Exclude Columns
 
-```asql-play
+```asql
 from users
   except password_hash, internal_notes
 ```
 
 ### Rename Columns
 
-```asql-play
+```asql
 from users
   rename id as user_id
 ```
 
 ### Replace Values
 
-```asql-play
+```asql
 from users
   replace name with upper(name), email with lower(email)
 ```
@@ -301,7 +301,7 @@ from users
 
 ### Save Intermediate Results
 
-```asql-play
+```asql
 from orders
   where status = "completed"
   stash as completed_orders
@@ -329,7 +329,7 @@ from active_users
 
 Here's a complete analytics query:
 
-```asql-play
+```asql
 from orders
   where created_at > 30 days ago
   where status = "completed"
@@ -399,7 +399,7 @@ Try writing these queries in the playground:
 <summary>Solutions</summary>
 
 **1. Top 5 countries:**
-```asql-play
+```asql
 from users
   group by country (# as user_count)
   order by -user_count
@@ -407,7 +407,7 @@ from users
 ```
 
 **2. Orders with customers:**
-```asql-play
+```asql
 from orders
   &? customers on orders.customer_id = customers.id
   select orders.id, customers.name, orders.amount
@@ -415,7 +415,7 @@ from orders
 ```
 
 **3. Monthly revenue:**
-```asql-play
+```asql
 from orders
   where year(created_at) = 2024
   group by month(created_at) (
@@ -425,10 +425,10 @@ from orders
 ```
 
 **4. Running total:**
-```asql-play
+```asql
 from daily_sales
-  select date, amount, running_sum(amount) as cumulative
   order by date
+  select date, amount, running_sum(amount) as cumulative
 ```
 
 **5. Stratified sample:**
@@ -438,13 +438,13 @@ from products
 ```
 
 **6. Status pivot:**
-```asql-play
+```asql
 from orders
-  pivot count(*) by status values ("pending", "shipped", "delivered")
+  pivot # by status values ("pending", "shipped", "delivered")
 ```
 
 **7. Cohort analysis:**
-```asql-play
+```asql
 from events
   group by month(event_date) (count(distinct user_id) as active)
   cohort by month(users.signup_date)
@@ -468,7 +468,7 @@ Cohort analysis groups users by when they started (their "cohort") and tracks th
 
 ### Basic Cohort Query
 
-```asql-play
+```asql
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -490,7 +490,7 @@ This single query:
 
 Track revenue by first purchase cohort:
 
-```asql-play
+```asql
 from orders
 group by month(order_date) (sum(total) as revenue)
 cohort by month(customers.first_order_date)
@@ -565,7 +565,7 @@ ORDER BY ca.cohort_month, ca.period;
 ```
 
 **ASQL (3 lines):**
-```asql-play
+```asql
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)

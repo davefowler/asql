@@ -47,7 +47,7 @@ ASQL (Analytic SQL, pronounced "Ask-el") is a modern, pipeline-based query langu
 Every ASQL query starts with a data source. Transformations can be chained using indentation (preferred) or optional pipeline operators (`|`):
 
 **Indentation-based (preferred, cleaner):**
-```asql-play
+```asql
 from users
   where status = "active"
   group by country ( # as total_users )
@@ -55,7 +55,7 @@ from users
 ```
 
 **Pipeline operator (optional, explicit):**
-```asql-play
+```asql
 from users
 | where status = "active"
 | group by country ( # as total_users )
@@ -212,7 +212,7 @@ from users where phone matches "555-___-____"
 #### Usage Examples
 
 **With logical operators:**
-```asql-play
+```asql
 from users 
   where email contains "@gmail.com" and status = "active"
   where name starts with "John" or name starts with "Jane"
@@ -225,7 +225,7 @@ from users where (email ?? "") contains "@"
 ```
 
 **With dotted column names:**
-```asql-play
+```asql
 from users where users.email contains "@gmail.com"
 ```
 
@@ -462,14 +462,14 @@ ASQL provides clean string manipulation functions.
 
 Use `concat()` for joining strings:
 
-```asql-play
+```asql
 from users
   select concat(first_name, " ", last_name) as full_name
 ```
 
 For concatenating values across rows in a GROUP BY, use `string_agg()`:
 
-```asql-play
+```asql
 from orders
   group by customer_id (
     string_agg(product_name, ", ") as products
@@ -506,7 +506,7 @@ substring(email, 1, 5) as email_prefix
 
 Use `replace()` for string substitution:
 
-```asql-play
+```asql
 from products
   select replace(description, "old", "new") as updated_desc
 ```
@@ -540,7 +540,7 @@ from products
 
 **SQL alternatives**: `greatest()` and `least()` are also supported for familiarity with SQL:
 
-```asql-play
+```asql
 from products
   select greatest(price1, price2, price3) as highest_price
 ```
@@ -618,7 +618,7 @@ month_created_at  -- → month(created_at)
 
 Aggregates are used within `group by` blocks. ASQL uses `as` syntax (like SQL) for aliasing:
 
-```asql-play
+```asql
 from sales
   group by region (
     sum(amount) as revenue,
@@ -643,8 +643,6 @@ from sales
 **Current behavior**: Most aggregates require explicit `as` aliases. Shorthand forms like `sum_amount` automatically create columns with matching names when used without `as`.
 
 **Note on `first()`/`last()`**: These currently require explicit aliases. If auto-aliasing were implemented, the pattern would likely be `{func}_{col}` (e.g., `first_order_id`, `last_order_id`), though the semantic meaning (first vs last) depends on the `order by` direction.
-
-**Future**: See [Universal Auto-Aliasing](spec_future.md#universal-auto-aliasing-for-all-aggregates-future-consideration) for a proposed feature that would auto-alias all aggregates. See the [Complete Auto-Alias Mapping Table](../ai_notes/auto-alias-mapping-table.md) for a comprehensive table of all proposed function → auto-alias mappings.
 
 **Default return behavior**: If no `select` clause is specified, the query returns all grouping columns followed by all aggregations in the order they're listed. `select *` has the same behavior.
 
@@ -744,7 +742,7 @@ This makes ASQL queries feel like asking questions rather than writing code.
 
 When grouping, aggregates are computed per group:
 
-```asql-play
+```asql
 from users
   group by country (
     count() as total_users,
@@ -810,7 +808,7 @@ from events
 
 Use `first()` and `last()` as aggregates within GROUP BY to extract values:
 
-```asql-play
+```asql
 from orders
   group by customer_id (
     first(order_id order by -order_date) as latest_order,
@@ -827,7 +825,7 @@ from orders
 
 Get the value of one column where another column is max/min:
 
-```asql-play
+```asql
 from orders
   group by customer_id (
     arg_max(order_id, order_date) as latest_order_id,
@@ -900,7 +898,7 @@ from daily_sales
 
 ### 6.1 Basic Grouping
 
-```asql-play
+```asql
 from users
   group by country ( # as total_users )
 ```
@@ -916,7 +914,7 @@ These are syntactic alternatives - all compile to SQL `GROUP BY`. `group by` rem
 
 ### 6.2 Multiple Grouping Columns
 
-```asql-play
+```asql
 from sales
   group by region, month (
     sum(amount) as revenue,
@@ -959,7 +957,7 @@ from orders
 
 Use `guarantee()` to specify exactly which values should appear:
 
-```asql-play
+```asql
 from orders
   group by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
     # ?? 0 as order_count
@@ -971,7 +969,7 @@ This ensures all four statuses appear in results, even if some have zero orders.
 #### Disabling Guaranteed Groups
 
 **Filter the results** (most common):
-```asql-play
+```asql
 from orders
   group by month(order_date) ( sum(amount) as revenue )
   where revenue > 0
@@ -1032,7 +1030,7 @@ from opportunities * owners
 
 Use `as` to alias joined tables:
 
-```asql-play
+```asql
 from opportunities &? users as owner
   select opportunities.amount, owner.name, owner.email
 ```
@@ -1110,7 +1108,7 @@ from accounts
 The FK naming pattern `<alias>_user_id` enables `.alias.` dot traversal to the `users` table.
 
 Or with explicit joins:
-```asql-play
+```asql
 from accounts 
   &? users as owner on accounts.owner_user_id = owner.id
   &? users as manager on accounts.manager_user_id = manager.id
@@ -1474,7 +1472,7 @@ models:
 
 ASQL uses `where` instead of `filter` because it's more intuitive - "where" clearly means "filter in" (keep rows that match), whereas "filter" is ambiguous (filter in or filter out?).
 
-```asql-play
+```asql
 from users
   where status = "active"
   where age >= 18
@@ -1485,7 +1483,7 @@ from users
 Multiple conditions can be written in several ways:
 
 **Separate where clauses:**
-```asql-play
+```asql
 from opportunities
   where status = "open"
   where owner.is_active
@@ -1493,19 +1491,19 @@ from opportunities
 ```
 
 **Using `and` on same line:**
-```asql-play
+```asql
 from opportunities
   where status = "open" and owner.is_active and org_type != "Non Profit"
 ```
 
 **Using `&` operator:**
-```asql-play
+```asql
 from opportunities
   where status = "open" & owner.is_active & org_type != "Non Profit"
 ```
 
 **Tabbed indentation (multi-line):**
-```asql-play
+```asql
 from opportunities
   where status = "open"
     and owner.is_active
@@ -1513,7 +1511,7 @@ from opportunities
 ```
 
 **Using `or` (with parentheses for grouping):**
-```asql-play
+```asql
 from opportunities
   where (status = "open" or status = "pending")
     and owner.is_active
@@ -1620,7 +1618,7 @@ from revenue
 ```
 
 **Using `stash as` in the middle of a pipeline:**
-```asql-play
+```asql
 from users
   where status = "active"
   stash as active_users
@@ -1726,7 +1724,7 @@ from users
 
 #### Combining Column Operators
 
-```asql-play
+```asql
 from users
   & orders on users.id = orders.user_id
   except password_hash, internal_notes
@@ -1738,7 +1736,7 @@ from users
 
 `deduplicate by ... order by ...` is syntax sugar for the existing window pattern `per ... first by ...`.
 
-```asql-play
+```asql
 from events
   deduplicate by user_id, event_type
   order by -created_at
@@ -1774,7 +1772,7 @@ from sales
 
 Transform columns into rows:
 
-```asql-play
+```asql
 from monthly_metrics
   unpivot jan, feb, mar, apr into month, value
 ```
@@ -1814,7 +1812,7 @@ This is the inverse of `array_agg()` / `array agg`.
 
 ASQL provides `key(col1, col2, ...)` to generate deterministic surrogate keys (inspired by dbt_utils).
 
-```asql-play
+```asql
 from orders
   select key(user_id, order_id) as order_key
 ```
@@ -1848,7 +1846,7 @@ Cohort analysis groups users by a shared characteristic (usually when they "star
 
 The `cohort by` clause transforms any aggregation query into a cohort analysis:
 
-```asql-play
+```asql
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -1901,7 +1899,7 @@ The period calculation uses the activity date column from your `group by` clause
 
 With `cohort by`, retention calculations become straightforward. The `cohort_size` column is automatically available in your results:
 
-```asql-play
+```asql
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -1957,7 +1955,7 @@ cohort by month(users.signup_date)
 
 Add segment dimensions before the time function:
 
-```asql-play
+```asql
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by users.channel, month(users.signup_date)
@@ -2002,7 +2000,7 @@ ORDER BY ca.cohort_month, ca.period;
 ```
 
 **ASQL (3 lines):**
-```asql-play
+```asql
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -2034,7 +2032,7 @@ models:
 
 Then ASQL can use those relationships automatically:
 
-```asql-play
+```asql
 from opportunities
   group by owner.name ( sum(amount) as total_pipeline )
 ```
@@ -2054,7 +2052,7 @@ model opportunities:
 
 Usage:
 
-```asql-play
+```asql
 from users
   group by country ( # as total_users, average of age as avg_age )
 ```
@@ -2083,7 +2081,7 @@ from countries
 
 Every line must return a new table. For multi-line operations, indent:
 
-```asql-play
+```asql
 from users
   where status = "active"
   where age >= 18
@@ -2092,7 +2090,7 @@ from users
 
 ### 17.2 Nested Selects
 
-```asql-play
+```asql
 from users
   -- Nested selects are not implemented yet; write as separate queries/joins for now.
 ```
@@ -2209,7 +2207,7 @@ select users.name, orders.amount
 
 **Note**: Without schema information, ASQL cannot automatically rename conflicting columns to `users_id` and `orders_id`. The expansion to `table.*` allows you to reference columns with table qualification (e.g., `users.id`, `orders.id`) to avoid conflicts. You can still add explicit aliases if you want renamed columns:
 
-```asql-play
+```asql
 from users & orders on users.id = orders.user_id
 select users.id as user_id, orders.id as order_id
 ```
@@ -2234,7 +2232,7 @@ select users.id as user_id, orders.id as order_id
 
 ### Example 1: Simple Analytic Query
 
-```asql-play
+```asql
 from sales
   where year(date) = 2025
   group by region ( sum(amount) as revenue )
@@ -2254,7 +2252,7 @@ ORDER BY revenue DESC;
 
 ### Example 2: Joins & Conditions
 
-```asql-play
+```asql
 from opportunities
   & owners
   where owners.is_active
@@ -2264,7 +2262,7 @@ from opportunities
 
 ### Example 3: Time Series
 
-```asql-play
+```asql
 from sessions
   group by week(start_time) (
     #(distinct user_id) as active_users
@@ -2292,7 +2290,7 @@ from premium_users
 
 ### Example 6: Complex Pipeline
 
-```asql-play
+```asql
 from opportunities
   where status = "open"
   & owners
@@ -2305,7 +2303,7 @@ from opportunities
 
 ### Example 7: Date Grouping
 
-```asql-play
+```asql
 from users
   group by month(created_at) ( # as signups )
   select month, signups
@@ -2313,7 +2311,7 @@ from users
 
 ### Example 8: User-Defined Function
 
-```asql-play
+```asql
 -- User-defined functions are not implemented yet.
 -- Use inline expressions or SQL functions directly for now.
 from users
@@ -2322,7 +2320,7 @@ from users
 
 ### Example 9: Case-Safe Naming
 
-```asql-play
+```asql
 -- Works regardless of database naming convention
 from Users
   select firstName, createdAt, user_id
@@ -2331,7 +2329,7 @@ from Users
 
 ### Example 10: Natural Language with "of"
 
-```asql-play
+```asql
 from sales
   group by region (
     total amount as revenue,
@@ -2343,7 +2341,7 @@ from sales
 **Note on "as" order**: Keep SQL's order - `expression as alias`. So `total amount as revenue` reads correctly: "total amount, aliased as revenue". The natural language function names like `total amount` make it sound like they're already aliases, but they're expressions that need aliasing. In group by blocks, always use `expression as alias` format: `sum(amount) as revenue`, `# as total_users`, etc.
 
 **Example with function:**
-```asql-play
+```asql
 -- User-defined functions are not implemented yet.
 -- Inline expressions are the current workaround:
 from users
@@ -2365,7 +2363,7 @@ from users
 
 Each pipeline step becomes a CTE:
 
-```asql-play
+```asql
 from users
   where status = "active"
   group by country ( count() as count )
@@ -2470,7 +2468,7 @@ SELECT * FROM grouped ORDER BY total DESC;
 ```
 
 **ASQL (no CTE needed):**
-```asql-play
+```asql
 from users
   where is_active
   -- cleaned users by country

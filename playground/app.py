@@ -31,16 +31,12 @@ from .examples import (
 app = FastAPI(title="ASQL Playground", version="1.0.0")
 
 # Mount static files
-STATIC_DIR = Path(__file__).parent.parent / "static"
 SYNTAX_DIR = Path(__file__).parent.parent / "syntax"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
-# Mount syntax files first (more specific path)
+# Mount syntax files
 if SYNTAX_DIR.exists():
     app.mount("/static/syntax", StaticFiles(directory=str(SYNTAX_DIR)), name="syntax")
-
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # --- Pydantic Models ---
