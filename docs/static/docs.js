@@ -405,6 +405,31 @@ function addPlaygroundButton() {
     // Check if button already exists
     if (document.querySelector('.playground-btn')) return;
     
+function makeHeaderTitleClickable() {
+    // Make the header title text clickable (not just the icon)
+    const headerTitle = document.querySelector('.md-header__title');
+    const headerTopic = document.querySelector('.md-header__topic');
+    
+    // Function to make an element clickable
+    const makeClickable = (element) => {
+        if (!element) return;
+        
+        // Add click handler that navigates to home
+        // Only navigate if not clicking on an existing link
+        element.addEventListener('click', (e) => {
+            // Don't navigate if clicking on an existing link (like the icon)
+            if (e.target.closest('a')) {
+                return;
+            }
+            // Navigate to home
+            window.location.href = '/';
+        });
+    };
+    
+    makeClickable(headerTitle);
+    makeClickable(headerTopic);
+}
+
     // Find the header inner container and title
     const headerInner = document.querySelector('.md-header__inner');
     const headerTitle = document.querySelector('.md-header__title');
@@ -516,6 +541,9 @@ function initDocsPage() {
     // Sync banner/header height vars (used for sticky sidebar offsets)
     syncBannerHeightVar();
     syncHeaderHeightVar();
+
+    // Make header title clickable
+    makeHeaderTitleClickable();
 
     // Add playground button to header
     addPlaygroundButton();

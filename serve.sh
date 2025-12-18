@@ -91,9 +91,9 @@ echo "Starting Playground on http://localhost:5001..."
 uvicorn playground:app --reload --host 0.0.0.0 --port 5001 &
 PLAYGROUND_PID=$!
 
-# Start MkDocs in background
+# Start MkDocs in background with explicit livereload
 echo "Starting Documentation on http://localhost:8000..."
-python -m mkdocs serve &
+python -m mkdocs serve --livereload &
 MKDOCS_PID=$!
 
 echo ""
