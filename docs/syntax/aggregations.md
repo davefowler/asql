@@ -47,6 +47,12 @@ When followed by a table name, `#` automatically infers the primary key and coun
 # orders           -- COUNT(DISTINCT order_id)
 ```
 
+**Important distinction**:
+- `#` (standalone) → `COUNT(*)` (row count)
+- `# orders` or `# of orders` → `COUNT(DISTINCT order_id)` (distinct count)
+
+Always be explicit when you want distinct count. The standalone `#` never automatically becomes a distinct count.
+
 This uses convention: the table name (singular form) + `_id` is assumed to be the primary key.
 
 ### Explicit Row Count
@@ -190,9 +196,13 @@ You can use aggregates without grouping to get totals:
 from orders
   select
     sum(amount) as total_revenue,
-    count(*) as total_orders,
+    # as total_rows,              -- COUNT(*) - total number of rows
     avg(amount) as avg_order_value
 ```
+
+**Important**: `#` by itself is always `COUNT(*)` (row count), never a distinct count. If you want to count distinct entities, be explicit:
+- `#` → `COUNT(*)` (row count - safe, understood interpretation)
+- `# orders` or `# of orders` → `COUNT(DISTINCT order_id)` (distinct count - explicit)
 
 ## Conditional Aggregates
 
@@ -201,9 +211,9 @@ Use `when` inside aggregates for conditional counting/summing:
 ```asql
 from orders
   group by customer_id (
-    count(*) as total_orders,
-    sum(status == "completed" ? 1 : 0) as completed_orders,
-    sum(status == "returned" ? amount : 0) as returned_amount
+    # as total_orders,
+    sum(status = "completed" ? 1 : 0) as completed_orders,
+    sum(status = "returned" ? amount : 0) as returned_amount
   )
 ```
 

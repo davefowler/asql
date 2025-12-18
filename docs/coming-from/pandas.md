@@ -70,7 +70,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     from orders
     group by region (
         sum(amount) as total_amount,
-        count(*) as order_count,
+        # as order_count,
         count(distinct customer_id) as unique_customers
     )
     ```
@@ -206,7 +206,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
 === "ASQL"
     ```asql
     from orders
-    group by status (count(*) as count)
+    group by status ( # as count )
     order by -count
     ```
 

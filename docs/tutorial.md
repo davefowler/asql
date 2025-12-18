@@ -171,7 +171,7 @@ Group by month:
 ```asql
 from orders
   group by month(created_at) (
-    sum(amount) as revenue
+    sum_amount  -- No alias needed - column will be named sum_amount
   )
 ```
 
@@ -245,7 +245,7 @@ from products
 
 ```asql
 from sales
-  pivot sum(amount) by status values ("pending", "shipped", "delivered")
+  pivot sum_amount by status values ("pending", "shipped", "delivered")
   group by customer_id
 ```
 
@@ -335,12 +335,12 @@ from orders
   where status = "completed"
   &? customers on orders.customer_id = customers.id
   group by customers.country (
-    sum(orders.amount) as revenue,
-    # as order_count,
-    # customers as unique_customers,
-    avg(orders.amount) as avg_order
+    sum_amount,                    -- Total revenue (column: sum_amount)
+    # as order_count,              -- Number of orders
+    # customers as unique_customers,  -- Distinct customers
+    avg_amount                     -- Average order value (column: avg_amount)
   )
-  order by -revenue
+  order by -sum_amount
   limit 10
 ```
 
@@ -419,9 +419,9 @@ from orders
 from orders
   where year(created_at) = 2024
   group by month(created_at) (
-    sum(amount) as revenue
+    sum_amount  -- Column named sum_amount, referenced in order by
   )
-  order by month
+  order by -sum_amount
 ```
 
 **4. Running total:**
@@ -440,7 +440,7 @@ from products
 **6. Status pivot:**
 ```asql
 from orders
-  pivot count(*) by status values ("pending", "shipped", "delivered")
+  pivot # by status values ("pending", "shipped", "delivered")
 ```
 
 **7. Cohort analysis:**

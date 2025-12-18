@@ -93,7 +93,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     from orders
     group by region, month(date) (
         sum(amount) as revenue,
-        count(*) as orders,
+        # as orders,
         count(distinct customer_id) as customers
     )
     ```

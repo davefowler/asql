@@ -76,7 +76,7 @@ For non-date columns, ASQL uses DISTINCT values from the source data:
 ```asql
 from orders
   group by status (
-    count(*) ?? 0 as count
+    # ?? 0 as count
   )
 ```
 
@@ -102,7 +102,7 @@ Specify exactly which values should appear:
 ```asql
 from orders
   group by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
-    count(*) ?? 0 as order_count
+    # ?? 0 as order_count
   )
 ```
 
@@ -122,7 +122,7 @@ Use the nullish coalescing operator to provide defaults for missing values:
 from orders
   group by month(order_date) (
     sum(amount) ?? 0 as revenue,        -- Default to 0
-    count(*) ?? 0 as orders,            -- Default to 0
+    # ?? 0 as orders,            -- Default to 0
     avg(amount) as avg_order            -- Leave as NULL
   )
 ```
@@ -226,7 +226,7 @@ from orders
   where order_date >= @2024-01-01 and order_date < @2025-01-01
   group by month(order_date) (
     sum(amount) ?? 0 as revenue,
-    count(*) ?? 0 as orders
+    # ?? 0 as orders
   )
   order by month
 ```
@@ -236,7 +236,7 @@ from orders
 ```asql
 from tickets
   group by guarantee(status, ['open', 'in_progress', 'resolved', 'closed']) (
-    count(*) ?? 0 as ticket_count
+    # ?? 0 as ticket_count
   )
 ```
 

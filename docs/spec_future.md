@@ -13,6 +13,8 @@ This document contains features that are planned for future implementation, unde
 
 ASQL may add support for concise ternary expressions in the future:
 
+**Tracking**: [#28](https://github.com/davefowler/asql/issues/28)
+
 ```asql
 -- Potential future syntax (not yet decided)
 amount == 0 ? null : amount           -- JS-style
@@ -32,6 +34,8 @@ CASE WHEN amount == 0 THEN NULL ELSE amount END
 ## Shorthand Natural Language (50/50 on implementation)
 
 For very simple exploratory queries, you can omit the `from` clause and infer it from the aggregation:
+
+**Tracking**: [#40](https://github.com/davefowler/asql/issues/40)
 
 ```asql
 # of Users by country
@@ -138,6 +142,8 @@ Open design questions:
 
 ASQL may add a helper to convert strings to URL-friendly slugs:
 
+**Tracking**: [#64](https://github.com/davefowler/asql/issues/64)
+
 ```asql
 select slugify(name) as slug
 ```
@@ -145,6 +151,95 @@ select slugify(name) as slug
 Open design questions:
 - dialect portability (regex replace differences)
 - unicode normalization behavior
+
+---
+
+## Universal Auto-Aliasing for All Aggregates (Future Consideration)
+
+ASQL may implement automatic column aliasing for all aggregate and transformation functions, enabling declarative continuity where the function call syntax matches the output column name.
+
+**Tracking**: [#65](https://github.com/davefowler/asql/issues/65)
+
+### Proposed Behavior
+
+When any aggregate or transformation function is used without an explicit `as` alias, ASQL would automatically generate a column name following predictable patterns:
+
+```asql
+-- Current (requires explicit aliases)
+from orders
+  group by customer_id (
+    sum(amount) as total_spent,
+    first(order_id order by -order_date) as latest_order,
+    # as order_count
+  )
+
+-- Future (auto-aliases)
+from orders
+  group by customer_id (
+    sum(amount),                    -- → column: sum_amount
+    first(order_id order by -order_date),  -- → column: first_order_id
+    #                                -- → column: count
+  )
+order by -sum_amount                -- Can reference auto-aliased column
+```
+
+### Benefits
+
+- **Declarative continuity**: Write `sum_amount` and reference `sum_amount` - no mismatch
+- **Less verbosity**: Fewer `as` clauses needed
+- **Consistency**: All functions follow the same pattern
+- **Shorthand integration**: Auto-aliases work seamlessly with underscore shorthand syntax
+
+### Design Considerations
+
+1. **Pattern**: `func(col)` → `func_col` for single-arg functions
+2. **Multi-arg functions**: May require explicit aliases (e.g., `concat(col1, col2)`)
+3. **Complex expressions**: Functions with expressions (e.g., `sum(amount * quantity)`) may require explicit aliases
+4. **Backward compatibility**: Explicit `as` aliases would still work and override auto-aliases
+5. **Shorthand support**: Functions that support shorthand (like `sum_amount`) already work - this extends the pattern
+
+### Complete Mapping Table
+
+See [Auto-Alias Mapping Table](../../ai_notes/auto-alias-mapping-table.md) for a comprehensive table of all function → auto-alias mappings and which functions support shorthand syntax.
+
+### Current
+
+Most aggregates require explicit `as` aliases. Shorthand forms like `sum_amount` already work and create columns with matching names.
+
+---
+
+## Date Aggregate Convention: Dropping `_at` Suffix (Future Consideration)
+
+ASQL may add a convention where date aggregates on columns ending in `_at` can optionally drop the `_at` suffix for brevity.
+
+### Proposed syntax
+
+```asql
+-- Current (always works)
+month_created_at  -- → month(created_at)
+year_updated_at   -- → year(updated_at)
+
+-- Future (optional shorthand)
+month_created     -- → month(created_at) (infers _at suffix)
+year_updated      -- → year(updated_at) (infers _at suffix)
+```
+
+### Rationale
+
+- **Convention-based**: Columns ending in `_at` are almost always timestamps
+- **Brevity**: Shorter syntax for common patterns
+- **Readability**: `month_created` reads naturally
+
+### Open design questions
+
+- Should this only work for columns ending in `_at`, or also `_date`, `_time`?
+- What if both `created_at` and `created` exist? (prefer explicit)
+- Should this be opt-in via config, or always available?
+- Does this apply to all date functions (`year`, `month`, `day`, `date`, `date_trunc`, etc.)?
+
+### Current
+
+Use explicit column names: `month_created_at`, `year_updated_at`, etc.
 
 ---
 

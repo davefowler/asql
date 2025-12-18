@@ -223,7 +223,7 @@ If you can write:
     where is_active
     & orders on users.id = orders.user_id
     group by users.id, users.name (
-        count(*) as order_count
+        # as order_count
     )
     where order_count > 5
     order by -order_count
@@ -236,7 +236,7 @@ If you can write:
     from active_users
     & orders on active_users.id = orders.user_id
     group by active_users.id, active_users.name (
-        count(*) as order_count
+        # as order_count
     )
     where order_count > 5
     order by -order_count
@@ -340,7 +340,7 @@ If you can write:
     from orders
     group by region (
         sum(amount) as total,
-        count(*) as count,
+        # as count,
         count(distinct customer_id) as unique_customers
     )
     ```

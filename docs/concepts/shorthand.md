@@ -162,6 +162,29 @@ from sales
 
 The goal: write queries that read like natural language while maintaining precision.
 
+## Auto-Alias Mapping (Future Feature)
+
+**Status**: This is a proposed future feature. See `docs/spec_future.md` for details.
+
+When implemented, all aggregates and transformation functions would automatically generate column names when used without explicit `as` aliases. Many of these auto-aliases can be used as shorthand syntax (the underscore form).
+
+See the [Complete Auto-Alias Mapping Table](../../ai_notes/auto-alias-mapping-table.md) for:
+- All function → auto-alias mappings
+- Which functions support shorthand syntax (can call with auto-alias)
+- Pattern rules and examples
+
+**Example of future behavior**:
+```asql
+-- Future: Auto-aliasing enables declarative continuity
+from orders
+  group by customer_id (
+    sum_amount,              -- → column: sum_amount (can reference later)
+    first_order_id,          -- → column: first_order_id (if implemented)
+    #                        -- → column: count
+  )
+order by -sum_amount         -- References the auto-aliased column
+```
+
 ## Next Steps
 
 - **[Aggregations](../syntax/aggregations.md)** — Using shorthand in GROUP BY
