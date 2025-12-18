@@ -743,6 +743,6 @@ This style guide applies to **documentation and examples**. In practice:
 
 ## Related Documentation
 
-- [Configuration System](../asql/config.py) - StyleConfig implementation
+- [Configuration System](https://github.com/davefowler/asql/blob/main/asql/config.py) - StyleConfig implementation
 - [Language Specification](spec.md) - Full ASQL syntax reference
 - [Quick Start](quick_start.md) - Getting started with ASQL

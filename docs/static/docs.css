@@ -2,7 +2,7 @@
 
 /* WIP Warning Banner */
 .wip-banner {
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
     color: #1a1a1a;
     text-align: center;
     padding: 10px 20px;
@@ -55,6 +55,48 @@
 /* Header styling */
 .md-header {
     background-color: var(--asql-red) !important;
+}
+
+/* MkDocs Material Theme Overrides - Sidebar */
+.md-sidebar {
+    background-color: var(--asql-red) !important;
+}
+
+.md-sidebar--primary {
+    background-color: var(--asql-red) !important;
+}
+
+.md-nav__link {
+    color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.md-nav__link:hover {
+    color: white !important;
+}
+
+.md-nav__title {
+    color: white !important;
+}
+
+/* Ensure navigation sections collapse properly - only active section expanded */
+/* Force collapse non-active nested navigation items */
+.md-nav__item--nested:not(.md-nav__item--active):not(:has(.md-nav__item--active)) > .md-nav__link ~ .md-nav {
+    display: none !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+}
+
+.md-header__title {
+    color: white !important;
+}
+
+.md-header__button {
+    color: white !important;
+}
+
+.md-header__button:hover {
+    color: white !important;
+    opacity: 0.8;
 }
 
 /* Inline code color */
@@ -179,11 +221,11 @@
 
 /* Playground button in header */
 .playground-btn {
-    display: inline-flex;
+    display: inline-flex !important;
     align-items: center;
     gap: 6px;
     padding: 6px 14px;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.15) !important;
     color: white !important;
     border-radius: 4px;
     font-weight: 500;
@@ -192,16 +234,19 @@
     margin-left: 16px;
     margin-right: 16px;
     transition: all 0.2s;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
     white-space: nowrap;
     flex-shrink: 0;
     position: relative;
     z-index: 1;
+    opacity: 1 !important;
+    visibility: visible !important;
 }
 
 .playground-btn:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.25) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+    color: white !important;
 }
 
 /* Ensure proper spacing in header to prevent overlap */
@@ -217,6 +262,25 @@
 /* Ensure title container has proper spacing */
 .md-header__topic {
     margin-right: 0;
+}
+
+/* Make header title/brand a clear link to root */
+.md-header__title,
+.md-header__topic {
+    cursor: pointer;
+}
+
+.md-header__title a,
+.md-header__topic a {
+    color: white !important;
+    text-decoration: none;
+    transition: opacity 0.2s;
+}
+
+.md-header__title a:hover,
+.md-header__topic a:hover {
+    opacity: 0.8;
+    text-decoration: none;
 }
 
 .playground-btn svg {
@@ -677,6 +741,7 @@
 /* Right header should be left-aligned and tight */
 .asql-mini-playground .asql-mp-pane-right .asql-mp-pane-header {
     justify-content: flex-start;
+    padding-left: 8px; /* Add padding to align with left pane header */
 }
 
 .asql-mini-playground .asql-mp-to-wrap {
@@ -697,20 +762,23 @@
     background: rgba(255, 255, 255, 0.06);
 }
 
-/* "Caret under it" */
+/* "Caret under it" - chevron style (CSS-based for better rendering) */
 .asql-mini-playground .asql-mp-to-wrap::after {
-    content: "▾";
+    content: "";
     position: absolute;
-    right: 0;
-    bottom: -1px;
-    font-size: 11px;
+    right: 2px;
+    bottom: 2px;
+    width: 0;
+    height: 0;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-top: 4px solid rgba(0, 0, 0, 0.55);
     opacity: 0.65;
-    color: rgba(0, 0, 0, 0.55);
     pointer-events: none;
 }
 
 [data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-wrap::after {
-    color: rgba(255, 255, 255, 0.65);
+    border-top-color: rgba(255, 255, 255, 0.65);
 }
 
 /* Make panes feel full-height and avoid white gutters */
