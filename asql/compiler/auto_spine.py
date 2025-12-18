@@ -531,6 +531,11 @@ def _apply_auto_spine(
 
     select_cols: List[str] = []
     for sel_expr in stmt.expressions:
+        # Handle SELECT * - just pass through without COALESCE wrapping
+        if isinstance(sel_expr, exp.Star):
+            select_cols.append(f"{data_cte_name}.*")
+            continue
+
         if isinstance(sel_expr, exp.Alias):
             col_name = sel_expr.alias
             expr_sql = sel_expr.this.sql()
@@ -551,7 +556,13 @@ def _apply_auto_spine(
         if matched_alias:
             select_cols.append(f"{combined_spine_name}.{matched_alias}")
         else:
-            select_cols.append(f"COALESCE({data_cte_name}.{col_name}, 0) AS {col_name}")
+            # Check if col_name is a valid SQL identifier (alphanumeric + underscore)
+            # If not (e.g., function calls), we need to alias it properly
+            safe_alias = col_name
+            if not col_name.replace("_", "").isalnum() or col_name[0].isdigit() if col_name else False:
+                # Use a sanitized alias for complex expressions
+                safe_alias = f"col_{len(select_cols)}"
+            select_cols.append(f"COALESCE({data_cte_name}.{col_name}, 0) AS {safe_alias}")
 
     if not select_cols:
         select_cols = [f"{combined_spine_name}.*"]
