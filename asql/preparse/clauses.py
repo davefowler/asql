@@ -160,7 +160,6 @@ class ClausesMixin:
             Args:
                 token: The token to expand
                 add_alias: If True, add 'as func_col' alias (for SELECT/GROUP BY).
-                          If False, just return func(col) (for ORDER BY/WHERE).
             """
             trimmed = token.strip()
             if not trimmed:
@@ -187,43 +186,6 @@ class ClausesMixin:
                     return f"{fn}({arg})"
             return token
         
-        def expand_identifiers_in_expression(expr: str) -> str:
-            """
-            Expand function shorthand identifiers in an expression (ORDER BY, WHERE).
-            Handles both underscore (sum_amount) and space (sum amount) patterns.
-            """
-            # First handle space patterns (func col) - these are already handled globally
-            # by _transform_natural_aggregates, but we need to ensure they work here too.
-            # Actually, _transform_natural_aggregates runs before this, so space patterns
-            # should already be converted. We just need to handle underscore patterns here.
-            
-            # Split expression into tokens, respecting operators and parentheses
-            # We want to find identifiers that match function patterns
-            result_expr = expr
-            
-            # Find all identifiers that could be function patterns
-            # Pattern: word boundary, identifier (func_col pattern), word boundary
-            # But we need to avoid matching inside strings or function calls
-            
-            # Simple approach: find identifiers and check if they match function patterns
-            # This regex finds identifiers (but not inside strings or function calls)
-            identifier_regex = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b'
-            
-            def replace_identifier(match: re.Match) -> str:
-                ident = match.group(1)
-                # Check if this identifier matches a function pattern
-                expanded = expand_token(ident, add_alias=False)
-                if expanded != ident:
-                    return expanded
-                return ident
-            
-            # Only replace identifiers that are standalone (not part of a function call already)
-            # We need to be careful not to replace identifiers inside function calls
-            # For now, do a simple replacement - if it matches a function pattern, expand it
-            result_expr = re.sub(identifier_regex, replace_identifier, result_expr)
-            
-            return result_expr
-
         # Process SELECT clause
         select_match = re.search(r'\bselect\s+', result, re.IGNORECASE)
         if select_match:
@@ -254,94 +216,86 @@ class ClausesMixin:
                 new_clause = ", ".join(expanded_items)
                 result = result[:select_start] + new_clause + result[select_end:]
 
-        # Process GROUP BY aggregate blocks: group by cols ( agg1, agg2 )
-        group_by_pattern = r'\bgroup\s+by\s+([^(]+?)\s*\(([^)]+)\)'
-        def expand_group_by_aggs(match: re.Match) -> str:
-            group_cols = match.group(1).strip()
-            aggs_text = match.group(2).strip()
-            items = split_csv(aggs_text)
-            if items:
-                expanded_items = [expand_token(item, add_alias=True) for item in items]
-                new_aggs = ", ".join(expanded_items)
-                return f"group by {group_cols} ( {new_aggs} )"
-            return match.group(0)
+        # Process GROUP BY aggregate blocks: group by <keys> ( agg1, agg2 )
+        #
+        # IMPORTANT: group-by keys can include function calls like month(created_at).
+        # So we can't use a naive regex that stops at the first "(".
+        def expand_group_by_aggregate_blocks(text: str) -> str:
+            out_text = text
+            search_pos = 0
 
-        result = re.sub(group_by_pattern, expand_group_by_aggs, result, flags=re.IGNORECASE)
+            while True:
+                gb_match = re.search(r'\bgroup\s+by\s+', out_text[search_pos:], re.IGNORECASE)
+                if not gb_match:
+                    return out_text
 
-        # Process ORDER BY clause: order by col1, col2, ...
-        order_by_pattern = r'\border\s+by\s+([^,\n]+(?:,\s*[^,\n]+)*)'
-        def expand_order_by(match: re.Match) -> str:
-            order_exprs = match.group(1).strip()
-            # Split by comma, but respect parentheses
-            items = split_csv(order_exprs)
-            if items:
-                expanded_items = []
-                for item in items:
-                    # Handle descending prefix (-col)
-                    item = item.strip()
-                    if item.startswith('-'):
-                        # Remove the - prefix, expand, then add it back
-                        inner = expand_identifiers_in_expression(item[1:].strip())
-                        expanded_items.append(f"-{inner}")
-                    else:
-                        # Check for DESC/ASC suffix
-                        item_lower = item.lower()
-                        if item_lower.endswith(' desc'):
-                            inner = expand_identifiers_in_expression(item[:-5].strip())
-                            expanded_items.append(f"{inner} desc")
-                        elif item_lower.endswith(' asc'):
-                            inner = expand_identifiers_in_expression(item[:-4].strip())
-                            expanded_items.append(f"{inner} asc")
-                        else:
-                            expanded_items.append(expand_identifiers_in_expression(item))
-                return f"order by {', '.join(expanded_items)}"
-            return match.group(0)
+                gb_start = search_pos + gb_match.start()
+                keys_start = search_pos + gb_match.end()
 
-        result = re.sub(order_by_pattern, expand_order_by, result, flags=re.IGNORECASE)
+                # Find the opening paren of the aggregate list, skipping function-call parens in keys.
+                paren_pos = -1
+                i = keys_start
+                while i < len(out_text):
+                    ch = out_text[i]
+                    if ch == '(':
+                        j = i - 1
+                        # function call: identifier directly before "("
+                        if j >= keys_start and (out_text[j].isalnum() or out_text[j] == '_'):
+                            depth = 1
+                            i += 1
+                            while i < len(out_text) and depth > 0:
+                                if out_text[i] == '(':
+                                    depth += 1
+                                elif out_text[i] == ')':
+                                    depth -= 1
+                                i += 1
+                            continue
+                        # otherwise: this is the aggregate list paren
+                        paren_pos = i
+                        break
+                    # stop if we hit another clause keyword before an aggregate list
+                    if ch == '\n' or ch == ';':
+                        break
+                    i += 1
 
-        # Process WHERE clause: where condition
-        # This is trickier because WHERE can have complex expressions
-        # We'll find identifiers in the WHERE clause and expand them
-        where_pattern = r'\bwhere\s+([^(\n]+(?:\([^)]*\)[^(\n]*)*)'
-        def expand_where(match: re.Match) -> str:
-            where_expr = match.group(1).strip()
-            # Find the end of WHERE clause (next keyword or end of string)
-            # For now, just expand identifiers in the expression
-            expanded_expr = expand_identifiers_in_expression(where_expr)
-            return f"where {expanded_expr}"
+                if paren_pos == -1:
+                    search_pos = keys_start
+                    continue
 
-        # More careful WHERE expansion - find WHERE and expand until next keyword
-        where_match = re.search(r'\bwhere\s+', result, re.IGNORECASE)
-        if where_match:
-            where_start = where_match.end()
-            where_end = len(result)
-            
-            # Find end of WHERE clause (next keyword)
-            paren_depth = 0
-            i = where_start
-            while i < len(result):
-                char = result[i]
-                if char == '(':
-                    paren_depth += 1
-                elif char == ')':
-                    paren_depth = max(0, paren_depth - 1)
-                elif paren_depth == 0:
-                    remaining = result[i:].lower()
-                    for kw in [' group by ', '\ngroup by ', '\tgroup by ', 
-                              ' order by ', '\norder by ', '\torder by ',
-                              ' limit ', '\nlimit ', '\tlimit ',
-                              ' having ', '\nhaving ', '\thaving ',
-                              ' qualify ', '\nqualify ', '\tqualify ']:
-                        if remaining.startswith(kw):
-                            where_end = i
-                            i = len(result)
-                            break
-                i += 1
-            
-            where_expr = result[where_start:where_end].strip()
-            if where_expr:
-                expanded_expr = expand_identifiers_in_expression(where_expr)
-                result = result[:where_start] + expanded_expr + result[where_end:]
+                group_cols = out_text[keys_start:paren_pos].strip()
+
+                # Find the matching closing paren for the aggregate list
+                depth = 1
+                i = paren_pos + 1
+                while i < len(out_text) and depth > 0:
+                    if out_text[i] == '(':
+                        depth += 1
+                    elif out_text[i] == ')':
+                        depth -= 1
+                    i += 1
+
+                if depth != 0:
+                    # Unmatched parens; give up on this one
+                    search_pos = paren_pos + 1
+                    continue
+
+                aggs_inner_start = paren_pos + 1
+                aggs_inner_end = i - 1
+                aggs_text = out_text[aggs_inner_start:aggs_inner_end].strip()
+
+                items = split_csv(aggs_text)
+                if items:
+                    expanded_items = [expand_token(item, add_alias=True) for item in items]
+                    new_aggs = ", ".join(expanded_items)
+                    replacement = f"group by {group_cols} ( {new_aggs} )"
+
+                    # Replace from "group by" up through closing paren
+                    out_text = out_text[:gb_start] + replacement + out_text[i:]
+                    search_pos = gb_start + len(replacement)
+                else:
+                    search_pos = i
+
+        result = expand_group_by_aggregate_blocks(result)
 
         return result
 

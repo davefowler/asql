@@ -6,7 +6,7 @@ ASQL uses a pipeline-based query structure where data flows from top to bottom. 
 
 Every ASQL query starts with `from`:
 
-```asql
+```asql-play
 from users
 ```
 
@@ -16,7 +16,7 @@ This selects all rows and columns from the `users` table. Unlike SQL, you don't 
 
 Transformations are applied in sequence:
 
-```asql
+```asql-play
 from users
   where status = "active"
   where age >= 18
@@ -30,7 +30,7 @@ Each line transforms the result of the previous line. This reads naturally: "Fro
 
 You can optionally use the pipe operator (`|`) to make the flow explicit:
 
-```asql
+```asql-play
 from users
 | where status = "active"
 | group by country (# as total)
@@ -61,7 +61,7 @@ Both styles compile to the same SQL. Use whichever feels more natural:
 
 Operations can be combined in any logical order:
 
-```asql
+```asql-play
 from orders
   where year(created_at) = 2024
   where status = "completed"
@@ -78,7 +78,7 @@ from orders
 
 Multiple `where` clauses are combined with AND:
 
-```asql
+```asql-play
 from users
   where status = "active"
   where age >= 18
@@ -87,7 +87,7 @@ from users
 
 This is equivalent to:
 
-```asql
+```asql-play
 from users
   where status = "active" and age >= 18 and email is not null
 ```
@@ -98,7 +98,7 @@ Use separate lines for readability, especially when conditions are long.
 
 In ASQL, `select` can appear anywhere in the pipeline:
 
-```asql
+```asql-play
 from users
   where is_active
   select name, email, created_at
@@ -111,7 +111,7 @@ When omitted, ASQL automatically includes all columns (equivalent to `SELECT *`)
 
 ASQL compiles to standard SQL. The pipeline structure maps to SQL clauses:
 
-```asql
+```asql-play
 from users
   where is_active
   group by country (# as total)
@@ -130,7 +130,7 @@ ORDER BY total DESC
 
 For more complex queries with multiple transformations, ASQL may use CTEs to maintain clarity:
 
-```asql
+```asql-play
 from users
   where is_active
   group by country (# as total)

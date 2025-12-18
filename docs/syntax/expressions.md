@@ -224,7 +224,7 @@ select
 
 ### In Aggregations
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     sum(status = "completed" ? 1 : 0) as completed_count,
@@ -257,7 +257,7 @@ where discount = 0.15
 
 ASQL uses SQL-style comments:
 
-```asql
+```asql-play
 -- This is a single-line comment
 from users
   where is_active  -- inline comment

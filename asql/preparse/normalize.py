@@ -17,6 +17,30 @@ class NormalizeMixin:
         row number() → row_number()
         """
         result = text
+
+        # Single-word date-part shorthands:
+        #   year created_at   → year(created_at)
+        #   month order_date  → month(order_date)
+        #
+        # We intentionally do this here (not in natural-aggregate rewriting) so multi-word
+        # functions like "day of week ..." don't get broken.
+        date_part_funcs = ['year', 'quarter', 'month', 'week', 'day', 'hour', 'minute', 'second']
+        keywords = {
+            'as', 'from', 'where', 'group', 'by', 'order', 'limit', 'join', 'on',
+            'and', 'or', 'not', 'in', 'is', 'null', 'true', 'false', 'of',
+        }
+
+        for func in date_part_funcs:
+            pattern = rf'\b({func})\s+([a-zA-Z_][a-zA-Z0-9_]*)\b(?!\s*\()'
+
+            def replace_single_word_date_part(match: re.Match) -> str:
+                fn = match.group(1)
+                arg = match.group(2)
+                if arg.lower() in keywords:
+                    return match.group(0)
+                return f'{fn}({arg})'
+
+            result = re.sub(pattern, replace_single_word_date_part, result, flags=re.IGNORECASE)
         
         # Multi-word function patterns
         multi_word_funcs = [

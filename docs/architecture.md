@@ -58,7 +58,7 @@ The pipeline system manages how ASQL's sequential operations are transformed int
 - The final step becomes the main SELECT statement
 
 **Example Transformation:**
-```asql
+```asql-play
 from users
 where status = "active"
 group by country ( # as total_users )

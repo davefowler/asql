@@ -30,7 +30,7 @@ from schema.table_name
 
 Filter rows based on conditions:
 
-```asql
+```asql-play
 from users
   where status = "active"
   where age >= 18
@@ -42,7 +42,7 @@ Multiple `where` clauses are combined with AND.
 
 Choose which columns to return:
 
-```asql
+```asql-play
 from users
   select name, email, created_at
 ```
@@ -53,7 +53,7 @@ If omitted, all columns are returned (equivalent to `SELECT *`).
 
 Aggregate data by columns:
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     sum(amount) as total,
@@ -75,7 +75,7 @@ from users
 
 Limit number of rows:
 
-```asql
+```asql-play
 from users
   limit 100
 ```
@@ -109,7 +109,7 @@ from users
 
 Exclude columns from result:
 
-```asql
+```asql-play
 from users
   except password_hash, internal_notes
 ```
@@ -118,7 +118,7 @@ from users
 
 Rename columns inline:
 
-```asql
+```asql-play
 from users
   rename id as user_id, name as full_name
 ```
@@ -127,7 +127,7 @@ from users
 
 Replace column values with expressions:
 
-```asql
+```asql-play
 from users
   replace name with upper(name), email with lower(email)
 ```
@@ -136,7 +136,7 @@ from users
 
 Transform row values into columns:
 
-```asql
+```asql-play
 from sales
   pivot sum(amount) by category values ('Electronics', 'Clothing')
 ```
@@ -145,7 +145,7 @@ from sales
 
 Transform columns into rows:
 
-```asql
+```asql-play
 from metrics
   unpivot jan, feb, mar into month, value
 ```
@@ -154,7 +154,7 @@ from metrics
 
 Expand array columns into rows:
 
-```asql
+```asql-play
 from posts
   explode tags as tag
 ```
@@ -168,7 +168,7 @@ from posts
 | `on` | Specify join condition |
 | `as` | Alias for table or column |
 
-```asql
+```asql-play
 from orders
   &? users as customer on orders.customer_id = customer.id
 ```
@@ -186,7 +186,7 @@ from orders
 
 Save a pipeline step as a CTE:
 
-```asql
+```asql-play
 from users
   where is_active
   stash as active_users
@@ -224,7 +224,7 @@ from orders
 
 Define partition for window operations:
 
-```asql
+```asql-play
 from orders
   per customer_id first by -order_date
 ```
@@ -306,7 +306,7 @@ average of price
 | `partition by` | Window partition |
 | `rows` | Window frame rows |
 
-```asql
+```asql-play
 from orders
   distinct on (customer_id)
   order by customer_id, -order_date
@@ -334,7 +334,7 @@ These words have special meaning and cannot be used as unquoted identifiers:
 
 To use a reserved word as an identifier, quote it:
 
-```asql
+```asql-play
 from "order"        -- Table named 'order'
 select "select"     -- Column named 'select'
 ```

@@ -6,7 +6,7 @@ ASQL provides a clean syntax for grouping and aggregating data, with natural lan
 
 Use `group by` with parentheses to define aggregations:
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     sum(amount) as total_spent,
@@ -23,7 +23,7 @@ The `#` symbol provides flexible counting syntax:
 
 ### Basic Row Count
 
-```asql
+```asql-play
 from users
   group by country (
     # as user_count          -- COUNT(*)
@@ -78,7 +78,7 @@ Use `# *` when you explicitly want row count (not distinct):
 
 Group by multiple columns separated by commas:
 
-```asql
+```asql-play
 from sales
   group by region, year(date) (
     sum(amount) as revenue,
@@ -112,7 +112,7 @@ sum of amount
 
 Using shorthand:
 
-```asql
+```asql-play
 from sales
   group by region (
     sum_amount,
@@ -132,7 +132,7 @@ Natural language aliases map to SQL functions:
 | `maximum` | `MAX` |
 | `minimum` | `MIN` |
 
-```asql
+```asql-play
 from sales
   group by product (
     total amount as revenue,
@@ -144,7 +144,7 @@ from sales
 
 Group by computed values like date truncations:
 
-```asql
+```asql-play
 from orders
   group by month(created_at) (
     sum(amount) as revenue
@@ -153,7 +153,7 @@ from orders
 
 Group by multiple expressions:
 
-```asql
+```asql-play
 from orders
   group by year(created_at), month(created_at) (
     sum(amount) as revenue,
@@ -165,7 +165,7 @@ from orders
 
 Use `as` to alias group columns:
 
-```asql
+```asql-play
 from orders
   group by month(created_at) (
     sum(amount) as revenue
@@ -178,7 +178,7 @@ This is especially useful for date truncations where you want a clean column nam
 
 Filter grouped results using another `where` clause after grouping:
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     sum(amount) as total_spent
@@ -208,7 +208,7 @@ from orders
 
 Use `when` inside aggregates for conditional counting/summing:
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     # as total_orders,
@@ -234,7 +234,7 @@ from orders
 
 If you don't specify a `select` after grouping, ASQL returns all grouping columns followed by all aggregations:
 
-```asql
+```asql-play
 from orders
   group by region (
     sum(amount) as revenue,
@@ -247,7 +247,7 @@ from orders
 
 ### Top Customers by Revenue
 
-```asql
+```asql-play
 from orders
   where status = "completed"
   group by customer_id (
@@ -260,7 +260,7 @@ from orders
 
 ### Monthly Revenue Trend
 
-```asql
+```asql-play
 from orders
   where year(created_at) = 2024
   group by month(created_at) (
@@ -273,7 +273,7 @@ from orders
 
 ### Category Performance
 
-```asql
+```asql-play
 from products
   & orders on products.id = orders.product_id
   group by products.category (

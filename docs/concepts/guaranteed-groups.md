@@ -30,7 +30,7 @@ But analytics is different. When you build a time-series chart, missing data poi
 
 ASQL automatically fills gaps:
 
-```asql
+```asql-play
 from orders
   group by month(order_date) (
     sum(amount) ?? 0 as revenue
@@ -73,7 +73,7 @@ All months from January to June will appear.
 
 For non-date columns, ASQL uses DISTINCT values from the source data:
 
-```asql
+```asql-play
 from orders
   group by status (
     # ?? 0 as count
@@ -86,7 +86,7 @@ If your data has orders with status "pending", "shipped", and "delivered", all t
 
 When grouping by multiple columns, ASQL creates all combinations:
 
-```asql
+```asql-play
 from orders
   group by region, month(order_date) (
     sum(amount) ?? 0 as revenue
@@ -99,7 +99,7 @@ Every region × month combination will appear.
 
 Specify exactly which values should appear:
 
-```asql
+```asql-play
 from orders
   group by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
     # ?? 0 as order_count
@@ -118,7 +118,7 @@ This ensures all four statuses appear, even if some have zero orders.
 
 Use the nullish coalescing operator to provide defaults for missing values:
 
-```asql
+```asql-play
 from orders
   group by month(order_date) (
     sum(amount) ?? 0 as revenue,        -- Default to 0
@@ -135,7 +135,7 @@ Different columns can have different default behaviors.
 
 The most common approach—just filter out zeros:
 
-```asql
+```asql-play
 from orders
   group by month(order_date) (
     sum(amount) as revenue
@@ -233,7 +233,7 @@ from orders
 
 ### Status Dashboard
 
-```asql
+```asql-play
 from tickets
   group by guarantee(status, ['open', 'in_progress', 'resolved', 'closed']) (
     # ?? 0 as ticket_count
@@ -242,7 +242,7 @@ from tickets
 
 ### Sales by Region and Quarter
 
-```asql
+```asql-play
 from sales
   where year(sale_date) = 2024
   group by region, quarter(sale_date) (

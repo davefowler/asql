@@ -127,7 +127,7 @@ from date_spine(start = @2024-01-01, end = @2024-12-31, grain = day)
 
 ASQL may add a convenience table source for unioning a list of relations:
 
-```asql
+```asql-play
 from union(users_2022, users_2023, users_2024)
 ```
 
@@ -178,7 +178,8 @@ from orders
   group by customer_id (
     sum(amount),                    -- → column: sum_amount
     first(order_id order by -order_date),  -- → column: first_order_id
-    #                                -- → column: count
+    #                                -- → column: num (analytics-friendly)
+    # orders                         -- → column: num_orders
   )
 order by -sum_amount                -- Can reference auto-aliased column
 ```
@@ -243,7 +244,93 @@ Use explicit column names: `month_created_at`, `year_updated_at`, etc.
 
 ---
 
+## Function Naming Consistency: `running_num` vs `running_count` (Future Consideration)
+
+ASQL may rename `running_count()` to `running_num()` for consistency with the `num` naming convention used for count auto-aliases.
+
+**Current**: `running_count(*)` → column: `running_count` (or `running_num` if auto-aliased)
+
+**Proposed**: `running_num(*)` → column: `running_num`
+
+### Rationale
+
+- **Consistency**: If `#` → `num` and `count(*)` → `num`, then `running_count(*)` should be `running_num(*)`
+- **Analytics-friendly**: `num` is more analytics-friendly than `count` (see [Auto-Alias Mapping Table](../../ai_notes/auto-alias-mapping-table.md))
+- **Declarative continuity**: `running_num` matches the auto-alias pattern `running_num`
+
+### Current Behavior
+
+```asql
+-- Current syntax
+from orders
+  select running_count(*) as row_num
+```
+
+### Proposed Behavior
+
+```asql
+-- Future syntax
+from orders
+  select running_num(*) as row_num
+  -- Or with auto-aliasing:
+  select running_num(*)  -- → column: running_num
+```
+
+### Migration Considerations
+
+- **Backward compatibility**: `running_count()` could remain as an alias for `running_num()`
+- **Deprecation path**: Support both, document `running_count` as deprecated
+- **Auto-aliasing**: If auto-aliasing is implemented, `running_count(*)` would auto-alias to `running_num` anyway
+
+### Related Functions
+
+This could also apply to:
+- `running_count(*)` → `running_num(*)`
+- Consider if `count()` function itself should have a `num()` alias (probably not, as `count()` is standard SQL)
+
+**Status**: Under consideration - would improve consistency but requires breaking change or careful migration path.
+
+---
+
+## Preset Alias Templates (Future Consideration)
+
+ASQL may provide preset alias templates as shortcuts for common naming conventions, allowing users to quickly apply standard styles without writing custom templates.
+
+**Proposed syntax**:
+
+```yaml
+# asql.config.yaml
+compile:
+  alias_preset: "snake_case"  # or "camelCase", "UPPER_SNAKE", "PascalCase"
+```
+
+**Available presets** (proposed):
+
+| Preset | Template | Example Output |
+|--------|----------|----------------|
+| `snake_case` | `{prefix}_{col}` | `sum_amount`, `num_orders` |
+| `camelCase` | `{prefix|title}{col|title}` | `SumAmount`, `NumOrders` |
+| `UPPER_SNAKE` | `{prefix|upper}_{col|upper}` | `SUM_AMOUNT`, `NUM_ORDERS` |
+| `PascalCase` | `{prefix|title}{col|title}` | `SumAmount`, `NumOrders` |
+| `lower_snake` | `{prefix|lower}_{col|lower}` | `sum_amount`, `num_orders` |
+
+**Benefits**:
+- Quick setup for common conventions
+- Shareable styles across projects
+- Less configuration needed for standard cases
+- Can still override individual functions if needed
+
+**Implementation**:
+- Preset sets `alias_template` automatically
+- Can be overridden by explicit `alias_template` setting
+- Function-specific templates still take precedence
+
+**Status**: Future consideration - nice-to-have convenience feature, not critical for initial implementation.
+
+---
+
 **See Also**:
 - `docs/spec.md` - Current specification of implemented features
 - GitHub issues - Work tracked as issues when prioritized
 - `ai_notes/COHORT_ANALYSIS.md` - Detailed cohort analysis design
+- `ai_notes/auto-alias-mapping-table.md` - Auto-aliasing patterns and rationale
