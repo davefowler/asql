@@ -400,11 +400,7 @@ function syncHeaderHeightVar() {
     document.documentElement.style.setProperty('--asql-header-height', `${height}px`);
 }
 
-// Add playground button to header
-function addPlaygroundButton() {
-    // Check if button already exists
-    if (document.querySelector('.playground-btn')) return;
-    
+// Make header title clickable
 function makeHeaderTitleClickable() {
     // Make the header title text clickable (not just the icon)
     const headerTitle = document.querySelector('.md-header__title');
@@ -430,6 +426,11 @@ function makeHeaderTitleClickable() {
     makeClickable(headerTopic);
 }
 
+// Add playground button to header
+function addPlaygroundButton() {
+    // Check if button already exists
+    if (document.querySelector('.playground-btn')) return;
+    
     // Find the header inner container and title
     const headerInner = document.querySelector('.md-header__inner');
     const headerTitle = document.querySelector('.md-header__title');
@@ -579,62 +580,10 @@ function initDocsPage() {
             return;
         }
 
-        // Highlight any code blocks in the current page content
-        document.querySelectorAll('pre code[class*="language-"], pre code:not([class])').forEach((block) => {
-            if (block.textContent && block.textContent.trim()) {
-                try {
-                    const code = block.textContent;
-                    let language = null;
-                    const langMatch = block.className.match(/language-(\w+)/);
-                    if (langMatch) {
-                        language = langMatch[1];
-                    } else {
-                        const parentPre = block.parentElement;
-                        if (parentPre && parentPre.className) {
-                            const parentLangMatch = parentPre.className.match(/language-(\w+)/);
-                            if (parentLangMatch) {
-                                language = parentLangMatch[1];
-                            }
-                        }
-                    }
-
-                    if (!language) {
-                        language = 'sql';
-                    }
-
-                    if (!block.classList.contains('hljs')) {
-                        const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
-                        if (langAvailable) {
-                            const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
-                            block.innerHTML = result.value;
-                            block.classList.add('hljs', `language-${language}`);
-                        } else {
-                            block.classList.add(`language-${language}`);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('Highlight.js error on initial block:', e);
-                    if (!block.classList.contains('hljs')) {
-                        block.className = block.className || 'language-sql';
-                    }
-                }
-            }
-        });
-
-        // Legacy tabbed blocks (if any remain)
-        const blocks = document.querySelectorAll('.asql-code-block');
-        blocks.forEach(block => {
-            const blockId = block.getAttribute('data-block-id');
-            if (!blockId) return;
-            if (block.classList.contains('asql-mini-playground')) return;
-            reorderTabsOnLoad(blockId);
-            showDialect(blockId, 'asql');
-        });
-
-        // Split-pane mini playgrounds (global to-dialect)
-        initMiniPlaygrounds();
+        // Use the dedicated highlightAllCodeBlocks function which handles all cases
+        highlightAllCodeBlocks();
     };
-
+    
     initHighlighting();
 }
 
