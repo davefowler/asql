@@ -73,17 +73,10 @@ def compile(
             transformed_stmt: exp.Expression = stmt
 
             if final_settings.auto_spine:
-                try:
-                    transformed_stmt = _apply_auto_spine(stmt, final_settings, dialect)
-                except Exception:
-                    transformed_stmt = stmt
+                transformed_stmt = _apply_auto_spine(stmt, final_settings, dialect)
 
             # Auto-qualify conflicting column names in joins
-            try:
-                transformed_stmt = auto_qualify_columns(transformed_stmt)
-            except Exception:
-                # If auto-qualification fails, continue with original statement
-                pass
+            transformed_stmt = auto_qualify_columns(transformed_stmt)
 
             transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
             sql_parts.append(transformed_stmt.sql(dialect=sql_dialect, pretty=pretty))
@@ -133,4 +126,6 @@ def get_settings_from_query(
         inline_settings, dialect_override, _ = extract_inline_settings(statements)
         return base.merge_with(inline_settings), dialect_override
     except Exception:
+        # Intentional: graceful degradation to defaults if settings extraction fails
+        # This is a non-critical helper function used for IDE features
         return base, None
