@@ -629,20 +629,28 @@ from sales
   )
 ```
 
-**Aliasing behavior**:
+**Auto-Aliasing**:
 
-| Aggregate Form | With `as` Alias | Without `as` Alias (Current Behavior) | Potential Auto-alias (If Implemented) |
-|----------------|----------------|----------------------------------------|----------------------------------------|
-| `sum(amount)` | `sum(amount) as revenue` → column: `revenue` | Requires explicit `as` | `sum_amount` |
-| `sum_amount` (shorthand) | `sum_amount as revenue` → column: `revenue` | `sum_amount` → column: `sum_amount` ✅ | `sum_amount` (already works) |
-| `first(col order by ...)` | `first(order_id order by -date) as latest_order` → column: `latest_order` | Requires explicit `as` | `first_order_id` (or `last_order_id` if DESC) |
-| `last(col order by ...)` | `last(order_id order by date) as first_order` → column: `first_order` | Requires explicit `as` | `last_order_id` (or `first_order_id` if ASC) |
-| `#` | `# as total_orders` → column: `total_orders` | Requires explicit `as` | `count` (or dialect-specific) |
-| `# orders` | `# orders as unique_orders` → column: `unique_orders` | Requires explicit `as` | `count_orders` |
+ASQL automatically generates meaningful column names when functions are used without explicit `AS` aliases. This solves SQL's problem of unusable default names like `count`, `f0_`, or `SUM(amount)`.
 
-**Current behavior**: Most aggregates require explicit `as` aliases. Shorthand forms like `sum_amount` automatically create columns with matching names when used without `as`.
+| Aggregate Form | With `as` Alias | Auto-Generated Alias (No `as`) |
+|----------------|----------------|--------------------------------|
+| `sum(amount)` | `sum(amount) as revenue` → column: `revenue` | `sum_amount` |
+| `avg(price)` | `avg(price) as avg_price` → column: `avg_price` | `avg_price` |
+| `count(*)` / `#` | `# as total` → column: `total` | `num` |
+| `count(email)` | `count(email) as emails` → column: `emails` | `num_email` |
+| `count(distinct user_id)` | `count(distinct user_id) as unique_users` → column: `unique_users` | `num_distinct_user_id` |
+| `month(created_at)` | `month(created_at) as month` → column: `month` | `month_created_at` |
+| `first(col order by ...)` | `first(order_id order by -date) as latest` → column: `latest` | `first_order_id` |
 
-**Note on `first()`/`last()`**: These currently require explicit aliases. If auto-aliasing were implemented, the pattern would likely be `{func}_{col}` (e.g., `first_order_id`, `last_order_id`), though the semantic meaning (first vs last) depends on the `order by` direction.
+**Pattern rules**:
+- Single-arg functions: `func(col)` → `func_col`
+- Multi-arg functions: `func(a, b)` → `func_a_b`  
+- Special cases: `count(*)` → `num`, `row_number()` → `row_num`
+
+**Explicit aliases always win**: If you provide an `as` alias, it overrides the auto-generated name.
+
+**Configuration**: Auto-aliasing is configurable via `asql.config.yaml` or `SET` statements. See the [Auto-Aliasing Reference](reference/auto-aliasing.md) for the complete mapping table, template system, and configuration options.
 
 **Default return behavior**: If no `select` clause is specified, the query returns all grouping columns followed by all aggregations in the order they're listed. `select *` has the same behavior.
 

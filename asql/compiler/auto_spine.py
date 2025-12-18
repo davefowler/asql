@@ -317,6 +317,23 @@ def _get_source_column_from_trunc(trunc_expr: exp.Expression) -> Optional[exp.Ex
     return None
 
 
+def _find_select_alias_for_expr(stmt: exp.Select, expr: exp.Expression) -> Optional[str]:
+    """Find alias from SELECT for a matching expression.
+    
+    If the SELECT has an alias for an expression matching expr, return that alias.
+    This is used to leverage auto-aliasing when GROUP BY expressions don't have aliases.
+    """
+    expr_sql = expr.sql()
+    
+    for sel_expr in stmt.expressions:
+        if isinstance(sel_expr, exp.Alias):
+            # Compare the inner expression
+            if sel_expr.this.sql() == expr_sql:
+                return sel_expr.alias
+    
+    return None
+
+
 def _get_all_group_by_columns(
     stmt: exp.Expression,
 ) -> List[Tuple[str, exp.Expression, bool, Optional[str], Optional[List[str]]]]:
@@ -369,6 +386,10 @@ def _get_all_group_by_columns(
                 inner = inner.expressions[0] if inner.expressions else inner
             if isinstance(inner, exp.Column):
                 alias = inner.name
+
+        # If no alias found, check SELECT for matching auto-generated alias
+        if not alias:
+            alias = _find_select_alias_for_expr(stmt, group_expr)
 
         if not alias:
             alias = f"col_{len(results)}"

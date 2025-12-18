@@ -210,11 +210,7 @@ class ASQL(Dialect):
 # This allows using dialect="asql" in parse_one() and sql() methods
 def register_asql_dialect() -> None:
     """Register the ASQL dialect with SQLGlot."""
-    # Check if already registered
-    try:
-        Dialect.get_or_raise("asql")
-    except ValueError:
-        # Not registered, register it
+    if "asql" not in Dialect._classes:
         Dialect["asql"] = ASQL
 
 

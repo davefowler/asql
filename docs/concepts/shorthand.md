@@ -162,30 +162,36 @@ from sales
 
 The goal: write queries that read like natural language while maintaining precision.
 
-## Auto-Alias Mapping (Future Feature)
+## Auto-Aliasing
 
-**Status**: This is a proposed future feature. See [`spec_future.md`](https://github.com/davefowler/asql/blob/main/docs/spec_future.md) for details.
+ASQL automatically generates meaningful column names when functions are used without explicit `AS` aliases. This eliminates SQL's unusable defaults like `count`, `f0_`, or `SUM(amount)`.
 
-When implemented, all aggregates and transformation functions would automatically generate column names when used without explicit `as` aliases. Many of these auto-aliases can be used as shorthand syntax (the underscore form).
-
-See the [Complete Auto-Alias Mapping Table](https://github.com/davefowler/asql/blob/main/ai_notes/auto-alias-mapping-table.md) for:
-- All function → auto-alias mappings
-- Which functions support shorthand syntax (can call with auto-alias)
-- Pattern rules and examples
-
-**Example of future behavior**:
 ```asql
--- Future: Auto-aliasing enables declarative continuity
 from orders
   group by customer_id (
-    sum_amount,              -- → column: sum_amount (can reference later)
-    first_order_id,          -- → column: first_order_id (if implemented)
-    #                        -- → column: num (analytics-friendly)
-    num_orders,              -- → column: num_orders (shorthand for # orders)
-    num of orders            -- → column: num_orders (natural language)
+    sum_amount,              -- → column: sum_amount
+    avg_price,               -- → column: avg_price
+    #                        -- → column: num
+    month(created_at)        -- → column: month_created_at
   )
-order by -sum_amount         -- References the auto-aliased column
+order by -sum_amount         -- Reference auto-aliased column directly!
 ```
+
+### How It Works
+
+| Function | Auto-Generated Alias |
+|----------|---------------------|
+| `sum(amount)` | `sum_amount` |
+| `avg(price)` | `avg_price` |
+| `count(*)` / `#` | `num` |
+| `month(created_at)` | `month_created_at` |
+| `upper(name)` | `upper_name` |
+
+### Declarative Continuity
+
+The shorthand syntax and auto-aliasing work together: when you write `sum_amount`, it expands to `sum(amount)`, and the result column is named `sum_amount`. You can reference it by the same name in `ORDER BY`, `WHERE`, or subsequent queries.
+
+See the [Auto-Aliasing Reference](../reference/auto-aliasing.md) for the complete mapping table and configuration options.
 
 ## Next Steps
 
