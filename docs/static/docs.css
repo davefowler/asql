@@ -34,60 +34,63 @@
     --asql-red-dark: #9b1c1c;
 }
 
-/* Override Material theme colors to use red */
-:root {
-    --md-primary-fg-color: var(--asql-red);
-    --md-primary-fg-color--light: var(--asql-red-light);
-    --md-primary-fg-color--dark: var(--asql-red-dark);
-    --md-accent-fg-color: var(--asql-red);
+/* Override Material theme colors to use red - MUST be after Material's CSS */
+/* Use !important and high specificity to override Material's CSS */
+html:root {
+    --md-primary-fg-color: var(--asql-red) !important;
+    --md-primary-fg-color--light: var(--asql-red-light) !important;
+    --md-primary-fg-color--dark: var(--asql-red-dark) !important;
+    --md-accent-fg-color: var(--asql-red) !important;
 }
 
-[data-md-color-scheme="default"] {
-    --md-primary-fg-color: var(--asql-red);
-    --md-accent-fg-color: var(--asql-red);
+html[data-md-color-scheme="default"] {
+    --md-primary-fg-color: var(--asql-red) !important;
+    --md-accent-fg-color: var(--asql-red) !important;
 }
 
-[data-md-color-scheme="slate"] {
-    --md-primary-fg-color: var(--asql-red);
-    --md-accent-fg-color: var(--asql-red);
+html[data-md-color-scheme="slate"] {
+    --md-primary-fg-color: var(--asql-red) !important;
+    --md-accent-fg-color: var(--asql-red) !important;
 }
 
-/* Header styling */
+/* Header styling - use high specificity */
+body .md-header,
 .md-header {
     background-color: var(--asql-red) !important;
+    background: var(--asql-red) !important;
 }
 
-/* MkDocs Material Theme Overrides - Sidebar */
-.md-sidebar {
-    background-color: var(--asql-red) !important;
-}
+/* Sidebar and navigation styles removed - let Material theme handle them */
 
-.md-sidebar--primary {
-    background-color: var(--asql-red) !important;
-}
-
-.md-nav__link {
-    color: rgba(255, 255, 255, 0.9) !important;
-}
-
-.md-nav__link:hover {
-    color: white !important;
-}
-
-.md-nav__title {
-    color: white !important;
-}
-
-/* Ensure navigation sections collapse properly - only active section expanded */
-/* Force collapse non-active nested navigation items */
-.md-nav__item--nested:not(.md-nav__item--active):not(:has(.md-nav__item--active)) > .md-nav__link ~ .md-nav {
+/* Hide navigation sections that don't contain an active link */
+.md-nav:not(:has(.md-nav__link--active)) {
     display: none !important;
-    max-height: 0 !important;
-    overflow: hidden !important;
+}
+
+/* Always show nav when parent section item is active (e.g., when on section index page) */
+/* This overrides the above rule for active sections */
+.md-nav__item--active.md-nav__item--section > .md-nav {
+    display: block !important;
 }
 
 .md-header__title {
     color: white !important;
+}
+
+/* Logo styling - align database icon with text baseline, allow search icon to descend */
+.md-header__button.md-logo {
+    padding-top: 6px; /* Add upper padding */
+    margin-right: 10px; /* Add space between logo and text */
+    display: inline-flex;
+    align-items: baseline; /* Align with text baseline */
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+    height: 1.3em; /* Taller to accommodate descender */
+    width: auto;
+    vertical-align: baseline;
+    margin-bottom: -0.15em; /* Pull up so database icon sits on baseline */
 }
 
 .md-header__button {
@@ -131,8 +134,17 @@
     background: #f6f8fa;
 }
 
-[data-md-color-scheme="default"] .highlight .hljs {
+[data-md-color-scheme="default"] .highlight .hljs,
+[data-md-color-scheme="default"] .hljs {
     background: #f6f8fa !important;
+    color: #24292e !important;
+}
+
+/* Ensure syntax highlighting is applied */
+[data-md-color-scheme="default"] pre code.hljs,
+[data-md-color-scheme="default"] code.hljs {
+    background: #f6f8fa !important;
+    color: #24292e !important;
 }
 
 /* Code blocks - dark mode */
@@ -150,8 +162,17 @@
     color: #89b4fa;
 }
 
-[data-md-color-scheme="slate"] .highlight .hljs {
+[data-md-color-scheme="slate"] .highlight .hljs,
+[data-md-color-scheme="slate"] .hljs {
     background: #1e1e2e !important;
+    color: #cdd6f4 !important;
+}
+
+/* Ensure syntax highlighting is applied */
+[data-md-color-scheme="slate"] pre code.hljs,
+[data-md-color-scheme="slate"] code.hljs {
+    background: #1e1e2e !important;
+    color: #cdd6f4 !important;
 }
 
 /* Copy button visibility */
@@ -614,6 +635,7 @@
     background: rgba(0, 0, 0, 0.03);
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
     font-size: 12px;
+    min-height: 32px; /* Match height with left pane header */
 }
 
 [data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-pane-header {
@@ -747,10 +769,11 @@
 .asql-mini-playground .asql-mp-to-wrap {
     position: relative;
     display: inline-flex;
-    align-items: flex-start;
+    align-items: center; /* Center align vertically */
     padding: 2px 14px 2px 6px; /* a little touch target + caret room */
     line-height: 1.1;
     border-radius: 6px;
+    height: 100%; /* Fill header height */
 }
 
 /* Subtle hover affordance without a white pill */
@@ -766,8 +789,9 @@
 .asql-mini-playground .asql-mp-to-wrap::after {
     content: "";
     position: absolute;
-    right: 2px;
-    bottom: 2px;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
     width: 0;
     height: 0;
     border-left: 3px solid transparent;
@@ -779,6 +803,32 @@
 
 [data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-wrap::after {
     border-top-color: rgba(255, 255, 255, 0.65);
+}
+
+/* Copy buttons - no background, only show on hover */
+.asql-mini-playground .md-clipboard,
+.asql-code-block .md-clipboard {
+    background: transparent !important;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.asql-mini-playground:hover .md-clipboard,
+.asql-code-block:hover .md-clipboard {
+    opacity: 1;
+}
+
+/* Also hide copy buttons by default in regular code blocks */
+.md-typeset .highlight:hover .md-clipboard,
+.md-typeset pre:hover .md-clipboard {
+    opacity: 1;
+}
+
+.md-typeset .highlight .md-clipboard,
+.md-typeset pre .md-clipboard {
+    background: transparent !important;
+    opacity: 0;
+    transition: opacity 0.2s;
 }
 
 /* Make panes feel full-height and avoid white gutters */

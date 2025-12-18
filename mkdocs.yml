@@ -38,20 +38,25 @@ theme:
     - search.highlight
     - content.code.annotate
     - content.code.copy
+  logo: static/logo.svg
   icon:
     repo: fontawesome/brands/github
 
+# Watch additional directories for hot reload
+watch:
+  - docs/static  # Watch docs/static/ for CSS/JS changes
+
 # Custom CSS and JavaScript
 extra_css:
-  - docs/static/docs.css
+  - static/docs.css
 
 extra_javascript:
   - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js
   - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js
   - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js
   - https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js
-  - docs/static/asql-lang.js
-  - docs/static/docs.js
+  - static/asql-lang.js
+  - static/docs.js
 
 # Extensions
 markdown_extensions:
@@ -132,6 +137,7 @@ nav:
     - R / dplyr: coming-from/r.md
     - SQL: coming-from/sql.md
   - Learn More:
+    - learn-more/index.md
     - Grouping Guide: group_by.md
     - Window Functions Deep Dive: window_functions.md
     - Style Guide: style_guide.md
