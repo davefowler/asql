@@ -14,6 +14,7 @@ import sqlglot
 from sqlglot import exp
 
 from asql.config import CompileSettings
+from asql.errors import ASQLCompilationError
 
 
 DATE_TRUNC_FUNCTIONS = {
@@ -299,11 +300,19 @@ def _get_source_column_from_trunc(trunc_expr: exp.Expression) -> Optional[exp.Ex
     if isinstance(expr_, exp.Alias):
         expr_ = expr_.this
 
-    if isinstance(expr_, (exp.Anonymous, exp.Func)) and expr_.expressions:
+    if isinstance(expr_, (exp.Anonymous, exp.Func)):
+        # Handle date_trunc('unit', column) - column is second argument
         if hasattr(expr_, "name") and expr_.name and expr_.name.lower() == "date_trunc":
             if len(expr_.expressions) > 1:
                 return expr_.expressions[1]
-        return expr_.expressions[0]
+
+        # Handle functions like MONTH(column), YEAR(column) where arg is in expressions
+        if expr_.expressions:
+            return expr_.expressions[0]
+
+        # Handle SQLGlot's typed date functions (Month, Year, etc.) where arg is in .this
+        if hasattr(expr_, "this") and expr_.this is not None:
+            return expr_.this
 
     return None
 
@@ -412,10 +421,16 @@ def _apply_auto_spine(
     where_sql = f"WHERE {where_clause.this.sql()}" if where_clause else ""
 
     spine_ctes: List[Tuple[str, exp.Expression]] = []
-    spine_columns: List[Tuple[str, str]] = []
+    # spine_columns: (alias, cte_name, original_expr_sql)
+    spine_columns: List[Tuple[str, str, str]] = []
     rollup_column_order: List[str] = []
 
     for alias, group_expr, is_date, trunc_unit, explicit_values in group_cols:
+        # Get the original expression SQL for matching SELECT expressions
+        if isinstance(group_expr, exp.Alias):
+            original_expr_sql = group_expr.this.sql()
+        else:
+            original_expr_sql = group_expr.sql()
         spine_cte_name = f"{alias}_spine"
 
         is_in_rollup_cube = alias in rollup_cube_columns or alias.lower() in [c.lower() for c in rollup_cube_columns]
@@ -471,52 +486,70 @@ def _apply_auto_spine(
         try:
             spine_select = sqlglot.parse_one(spine_sql.strip(), dialect=dialect)
             spine_ctes.append((spine_cte_name, spine_select))
-            spine_columns.append((alias, spine_cte_name))
-        except Exception:
-            continue
+            spine_columns.append((alias, spine_cte_name, original_expr_sql))
+        except Exception as e:
+            raise ASQLCompilationError(
+                f"Failed to generate spine for GROUP BY column '{alias}'. "
+                f"Generated SQL: {spine_sql}\nError: {e}"
+            ) from e
 
     if not spine_ctes:
         return stmt
 
-    combined_spine_name = "combined_spine"
-    if len(spine_columns) == 1:
-        combined_spine_sql = f"SELECT * FROM {spine_columns[0][1]}"
-    else:
-        selects = [f"{cte_name}.{alias}" for alias, cte_name in spine_columns]
+    # For single GROUP BY, use the spine CTE directly instead of creating a redundant combined_spine
+    use_combined_spine = len(spine_columns) > 1 or (has_rollup and len(rollup_column_order) > 1)
+
+    if use_combined_spine:
+        combined_spine_name = "combined_spine"
+        selects = [f"{cte_name}.{alias}" for alias, cte_name, _ in spine_columns]
         froms = [spine_columns[0][1]]
-        for _, cte_name in spine_columns[1:]:
+        for _, cte_name, _ in spine_columns[1:]:
             froms.append(f"CROSS JOIN {cte_name}")
         combined_spine_sql = f"SELECT {', '.join(selects)} FROM {' '.join(froms)}"
 
-    if has_rollup and len(rollup_column_order) > 1:
-        rollup_filter_conditions: List[str] = []
-        for i in range(len(rollup_column_order) - 1):
-            col_curr = rollup_column_order[i]
-            col_next = rollup_column_order[i + 1]
-            curr_cte = next((cte for a, cte in spine_columns if a == col_curr), None)
-            next_cte = next((cte for a, cte in spine_columns if a == col_next), None)
-            if curr_cte and next_cte:
-                rollup_filter_conditions.append(
-                    f"({curr_cte}.{col_curr} IS NOT NULL OR {next_cte}.{col_next} IS NULL)"
-                )
+        if has_rollup and len(rollup_column_order) > 1:
+            rollup_filter_conditions: List[str] = []
+            for i in range(len(rollup_column_order) - 1):
+                col_curr = rollup_column_order[i]
+                col_next = rollup_column_order[i + 1]
+                curr_cte = next((cte for a, cte, _ in spine_columns if a == col_curr), None)
+                next_cte = next((cte for a, cte, _ in spine_columns if a == col_next), None)
+                if curr_cte and next_cte:
+                    rollup_filter_conditions.append(
+                        f"({curr_cte}.{col_curr} IS NOT NULL OR {next_cte}.{col_next} IS NULL)"
+                    )
 
-        if rollup_filter_conditions:
-            combined_spine_sql += f" WHERE {' AND '.join(rollup_filter_conditions)}"
+            if rollup_filter_conditions:
+                combined_spine_sql += f" WHERE {' AND '.join(rollup_filter_conditions)}"
+    else:
+        # Single GROUP BY: use the spine CTE name directly
+        combined_spine_name = spine_columns[0][1]
+        combined_spine_sql = None  # Not needed
 
     data_cte_name = "spine_data"
-    join_conditions = [f"{combined_spine_name}.{alias} = {data_cte_name}.{alias}" for alias, _ in spine_columns]
+    join_conditions = [f"{combined_spine_name}.{alias} = {data_cte_name}.{alias}" for alias, _, _ in spine_columns]
 
     select_cols: List[str] = []
     for sel_expr in stmt.expressions:
         if isinstance(sel_expr, exp.Alias):
             col_name = sel_expr.alias
+            expr_sql = sel_expr.this.sql()
         elif isinstance(sel_expr, exp.Column):
             col_name = sel_expr.name
+            expr_sql = sel_expr.sql()
         else:
             col_name = sel_expr.sql()
+            expr_sql = col_name
 
-        if col_name in [a for a, _ in spine_columns]:
-            select_cols.append(f"{combined_spine_name}.{col_name}")
+        # Match against both alias and original expression SQL
+        matched_alias = None
+        for alias, _, orig_expr_sql in spine_columns:
+            if col_name == alias or expr_sql == orig_expr_sql:
+                matched_alias = alias
+                break
+
+        if matched_alias:
+            select_cols.append(f"{combined_spine_name}.{matched_alias}")
         else:
             select_cols.append(f"COALESCE({data_cte_name}.{col_name}, 0) AS {col_name}")
 
@@ -531,22 +564,68 @@ def _apply_auto_spine(
 
     try:
         sqlglot.parse_one(final_sql.strip(), dialect=dialect)
-    except Exception:
-        return stmt
+    except Exception as e:
+        raise ASQLCompilationError(
+            f"Failed to generate spine join query. "
+            f"Generated SQL: {final_sql}\nError: {e}"
+        ) from e
 
-    try:
-        cte_parts: List[str] = []
+    # Add aliases to the data CTE's SELECT expressions for GROUP BY columns
+    # This ensures the join can reference them by the spine's alias
+    data_stmt = stmt.copy()
+    expr_to_alias = {orig_sql: alias for alias, _, orig_sql in spine_columns}
 
-        for cte_name, cte_select in spine_ctes:
-            cte_parts.append(f"{cte_name} AS ({cte_select.sql(dialect=dialect)})")
+    new_expressions = []
+    for sel_expr in data_stmt.expressions:
+        if isinstance(sel_expr, exp.Alias):
+            inner_expr = sel_expr.this
+            original_alias = sel_expr.alias
+        else:
+            inner_expr = sel_expr
+            original_alias = None
 
+        # Check if this is a guarantee-wrapped expression
+        is_guarantee, _ = _is_guarantee_wrapped(sel_expr)
+        unwrapped_expr = inner_expr
+        if is_guarantee:
+            # Get the inner expression (unwrap guarantee)
+            if isinstance(inner_expr, exp.Anonymous) and inner_expr.name and inner_expr.name.lower() == "guarantee":
+                unwrapped_expr = inner_expr.expressions[0] if inner_expr.expressions else inner_expr
+
+        unwrapped_sql = unwrapped_expr.sql()
+
+        if unwrapped_sql in expr_to_alias:
+            # Use the spine's alias for this expression
+            new_expressions.append(exp.Alias(this=unwrapped_expr, alias=exp.to_identifier(expr_to_alias[unwrapped_sql])))
+        elif is_guarantee:
+            # guarantee expression not in spine - still unwrap and use original alias if present
+            if original_alias:
+                new_expressions.append(exp.Alias(this=unwrapped_expr, alias=exp.to_identifier(original_alias)))
+            else:
+                new_expressions.append(unwrapped_expr)
+        else:
+            new_expressions.append(sel_expr)
+
+    data_stmt.set("expressions", new_expressions)
+
+    cte_parts: List[str] = []
+
+    for cte_name, cte_select in spine_ctes:
+        cte_parts.append(f"{cte_name} AS ({cte_select.sql(dialect=dialect)})")
+
+    # Only add combined_spine CTE when we have multiple GROUP BY columns or rollup
+    if combined_spine_sql is not None:
         cte_parts.append(f"{combined_spine_name} AS ({combined_spine_sql})")
-        cte_parts.append(f"{data_cte_name} AS ({stmt.sql(dialect=dialect)})")
+    cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
 
-        result_sql = "WITH " + ", ".join(cte_parts) + " " + final_sql
+    result_sql = "WITH " + ", ".join(cte_parts) + " " + final_sql
+    try:
         return sqlglot.parse_one(result_sql.strip(), dialect=dialect)
-    except Exception:
-        return stmt
+    except Exception as e:
+        raise ASQLCompilationError(
+            f"Failed to assemble spine query. "
+            f"Generated SQL: {result_sql}\nError: {e}"
+        ) from e
 
 
 def _build_categorical_spine_sql(
@@ -756,8 +835,11 @@ def _build_spine_select_from_data(
 
     try:
         return sqlglot.parse_one(spine_sql.strip(), dialect=dialect)
-    except Exception:
-        return None
+    except Exception as e:
+        raise ASQLCompilationError(
+            f"Failed to build date spine. "
+            f"Generated SQL: {spine_sql}\nError: {e}"
+        ) from e
 
 
 def _build_spine_join_query(
@@ -794,8 +876,8 @@ def _build_spine_join_query(
 
     try:
         return sqlglot.parse_one(join_sql.strip(), dialect=dialect)
-    except Exception:
-        return sqlglot.parse_one(
-            f"SELECT * FROM {spine_cte_name} LEFT JOIN {data_cte_name} USING ({alias})",
-            dialect=dialect,
-        )
+    except Exception as e:
+        raise ASQLCompilationError(
+            f"Failed to build spine join query. "
+            f"Generated SQL: {join_sql}\nError: {e}"
+        ) from e
