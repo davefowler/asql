@@ -40,7 +40,7 @@ Filter rows with `where`:
 
 ```asql
 from users
-where status == "active"
+where status = "active"
 ```
 
 ## Filtering
@@ -68,7 +68,7 @@ where amount > 100
 
 ```asql
 from users
-where (status == "active" or status == "pending")
+where (status = "active" or status = "pending")
   and email is not null
 ```
 
@@ -76,7 +76,7 @@ where (status == "active" or status == "pending")
 
 ```asql
 from products
-where name like "%widget%"
+where name contains "widget"
   and category in ("electronics", "computers")
 ```
 
@@ -204,21 +204,21 @@ ASQL uses symbolic operators for joins where `&` represents the join point and `
 ### INNER JOIN
 
 ```asql
-from orders & users on orders.user_id == users.id
+from orders & users on orders.user_id = users.id
 ```
 
 ### LEFT JOIN
 
 ```asql
-from users &? orders on users.id == orders.user_id
+from users &? orders on users.id = orders.user_id
 ```
 
 ### Multiple Joins
 
 ```asql
 from orders 
-  & users on orders.user_id == users.id
-  & products on orders.product_id == products.id
+  & users on orders.user_id = users.id
+  & products on orders.product_id = products.id
 select 
     users.name,
     products.name as product_name,
@@ -317,7 +317,7 @@ For more complex window function filtering:
 ```asql
 from orders
 select *, row_number() over (partition by customer_id order by -order_date) as rn
-qualify rn == 1
+qualify rn = 1
 ```
 
 ### DISTINCT ON
@@ -354,7 +354,7 @@ Daily revenue for the last 30 days:
 
 ```asql
 from orders
-where date >= date("now") - 30
+where date >= 30 days ago
 group by date(date) (
     sum(amount) as daily_revenue,
     # as order_count
@@ -380,7 +380,7 @@ Count active users per country:
 
 ```asql
 from users
-where status == "active"
+where status = "active"
 group by country (
     # as active_users
 )
@@ -393,9 +393,9 @@ Here's a complete query that demonstrates multiple features:
 
 ```asql
 from orders
-  where date >= "2024-01-01"
-    and status == "completed"
-  & products on orders.product_id == products.id
+  where date >= @2024-01-01
+    and status = "completed"
+  & products on orders.product_id = products.id
   group by products.category (
       sum(orders.amount) as revenue,
       avg(orders.amount) as avg_order_value,

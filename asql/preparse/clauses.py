@@ -82,47 +82,46 @@ class ClausesMixin:
 
     def _transform_implicit_function_aliases(self, text: str) -> str:
         """
-        Expand implicit function aliases in SELECT projections.
+        Expand implicit function aliases in SELECT projections and GROUP BY aggregate blocks.
 
         This supports the "auto-alias" convention where a single-arg function call's
         natural alias is `func_col`, and ASQL lets you write that alias directly:
 
         - select sum_amount  → select sum(amount) as sum_amount
         - select year_created_at → select year(created_at) as year_created_at
+        - group by region ( sum_amount ) → group by region ( sum(amount) as sum_amount )
 
         Notes / constraints:
-        - Applied only to SELECT projection items (not WHERE / GROUP BY / ORDER BY).
+        - Applied to SELECT projection items and GROUP BY aggregate blocks.
         - Only expands *plain identifiers* (no dots, no parens, no quotes).
         - Only for a conservative set of single-arg functions (and their aliases).
         """
+        result = text
 
-        # Only attempt if there's a SELECT clause
-        select_match = re.search(r'\bselect\s+', text, re.IGNORECASE)
-        if not select_match:
-            return text
+        # Conservative allowlist: single-arg functions that follow func_col aliasing.
+        single_arg_funcs: Set[str] = {
+            # Aggregates
+            'sum', 'avg', 'count', 'min', 'max',
+            # Date parts / truncs
+            'year', 'quarter', 'month', 'week', 'day', 'hour', 'minute', 'second',
+            'day_of_week', 'day_of_month', 'day_of_year',
+            'week_of_year', 'month_of_year', 'quarter_of_year',
+            # Window-ish single-arg helpers
+            'running_sum', 'running_avg', 'running_count',
+            'rolling_sum', 'rolling_avg',
+        }
 
-        # Find SELECT clause extent (similar to _transform_from_first)
-        select_start = select_match.end()
-        select_end = len(text)
+        # Include aliases (total/average/etc) as valid shorthand prefixes, but expand to canonical fn.
+        alias_prefixes: Set[str] = set(FUNCTION_ALIASES.keys())
 
-        paren_depth = 0
-        i = select_start
-        while i < len(text):
-            char = text[i]
-            if char == '(':
-                paren_depth += 1
-            elif char == ')':
-                paren_depth = max(0, paren_depth - 1)
-            elif paren_depth == 0:
-                remaining = text[i:].lower()
-                for kw in [' from ', '\nfrom ', '\tfrom ', ' where ', ' group by ', ' order by ', ' limit ', ' having ', ' qualify ']:
-                    if remaining.startswith(kw):
-                        select_end = i
-                        i = len(text)
-                        break
-            i += 1
+        # Include any registered function that is in our allowlist
+        allowed_prefixes: List[str] = sorted(
+            {fn for fn in FUNCTION_REGISTRY if fn in single_arg_funcs}.union(alias_prefixes),
+            key=len,
+            reverse=True,
+        )
 
-        raw_clause = text[select_start:select_end]
+        identifier_pattern = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
         def split_csv(exprs: str) -> List[str]:
             items: List[str] = []
@@ -154,31 +153,6 @@ class ClausesMixin:
                 items.append(tail)
             return items
 
-        # Conservative allowlist: single-arg functions that follow func_col aliasing.
-        single_arg_funcs: Set[str] = {
-            # Aggregates
-            'sum', 'avg', 'count', 'min', 'max',
-            # Date parts / truncs
-            'year', 'quarter', 'month', 'week', 'day', 'hour', 'minute', 'second',
-            'day_of_week', 'day_of_month', 'day_of_year',
-            'week_of_year', 'month_of_year', 'quarter_of_year',
-            # Window-ish single-arg helpers
-            'running_sum', 'running_avg', 'running_count',
-            'rolling_sum', 'rolling_avg',
-        }
-
-        # Include aliases (total/average/etc) as valid shorthand prefixes, but expand to canonical fn.
-        alias_prefixes: Set[str] = set(FUNCTION_ALIASES.keys())
-
-        # Include any registered function that is in our allowlist
-        allowed_prefixes: List[str] = sorted(
-            {fn for fn in FUNCTION_REGISTRY if fn in single_arg_funcs}.union(alias_prefixes),
-            key=len,
-            reverse=True,
-        )
-
-        identifier_pattern = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
-
         def expand_token(token: str) -> str:
             trimmed = token.strip()
             if not trimmed:
@@ -202,14 +176,51 @@ class ClausesMixin:
                 return f"{fn}({arg}) as {trimmed}"
             return token
 
-        items = split_csv(raw_clause)
-        if not items:
-            return text
+        # Process SELECT clause
+        select_match = re.search(r'\bselect\s+', result, re.IGNORECASE)
+        if select_match:
+            select_start = select_match.end()
+            select_end = len(result)
 
-        expanded_items = [expand_token(item) for item in items]
-        new_clause = ", ".join(expanded_items)
+            paren_depth = 0
+            i = select_start
+            while i < len(result):
+                char = result[i]
+                if char == '(':
+                    paren_depth += 1
+                elif char == ')':
+                    paren_depth = max(0, paren_depth - 1)
+                elif paren_depth == 0:
+                    remaining = result[i:].lower()
+                    for kw in [' from ', '\nfrom ', '\tfrom ', ' where ', ' group by ', ' order by ', ' limit ', ' having ', ' qualify ']:
+                        if remaining.startswith(kw):
+                            select_end = i
+                            i = len(result)
+                            break
+                i += 1
 
-        return text[:select_start] + new_clause + text[select_end:]
+            raw_clause = result[select_start:select_end]
+            items = split_csv(raw_clause)
+            if items:
+                expanded_items = [expand_token(item) for item in items]
+                new_clause = ", ".join(expanded_items)
+                result = result[:select_start] + new_clause + result[select_end:]
+
+        # Process GROUP BY aggregate blocks: group by cols ( agg1, agg2 )
+        group_by_pattern = r'\bgroup\s+by\s+([^(]+?)\s*\(([^)]+)\)'
+        def expand_group_by_aggs(match: re.Match) -> str:
+            group_cols = match.group(1).strip()
+            aggs_text = match.group(2).strip()
+            items = split_csv(aggs_text)
+            if items:
+                expanded_items = [expand_token(item) for item in items]
+                new_aggs = ", ".join(expanded_items)
+                return f"group by {group_cols} ( {new_aggs} )"
+            return match.group(0)
+
+        result = re.sub(group_by_pattern, expand_group_by_aggs, result, flags=re.IGNORECASE)
+
+        return result
 
     def _transform_column_operators(self, text: str) -> str:
         """

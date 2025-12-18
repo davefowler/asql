@@ -10,7 +10,7 @@ Use `group by` with parentheses to define aggregations:
 from orders
   group by customer_id (
     sum(amount) as total_spent,
-    count(*) as order_count,
+    # as order_count,
     avg(amount) as avg_order
   )
 ```
@@ -84,7 +84,7 @@ from sales
 
 | Function | Description | Example |
 |----------|-------------|---------|
-| `count(*)` or `#` | Count rows | `# as total` |
+| `#` or `count(*)` | Count rows | `# as total` (preferred) |
 | `count(col)` | Count non-null values | `count(email)` |
 | `count(distinct col)` | Count distinct values | `count(distinct customer_id)` |
 | `sum(col)` | Sum values | `sum(amount)` |

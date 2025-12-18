@@ -245,7 +245,7 @@ from products
 
 ```asql
 from sales
-  pivot sum(amount) by status values ('pending', 'shipped', 'delivered')
+  pivot sum(amount) by status values ("pending", "shipped", "delivered")
   group by customer_id
 ```
 
@@ -440,7 +440,7 @@ from products
 **6. Status pivot:**
 ```asql
 from orders
-  pivot count(*) by status values ('pending', 'shipped', 'delivered')
+  pivot count(*) by status values ("pending", "shipped", "delivered")
 ```
 
 **7. Cohort analysis:**
