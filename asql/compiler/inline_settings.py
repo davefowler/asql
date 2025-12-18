@@ -63,6 +63,14 @@ def extract_inline_settings(
                     elif key == "relative_date_type":
                         if value in ("timestamp", "date"):
                             settings.relative_date_type = value
+                    elif key == "alias_template":
+                        settings.alias_template = str(value)
+                    elif key.endswith("_alias_prefix"):
+                        func_name = key[:-13]  # Remove "_alias_prefix" suffix
+                        settings.alias_prefixes[func_name] = str(value)
+                    elif key.endswith("_alias_template"):
+                        func_name = key[:-15]  # Remove "_alias_template" suffix
+                        settings.alias_templates[func_name] = str(value)
         else:
             queries.append(stmt)
 
