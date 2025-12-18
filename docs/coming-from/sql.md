@@ -59,7 +59,7 @@ If you can write:
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     where status = 'completed'
     where created_at >= @2024-01-01
@@ -126,7 +126,7 @@ If you can write:
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select id,
         when amount
@@ -336,7 +336,7 @@ If you can write:
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     group by region (
         sum(amount) as total,

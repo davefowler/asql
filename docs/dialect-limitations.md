@@ -14,7 +14,7 @@ This document tracks features that have inconsistent behavior or limited support
 - `replace col with expr` - replace column values
 - `select *, expr as col` - column override
 
-```asql
+```asql-play
 from users
   except password
   rename id as user_id

@@ -42,7 +42,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     where status = 'active'
     where amount > 100
@@ -89,7 +89,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     group by region, month(date) (
         sum(amount) as revenue,
@@ -109,7 +109,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     order by -date, customer_id
     ```
@@ -157,7 +157,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select *,
         when amount
@@ -232,7 +232,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     per customer_id first by -date
     ```
@@ -251,7 +251,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select *,
         amount ?? 0 as amount,

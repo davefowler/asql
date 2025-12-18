@@ -27,7 +27,8 @@ from orders
   group by customer_id (
     sum(amount),                    -- → column: sum_amount
     first(order_id order by -order_date),  -- → column: first_order_id
-    #                                -- → column: count
+    #                                -- → column: num (analytics-friendly)
+    # orders                         -- → column: num_orders
   )
 order by -sum_amount                -- Can reference auto-aliased column
 ```
@@ -44,7 +45,9 @@ order by -sum_amount                -- Can reference auto-aliased column
    - May require explicit aliases for clarity
 
 3. **Special cases**:
-   - `count(*)` / `#` → `count`
+   - `count(*)` / `#` → `num` (analytics-friendly, not `count`)
+   - `# orders` → `num_orders` (supports `num of orders` natural language)
+   - `running_count(*)` → `running_num`
    - `row_number()` → `row_num`
    - `rank()` → `rank`
 

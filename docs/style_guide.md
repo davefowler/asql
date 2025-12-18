@@ -13,6 +13,31 @@ This style guide ensures consistency across ASQL documentation and examples. Whi
 
 ---
 
+## Documentation Code Blocks (Runnable vs Snippet)
+
+In the docs, there are two ASQL fenced code block types:
+
+- **Snippet-only (no compilation)**: use ` ```asql `
+- **Runnable mini-playground (compiled to SQL)**: use ` ```asql-play `
+
+`asql-play` blocks **must** be valid ASQL queries (typically starting with `from` or `with`). Documentation builds will fail if an `asql-play` block doesn't compile.
+
+```asql
+-- Snippet-only (syntax reference)
+sum_amount
+day of week created_at
+```
+
+```asql-play
+from orders
+  group by customer_id (
+    sum_amount,
+    # as total_orders
+  )
+```
+
+---
+
 ## Part 1: Configurable Style Settings
 
 These settings are controlled by `StyleConfig` in `asql/config.py` and affect output formatting (via `normalize()` and `reverse_compile()`).

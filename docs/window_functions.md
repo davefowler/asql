@@ -118,7 +118,7 @@ This compiles to native `QUALIFY` for databases that support it (BigQuery, Snowf
 
 For PostgreSQL-style deduplication:
 
-```asql
+```asql-play
 from orders
   distinct on (customer_id)
   order by customer_id, -order_date

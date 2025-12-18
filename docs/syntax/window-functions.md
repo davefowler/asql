@@ -50,7 +50,7 @@ The `-` prefix means descending order.
 
 Add row numbers within partitions:
 
-```asql
+```asql-play
 -- Number orders per customer (most recent = 1)
 from orders
   per customer_id number by -order_date
@@ -60,7 +60,7 @@ from orders
 
 With custom alias:
 
-```asql
+```asql-play
 from orders
   per customer_id number by -order_date as order_num
 ```
@@ -167,7 +167,7 @@ The second parameter is the window size (number of rows).
 
 Get the first or last value when aggregating:
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     first(order_id order by -order_date) as latest_order,
@@ -187,7 +187,7 @@ from orders
 
 Get the value of one column where another column is max/min (ClickHouse-inspired):
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     arg_max(order_id, order_date) as latest_order_id,
@@ -214,7 +214,7 @@ This is equivalent to wrapping in a subquery and filtering.
 
 PostgreSQL-style deduplication:
 
-```asql
+```asql-play
 from orders
   distinct on (customer_id)
   order by customer_id, -order_date
@@ -271,7 +271,7 @@ from sales
 
 ### Latest Order Per Customer
 
-```asql
+```asql-play
 from orders
   per customer_id first by -order_date
   select customer_id, order_id, amount, order_date

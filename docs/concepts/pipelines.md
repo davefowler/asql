@@ -26,7 +26,7 @@ This inside-out structure makes complex queries hard to:
 
 ASQL puts operations in execution order:
 
-```asql
+```asql-play
 from sales                               -- 1st: start here
   where year(date) = 2024                -- 2nd: filter
   group by region (sum(amount) as revenue) -- 3rd: aggregate
@@ -43,7 +43,7 @@ Read top-to-bottom, execute top-to-bottom.
 
 Build queries step by step:
 
-```asql
+```asql-play
 from orders                    -- See all orders
   where status = "completed"   -- Only completed
   group by customer_id (       -- Aggregate per customer
@@ -59,7 +59,7 @@ Each line transforms the result of the previous line.
 
 Combine transformations naturally:
 
-```asql
+```asql-play
 from orders
   where status = "completed"
   & customers on orders.customer_id = customers.id
@@ -86,7 +86,7 @@ SELECT country, SUM(amount) FROM joined GROUP BY country;
 
 ASQL handles this with pipelines:
 
-```asql
+```asql-play
 from orders
   where status = "completed"
   & customers on orders.customer_id = customers.id
@@ -120,13 +120,13 @@ orders (raw)
 
 You don't need to specify SELECT upfront:
 
-```asql
+```asql-play
 from orders  -- Implicitly: SELECT * FROM orders
 ```
 
 Add SELECT when you want specific columns:
 
-```asql
+```asql-play
 from orders
   select id, amount, created_at
 ```
@@ -135,7 +135,7 @@ from orders
 
 Multiple WHERE clauses combine with AND:
 
-```asql
+```asql-play
 from orders
   where status = "completed"
   where amount > 100
@@ -144,7 +144,7 @@ from orders
 
 Equivalent to:
 
-```asql
+```asql-play
 from orders
   where status = "completed" 
     and amount > 100 
@@ -155,7 +155,7 @@ from orders
 
 ASQL compiles to standard SQL. Simple queries map directly:
 
-```asql
+```asql-play
 from users
   where is_active
   order by -created_at
@@ -168,7 +168,7 @@ SELECT * FROM users WHERE is_active ORDER BY created_at DESC LIMIT 10
 
 Complex queries may use CTEs to maintain structure:
 
-```asql
+```asql-play
 from orders
   where status = "completed"
   group by customer_id (sum(amount) as total)

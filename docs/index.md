@@ -30,7 +30,7 @@ Many tools address this: notebooks let you build queries step-by-step, pandas ch
 
 ASQL queries read top-to-bottom in execution order. This matters most for transformation and modeling work—dbt models, ELT pipelines, analytics views—where queries are written once and read many times. Linear flow makes code review, debugging, and refactoring significantly easier.
 
-```asql
+```asql-play
 from sales
   where year(date) = 2024
   group by region ( sum(amount) as revenue )
@@ -59,7 +59,7 @@ SELECT * FROM by_country ORDER BY total DESC LIMIT 10;
 
 In ASQL, the pipeline handles this:
 
-```asql
+```asql-play
 from users
   where is_active
   group by country ( # as total )
@@ -69,7 +69,7 @@ from users
 
 When you actually need to reuse intermediate results, use `stash as` to create a reusable CTE:
 
-```asql
+```asql-play
 from users
   where is_active
   stash as active_users
@@ -141,7 +141,7 @@ SELECT * FROM (
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from orders
   per customer_id first by -order_date
 ```
@@ -156,10 +156,10 @@ FROM monthly_sales;
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from monthly_sales
-  order by month
   select month, revenue, prior(revenue) as prev_revenue
+  order by month
 ```
 
 ### Running Totals
@@ -172,10 +172,10 @@ FROM daily_sales;
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from daily_sales
-  order by date
   select date, revenue, running_sum(revenue) as cumulative
+  order by date
 ```
 
 ### Reference
@@ -195,14 +195,14 @@ from daily_sales
 
 ### Exclude Columns
 
-```asql
+```asql-play
 from users
   except password_hash, internal_notes
 ```
 
 ### Rename
 
-```asql
+```asql-play
 from users
   rename id as user_id
 ```
@@ -211,7 +211,7 @@ from users
 
 Transform column values in-place:
 
-```asql
+```asql-play
 from users
   replace name with upper(name), salary with round(salary, 2)
 ```
@@ -312,7 +312,7 @@ April and May are missing. Data warehousing evolved workarounds: date dimension 
 
 **ASQL guarantees complete results:**
 
-```asql
+```asql-play
 from orders
   group by month(order_date) (
     sum(amount) ?? 0 as revenue

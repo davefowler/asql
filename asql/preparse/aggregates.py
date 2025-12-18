@@ -21,12 +21,9 @@ class AggregatesMixin:
         """
         result = text
         
-        # Include both aggregates and date functions
+        # Aggregate functions (plus natural-language aliases like total/average).
         funcs = [
-            # Aggregates
             'sum', 'avg', 'average', 'total', 'count', 'min', 'max', 'maximum', 'minimum',
-            # Date functions (single-arg)
-            'year', 'quarter', 'month', 'week', 'day', 'hour', 'minute', 'second',
         ]
         
         # Pattern: func <column> or func of <column> (not followed by opening paren)

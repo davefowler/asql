@@ -271,102 +271,21 @@ def generate_mini_playground_html(compiled: Dict[str, str], block_id: str) -> st
 
 def process_asql_blocks(markdown_content: str) -> str:
     """
-    Process markdown content, finding ASQL code blocks and replacing them
-    with tabbed code blocks that include pre-compiled SQL for all dialects.
+    Process markdown content, finding ASQL playground blocks and replacing them
+    with split-pane mini-playground HTML (ASQL → compiled SQL).
     """
-    # Pattern to match ASQL code blocks: ```asql ... ```
-    # We need to match standalone ```asql blocks (not in === tabs)
-    asql_pattern = r'```asql\s*\n(.*?)```'
-    
-    def should_compile_asql_block(asql_query: str) -> bool:
-        """
-        Only compile full ASQL queries into the mini-playground.
-
-        Many docs pages include small ASQL *snippets* (e.g. `sum amount`, `# users`)
-        that are intended as syntax examples, not standalone queries. We leave those
-        as normal fenced code blocks (still syntax-highlighted), and only compile
-        blocks that look like real queries.
-        """
-        non_comment_lines: list[str] = []
-        for line in asql_query.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("--"):
-                continue
-            non_comment_lines.append(stripped)
-
-        if not non_comment_lines:
-            return False
-
-        # Only compile blocks that appear to contain a *single* query.
-        # If there are multiple independent examples in one fenced block (e.g. multiple `from ...`),
-        # leave it as a normal code block.
-        query_starters = 0
-        order_by_lines = 0
-        for line in non_comment_lines:
-            lowered = line.lower()
-            if lowered.startswith("from ") or lowered.startswith("with "):
-                query_starters += 1
-            if lowered.startswith("order by"):
-                order_by_lines += 1
-        if query_starters != 1:
-            return False
-        # Multiple ORDER BY clauses in one fenced block are usually documentation snippets.
-        if order_by_lines > 1:
-            return False
-
-        # Multi-line SELECT blocks ("select" on its own line + indented columns)
-        # are not reliably supported by the current compiler. Leave them as plain
-        # fenced code blocks for now.
-        select_lines = 0
-        for line in non_comment_lines:
-            lowered = line.lower()
-            if lowered == "select":
-                return False
-            if lowered.startswith("select "):
-                select_lines += 1
-        # Multiple SELECT statements inside one fenced block are usually documentation snippets.
-        if select_lines > 1:
-            return False
-
-        # Spec/WIP conditional syntax isn't implemented yet.
-        for line in non_comment_lines:
-            if line.lower().startswith("if "):
-                return False
-            # WIP / not-implemented keywords sometimes appear in reference docs.
-            if line.lower().startswith("sample "):
-                return False
-
-        # Spec-only pseudo syntax (pipeline/object literal examples) should not be compiled.
-        for line in non_comment_lines:
-            if line.startswith("|"):
-                return False
-            if "{" in line or "}" in line:
-                return False
-            lowered = line.lower()
-            # Raw SQL window syntax snippets (OVER ...) are documentation-only.
-            if " over " in lowered or "over(" in lowered:
-                return False
-            # Ellipsis placeholders are documentation-only.
-            if "..." in line:
-                return False
-            # Placeholder templates like <table> / <col> are documentation-only.
-            if "<" in line and ">" in line:
-                return False
-
-        first = non_comment_lines[0].lower()
-        return first.startswith("from ") or first.startswith("with ")
+    # Pattern to match ASQL playground code blocks: ```asql-play ... ```
+    #
+    # We intentionally do NOT auto-compile plain ```asql fences anymore.
+    # - ```asql       : syntax-highlight only (snippets, templates, reference docs)
+    # - ```asql-play  : must be a runnable query; compiled and shown as mini-playground
+    asql_pattern = r'```asql-play\s*\n(.*?)```'
 
     def replace_asql_block(match):
         asql_query = match.group(1).strip()
         
         # Skip if empty
         if not asql_query:
-            return match.group(0)
-
-        # Skip snippet blocks (leave as fenced code, no compilation)
-        if not should_compile_asql_block(asql_query):
             return match.group(0)
         
         # Pre-compile to all dialects
@@ -425,7 +344,7 @@ def define_env(env):
 def on_pre_page_macros(env) -> None:
     """
     Hook called by mkdocs-macros-plugin before macro rendering.
-    This automatically converts ```asql blocks to dialect tabs.
+    This automatically converts ```asql-play blocks to the mini-playground.
     """
     # Access the markdown content and process it
     if hasattr(env, 'markdown') and env.markdown:

@@ -90,7 +90,7 @@ rolling_avg_revenue       -- → rolling_avg(revenue)
 ### When to Use Shorthand
 
 Good for readability:
-```asql
+```asql-play
 from sales
   group by region (
     sum_amount,
@@ -102,7 +102,7 @@ from sales
 ### When to Be Explicit
 
 Complex expressions:
-```asql
+```asql-play
 from sales
   group by region (
     sum(amount * quantity) as revenue,   -- Expression needs parens
@@ -119,7 +119,7 @@ primary_email ?? secondary_email ?? "unknown"
 
 ### Natural Aggregation
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     total amount as total_spent,
@@ -130,7 +130,7 @@ from orders
 
 ### Time Series
 
-```asql
+```asql-play
 from users
   group by month_created_at (
     # as signups
@@ -140,7 +140,7 @@ from users
 
 ### Analytics Dashboard
 
-```asql
+```asql-play
 from sales
   where year_sale_date = 2024
   group by region (
@@ -180,7 +180,9 @@ from orders
   group by customer_id (
     sum_amount,              -- → column: sum_amount (can reference later)
     first_order_id,          -- → column: first_order_id (if implemented)
-    #                        -- → column: count
+    #                        -- → column: num (analytics-friendly)
+    num_orders,              -- → column: num_orders (shorthand for # orders)
+    num of orders            -- → column: num_orders (natural language)
   )
 order by -sum_amount         -- References the auto-aliased column
 ```
