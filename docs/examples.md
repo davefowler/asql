@@ -48,7 +48,7 @@ Real-world examples of Analytic SQL queries. Each example shows the Analytic SQL
 === "ASQL"
     ```asql
     from users
-    where status == "active"
+    where status = "active"
     ```
 
 === "PostgreSQL"
@@ -104,7 +104,7 @@ Real-world examples of Analytic SQL queries. Each example shows the Analytic SQL
 === "ASQL"
     ```asql
     from users
-    where status == "active"
+    where status = "active"
     select name, email
     ```
 
@@ -207,7 +207,7 @@ SELECT * FROM users WHERE email IS NOT NULL
 **ASQL:**
 ```asql
 from users
-where status == "active" 
+where status = "active" 
     and age >= 18
 ```
 
@@ -219,8 +219,8 @@ SELECT * FROM users WHERE status = 'active' AND age >= 18
 **ASQL:**
 ```asql
 from users
-where status == "active" 
-    or status == "pending"
+where status = "active" 
+    or status = "pending"
 ```
 
 **SQL (PostgreSQL):**
@@ -231,7 +231,7 @@ SELECT * FROM users WHERE status = 'active' OR status = 'pending'
 **ASQL:**
 ```asql
 from users
-where not status == "inactive"
+where not status = "inactive"
 ```
 
 **SQL (PostgreSQL):**
@@ -244,7 +244,7 @@ SELECT * FROM users WHERE NOT status = 'inactive'
 **ASQL:**
 ```asql
 from users
-where status == "active" 
+where status = "active" 
     and age >= 18 
     and email is not null
 ```
@@ -371,7 +371,7 @@ SELECT region, month, SUM(amount) AS revenue FROM sales GROUP BY region, month
 **ASQL:**
 ```asql
 from sales
-where year == 2024
+where year = 2024
 group by region ( sum(amount) as revenue )
 ```
 
@@ -488,7 +488,7 @@ ORDER BY total_users DESC
 **ASQL:**
 ```asql
 from users 
-where status == "active" 
+where status = "active" 
 group by country ( # as total_users ) 
 order by -total_users 
 limit 10
@@ -539,7 +539,7 @@ The `-` prefix makes it easy to order by by columns in descending order. It also
 **ASQL:**
 ```asql
 from sales 
-where status == "completed" and amount > 100
+where status = "completed" and amount > 100
 group by region, month ( 
     sum(amount) as revenue,
     # as order_count,
@@ -569,7 +569,7 @@ LIMIT 20
 **ASQL:**
 ```asql
 from users
-where status == "active" and age >= 18 and email is not null
+where status = "active" and age >= 18 and email is not null
 group by country (
     # as total_users,
     avg(age) as avg_age
@@ -594,7 +594,7 @@ ORDER BY total_users DESC
 **ASQL:**
 ```asql
 from sales
-where (status == "completed" or status == "pending") 
+where (status = "completed" or status = "pending") 
     and amount >= 50 
     and created_at is not null
 group by product_category (
@@ -707,7 +707,7 @@ from asql import compile
 
 asql_query = """
 from users 
-where status == "active" 
+where status = "active" 
 group by country ( # as total_users ) 
 order by -total_users 
 limit 10

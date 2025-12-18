@@ -36,6 +36,10 @@
 - Max/Min: `max()`, `min()` (not `greatest()`, `least()`)
 - Column ops: `except`, `rename` (not explicit SELECT)
 - Date arithmetic: `+ 7 days` (not `DATEADD()`, `INTERVAL`)
+- **Function shorthand**: `sum amount` (space) preferred for simple cases, `sum(amount)` (parens) preferred for complex expressions and documentation
+  - Simple: `sum amount`, `avg price`, `year created_at` ✅
+  - Complex: `sum(amount * quantity)`, `avg(price / 100)` ✅ (must use parens)
+  - Underscore: `sum_amount` acceptable but not preferred
 
 ---
 
@@ -99,6 +103,7 @@ For each file in the task list above:
    - Joins: `&`, `&?` vs `JOIN`
    - Window functions: `per` vs `OVER()`
    - Date literals: `@2025-01-10` vs `"2025-01-10"`
+   - **Function shorthand**: `sum amount` (preferred) vs `sum(amount)` (for complex/docs) vs `sum_amount` (acceptable)
    - And other patterns from style guide
 
 4. **Update examples** to match preferred style, BUT:

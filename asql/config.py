@@ -137,6 +137,9 @@ class StyleConfig:
     # Only applies to empty CTEs - non-empty CTEs are never squashed
     keep_final_empty_cte: bool = False
     
+    # Function shorthand: parens (sum(amount)), underscore (sum_amount), or space (sum amount)
+    function_shorthand: Literal["parens", "underscore", "space"] = "space"
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -150,6 +153,7 @@ class StyleConfig:
             "week_start": self.week_start,
             "squash_empty_ctes": self.squash_empty_ctes,
             "keep_final_empty_cte": self.keep_final_empty_cte,
+            "function_shorthand": self.function_shorthand,
         }
     
     @classmethod

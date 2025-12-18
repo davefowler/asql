@@ -709,6 +709,33 @@ def _expression_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> st
         return str(expr)
 
 
+def _format_function_shorthand(func_name: str, col: str, style: "StyleConfig") -> str:
+    """Format a function call according to the function_shorthand style setting.
+    
+    Args:
+        func_name: Function name (e.g., "sum", "avg")
+        col: Column name or expression
+        style: StyleConfig instance
+    
+    Returns:
+        Formatted function call string:
+        - "parens" → sum(amount)
+        - "underscore" → sum_amount
+        - "space" → sum amount
+    """
+    shorthand = style.function_shorthand
+    
+    if shorthand == "parens":
+        return f"{func_name}({col})"
+    elif shorthand == "underscore":
+        return f"{func_name}_{col}"
+    elif shorthand == "space":
+        return f"{func_name} {col}"
+    else:
+        # Fallback to parens if unknown
+        return f"{func_name}({col})"
+
+
 def _aggregation_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> str:
     """Convert an aggregation expression to ASQL."""
     if style is None:
@@ -732,27 +759,43 @@ def _aggregation_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> s
         return "#" if style.count == "hash" else "count(*)"
     
     elif isinstance(expr, exp.Sum):
-        if expr.expressions:
+        # SQLGlot stores the argument in expr.this, not expr.expressions
+        if expr.this:
+            col = _expression_to_asql(expr.this, style)
+            return _format_function_shorthand("sum", col, style)
+        elif expr.expressions:
             col = _expression_to_asql(expr.expressions[0], style)
-            return f"sum({col})"
+            return _format_function_shorthand("sum", col, style)
         return "sum()"
     
     elif isinstance(expr, exp.Avg):
-        if expr.expressions:
+        # SQLGlot stores the argument in expr.this, not expr.expressions
+        if expr.this:
+            col = _expression_to_asql(expr.this, style)
+            return _format_function_shorthand("avg", col, style)
+        elif expr.expressions:
             col = _expression_to_asql(expr.expressions[0], style)
-            return f"avg({col})"
+            return _format_function_shorthand("avg", col, style)
         return "avg()"
     
     elif isinstance(expr, exp.Min):
-        if expr.expressions:
+        # SQLGlot stores the argument in expr.this, not expr.expressions
+        if expr.this:
+            col = _expression_to_asql(expr.this, style)
+            return _format_function_shorthand("min", col, style)
+        elif expr.expressions:
             col = _expression_to_asql(expr.expressions[0], style)
-            return f"min({col})"
+            return _format_function_shorthand("min", col, style)
         return "min()"
     
     elif isinstance(expr, exp.Max):
-        if expr.expressions:
+        # SQLGlot stores the argument in expr.this, not expr.expressions
+        if expr.this:
+            col = _expression_to_asql(expr.this, style)
+            return _format_function_shorthand("max", col, style)
+        elif expr.expressions:
             col = _expression_to_asql(expr.expressions[0], style)
-            return f"max({col})"
+            return _format_function_shorthand("max", col, style)
         return "max()"
     
     elif isinstance(expr, exp.Alias):

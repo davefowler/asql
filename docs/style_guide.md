@@ -331,6 +331,55 @@ group by region ( sum(revenue) as total_revenue )
 
 ---
 
+### Function Shorthand: Space (`sum amount`) vs parens (`sum(amount)`) vs underscore (`sum_amount`)
+
+**Preferred**: Space shorthand `sum amount` for natural language feel  
+**Also preferred**: Parens form `sum(amount)` for complex expressions and documentation  
+**Acceptable**: Underscore shorthand `sum_amount` (works, but less natural)
+
+```asql
+-- Preferred (natural language, aligns with ASQL philosophy)
+from sales
+  select sum amount as total_revenue
+  group by region ( sum amount as revenue )
+
+-- Also preferred (parens form, for complex expressions and documentation)
+from sales
+  select sum(amount * quantity) as total_revenue
+  group by region ( sum(amount) as revenue )
+
+-- Acceptable (underscore shorthand, programmer-friendly)
+from sales
+  select sum_amount
+  group by region ( sum_amount )
+```
+
+**Rationale**: 
+- **Space shorthand (`sum amount`)** is preferred because:
+  - Reads like natural English: "sum amount"
+  - Aligns with ASQL's core value proposition of making SQL more approachable
+  - Matches other ASQL preferences (`#` over `count(*)`, `??` over `coalesce()`)
+  - More accessible to analysts and non-programmers
+  - Works with variations: `sum amount`, `sum of amount`, `total amount`
+- **Parens form (`sum(amount)`)** is preferred for:
+  - Complex expressions: `sum(amount * quantity)`, `avg(price / 100)`
+  - Documentation examples (for maximum clarity)
+  - Production code where maintainability is critical
+  - When ambiguity could be an issue
+- **Underscore shorthand (`sum_amount`)** is acceptable but not preferred:
+  - More familiar to programmers
+  - Less natural language feel
+  - Same ambiguity risk as space shorthand
+
+**When to use each**:
+- Use `sum amount` for simple, straightforward queries
+- Use `sum(amount)` for complex expressions or when clarity is paramount
+- Use `sum_amount` if you prefer programmer-style syntax
+
+**Note**: All three forms are equivalent and produce the same result. The space form (`sum amount`) is the default preference, but the parens form (`sum(amount)`) is always acceptable and preferred for complex expressions.
+
+---
+
 ### Joins: Symbolic operators over SQL `JOIN`
 
 **Preferred**: `&`, `&?`, `?&`, `*` operators  
@@ -494,6 +543,8 @@ where delivery_date = DATEADD(day, 3, order_date)
 | **Max/Min** | `max()`, `min()` | `greatest()`, `least()` | More intuitive |
 | **Column ops** | `except`, `rename` | Explicit SELECT | More concise |
 | **Date arithmetic** | `+ 7 days` | `DATEADD()`, `INTERVAL` | More readable |
+| **Function shorthand** | `sum amount` (simple) / `sum(amount)` (complex/docs) | `sum_amount` (underscore) | Natural language preferred |
+| **Function shorthand** | `sum amount` (simple) / `sum(amount)` (complex/docs) | `sum_amount` (underscore) | Natural language preferred |
 
 ---
 

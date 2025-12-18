@@ -104,6 +104,50 @@ Use SQL `CASE` / `NULLIF` patterns directly, e.g. `a / NULLIF(b, 0)` (dialect de
 
 ---
 
+## Table sources: `series(...)` / `date_spine(...)` (Future Consideration)
+
+ASQL may add table-producing functions that can be used directly in `from`:
+
+```asql
+from series(1, 100)
+from date_spine(start = @2024-01-01, end = @2024-12-31, grain = day)
+```
+
+**Why it exists**: Sometimes you want to generate rows without an existing source table (numbers/date dimension).
+
+**Current**: Prefer compiler `auto_spine` (gap-filling for grouped date dimensions) where applicable, or use warehouse-native generators in raw SQL.
+
+---
+
+## Union relations: `from union(t1, t2, ...)` (Future Consideration)
+
+ASQL may add a convenience table source for unioning a list of relations:
+
+```asql
+from union(users_2022, users_2023, users_2024)
+```
+
+Open design questions:
+- schema alignment vs “union all as-is”
+- `fill_missing = null` behavior
+- dialect differences
+
+---
+
+## `slugify(expr)` (Future Consideration)
+
+ASQL may add a helper to convert strings to URL-friendly slugs:
+
+```asql
+select slugify(name) as slug
+```
+
+Open design questions:
+- dialect portability (regex replace differences)
+- unicode normalization behavior
+
+---
+
 **See Also**:
 - `docs/spec.md` - Current specification of implemented features
 - GitHub issues - Work tracked as issues when prioritized
