@@ -20,6 +20,10 @@ KNOWN_COMPILE_SETTINGS = {
     'week_start', 
     'relative_date_type',
     'dialect',
+    # Auto-alias settings
+    'alias_template',
+    'alias_prefixes',
+    'alias_templates',
 }
 
 
@@ -52,13 +56,34 @@ class CompileSettings:
     # "date" -> CURRENT_DATE - INTERVAL '7 days'  
     relative_date_type: Literal["timestamp", "date"] = "timestamp"
     
+    # Auto-aliasing configuration (Phase 1: Prefixes)
+    # Dictionary mapping function names to their alias prefixes
+    # Example: {"sum": "sum", "count": "num", "avg": "avg"}
+    alias_prefixes: Dict[str, str] = field(default_factory=dict)
+    
+    # Auto-aliasing configuration (Phase 2: Templates)
+    # Default template for all functions (Jinja2 format)
+    # Example: "{prefix}_{col}" -> "sum_amount" for sum(amount)
+    alias_template: Optional[str] = None
+    
+    # Function-specific templates (override default template)
+    # Example: {"count": "{prefix}", "arg_max": "{prefix}_{arg1}_{arg2}"}
+    alias_templates: Dict[str, str] = field(default_factory=dict)
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "auto_spine": self.auto_spine,
             "week_start": self.week_start,
             "relative_date_type": self.relative_date_type,
         }
+        if self.alias_prefixes:
+            result["alias_prefixes"] = self.alias_prefixes
+        if self.alias_template:
+            result["alias_template"] = self.alias_template
+        if self.alias_templates:
+            result["alias_templates"] = self.alias_templates
+        return result
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "CompileSettings":
@@ -80,8 +105,13 @@ class CompileSettings:
             override_value = getattr(overrides, field_name)
             default_value = getattr(defaults, field_name)
             
+            # Special handling for dictionaries (merge them)
+            if isinstance(base_value, dict) and isinstance(override_value, dict):
+                merged = base_value.copy()
+                merged.update(override_value)
+                setattr(result, field_name, merged)
             # Use override if it differs from default, otherwise use base
-            if override_value != default_value:
+            elif override_value != default_value:
                 setattr(result, field_name, override_value)
             else:
                 setattr(result, field_name, base_value)
@@ -333,9 +363,24 @@ class ASQLConfig:
         
         # Override compile settings if provided
         if "compile" in data and isinstance(data["compile"], dict):
-            for key, value in data["compile"].items():
+            compile_data = data["compile"]
+            for key, value in compile_data.items():
                 if hasattr(config.compile, key):
-                    setattr(config.compile, key, value)
+                    # Handle nested alias_prefixes and alias_templates dictionaries
+                    if key == "alias_prefixes" and isinstance(value, dict):
+                        config.compile.alias_prefixes.update(value)
+                    elif key == "alias_templates" and isinstance(value, dict):
+                        config.compile.alias_templates.update(value)
+                    else:
+                        setattr(config.compile, key, value)
+                # Handle flat format: sum_alias_prefix, count_alias_prefix, etc.
+                elif key.endswith("_alias_prefix") and isinstance(value, str):
+                    func_name = key[:-13]  # Remove "_alias_prefix" suffix
+                    config.compile.alias_prefixes[func_name] = value
+                # Handle function-specific templates: count_alias_template, etc.
+                elif key.endswith("_alias_template") and isinstance(value, str):
+                    func_name = key[:-15]  # Remove "_alias_template" suffix
+                    config.compile.alias_templates[func_name] = value
         
         return config
     
