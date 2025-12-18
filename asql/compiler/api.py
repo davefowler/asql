@@ -14,6 +14,7 @@ from asql.compiler.auto_spine import _apply_auto_spine, _remove_guarantee_wrappe
 from asql.compiler.explode import process_explode_markers
 from asql.compiler.inline_settings import extract_dialect_from_comment, extract_inline_settings
 from asql.compiler.auto_qualify import auto_qualify_columns
+from asql.compiler.auto_alias import apply_auto_aliasing
 
 
 # Ensure ASQL dialect is registered
@@ -77,6 +78,13 @@ def compile(
 
             # Auto-qualify conflicting column names in joins
             transformed_stmt = auto_qualify_columns(transformed_stmt)
+
+            # Apply auto-aliasing to function calls without explicit aliases
+            try:
+                transformed_stmt = apply_auto_aliasing(transformed_stmt, final_settings)
+            except Exception:
+                # If auto-aliasing fails, continue with original statement
+                pass
 
             transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
             sql_parts.append(transformed_stmt.sql(dialect=sql_dialect, pretty=pretty))
