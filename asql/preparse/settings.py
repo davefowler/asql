@@ -24,7 +24,11 @@ class SettingsMixin:
         
         # Pattern: SET <setting_name> = <value>
         # Only matches known compile settings, not arbitrary identifiers
-        known_settings = {'auto_spine', 'dialect', 'week_start', 'relative_date_type'}
+        known_settings = {
+            'auto_spine', 'dialect', 'week_start', 'relative_date_type',
+            'alias_template',
+        }
+        # Also allow function-specific settings like sum_alias_prefix, count_alias_template
         pattern = r'^\s*set\s+(\w+)\s*=\s*([^;]+?)(?:;|(?=\s*(?:set|from|select)\s)|\s*$)'
         
         while True:
@@ -35,8 +39,10 @@ class SettingsMixin:
             name = match.group(1).lower()
             value = match.group(2).strip()
             
-            # Only process known compile settings
-            if name in known_settings:
+            # Only process known compile settings or alias-related settings
+            if (name in known_settings or 
+                name.endswith("_alias_prefix") or 
+                name.endswith("_alias_template")):
                 preserved_sets.append(f"SET {name} = {value}")
                 result = result[match.end():].strip()
             else:
