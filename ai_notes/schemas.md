@@ -274,3 +274,4 @@ config = ASQLConfig(schema=schema)
 - `asql/preparse/joins.py` - Current join implementation
 - `asql/config.py` - `invent_join_keys` setting
 - `tests/test_join.py` - Join tests (explicit only)
+
