@@ -91,7 +91,7 @@ class CompileSettings:
     # Include transpilation comments: when True, adds explanatory SQL comments
     # describing ASQL transformations (auto-spine, cohort, etc.) in the generated SQL.
     # This helps users understand the generated SQL structure.
-    include_transpilation_comments: bool = False
+    include_transpilation_comments: bool = True
     
     # Passthrough comments: when True (default), preserves source ASQL comments
     # in the generated SQL output. When False, strips all source comments.
