@@ -14,16 +14,21 @@ def _split_statements(text: str) -> List[str]:
     
     Supports two ways to separate queries:
     1. Semicolons (SQL standard): "from a; from b"
-    2. New FROM at start of line (ASQL natural): "from a\\n\\nfrom b"
+    2. New FROM at start of line (ASQL natural): A `from` at column 0 starts a new query
     
     Respects strings and parentheses when splitting.
+    
+    Examples:
+        "from users; from orders"  -> ["from users", "from orders"]
+        "from users\\nfrom orders" -> ["from users", "from orders"]
+        "from users\\n  where x"   -> ["from users\\n  where x"] (indented = same query)
     """
     statements: List[str] = []
     current: List[str] = []
     depth = 0
     in_string: Optional[str] = None
+    at_line_start = True  # Track if we're at the start of a line
     
-    # First, split by semicolons (respecting strings and parens)
     i = 0
     while i < len(text):
         char = text[i]
@@ -35,7 +40,29 @@ def _split_statements(text: str) -> List[str]:
             elif in_string is None:
                 in_string = char
         
-        # Parentheses
+        # Track line starts
+        if char == '\n':
+            at_line_start = True
+            current.append(char)
+            i += 1
+            continue
+        
+        # Check for 'from' at the start of a line (not indented)
+        # This starts a new query if we already have content
+        if (at_line_start and 
+            in_string is None and 
+            depth == 0 and
+            text[i:i+4].lower() == 'from' and
+            (i + 4 >= len(text) or not text[i+4].isalnum() and text[i+4] != '_')):
+            
+            # Check if current has meaningful content (not just whitespace)
+            current_text = ''.join(current).strip()
+            if current_text:
+                # This is a new FROM starting a new query
+                statements.append(current_text)
+                current = []
+        
+        # Parentheses tracking (only outside strings)
         if in_string is None:
             if char == '(':
                 depth += 1
@@ -47,7 +74,12 @@ def _split_statements(text: str) -> List[str]:
                     statements.append(stmt)
                 current = []
                 i += 1
+                at_line_start = True  # After semicolon, treat as line start
                 continue
+        
+        # Update at_line_start: only whitespace keeps us at line start
+        if char not in ' \t':
+            at_line_start = False
         
         current.append(char)
         i += 1
@@ -58,20 +90,7 @@ def _split_statements(text: str) -> List[str]:
         if stmt:
             statements.append(stmt)
     
-    # Now, for each statement, check if it contains multiple queries
-    # separated by blank lines followed by FROM at column 0
-    final_statements: List[str] = []
-    
-    for stmt in statements:
-        # Pattern: blank line(s) followed by 'from' at the start of a line (case-insensitive)
-        # This indicates a new query without explicit semicolon
-        parts = re.split(r'\n\s*\n(?=\s*(?:from|FROM|From)\s)', stmt)
-        for part in parts:
-            part = part.strip()
-            if part:
-                final_statements.append(part)
-    
-    return final_statements if final_statements else [text.strip()]
+    return statements if statements else [text.strip()]
 
 
 def preparse_asql(text: str, settings: Optional["CompileSettings"] = None) -> str:
