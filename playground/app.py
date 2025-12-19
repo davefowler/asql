@@ -23,6 +23,7 @@ from .examples import (
     RESHAPING_EXAMPLES,
     COLUMN_OPERATOR_EXAMPLES,
     COUNT_INFERENCE_EXAMPLES,
+    SYNTAX_STYLES_EXAMPLES,
     SQL_EXAMPLES,
     get_all_examples,
 )
@@ -89,6 +90,7 @@ async def index() -> HTMLResponse:
             "reshaping": RESHAPING_EXAMPLES,
             "column_operators": COLUMN_OPERATOR_EXAMPLES,
             "count_inference": COUNT_INFERENCE_EXAMPLES,
+            "syntax_styles": SYNTAX_STYLES_EXAMPLES,
             "sql": SQL_EXAMPLES,
         }
         examples_json = json.dumps(examples_data)
@@ -217,6 +219,7 @@ async def api_examples() -> dict:
         "reshaping": RESHAPING_EXAMPLES,
         "column_operators": COLUMN_OPERATOR_EXAMPLES,
         "count_inference": COUNT_INFERENCE_EXAMPLES,
+        "syntax_styles": SYNTAX_STYLES_EXAMPLES,
     }
 
 
