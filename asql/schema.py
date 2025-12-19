@@ -12,8 +12,50 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
+
+import inflect
+
+# Inflect engine for pluralization/singularization
+_inflect_engine = inflect.engine()
+
+
+@lru_cache(maxsize=1000)
+def pluralize(word: str) -> str:
+    """Get the plural form of a word using inflect library."""
+    result = _inflect_engine.plural(word)
+    return result if result else word + "s"
+
+
+@lru_cache(maxsize=1000)
+def singularize(word: str) -> str:
+    """Get the singular form of a word using inflect library."""
+    result = _inflect_engine.singular_noun(word)
+    # singular_noun returns False if word is not a plural
+    return result if result else word
+
+
+def get_table_name_variants(name: str) -> List[str]:
+    """Get all possible table name variants (singular, plural, original).
+    
+    Returns variants in order of preference for matching.
+    """
+    name_lower = name.lower()
+    variants = [name_lower]
+    
+    # Add plural form
+    plural = pluralize(name_lower)
+    if plural != name_lower:
+        variants.append(plural)
+    
+    # Add singular form
+    singular = singularize(name_lower)
+    if singular and singular != name_lower and singular not in variants:
+        variants.append(singular)
+    
+    return variants
 
 
 @dataclass
@@ -61,6 +103,39 @@ class Table:
             is_pk = col_name.lower() == "id"
             table.add_column(Column(name=col_name, primary_key=is_pk))
         return table
+    
+    def get_primary_key(self) -> Optional[str]:
+        """Get the primary key column name for this table.
+        
+        Checks in order:
+        1. Columns explicitly marked as primary_key=True
+        2. Convention: 'id'
+        3. Convention: 'pk'
+        4. Convention: '{singular_table_name}_id' (e.g., users.user_id)
+        
+        Returns:
+            The primary key column name, or None if not found
+        """
+        # 1. Check for explicitly marked primary key
+        for col in self.columns.values():
+            if col.primary_key:
+                return col.name
+        
+        # 2. Check for 'id' convention
+        if self.has_column("id"):
+            return "id"
+        
+        # 3. Check for 'pk' convention
+        if self.has_column("pk"):
+            return "pk"
+        
+        # 4. Check for '{singular}_id' convention (e.g., users.user_id)
+        singular = singularize(self.name)
+        singular_id = f"{singular}_id"
+        if self.has_column(singular_id):
+            return singular_id
+        
+        return None
 
 
 @dataclass
@@ -202,47 +277,48 @@ class Schema:
     def infer_relationships(self) -> None:
         """Infer relationships from column naming conventions.
         
-        Scans all tables for columns matching the pattern {name}_id and
-        attempts to find a corresponding target table ({name}s or {name}).
+        Scans all tables for columns ending in '_id' and attempts to find
+        a corresponding target table using multiple strategies.
         
-        For example:
-        - orders.user_id -> users.id (alias: user)
-        - orders.customer_id -> customers.id (alias: customer)
-        - accounts.owner_user_id -> users.id (alias: owner)
+        Supported patterns:
+        - user_id -> users.id (alias: user)
+        - users_id -> users.id (alias: users) - plural form
+        - customer_id -> customers.id (alias: customer)
+        - owner_user_id -> users.id (alias: owner) - named relationship
+        - created_by_user_id -> users.id (alias: created_by) - multi-underscore alias
+        
+        The algorithm progressively splits the column name to find a matching table,
+        supporting both simple FKs and named/aliased relationships.
         """
-        # Pattern: {prefix}_{table_singular}_id or just {table_singular}_id
-        fk_pattern = re.compile(r'^(?:([a-z_]+)_)?([a-z]+)_id$', re.IGNORECASE)
-        
         for table_name, table in self.tables.items():
             for col_name, column in table.columns.items():
-                match = fk_pattern.match(col_name)
-                if not match:
+                # Only process columns ending in _id
+                if not col_name.endswith("_id"):
                     continue
                 
-                prefix = match.group(1)  # e.g., "owner" in "owner_user_id"
-                singular = match.group(2)  # e.g., "user" in "user_id" or "owner_user_id"
+                # Remove the _id suffix
+                base_name = col_name[:-3]  # e.g., "user" from "user_id", "owner_user" from "owner_user_id"
                 
-                # Try to find target table: plural first, then singular
-                plural = singular + "s"
-                target_table = None
-                
-                if self.has_table(plural):
-                    target_table = plural
-                elif self.has_table(singular):
-                    target_table = singular
-                
-                if not target_table:
+                if not base_name:
                     continue
                 
-                # Check if target table has an 'id' column
+                # Try to find a matching table and determine alias
+                result = self._find_fk_target(base_name)
+                if not result:
+                    continue
+                
+                target_table, alias = result
+                
+                # Get the primary key of the target table
                 target = self.get_table(target_table)
-                if not target or not target.has_column("id"):
+                if not target:
                     continue
                 
-                # Determine alias: use prefix if present, otherwise use singular
-                alias = prefix if prefix else singular
+                pk_col = target.get_primary_key()
+                if not pk_col:
+                    continue
                 
-                # Check if this relationship already exists (explicit or inferred)
+                # Check if this relationship already exists
                 existing = self.find_relationship(table_name, target_table)
                 if existing and existing.from_column == col_name:
                     continue  # Already have this relationship
@@ -252,11 +328,80 @@ class Schema:
                     from_table=table_name,
                     from_column=col_name,
                     to_table=target_table,
-                    to_column="id",
+                    to_column=pk_col,
                     alias=alias,
                     source="inferred"
                 )
                 self.add_relationship(rel)
+    
+    def _find_fk_target(self, base_name: str) -> Optional[Tuple[str, str]]:
+        """Find the target table for a FK column base name.
+        
+        Uses progressive splitting to handle multi-underscore patterns like:
+        - "user" -> users table, alias "user"
+        - "users" -> users table, alias "users"
+        - "owner_user" -> first try "owner_user(s)" table, then "user(s)" with alias "owner"
+        - "created_by_user" -> try progressively: "created_by_user(s)", "by_user(s)", "user(s)"
+        
+        Args:
+            base_name: The column name without the _id suffix (e.g., "user", "owner_user")
+            
+        Returns:
+            Tuple of (target_table_name, alias) or None if no match found
+        """
+        # Try the full base_name first (including all underscores)
+        target = self._find_table_by_name(base_name)
+        if target:
+            return (target, base_name)
+        
+        # Progressive split: try removing underscore segments from the left
+        # For "owner_user", try: "owner_user", then "user" with alias "owner"
+        # For "created_by_user", try: "created_by_user", "by_user", "user"
+        parts = base_name.split("_")
+        
+        for i in range(1, len(parts)):
+            # Alias is everything before the split point
+            alias = "_".join(parts[:i])
+            # Table candidate is everything after
+            table_candidate = "_".join(parts[i:])
+            
+            target = self._find_table_by_name(table_candidate)
+            if target:
+                return (target, alias)
+        
+        return None
+    
+    def _find_table_by_name(self, name: str) -> Optional[str]:
+        """Find a table by name, trying multiple variants.
+        
+        Tries:
+        1. Exact match (case-insensitive)
+        2. Plural form (using inflect)
+        3. Singular form (using inflect)
+        
+        Args:
+            name: The table name to search for
+            
+        Returns:
+            The actual table name if found, or None
+        """
+        name_lower = name.lower()
+        
+        # 1. Try exact match
+        if self.has_table(name_lower):
+            return name_lower
+        
+        # 2. Try plural form
+        plural = pluralize(name_lower)
+        if plural != name_lower and self.has_table(plural):
+            return plural
+        
+        # 3. Try singular form (in case input was plural)
+        singular = singularize(name_lower)
+        if singular and singular != name_lower and self.has_table(singular):
+            return singular
+        
+        return None
     
     @classmethod
     def from_yaml(cls, path: str | Path) -> "Schema":
