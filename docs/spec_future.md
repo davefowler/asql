@@ -617,7 +617,7 @@ Or use raw SQL with correlated subquery.
 
 ASQL may add Python-style list comprehensions for transforming array columns.
 
-**Tracking**: Not yet tracked  
+**Tracking**: [Issue #82](https://github.com/davefowler/asql/issues/82)  
 **Research**: See [ai_notes/archive/research/list-comprehensions-research.md](../ai_notes/archive/research/list-comprehensions-research.md) for detailed analysis.
 
 ### Proposed Syntax

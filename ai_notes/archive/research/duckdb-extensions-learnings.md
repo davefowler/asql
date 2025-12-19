@@ -487,7 +487,9 @@ sample 100 per category -- stratified
 
 ---
 
-### 12. List Comprehensions / Lambda Functions 📋 Researched
+### 12. List Comprehensions / Lambda Functions 📋 Planned
+
+**Tracking**: [Issue #82](https://github.com/davefowler/asql/issues/82)
 
 #### DuckDB
 Python-style list transformations:
@@ -515,11 +517,34 @@ SELECT list_transform([1,2,3], x -> x + 1);
 | Snowflake | ❌ Invalid syntax generated | ❌ |
 | MySQL | N/A (no arrays) | ❌ |
 
-**Implementation strategy:**
+**Implementation strategy (AST-based):**
+
 1. Preparser parses `[expr for var in arr]` syntax
-2. For DuckDB: pass through as-is
-3. For Postgres/BigQuery: emit `ARRAY(SELECT expr FROM UNNEST(arr) AS var)` - SQLGlot handles these
-4. For Snowflake: emit custom `ARRAY_AGG() + FLATTEN` pattern (preparser needs dialect)
+2. Build SQLGlot AST: `exp.Array(exp.Select(expressions=[expr], from_=exp.Unnest(...)))`
+3. Let SQLGlot transpile to dialect-specific output
+
+**SQLGlot AST transpilation tested:**
+
+```python
+exp.Array(expressions=[
+    exp.Select(
+        expressions=[exp.Lower(this=exp.Column(this='x'))],
+        from_=exp.From(this=exp.Unnest(expressions=[...], alias='x'))
+    )
+])
+```
+
+| Dialect | AST Output | Works? |
+|---------|------------|--------|
+| DuckDB | `ARRAY(SELECT LOWER(x) FROM UNNEST(tags) AS x)` | ✅ |
+| BigQuery | `ARRAY(SELECT LOWER(x) FROM UNNEST(tags))` | ✅ |
+| Postgres | `ARRAY(SELECT LOWER(x) FROM UNNEST(tags) AS x)` | ✅ |
+| Snowflake | `[SELECT ... FROM TABLE(FLATTEN(...))]` | ❌ Invalid |
+
+**Recommended approach:**
+- Use AST construction (not string manipulation)
+- SQLGlot handles DuckDB/BigQuery/Postgres correctly
+- Snowflake needs custom handling (SQLGlot output is broken)
 
 **Value:** Medium - useful for nested data structures (JSON, arrays).
 
