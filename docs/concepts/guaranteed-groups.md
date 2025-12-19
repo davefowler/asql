@@ -159,6 +159,34 @@ from orders
 
 Configure in your ASQL settings or via API.
 
+## Understanding the Generated SQL
+
+### Transpilation Comments
+
+To understand the generated SQL, enable transpilation comments:
+
+```asql
+SET include_transpilation_comments = true;
+
+from orders
+  where order_date >= @2024-01-01 and order_date < @2024-07-01
+  group by month(order_date) (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+The output will include a helpful explanation:
+
+```sql
+/* ASQL auto-spine: Gap-filling CTEs were generated to ensure all 
+   expected GROUP BY values appear (even with zero/null aggregates). 
+   Disable with: SET auto_spine = false; */
+WITH month_order_date_spine AS (...)
+...
+```
+
+This is especially useful when first learning how auto-spine works or when debugging complex queries.
+
 ## Technical Details
 
 ### Generated SQL

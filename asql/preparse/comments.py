@@ -41,7 +41,21 @@ class CommentsMixin:
         return result, comments
 
     def _restore_comments(self, text: str, comments: List[Tuple[int, str]]) -> str:
-        """Restore comments from placeholders."""
+        """Restore comments from placeholders.
+        
+        Respects the passthrough_comments setting if available.
+        """
+        # Check if passthrough_comments is disabled
+        if hasattr(self, 'settings') and self.settings is not None:
+            if not getattr(self.settings, 'passthrough_comments', True):
+                # Remove all comment placeholders instead of restoring
+                result = text
+                for idx, _ in comments:
+                    placeholder = f"__COMMENT_{idx}__"
+                    result = result.replace(placeholder, '')
+                return result
+        
+        # Default: restore comments
         result = text
         for idx, comment in comments:
             placeholder = f"__COMMENT_{idx}__"

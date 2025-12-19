@@ -65,6 +65,10 @@ def extract_inline_settings(
                             settings.relative_date_type = value
                     elif key == "alias_template":
                         settings.alias_template = str(value)
+                    elif key == "include_transpilation_comments":
+                        settings.include_transpilation_comments = bool(value)
+                    elif key == "passthrough_comments":
+                        settings.passthrough_comments = bool(value)
                     elif key.endswith("_alias_prefix"):
                         func_name = key[:-13]  # Remove "_alias_prefix" suffix
                         settings.alias_prefixes[func_name] = str(value)
@@ -99,3 +103,37 @@ def extract_dialect_from_comment(asql_query: str) -> Optional[str]:
             return match.group(1).lower()
 
     return None
+
+
+def extract_comment_settings(asql_query: str) -> Tuple[Optional[bool], Optional[bool]]:
+    """Pre-scan for comment-related settings before preparsing.
+    
+    These settings need to be known before preparsing because they affect
+    whether comments are preserved during the preparse phase.
+    
+    Returns:
+        (include_transpilation_comments, passthrough_comments) - None if not set
+    """
+    import re
+    
+    include_transpilation: Optional[bool] = None
+    passthrough: Optional[bool] = None
+    
+    # Match SET statements for comment settings
+    # SET include_transpilation_comments = true/false
+    # SET passthrough_comments = true/false
+    patterns = [
+        (r"SET\s+include_transpilation_comments\s*=\s*(true|false)", "include"),
+        (r"SET\s+passthrough_comments\s*=\s*(true|false)", "passthrough"),
+    ]
+    
+    for pattern, setting_type in patterns:
+        match = re.search(pattern, asql_query, re.IGNORECASE)
+        if match:
+            value = match.group(1).lower() == "true"
+            if setting_type == "include":
+                include_transpilation = value
+            else:
+                passthrough = value
+    
+    return include_transpilation, passthrough
