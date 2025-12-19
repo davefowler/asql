@@ -29,6 +29,9 @@ KNOWN_COMPILE_SETTINGS = {
     'alias_templates',
     # Join key inference - used for docs/playground examples that don't have real schemas
     'invent_join_keys',
+    # Comment settings
+    'include_transpilation_comments',
+    'passthrough_comments',
 }
 
 
@@ -85,6 +88,15 @@ class CompileSettings:
     # When provided, enables smart join inference without explicit ON clauses.
     schema: Optional["Schema"] = None
     
+    # Include transpilation comments: when True, adds explanatory SQL comments
+    # describing ASQL transformations (auto-spine, cohort, etc.) in the generated SQL.
+    # This helps users understand the generated SQL structure.
+    include_transpilation_comments: bool = False
+    
+    # Passthrough comments: when True (default), preserves source ASQL comments
+    # in the generated SQL output. When False, strips all source comments.
+    passthrough_comments: bool = True
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
@@ -92,6 +104,8 @@ class CompileSettings:
             "week_start": self.week_start,
             "relative_date_type": self.relative_date_type,
             "invent_join_keys": self.invent_join_keys,
+            "include_transpilation_comments": self.include_transpilation_comments,
+            "passthrough_comments": self.passthrough_comments,
         }
         if self.alias_prefixes:
             result["alias_prefixes"] = self.alias_prefixes
