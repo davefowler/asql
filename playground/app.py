@@ -260,6 +260,20 @@ async def api_settings_schema() -> dict:
                     "type": "boolean",
                     "default": False,
                     "description": "Infer join keys using {table}_id convention when no schema is available"
+                },
+                {
+                    "name": "passthrough_comments",
+                    "label": "Passthrough Comments",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Preserve ASQL source comments in the generated SQL output"
+                },
+                {
+                    "name": "include_transpilation_comments",
+                    "label": "Transpilation Comments",
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Add explanatory comments about ASQL transformations (auto-spine, cohort, etc.)"
                 }
             ]
         },
