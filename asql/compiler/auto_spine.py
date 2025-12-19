@@ -40,6 +40,46 @@ SPINE_MIN_DATE = "'1970-01-01'"
 SPINE_MAX_DATE = "CURRENT_DATE"
 
 
+def _generate_spine_comment(metadata: dict) -> str:
+    """Generate a descriptive comment for a spine CTE.
+    
+    Args:
+        metadata: Dict with keys: alias, is_date, trunc_unit, explicit_values,
+                  source_column, source_table, needs_data_bounds
+    
+    Returns:
+        Comment text (without /* */ markers - SQLGlot adds those)
+    """
+    alias = metadata.get("alias", "column")
+    is_date = metadata.get("is_date", False)
+    trunc_unit = metadata.get("trunc_unit")
+    explicit_values = metadata.get("explicit_values")
+    source_column = metadata.get("source_column")
+    source_table = metadata.get("source_table", "table")
+    needs_data_bounds = metadata.get("needs_data_bounds", False)
+    
+    if explicit_values:
+        # Explicit values from guarantee()
+        values_preview = explicit_values[:3]
+        if len(explicit_values) > 3:
+            values_str = ", ".join(f"'{v}'" for v in values_preview) + ", ..."
+        else:
+            values_str = ", ".join(f"'{v}'" for v in values_preview)
+        return f"Guaranteed values for {alias}: [{values_str}]"
+    
+    if is_date and trunc_unit:
+        # Date spine
+        col_ref = source_column or alias
+        if needs_data_bounds:
+            return f"Date spine for {trunc_unit}({col_ref}) - range from data MIN to MAX"
+        else:
+            return f"Date spine for {trunc_unit}({col_ref}) - ensures all {trunc_unit}s in range appear"
+    
+    # Categorical spine (DISTINCT values)
+    col_ref = source_column or alias
+    return f"All distinct values of '{col_ref}' from {source_table}"
+
+
 DATE_TRUNC_FUNCTIONS = {
     "year",
     "month",
@@ -706,7 +746,9 @@ def _apply_auto_spine(
 
     where_clause = stmt.find(exp.Where)
 
-    spine_ctes: List[Tuple[str, exp.Expression]] = []
+    # spine_ctes: (cte_name, cte_select, metadata_dict)
+    # metadata includes: is_date, trunc_unit, explicit_values, source_column for comment generation
+    spine_ctes: List[Tuple[str, exp.Expression, dict]] = []
     # spine_columns: (alias, cte_name, original_expr_sql)
     spine_columns: List[Tuple[str, str, str]] = []
     rollup_column_order: List[str] = []
@@ -761,7 +803,17 @@ def _apply_auto_spine(
 
         try:
             spine_select = sqlglot.parse_one(spine_sql.strip(), dialect=dialect)
-            spine_ctes.append((spine_cte_name, spine_select))
+            # Store metadata for comment generation
+            spine_metadata = {
+                "alias": alias,
+                "is_date": is_date,
+                "trunc_unit": trunc_unit,
+                "explicit_values": explicit_values,
+                "source_column": source_column,
+                "source_table": source_table,
+                "needs_data_bounds": needs_data_bounds,
+            }
+            spine_ctes.append((spine_cte_name, spine_select, spine_metadata))
             spine_columns.append((alias, spine_cte_name, original_expr_sql))
         except Exception as e:
             raise ASQLCompilationError(
@@ -896,26 +948,40 @@ def _apply_auto_spine(
     data_stmt.set("expressions", new_expressions)
 
     cte_parts: List[str] = []
+    # Track CTE names and their comments for adding after parsing
+    cte_comments: dict[str, str] = {}
 
     # When any spine needs data bounds, the data CTE must come FIRST
     # (because the spine references MIN/MAX from the data CTE)
     if any_spine_needs_data_bounds:
         cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
+        cte_comments[data_cte_name] = "Original aggregation query - data CTE defined first for MIN/MAX bounds"
 
-    for cte_name, cte_select in spine_ctes:
+    for cte_name, cte_select, metadata in spine_ctes:
         cte_parts.append(f"{cte_name} AS ({cte_select.sql(dialect=dialect)})")
+        cte_comments[cte_name] = _generate_spine_comment(metadata)
 
     # Only add combined_spine CTE when we have multiple GROUP BY columns or rollup
     if combined_spine_sql is not None:
         cte_parts.append(f"{combined_spine_name} AS ({combined_spine_sql})")
+        cte_comments[combined_spine_name] = "Cross-join of all spine dimensions to ensure every combination appears"
     
     # If data CTE wasn't added first, add it now (normal case)
     if not any_spine_needs_data_bounds:
         cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
+        cte_comments[data_cte_name] = "Original aggregation query"
 
     result_sql = "WITH " + ", ".join(cte_parts) + " " + final_sql
     try:
-        return sqlglot.parse_one(result_sql.strip(), dialect=dialect)
+        result_stmt = sqlglot.parse_one(result_sql.strip(), dialect=dialect)
+        
+        # Add comments to each CTE node
+        for cte_node in result_stmt.find_all(exp.CTE):
+            cte_name = cte_node.alias
+            if cte_name in cte_comments:
+                cte_node.comments = [cte_comments[cte_name]]
+        
+        return result_stmt
     except Exception as e:
         raise ASQLCompilationError(
             f"Failed to assemble spine query. "
