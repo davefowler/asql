@@ -37,7 +37,8 @@ def compile(
         if not dialect:
             dialect = extract_dialect_from_comment(asql_query)
 
-        preparsed = preparse_asql(asql_query)
+        # Pass settings to preparser for schema-aware join inference
+        preparsed = preparse_asql(asql_query, settings=base_settings)
         preparsed = process_explode_markers(preparsed, dialect)
 
         # Parse with the target dialect when possible, but fall back to generic parsing.

@@ -8,6 +8,117 @@ This document contains features that are planned for future implementation, unde
 
 ---
 
+## FK Dot Notation (Future Consideration)
+
+ASQL may add support for automatic join traversal using FK dot notation:
+
+**Tracking**: Not yet tracked
+
+```asql
+-- Proposed syntax
+from orders
+  select 
+    orders.amount,
+    orders.user.name,       -- Auto-joins via user_id → users.id
+    orders.user.email       -- Same join, different column
+
+-- Would compile to:
+SELECT 
+  orders.amount,
+  user_1.name,
+  user_1.email
+FROM orders
+LEFT JOIN users AS user_1 ON orders.user_id = user_1.id
+```
+
+### How It Would Work
+
+1. **Pattern detection**: Preparser detects `table.fk.column` patterns where `fk` matches a `{name}_id` column
+2. **Schema lookup**: Uses the relationship map to find the target table
+3. **Auto-join generation**: Injects LEFT JOIN with appropriate ON clause
+4. **Alias deduplication**: Multiple references to same FK reuse the same join
+
+### Key Features
+
+- **Convention-based**: `{name}_id` enables `.{name}.` traversal without configuration
+- **Schema-aware**: Explicit relationships in schema take precedence over conventions
+- **Chained traversal**: `order_items.order.user.name` traverses multiple relationships
+- **LEFT JOIN default**: FK might be NULL, so outer join is safer default
+
+### Current Workaround
+
+Use explicit joins:
+
+```asql
+-- Instead of: from orders select orders.user.name
+from orders &? users on orders.user_id = users.id
+  select users.name
+```
+
+### Why Not Implemented Yet
+
+- **Preparser complexity**: Requires detecting column patterns before SQL generation
+- **Alias management**: Need to track generated aliases to avoid duplicates
+- **Schema dependency**: Most useful with schema information (which is now available)
+
+**Priority**: Medium - useful but explicit joins work well. May implement after schema support is fully tested.
+
+---
+
+## Database Schema Introspection (Future Consideration)
+
+ASQL may add database introspection to auto-generate `asql_schema.yml` from a live database connection.
+
+**Tracking**: Not yet tracked
+
+```python
+# Proposed CLI usage
+asql introspect postgresql://user:pass@host/db --output asql_schema.yml
+
+# Proposed Python API
+from asql.schema import Schema
+schema = Schema.from_database("postgresql://user:pass@host/db")
+schema.to_yaml("asql_schema.yml")
+```
+
+### What It Would Extract
+
+1. **Tables and columns**: Names, types, primary keys
+2. **Foreign keys**: Explicit FK constraints from database metadata
+3. **Inferred relationships**: Convention-based (`{name}_id` → `{names}.id`)
+
+### Generated Output
+
+```yaml
+# asql_schema.yml (auto-generated)
+tables:
+  orders:
+    columns: [id, user_id, amount, created_at]
+  users:
+    columns: [id, name, email]
+    
+relationships:
+  # Explicit FK from database
+  - from: orders.user_id
+    to: users.id
+    alias: user
+    source: explicit
+  
+  # Inferred from naming convention
+  - from: orders.customer_id
+    to: customers.id
+    alias: customer
+    source: inferred
+```
+
+### Current Workaround
+
+Manually create `asql_schema.yml` or use dbt's `schema.yml` files.
+
+**Priority**: Low - most users have dbt or can manually define schemas. Introspection is a convenience feature.
+
+---
+
 
 ## Ternary-Style Conditionals (Future Consideration)
 

@@ -9,9 +9,12 @@ ASQL always accepts all valid syntaxes on input.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Dict, Any, List, Tuple
+from typing import Literal, Optional, Dict, Any, List, Tuple, TYPE_CHECKING
 from pathlib import Path
 import json
+
+if TYPE_CHECKING:
+    from asql.schema import Schema
 
 
 # Registry of known compile settings for SET statement parsing
@@ -77,6 +80,11 @@ class CompileSettings:
     # When False (default), raises an error if join key cannot be determined from schema.
     invent_join_keys: bool = False
     
+    # Schema: provides table/column metadata and relationships for join inference.
+    # Can be loaded from dbt schema.yml, asql_schema.yml, or database introspection.
+    # When provided, enables smart join inference without explicit ON clauses.
+    schema: Optional["Schema"] = None
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
@@ -91,6 +99,8 @@ class CompileSettings:
             result["alias_template"] = self.alias_template
         if self.alias_templates:
             result["alias_templates"] = self.alias_templates
+        # Note: schema is not serialized to dict (it's a complex object)
+        # Use Schema.to_dict() separately if needed
         return result
     
     @classmethod
