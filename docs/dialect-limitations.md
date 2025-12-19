@@ -77,11 +77,49 @@ group by rollup(year(date), month(date)) (
 | Auto-spine (basic) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Auto-spine with ROLLUP/CUBE | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
 | `generate_series` for spines | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| Slice syntax `[1:5]` | 🐛 | 🐛 | ✅ | 🐛 | 🐛 | 🐛 | 🐛 |
 
 Legend:
 - ✅ Fully supported
 - ⚠️ Partial support / edge cases
 - ❌ Not supported
+- 🐛 Bug - documented but broken (see Known Bugs section)
+
+---
+
+## Known Bugs (Documented but Broken)
+
+These features are documented in the spec but have broken implementations for certain dialects.
+
+### 3. Slice Syntax `[start:end]` 🐛
+
+**Tracking**: [Issue #77](https://github.com/davefowler/asql/issues/77)
+
+**Feature**: Python-style string/array slicing
+
+```asql
+from users
+  select email[1:5] as prefix
+```
+
+**Current behavior**:
+
+| Dialect | Output | Works? |
+|---------|--------|--------|
+| DuckDB | `email[1 : 5]` | ✅ Native support |
+| PostgreSQL | `email[1 : 5]` | ❌ Invalid (Postgres uses `[]` for arrays only) |
+| Snowflake | `email[GET_PATH(1, '5')]` | ❌ Completely wrong |
+| BigQuery | `email[1 : 5]` | ❌ Invalid for strings |
+| MySQL | `email[1 : 5]` | ❌ Invalid syntax |
+
+**Fix planned**: Convert to `SUBSTRING()` in preparser, let SQLGlot handle dialect-specific output.
+
+**Workaround**: Use `SUBSTRING()` directly:
+
+```asql
+from users
+  select substring(email, 1, 5) as prefix
+```
 
 ---
 
