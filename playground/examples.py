@@ -1,6 +1,9 @@
 """ASQL Playground examples.
 
 These examples are used by both the playground frontend and tests.
+Each example includes tutorial-style comments explaining the feature being showcased.
+
+Style Guide: Examples follow docs/style_guide.md unless explicitly demonstrating alternatives.
 """
 
 from typing import TypedDict
@@ -12,397 +15,746 @@ class Example(TypedDict):
     query: str
 
 
-# Basic ASQL examples
+# =============================================================================
+# BASIC ASQL EXAMPLES
+# =============================================================================
+# These examples introduce core ASQL syntax and concepts.
+
 ASQL_EXAMPLES: list[Example] = [
     {
         "title": "Simple FROM",
-        "desc": "Basic table selection",
-        "query": "from users"
+        "desc": "Basic table selection - every ASQL query starts with FROM",
+        "query": """-- ASQL queries start with FROM (not SELECT)
+-- This selects all columns from the users table
+from users"""
     },
     {
         "title": "WHERE Filter",
-        "desc": "Filter with conditions",
-        "query": 'from users\nwhere status == "active"'
+        "desc": "Filter rows with conditions using WHERE",
+        "query": """-- Use WHERE to filter rows
+-- ASQL uses = for equality (preferred over ==)
+from users
+  where status = "active"
+
+-- You can also use == (accepted but not preferred)
+from users
+  where status == "active\""""
     },
     {
-        "title": "GROUP BY",
-        "desc": "Aggregate with COUNT",
-        "query": "from users\ngroup by country ( # as total_users )"
+        "title": "GROUP BY with Count",
+        "desc": "Aggregate with COUNT using # shorthand",
+        "query": """-- GROUP BY with aggregates in parentheses
+-- # is shorthand for COUNT(*) - preferred style
+from users
+  group by country (
+    # as total_users  -- COUNT(*) aliased as total_users
+  )"""
     },
     {
         "title": "Multiple Aggregations",
-        "desc": "SUM, COUNT, AVG together",
-        "query": """from sales
-group by region ( 
-    sum(amount) as revenue, 
-    # as orders, 
-    avg(amount) as avg_order 
-)"""
+        "desc": "SUM, COUNT, AVG together in one GROUP BY",
+        "query": """-- Multiple aggregates separated by commas
+-- Each aggregate can use function form or natural language
+from sales
+  group by region (
+    sum_amount,           -- Underscore shorthand: sum(amount) as sum_amount
+    # as orders,          -- Count of rows
+    avg_amount            -- Average amount
+  )"""
     },
     {
-        "title": "SORT Descending",
-        "desc": "Order by descending",
-        "query": """from users
-group by country ( # as total_users )
-order by -total_users"""
+        "title": "ORDER BY Descending",
+        "desc": "Sort results using - prefix for descending",
+        "query": """-- Use - prefix for descending order (preferred style)
+-- This is cleaner than writing DESC
+from users
+  group by country (
+    # as total_users
+  )
+  order by -total_users  -- Descending: most users first"""
     },
     {
-        "title": "TAKE/LIMIT",
-        "desc": "Limit results",
-        "query": "from users\nlimit 10"
+        "title": "LIMIT Results",
+        "desc": "Limit the number of rows returned",
+        "query": """-- LIMIT restricts the result set size
+from users
+  limit 10"""
     },
     {
-        "title": "Complex Query",
-        "desc": "Full pipeline example",
-        "query": """from sales
-where status == "completed" and amount > 100
-group by region ( 
-    sum(amount) as revenue, 
-    # as orders 
-)
-order by -revenue
-limit 10"""
+        "title": "Complete Pipeline",
+        "desc": "Full query combining filter, group, sort, limit",
+        "query": """-- A complete analytics pipeline:
+-- 1. Start with a table
+-- 2. Filter to relevant rows
+-- 3. Group and aggregate
+-- 4. Sort by results
+-- 5. Take top N
+from sales
+  where status = "completed"
+    and amount > 100
+  group by region (
+    sum_amount,      -- Total revenue per region
+    # as orders      -- Number of orders
+  )
+  order by -sum_amount
+  limit 10"""
     },
     {
         "title": "Multiple Conditions",
-        "desc": "AND/OR operators",
-        "query": """from users
-where status == "active" 
-    and age >= 18 
+        "desc": "Combine conditions with AND/OR",
+        "query": """-- Multiple conditions with AND
+-- Indented continuation makes complex conditions readable
+from users
+  where status = "active"
+    and age >= 18
     and email is not null"""
     },
     {
         "title": "OR Conditions",
-        "desc": "Multiple OR conditions",
-        "query": """from users
-where status == "active" 
-    or status == "pending\""""
+        "desc": "Alternative conditions with OR",
+        "query": """-- OR for alternative conditions
+from users
+  where status = "active"
+    or status = "pending\""""
     },
     {
         "title": "NULL Checks",
-        "desc": "IS NULL / IS NOT NULL",
-        "query": "from users\nwhere email is not null"
+        "desc": "Check for NULL values with IS NULL / IS NOT NULL",
+        "query": """-- NULL checking works like standard SQL
+from users
+  where email is not null
+
+-- Check for NULL values
+from users
+  where deleted_at is null"""
     },
     {
-        "title": "Comparisons",
-        "desc": "All comparison operators",
-        "query": "from users\nwhere age >= 18 and age <= 65"
+        "title": "Comparison Operators",
+        "desc": "All comparison operators: =, !=, <, >, <=, >=",
+        "query": """-- Standard comparison operators
+from users
+  where age >= 18
+    and age <= 65
+    and status != "banned\""""
+    },
+    {
+        "title": "String Matching",
+        "desc": "Use contains, starts with, ends with instead of LIKE",
+        "query": """-- Natural language string matching (preferred over LIKE)
+from users
+  where email contains "@gmail.com"
+
+-- Other string operators
+from users
+  where name starts with "John"
+
+from users
+  where domain ends with ".com\""""
+    },
+    {
+        "title": "Date Literals",
+        "desc": "Use @ prefix for date literals",
+        "query": """-- @ prefix for date literals (clearer than strings)
+from orders
+  where created_at >= @2024-01-01
+
+-- Date range with BETWEEN
+from orders
+  where order_date between @2024-01-01 and @2024-12-31"""
+    },
+    {
+        "title": "Relative Dates",
+        "desc": "Natural date expressions like '7 days ago'",
+        "query": """-- Natural language relative dates
+from users
+  where last_login >= 7 days ago
+
+-- Future dates with 'from now'
+from orders
+  where estimated_delivery <= 3 days from now"""
     },
 ]
 
-# Pipeline examples (multi-step queries)
+
+# =============================================================================
+# PIPELINE EXAMPLES
+# =============================================================================
+# More complex multi-step query examples demonstrating ASQL's pipeline model.
+
 PIPELINE_EXAMPLES: list[Example] = [
     {
         "title": "Multi-Step Pipeline",
-        "desc": "Filter → Group → Sort → Limit (creates multiple CTEs)",
-        "query": """from orders
-where status == "completed" 
-    and created_at >= "2024-01-01"
-group by customer_id ( 
-    sum(total) as total_spent, 
-    # as order_count,
-    avg(total) as avg_order_value 
-)
-order by -total_spent
-limit 10"""
+        "desc": "Filter → Group → Sort → Limit pipeline",
+        "query": """-- ASQL pipelines read top-to-bottom
+-- Each step transforms the data from the previous step
+from orders
+  where status = "completed"
+    and created_at >= @2024-01-01
+  group by customer_id (
+    sum_total,              -- Total spent per customer
+    # as order_count,       -- Number of orders
+    avg_total               -- Average order value
+  )
+  order by -sum_total       -- Highest spenders first
+  limit 10                  -- Top 10 customers"""
     },
     {
-        "title": "Customer Analytics Pipeline",
-        "desc": "Complex multi-step customer analysis",
-        "query": """from customers
-where signup_date >= "2023-01-01"
-    and is_active == true
-join orders on customers.id == orders.customer_id
-group by customers.id, customers.country ( 
-    sum(orders.total) as lifetime_value,
+        "title": "Join with Aggregation",
+        "desc": "Join tables and aggregate results",
+        "query": """-- Join customers with their orders
+-- Use & for INNER JOIN (both sides must match)
+from customers
+  where signup_date >= @2023-01-01
+    and is_active = true
+  & orders on customers.id = orders.customer_id
+  group by customers.id, customers.country (
+    sum orders.total as lifetime_value,
     # as total_orders,
-    max(orders.created_at) as last_order_date 
-)
-order by -lifetime_value
-limit 50"""
+    max orders.created_at as last_order_date
+  )
+  order by -lifetime_value
+  limit 50"""
     },
     {
-        "title": "Sales Funnel Analysis",
-        "desc": "Multi-stage sales pipeline with joins",
-        "query": """from leads
-join opportunities on leads.id == opportunities.lead_id
-join deals on opportunities.id == deals.opportunity_id
-where leads.source == "website"
-    and leads.created_at >= "2024-01-01"
-    and opportunities.stage != "lost"
-    and deals.status == "closed"
-group by leads.source, deals.region ( 
-    sum(deals.amount) as revenue,
-    # as closed_deals,
-    avg(deals.amount) as avg_deal_size 
-)
-order by -revenue"""
+        "title": "Left Join Pipeline",
+        "desc": "Left join to include all records from left table",
+        "query": """-- &? for LEFT JOIN (right side may be NULL)
+-- The ? marks the optional/nullable side
+from leads
+  &? opportunities on leads.id = opportunities.lead_id
+  &? deals on opportunities.id = deals.opportunity_id
+  where leads.source = "website"
+    and leads.created_at >= @2024-01-01
+  group by leads.source (
+    sum deals.amount as revenue,
+    # as total_leads
+  )
+  order by -revenue"""
     },
     {
-        "title": "Product Performance Pipeline",
-        "desc": "Product analysis with multiple filters and aggregations",
-        "query": """from products
-join order_items on products.id == order_items.product_id
-join orders on order_items.order_id == orders.id
-where products.category == "electronics"
-    and products.in_stock == true
-    and orders.status == "completed"
-    and orders.created_at >= "2024-01-01"
-group by products.id, products.name ( 
-    sum(order_items.quantity) as units_sold,
-    sum(order_items.price * order_items.quantity) as revenue,
-    # as order_count 
-)
-order by -revenue
-limit 20"""
+        "title": "Coalesce for NULLs",
+        "desc": "Use ?? operator for null handling",
+        "query": """-- ?? is the null coalesce operator (preferred over COALESCE())
+-- Returns first non-null value
+from products
+  & order_items on products.id = order_items.product_id
+  where products.category = "electronics"
+  group by products.id, products.name (
+    sum order_items.quantity as units_sold,
+    sum(order_items.price * order_items.quantity) as revenue
+  )
+  -- Use ?? to handle NULLs in results
+  select
+    products.id,
+    products.name,
+    units_sold ?? 0 as units_sold,
+    revenue ?? 0 as revenue
+  order by -revenue
+  limit 20"""
     },
     {
-        "title": "User Engagement Pipeline",
-        "desc": "User activity analysis with aggregation and filtering",
-        "query": """from users
-join events on users.id == events.user_id
-where users.created_at >= "2023-01-01"
-    and events.event_type == "purchase"
-    and events.timestamp >= "2024-01-01"
-group by users.id, users.country ( 
-    # as purchase_count,
-    sum(events.value) as total_spent,
-    max(events.timestamp) as last_purchase_date 
-)
-order by -total_spent
-limit 100"""
+        "title": "Date Grouping",
+        "desc": "Group by time periods using date functions",
+        "query": """-- Group by time periods for time-series analysis
+-- month() truncates to month start
+from transactions
+  where status = "completed"
+    and transaction_date >= @2024-01-01
+  group by month(transaction_date), region (
+    sum_amount,             -- Monthly revenue
+    # as transaction_count, -- Transaction count
+    avg_amount              -- Average transaction
+  )
+  order by month_transaction_date, -sum_amount"""
     },
     {
-        "title": "Time-Series Aggregation Pipeline",
-        "desc": "Date-based grouping with multiple aggregations",
-        "query": """from transactions
-where status == "completed"
-    and transaction_date >= "2024-01-01"
-group by date_trunc(transaction_date, "month"), region ( 
-    sum(amount) as monthly_revenue,
-    # as transaction_count,
-    avg(amount) as avg_transaction,
-    min(amount) as min_transaction,
-    max(amount) as max_transaction 
-)
-order by transaction_date desc, -monthly_revenue"""
-    },
-    {
-        "title": "Cohort Analysis Pipeline",
-        "desc": "User cohort analysis with complex joins",
-        "query": """from users
-join orders on users.id == orders.user_id
-where users.signup_date >= "2023-01-01"
-    and orders.status == "completed"
-group by date_trunc(users.signup_date, "month"), users.country ( 
-    date_trunc(users.signup_date, "month") as cohort_month,
+        "title": "CTEs with stash as",
+        "desc": "Create reusable CTEs inline",
+        "query": """-- stash as creates a CTE (Common Table Expression)
+-- Use it to break complex queries into steps
+from users
+  where signup_date >= @2023-01-01
+  stash as recent_users
+
+-- Now use the stashed CTE
+from recent_users
+  & orders on recent_users.id = orders.user_id
+  group by month(signup_date) (
     # as users_in_cohort,
-    sum(orders.total) as cohort_revenue,
-    avg(orders.total) as avg_order_value 
-)
-order by cohort_month desc, -cohort_revenue"""
+    sum orders.total as cohort_revenue
+  )
+  order by month_signup_date"""
     },
     {
-        "title": "Multi-Table Join Pipeline",
-        "desc": "Complex joins across multiple tables",
-        "query": """from customers
-join orders on customers.id == orders.customer_id
-join order_items on orders.id == order_items.order_id
-join products on order_items.product_id == products.id
-where orders.status == "completed"
-    and orders.created_at >= "2024-01-01"
-group by customers.id, customers.name ( 
+        "title": "Chained Joins",
+        "desc": "Multiple joins in a single pipeline",
+        "query": """-- Chain multiple joins together
+-- Each join builds on the previous result
+from customers
+  & orders on customers.id = orders.customer_id
+  & order_items on orders.id = order_items.order_id
+  & products on order_items.product_id = products.id
+  where orders.status = "completed"
+    and orders.created_at >= @2024-01-01
+  group by customers.id, customers.name (
     sum(order_items.quantity * order_items.price) as total_spent,
-    # as products_purchased,
-    count(distinct products.category) as categories_bought 
-)
-order by -total_spent
-limit 25"""
+    # products as products_purchased
+  )
+  order by -total_spent
+  limit 25"""
     },
 ]
 
-# Sampling examples
+
+# =============================================================================
+# SAMPLING EXAMPLES
+# =============================================================================
+# Examples for random sampling data.
+
 SAMPLING_EXAMPLES: list[Example] = [
     {
         "title": "Random Sample",
-        "desc": "Get 100 random rows",
-        "query": "from orders\nsample 100"
+        "desc": "Get N random rows from a table",
+        "query": """-- sample N returns N random rows
+-- Useful for data exploration and testing
+from orders
+  sample 100"""
     },
     {
         "title": "Percentage Sample",
-        "desc": "Get ~10% of rows",
-        "query": "from orders\nsample 10%"
+        "desc": "Get approximately N% of rows",
+        "query": """-- sample N% returns roughly N percent of rows
+-- The exact count varies (it's probabilistic)
+from orders
+  sample 10%"""
     },
     {
         "title": "Stratified Sample",
-        "desc": "100 random rows per category",
-        "query": "from products\nsample 100 per category"
+        "desc": "N random rows per category",
+        "query": """-- sample N per column: stratified sampling
+-- Gets N random rows for each distinct value of the column
+from products
+  sample 100 per category"""
     },
     {
         "title": "Sample with Filter",
         "desc": "Sample from filtered data",
-        "query": """from orders
-where status == "completed"
-sample 500"""
+        "query": """-- Combine filtering with sampling
+-- Filter first, then sample from the results
+from orders
+  where status = "completed"
+  sample 500"""
     },
 ]
 
-# Data reshaping examples (pivot, unpivot, explode)
+
+# =============================================================================
+# DATA RESHAPING EXAMPLES
+# =============================================================================
+# Pivot, unpivot, and explode operations.
+
 RESHAPING_EXAMPLES: list[Example] = [
     {
         "title": "Pivot Rows to Columns",
-        "desc": "Transform status values into columns",
-        "query": """from orders
-pivot sum(amount) by status values ('pending', 'shipped', 'delivered')
-group by customer_id"""
+        "desc": "Transform row values into columns",
+        "query": """-- pivot transforms row values into columns
+-- Syntax: pivot aggregate by column values (list of values)
+from orders
+  pivot sum(amount) by status values ("pending", "shipped", "delivered")
+  group by customer_id"""
     },
     {
         "title": "Unpivot Columns to Rows",
-        "desc": "Turn quarterly columns into rows",
-        "query": "from quarterly_metrics\nunpivot q1, q2, q3, q4 into quarter, value"
+        "desc": "Transform columns into rows",
+        "query": """-- unpivot turns columns into rows
+-- Useful for normalizing wide tables
+from quarterly_metrics
+  unpivot q1, q2, q3, q4 into quarter, value"""
     },
     {
         "title": "Explode Array",
-        "desc": "Expand array column into rows",
-        "query": """from posts
-explode tags as tag
-select post_id, title, tag"""
+        "desc": "Expand array column into multiple rows",
+        "query": """-- explode expands array elements into rows
+-- Each array element becomes a separate row
+from posts
+  explode tags as tag
+  select post_id, title, tag"""
     },
     {
         "title": "Explode and Aggregate",
-        "desc": "Count items per tag",
-        "query": """from posts
-explode tags as tag
-group by tag (
+        "desc": "Explode then count occurrences",
+        "query": """-- Common pattern: explode then aggregate
+-- Find most used tags across all posts
+from posts
+  explode tags as tag
+  group by tag (
     # as post_count
-)
-order by -post_count"""
+  )
+  order by -post_count"""
     },
 ]
 
-# Column operator examples (except, rename, replace)
+
+# =============================================================================
+# COLUMN OPERATOR EXAMPLES
+# =============================================================================
+# except, rename, replace column operations.
+
 COLUMN_OPERATOR_EXAMPLES: list[Example] = [
     {
         "title": "Exclude Columns",
-        "desc": "Remove sensitive columns",
-        "query": "from users\nexcept password_hash, internal_notes"
+        "desc": "Remove columns with EXCEPT",
+        "query": """-- except removes columns from SELECT *
+-- Useful for hiding sensitive data
+from users
+  except password_hash, internal_notes"""
     },
     {
         "title": "Rename Columns",
-        "desc": "Rename for clarity",
-        "query": "from users\nrename id as user_id, name as full_name"
+        "desc": "Rename columns inline",
+        "query": """-- rename changes column names
+-- Can rename multiple columns at once
+from users
+  rename id as user_id, name as full_name"""
     },
     {
-        "title": "Replace Values",
-        "desc": "Transform column values",
-        "query": "from users\nreplace name with upper(name), email with lower(email)"
+        "title": "Replace Column Values",
+        "desc": "Transform column values inline",
+        "query": """-- replace transforms column values
+-- The column keeps its name but gets new values
+from users
+  replace name with upper(name), email with lower(email)"""
     },
     {
         "title": "Combined Column Ops",
-        "desc": "Exclude, rename, and replace together",
-        "query": """from customers
-except internal_id
-rename name as customer_name
-replace email with lower(email)"""
+        "desc": "Use except, rename, and replace together",
+        "query": """-- Combine column operators in a pipeline
+-- They execute in order: except, rename, replace
+from customers
+  except internal_id
+  rename name as customer_name
+  replace email with lower(email)"""
     },
 ]
 
-# Cohort analysis examples
+
+# =============================================================================
+# COHORT ANALYSIS EXAMPLES
+# =============================================================================
+# Cohort-based analytics.
+
 COHORT_EXAMPLES: list[Example] = [
     {
-        "title": "User Retention by Cohort",
-        "desc": "Monthly active users by signup cohort",
-        "query": """from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date) on user_id"""
+        "title": "User Retention Cohort",
+        "desc": "Track monthly active users by signup cohort",
+        "query": """-- cohort by creates cohort analysis
+-- Groups users by when they started, tracks activity over time
+from events
+  group by month(event_date) (
+    #(distinct user_id) as active  -- Distinct active users
+  )
+  cohort by month(users.signup_date) on user_id"""
     },
     {
-        "title": "Revenue Cohort Analysis",
+        "title": "Revenue Cohort",
         "desc": "Revenue by first purchase cohort",
-        "query": """from orders
-group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date) on customer_id"""
+        "query": """-- Track revenue by when customers first purchased
+from orders
+  group by month(order_date) (
+    sum_total
+  )
+  cohort by month(customers.first_order_date) on customer_id"""
     },
     {
-        "title": "Cohort Retention with Percentage",
-        "desc": "Retention rate by cohort (requires helper functions)",
-        "query": """from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date) on user_id"""
+        "title": "Weekly Cohorts",
+        "desc": "Weekly granularity cohort analysis",
+        "query": """-- Use week() for weekly cohorts
+from events
+  group by week(event_date) (
+    #(distinct user_id) as active
+  )
+  cohort by week(users.signup_date) on user_id"""
     },
     {
-        "title": "Cumulative LTV by Cohort",
-        "desc": "Lifetime value over time using running_sum",
-        "query": """from orders
-group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date) on customer_id"""
-    },
-    {
-        "title": "Weekly Activity by Cohort",
-        "desc": "Weekly active users by signup cohort",
-        "query": """from events
-group by week(event_date) (count(distinct user_id) as active)
-cohort by week(users.signup_date) on user_id"""
-    },
-    {
-        "title": "Segmented Cohorts by Channel",
-        "desc": "Cohort analysis segmented by acquisition channel",
-        "query": """from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by users.channel, month(users.signup_date) on user_id"""
-    },
-    {
-        "title": "Period-over-Period Change",
-        "desc": "Month-over-month retention change",
-        "query": """from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date) on user_id"""
+        "title": "Segmented Cohorts",
+        "desc": "Cohort analysis by acquisition channel",
+        "query": """-- Add segmentation to cohorts
+-- Compare retention across different channels
+from events
+  group by month(event_date) (
+    #(distinct user_id) as active
+  )
+  cohort by users.channel, month(users.signup_date) on user_id"""
     },
 ]
 
-# Count inference examples
+
+# =============================================================================
+# COUNT INFERENCE EXAMPLES
+# =============================================================================
+# Examples showing count shorthand and inference.
+
 COUNT_INFERENCE_EXAMPLES: list[Example] = [
     {
         "title": "Count Rows",
-        "desc": "Basic COUNT(*)",
-        "query": """from orders
-group by status (
-    # as order_count
-)"""
+        "desc": "Basic COUNT(*) with # shorthand",
+        "query": """-- # by itself means COUNT(*) - counts all rows
+from orders
+  group by status (
+    # as order_count  -- COUNT(*)
+  )"""
     },
     {
-        "title": "Count Distinct Users",
-        "desc": "Infer primary key from table name",
-        "query": """from orders
-group by status (
-    # as total_orders,
-    # users as unique_customers
-)"""
+        "title": "Count Distinct",
+        "desc": "Count distinct values with # table_name",
+        "query": """-- # followed by table name = COUNT(DISTINCT primary_key)
+-- ASQL infers the primary key from table name
+from orders
+  group by status (
+    # as total_orders,      -- COUNT(*) - all rows
+    # users as unique_customers  -- COUNT(DISTINCT user_id)
+  )"""
     },
     {
         "title": "Multiple Entity Counts",
-        "desc": "Count different entities",
-        "query": """from order_items
-group by category (
-    # as line_items,
-    # orders as unique_orders,
-    # products as unique_products
-)"""
+        "desc": "Count different entities in one query",
+        "query": """-- Count multiple distinct entities
+from order_items
+  group by category (
+    # as line_items,           -- Total line items
+    # orders as unique_orders, -- Distinct orders
+    # products as unique_products  -- Distinct products
+  )"""
     },
     {
-        "title": "Explicit vs Inferred",
-        "desc": "Compare explicit and inferred counts",
-        "query": """from orders
-group by region (
+        "title": "Explicit Distinct Count",
+        "desc": "Explicit COUNT(DISTINCT column) syntax",
+        "query": """-- For explicit control, use #(distinct column)
+from orders
+  group by region (
     # as total_rows,
     # users as unique_users,
     #(distinct product_id) as unique_products_explicit
-)"""
+  )"""
     },
 ]
 
 
-# SQL examples for reverse compilation demos
+# =============================================================================
+# SYNTAX STYLES EXAMPLES
+# =============================================================================
+# Examples showcasing different syntax styles and shorthand options.
+# These demonstrate that ASQL accepts multiple equivalent syntaxes.
+
+SYNTAX_STYLES_EXAMPLES: list[Example] = [
+    {
+        "title": "Aggregate Shorthand Styles",
+        "desc": "Three ways to write aggregates: underscore, space, parens",
+        "query": """-- ASQL supports three equivalent aggregate syntaxes:
+-- 1. Underscore shorthand: sum_amount (declarative, matches output column)
+-- 2. Space shorthand: sum amount (natural language feel)
+-- 3. Parens form: sum(amount) (explicit, required for complex expressions)
+
+-- Underscore shorthand - preferred when NOT using 'as' alias
+-- What you write (sum_amount) = what the output column is named
+from sales
+  group by region (
+    sum_amount,      -- Creates column named sum_amount
+    avg_price        -- Creates column named avg_price
+  )
+  order by -sum_amount
+
+-- Space shorthand - natural language style
+from sales
+  group by region (
+    sum amount,      -- Same result: sum_amount column
+    avg price
+  )
+
+-- Parens form - required for complex expressions
+from sales
+  group by region (
+    sum(amount * quantity) as revenue,  -- Complex expression needs parens
+    avg(price / 100) as avg_cents
+  )"""
+    },
+    {
+        "title": "When to Use Each Style",
+        "desc": "Guidelines for underscore vs space vs parens",
+        "query": """-- Use UNDERSCORE when: not aliasing, single column, want declarative continuity
+from sales
+  group by region (
+    sum_amount       -- Column will be named sum_amount - can reference it later
+  )
+  where sum_amount > 1000  -- Reference the same name!
+
+-- Use SPACE or PARENS when: using 'as' alias (underscore benefit doesn't apply)
+from sales
+  group by region (
+    sum amount as revenue,     -- Space form with alias
+    avg(price) as avg_price    -- Parens form with alias
+  )
+
+-- Use PARENS when: multiple arguments or complex expressions
+from sales
+  select max(price, cost) as highest,  -- Multiple args need parens
+    sum(amount * quantity) as total    -- Complex expression needs parens"""
+    },
+    {
+        "title": "Count Shorthand Styles",
+        "desc": "Different ways to write COUNT expressions",
+        "query": """-- # shorthand for COUNT (preferred style)
+from orders
+  group by status (
+    # as total              -- COUNT(*) row count
+  )
+
+-- # with table name for distinct count
+from orders
+  group by status (
+    # users as customers    -- COUNT(DISTINCT user_id)
+  )
+
+-- # of syntax - natural language
+from orders
+  group by status (
+    # of users as customers -- Same as above, more natural
+  )
+
+-- Explicit parens form when needed
+from orders
+  group by status (
+    #(distinct product_id) as unique_products
+  )"""
+    },
+    {
+        "title": "Equality Operators",
+        "desc": "= (preferred) vs == (also accepted)",
+        "query": """-- Single = is the preferred style (SQL standard)
+from users
+  where status = "active"
+
+-- Double == also works (familiar to programmers)
+from users
+  where status == "active"
+
+-- Both produce the same SQL output"""
+    },
+    {
+        "title": "Null Coalesce Styles",
+        "desc": "?? operator (preferred) vs coalesce() function",
+        "query": """-- ?? operator - preferred style, more concise
+from users
+  select name ?? "Unknown" as display_name
+
+-- Chains naturally for multiple fallbacks
+from products
+  select price ?? sale_price ?? 0 as final_price
+
+-- coalesce() function also works
+from users
+  select coalesce(name, "Unknown") as display_name"""
+    },
+    {
+        "title": "Descending Order Styles",
+        "desc": "- prefix (preferred) vs DESC suffix",
+        "query": """-- Minus prefix - preferred style, cleaner
+from users
+  group by country (# as total)
+  order by -total
+
+-- DESC suffix also works (SQL style)
+from users
+  group by country (# as total)
+  order by total DESC
+
+-- Mix in multi-column sorts
+from users
+  order by -created_at, name  -- Newest first, then alphabetical"""
+    },
+    {
+        "title": "Conditional Styles",
+        "desc": "Ternary ? : vs when expressions vs CASE WHEN",
+        "query": """-- Ternary for simple binary conditions (preferred)
+from orders
+  select
+    amount > 1000 ? "high" : "low" as tier
+
+-- when for multi-branch conditions (preferred)
+from users
+  select
+    when status
+      is "active" then "Active User"
+      is "pending" then "Pending"
+      otherwise "Unknown"
+    as status_label
+
+-- CASE WHEN also works but is more verbose
+from users
+  select
+    CASE
+      WHEN status = "active" THEN "Active User"
+      WHEN status = "pending" THEN "Pending"
+      ELSE "Unknown"
+    END as status_label"""
+    },
+    {
+        "title": "Join Styles",
+        "desc": "Symbolic operators (preferred) vs SQL JOIN keywords",
+        "query": """-- Symbolic operators - preferred, more concise
+-- & = INNER JOIN, &? = LEFT JOIN, ?& = RIGHT JOIN
+from orders
+  & customers on orders.customer_id = customers.id
+
+-- LEFT JOIN: &? (the ? marks the nullable side)
+from orders
+  &? customers on orders.customer_id = customers.id
+
+-- SQL JOIN syntax also works
+from orders
+  LEFT JOIN customers on orders.customer_id = customers.id"""
+    },
+    {
+        "title": "Pipeline Styles",
+        "desc": "Indentation (preferred) vs pipe operator",
+        "query": """-- Indentation-based pipeline - preferred, cleaner
+from users
+  where status = "active"
+  group by country (# as total)
+  order by -total
+
+-- Explicit pipe operator also works
+from users
+| where status = "active"
+| group by country (# as total)
+| order by -total"""
+    },
+    {
+        "title": "CTE Styles",
+        "desc": "stash as (preferred) vs WITH ... AS",
+        "query": """-- stash as - preferred, inline CTE definition
+from users
+  where status = "active"
+  stash as active_users
+
+from active_users
+  group by country (# as total)
+
+-- WITH ... AS also works (SQL style)
+WITH active_users AS (
+  SELECT * FROM users WHERE status = "active"
+)
+SELECT country, COUNT(*) as total
+FROM active_users
+GROUP BY country"""
+    },
+]
+
+
+# =============================================================================
+# SQL EXAMPLES (for reverse compilation demos)
+# =============================================================================
+
 SQL_EXAMPLES: list[dict] = [
     {
         "title": "BigQuery CTE with Joins",
@@ -484,6 +836,7 @@ def get_all_examples() -> dict[str, list[Example]]:
         "column_operators": COLUMN_OPERATOR_EXAMPLES,
         "count_inference": COUNT_INFERENCE_EXAMPLES,
         "cohort": COHORT_EXAMPLES,
+        "syntax_styles": SYNTAX_STYLES_EXAMPLES,
     }
 
 
