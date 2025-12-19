@@ -9,6 +9,63 @@ from asql.preparse.registry import FUNCTION_ALIASES
 
 class AggregatesMixin:
 
+    def _convert_inline_comments_to_block(self, text: str) -> str:
+        """Convert -- inline comments to /* */ block comments.
+        
+        This prevents inline comments from eating subsequent SQL when
+        the query is reassembled onto fewer lines.
+        
+        Example:
+            "sum(x) as total, -- comment\ncount(*)"
+            → "sum(x) as total, /* comment */\ncount(*)"
+        """
+        # Pattern: -- followed by text until end of line (but not inside strings)
+        # Simple approach: replace -- ... \n with /* ... */\n
+        # and -- ... $ (end of string) with /* ... */
+        
+        result = []
+        i = 0
+        in_string = None
+        
+        while i < len(text):
+            char = text[i]
+            
+            # Track string boundaries
+            if char in ('"', "'") and (i == 0 or text[i-1] != '\\'):
+                if in_string == char:
+                    in_string = None
+                elif in_string is None:
+                    in_string = char
+                result.append(char)
+                i += 1
+                continue
+            
+            # Check for -- comment start (outside strings)
+            if in_string is None and i + 1 < len(text) and text[i:i+2] == '--':
+                # Find end of comment (newline or end of string)
+                comment_start = i + 2
+                j = comment_start
+                while j < len(text) and text[j] != '\n':
+                    j += 1
+                
+                # Extract comment content and convert to block style
+                comment_content = text[comment_start:j].strip()
+                if comment_content:
+                    result.append(f'/* {comment_content} */')
+                
+                # Skip past the comment (but keep the newline if present)
+                if j < len(text) and text[j] == '\n':
+                    result.append('\n')
+                    i = j + 1
+                else:
+                    i = j
+                continue
+            
+            result.append(char)
+            i += 1
+        
+        return ''.join(result)
+
     def _transform_natural_aggregates(self, text: str) -> str:
         """
         Transform natural language function calls to explicit function calls.
@@ -131,6 +188,11 @@ class AggregatesMixin:
         
         # Extract aggregate block content (between outer parens)
         aggs_text = result[paren_pos + 1:i - 1].strip()
+        
+        # Convert inline -- comments to /* */ style to prevent them from
+        # eating the FROM/GROUP BY clauses when we reassemble the query.
+        # Pattern: -- comment text (to end of line or end of string)
+        aggs_text = self._convert_inline_comments_to_block(aggs_text)
         
         # Find what comes after the aggregate block
         after_block = result[i:].strip()

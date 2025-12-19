@@ -41,9 +41,41 @@ class CommentsMixin:
         return result, comments
 
     def _restore_comments(self, text: str, comments: List[Tuple[int, str]]) -> str:
-        """Restore comments from placeholders."""
+        """Restore comments from placeholders.
+        
+        If a -- comment would end up NOT at the end of a line (i.e., there's
+        SQL code after it on the same line), convert it to /* */ style to
+        prevent it from eating the subsequent code.
+        """
         result = text
         for idx, comment in comments:
             placeholder = f"__COMMENT_{idx}__"
-            result = result.replace(placeholder, comment)
+            
+            # Find where the placeholder is in the current result
+            pos = result.find(placeholder)
+            if pos == -1:
+                continue
+            
+            # Check if this is a -- comment that needs conversion
+            if comment.startswith('--'):
+                # Find what comes after the placeholder on the same line
+                after_placeholder = pos + len(placeholder)
+                next_newline = result.find('\n', after_placeholder)
+                if next_newline == -1:
+                    after_text = result[after_placeholder:]
+                else:
+                    after_text = result[after_placeholder:next_newline]
+                
+                # If there's non-whitespace content after the placeholder on
+                # the same line, convert -- to /* */ to prevent eating it
+                if after_text.strip():
+                    # Convert: "-- comment text" → "/* comment text */"
+                    comment_content = comment[2:].strip()  # Remove -- prefix
+                    if comment_content:
+                        comment = f"/* {comment_content} */"
+                    else:
+                        comment = ""  # Empty comment, just remove it
+            
+            result = result.replace(placeholder, comment, 1)
+        
         return result

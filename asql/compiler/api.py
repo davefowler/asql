@@ -1,6 +1,6 @@
 """ASQL compiler public API."""
 
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import sqlglot
 from sqlglot import exp
@@ -15,6 +15,52 @@ from asql.compiler.explode import process_explode_markers
 from asql.compiler.inline_settings import extract_dialect_from_comment, extract_inline_settings
 from asql.compiler.auto_qualify import auto_qualify_columns
 from asql.compiler.auto_alias import apply_auto_aliasing
+
+
+def _validate_statement(stmt: exp.Expression, original_query: str) -> List[str]:
+    """Validate a compiled statement for common structural errors.
+    
+    Returns a list of error messages (empty if valid).
+    
+    NOTE: This is NOT a complete SQL validator. It catches obvious structural
+    issues that indicate the preparser mangled the query (e.g., inline comments
+    eating the FROM clause). It does NOT validate:
+    - Column existence (would require schema)
+    - Aggregate/GROUP BY correctness (window functions complicate this)
+    - Type compatibility
+    
+    The goal is to catch clearly broken queries before they're returned,
+    not to be a full semantic validator.
+    """
+    errors: List[str] = []
+    
+    if not isinstance(stmt, exp.Select):
+        return errors
+    
+    has_from = stmt.find(exp.From) is not None
+    
+    # Check for column references in SELECT
+    select_cols = []
+    for sel_expr in stmt.expressions:
+        if isinstance(sel_expr, exp.Column):
+            select_cols.append(sel_expr)
+        elif isinstance(sel_expr, exp.Alias):
+            inner = sel_expr.this
+            if isinstance(inner, exp.Column):
+                select_cols.append(inner)
+    
+    # Error: SELECT with table column references but no FROM clause
+    # This catches the common preparser bug where inline comments eat the FROM.
+    # We only flag this if there are actual column references (not just literals).
+    if select_cols and not has_from:
+        col_names = [c.name for c in select_cols[:3]]
+        errors.append(
+            f"Query references columns ({', '.join(col_names)}) but has no FROM clause. "
+            f"This may indicate a parsing error - check for inline comments "
+            f"that might be hiding part of the query."
+        )
+    
+    return errors
 
 
 # Ensure ASQL dialect is registered
@@ -84,6 +130,16 @@ def compile(
             transformed_stmt = auto_qualify_columns(transformed_stmt)
 
             transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
+            
+            # Validate the compiled statement for semantic errors
+            validation_errors = _validate_statement(transformed_stmt, asql_query)
+            if validation_errors:
+                raise ASQLCompilationError(
+                    f"Invalid query generated:\n" + 
+                    "\n".join(f"  - {e}" for e in validation_errors) +
+                    f"\n\nOriginal query:\n{asql_query[:500]}"
+                )
+            
             sql_parts.append(transformed_stmt.sql(dialect=sql_dialect, pretty=pretty))
 
         return ";\n\n".join(sql_parts)

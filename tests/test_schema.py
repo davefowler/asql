@@ -649,3 +649,4 @@ class TestSchemaToDict:
         rel = schema.find_relationship("orders", "users")
         assert rel is not None
         assert rel.alias == "user"
+

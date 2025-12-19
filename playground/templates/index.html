@@ -391,17 +391,6 @@
             font-size: 12px;
         }
         
-        .loading {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid var(--asql-red);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-left: 10px;
-        }
-        
         /* CodeMirror styling */
         .CodeMirror {
             height: 100%;
@@ -496,11 +485,6 @@
             color: #1967d2;
         }
         
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
         .copy-btn {
             background: transparent;
             padding: 6px;
@@ -533,113 +517,6 @@
             padding: 8px 16px;
             background: #f8f9fa;
             border-top: 1px solid #dadce0;
-        }
-        
-        /* Settings Panel Styles */
-        .settings-panel {
-            background: white;
-            border: 1px solid #dadce0;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            overflow: hidden;
-        }
-        
-        .settings-header {
-            padding: 10px 16px;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #f8f9fa;
-            border-bottom: 1px solid #dadce0;
-            font-weight: 500;
-            font-size: 13px;
-        }
-        
-        .settings-header:hover {
-            background: #f1f3f4;
-        }
-        
-        .settings-content {
-            padding: 16px;
-            display: none;
-        }
-        
-        .settings-content.open {
-            display: block;
-        }
-        
-        .settings-toggle {
-            transition: transform 0.2s;
-        }
-        
-        .settings-toggle.open {
-            transform: rotate(180deg);
-        }
-        
-        .settings-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 12px;
-        }
-        
-        .setting-group {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        }
-        
-        .setting-group label {
-            font-size: 11px;
-            color: #666;
-            font-weight: 500;
-        }
-        
-        .setting-group select {
-            padding: 6px 10px;
-            border: 1px solid #dadce0;
-            border-radius: 4px;
-            font-size: 12px;
-            background: white;
-        }
-        
-        .settings-presets {
-            margin-bottom: 12px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid #e8eaed;
-        }
-        
-        .settings-presets label {
-            font-size: 11px;
-            color: #666;
-            font-weight: 500;
-            display: block;
-            margin-bottom: 6px;
-        }
-        
-        .preset-buttons {
-            display: flex;
-            gap: 8px;
-        }
-        
-        .preset-btn {
-            padding: 6px 12px;
-            font-size: 12px;
-            border: 1px solid #dadce0;
-            border-radius: 4px;
-            background: white;
-            cursor: pointer;
-        }
-        
-        .preset-btn:hover {
-            background: #f8f9fa;
-            border-color: var(--asql-red-light);
-        }
-        
-        .preset-btn.active {
-            background: var(--asql-red);
-            color: white;
-            border-color: var(--asql-red);
         }
         
         /* Toast notification */
@@ -969,10 +846,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
     <script src="/static/syntax/codemirror/asql-mode.js"></script>
     <script>
-        // Detect if embedded in docs
+        // ========== Embedding Detection ==========
         const isEmbedded = window.ASQL_EMBEDDED || (window.parent !== window && window.parent.location.hostname === window.location.hostname);
         
-        // If embedded, adjust styling
         if (isEmbedded) {
             document.addEventListener('DOMContentLoaded', function() {
                 const container = document.querySelector('.container');
@@ -982,16 +858,14 @@
                     container.style.height = 'auto';
                     container.style.minHeight = '100%';
                 }
-                // Hide back to docs link if embedded (it will be in parent frame)
                 const backLink = document.querySelector('a[href="/docs/"]');
                 if (backLink && window.parent !== window) {
                     backLink.style.display = 'none';
                 }
             });
         }
-    </script>
-    <script>
-        // Initialize CodeMirror editors (make them global so functions can access them)
+        
+        // ========== CodeMirror Editors ==========
         let inputEditor, outputEditor;
         
         // Example arrays - embedded directly from server
@@ -1049,9 +923,6 @@
         
         // ========== Settings Modal Functions ==========
         
-        // Settings schema (loaded from server, with fallback defaults)
-        let settingsSchema = null;
-        
         // Current settings (merged with defaults)
         let currentSettings = {
             compile: {},
@@ -1064,7 +935,7 @@
                 auto_spine: true,
                 week_start: 'monday',
                 relative_date_type: 'timestamp',
-                invent_join_keys: false
+                invent_join_keys: true  // On by default for playground examples
             },
             style: {
                 equality: 'single',
@@ -1196,12 +1067,12 @@
             compileGrid.innerHTML = '';
             styleGrid.innerHTML = '';
             
-            // Compile settings
+            // Compile settings (checkboxes first, then dropdowns)
             const compileFields = [
                 { name: 'auto_spine', label: 'Auto Spine', type: 'boolean', description: 'Add gap-filling for date truncations in GROUP BY' },
+                { name: 'invent_join_keys', label: 'Invent Join Keys', type: 'boolean', description: 'Infer join keys from {table}_id convention' },
                 { name: 'week_start', label: 'Week Start', type: 'select', options: ['monday', 'sunday'], description: 'Day the week() function starts on' },
-                { name: 'relative_date_type', label: 'Relative Date Type', type: 'select', options: ['timestamp', 'date'], description: 'Type for "7 days ago" expressions' },
-                { name: 'invent_join_keys', label: 'Invent Join Keys', type: 'boolean', description: 'Infer join keys from {table}_id convention' }
+                { name: 'relative_date_type', label: 'Relative Date Type', type: 'select', options: ['timestamp', 'date'], description: 'Type for "7 days ago" expressions' }
             ];
             
             compileFields.forEach(field => {
@@ -1665,6 +1536,73 @@
             updateURL();
         });
         
+        // Helper: Create an example section with title, description, and example buttons
+        function createExampleSection(container, title, description, examples, options = {}) {
+            const section = document.createElement('div');
+            section.className = 'example-section';
+            if (options.id) section.id = options.id;
+            
+            const h3 = document.createElement('h3');
+            h3.textContent = title;
+            section.appendChild(h3);
+            
+            if (description) {
+                const p = document.createElement('p');
+                p.style.cssText = 'color: #666; margin-bottom: 15px; font-size: 13px;';
+                p.textContent = description;
+                section.appendChild(p);
+            }
+            
+            const examplesDiv = document.createElement('div');
+            examplesDiv.className = 'example-list';
+            section.appendChild(examplesDiv);
+            container.appendChild(section);
+            
+            if (!examples || !Array.isArray(examples) || examples.length === 0) {
+                return examplesDiv;
+            }
+            
+            examples.forEach(example => {
+                const btn = document.createElement('button');
+                btn.className = 'example-btn';
+                
+                const titleDiv = document.createElement('div');
+                titleDiv.className = 'example-title';
+                titleDiv.textContent = example.title;
+                btn.appendChild(titleDiv);
+                
+                const descDiv = document.createElement('div');
+                descDiv.className = 'example-desc';
+                descDiv.textContent = example.desc;
+                btn.appendChild(descDiv);
+                
+                btn.onclick = () => {
+                    closeExamplesModal();
+                    inputEditor.setValue(example.query);
+                    
+                    // Set dialects if specified in example or options
+                    if (example.dialect || options.fromDialect) {
+                        document.getElementById('from-dialect').value = example.dialect || options.fromDialect || '';
+                    } else if (options.ensureAsql) {
+                        const fromDialect = document.getElementById('from-dialect').value;
+                        if (fromDialect !== 'asql') {
+                            document.getElementById('from-dialect').value = 'asql';
+                        }
+                    }
+                    if (example.toLanguage) {
+                        document.getElementById('to-dialect').value = example.toLanguage;
+                    }
+                    
+                    updateUITitles();
+                    translateQuery();
+                    setTimeout(updateURL, 1000);
+                };
+                examplesDiv.appendChild(btn);
+            });
+            
+            return examplesDiv;
+        }
+        
         function loadExamples() {
             const container = document.getElementById('examples-container');
             if (!container) {
@@ -1680,386 +1618,45 @@
                     currentMode = getCurrentMode();
                 } catch (modeError) {
                     console.warn('Error getting current mode, defaulting to asql-to-sql:', modeError);
-                    currentMode = 'asql-to-sql'; // Default fallback
+                    currentMode = 'asql-to-sql';
                 }
                 
                 if (currentMode === 'asql-to-sql' || currentMode === 'asql-to-asql') {
-                    // Basic ASQL Examples section
-                    const section = document.createElement('div');
-                    section.className = 'example-section';
-                    const h3 = document.createElement('h3');
-                    h3.textContent = 'Basic Examples';
-                    section.appendChild(h3);
-                    const p = document.createElement('p');
-                    p.style.color = '#666';
-                    p.style.marginBottom = '15px';
-                    p.style.fontSize = '13px';
-                    p.textContent = 'Basic ASQL queries that showcase the language syntax. These examples should not look too different from regular SQL - ASQL is designed to be familiar and intuitive.';
-                    section.appendChild(p);
-                    const examplesDiv = document.createElement('div');
-                    examplesDiv.className = 'example-list';
-                    examplesDiv.id = 'asql-examples';
-                    section.appendChild(examplesDiv);
-                    container.appendChild(section);
+                    // ASQL example sections
+                    createExampleSection(container, 'Basic Examples',
+                        'Basic ASQL queries that showcase the language syntax. These examples should not look too different from regular SQL - ASQL is designed to be familiar and intuitive.',
+                        asqlExamples, { ensureAsql: true });
                     
-                    if (!asqlExamples || !Array.isArray(asqlExamples)) {
-                        console.error('asqlExamples array is not defined or is not an array');
-                        examplesDiv.innerHTML = '<p style="color: var(--asql-red-dark); padding: 20px;">Error: Examples data not available.</p>';
-                    } else {
-                        asqlExamples.forEach(example => {
-                        const btn = document.createElement('button');
-                        btn.className = 'example-btn';
-                        const titleDiv = document.createElement('div');
-                        titleDiv.className = 'example-title';
-                        titleDiv.textContent = example.title;
-                        const descDiv = document.createElement('div');
-                        descDiv.className = 'example-desc';
-                        descDiv.textContent = example.desc;
-                        btn.appendChild(titleDiv);
-                        btn.appendChild(descDiv);
-                        btn.onclick = () => {
-                            closeExamplesModal();
-                            // Set "from" to ASQL if not already set
-                            const fromDialect = document.getElementById('from-dialect').value;
-                            if (fromDialect !== 'asql') {
-                                document.getElementById('from-dialect').value = 'asql';
-                                updateUITitles();
-                            }
-                            inputEditor.setValue(example.query);
-                            translateQuery();
-                            // Update URL after a short delay to allow translation to complete
-                            setTimeout(() => {
-                                updateURL();
-                            }, 1000);
-                        };
-                        examplesDiv.appendChild(btn);
-                        });
-                    }
+                    createExampleSection(container, 'ASQL Pipeline Examples',
+                        'Complex queries that showcase pipeline features and generate multiple CTEs.',
+                        asqlPipelineExamples, { ensureAsql: true });
                     
-                    // ASQL Pipeline Examples section
-                    const pipelineSection = document.createElement('div');
-                    pipelineSection.className = 'example-section';
-                    const pipelineH3 = document.createElement('h3');
-                    pipelineH3.textContent = 'ASQL Pipeline Examples';
-                    pipelineSection.appendChild(pipelineH3);
-                    const pipelineP = document.createElement('p');
-                    pipelineP.style.color = '#666';
-                    pipelineP.style.marginBottom = '15px';
-                    pipelineP.style.fontSize = '13px';
-                    pipelineP.textContent = 'Complex queries that showcase pipeline features and generate multiple CTEs.';
-                    pipelineSection.appendChild(pipelineP);
-                    const pipelineExamplesDiv = document.createElement('div');
-                    pipelineExamplesDiv.className = 'example-list';
-                    pipelineExamplesDiv.id = 'asql-pipeline-examples';
-                    pipelineSection.appendChild(pipelineExamplesDiv);
-                    container.appendChild(pipelineSection);
+                    createExampleSection(container, 'Cohort Analysis Examples',
+                        'Cohort analysis patterns using first(), running_sum(), prior(), and other window functions. These showcase how to build retention, LTV, and user segmentation queries.',
+                        cohortExamples, { ensureAsql: true });
                     
-                    if (!asqlPipelineExamples || !Array.isArray(asqlPipelineExamples)) {
-                        console.error('asqlPipelineExamples array is not defined or is not an array');
-                        pipelineExamplesDiv.innerHTML = '<p style="color: var(--asql-red-dark); padding: 20px;">Error: Pipeline examples data not available.</p>';
-                    } else {
-                        asqlPipelineExamples.forEach(example => {
-                        const btn = document.createElement('button');
-                        btn.className = 'example-btn';
-                        const titleDiv = document.createElement('div');
-                        titleDiv.className = 'example-title';
-                        titleDiv.textContent = example.title;
-                        const descDiv = document.createElement('div');
-                        descDiv.className = 'example-desc';
-                        descDiv.textContent = example.desc;
-                        btn.appendChild(titleDiv);
-                        btn.appendChild(descDiv);
-                        btn.onclick = () => {
-                            closeExamplesModal();
-                            // Set "from" to ASQL if not already set
-                            const fromDialect = document.getElementById('from-dialect').value;
-                            if (fromDialect !== 'asql') {
-                                document.getElementById('from-dialect').value = 'asql';
-                                updateUITitles();
-                            }
-                            inputEditor.setValue(example.query);
-                            translateQuery();
-                            // Update URL after a short delay to allow translation to complete
-                            setTimeout(() => {
-                                updateURL();
-                            }, 1000);
-                        };
-                        pipelineExamplesDiv.appendChild(btn);
-                        });
-                    }
+                    createExampleSection(container, 'Sampling Examples',
+                        'Random sampling for data exploration. Fixed counts, percentages, and stratified sampling per group.',
+                        samplingExamples, { ensureAsql: true });
                     
-                    // Cohort Analysis Examples section
-                    const cohortSection = document.createElement('div');
-                    cohortSection.className = 'example-section';
-                    const cohortH3 = document.createElement('h3');
-                    cohortH3.textContent = 'Cohort Analysis Examples';
-                    cohortSection.appendChild(cohortH3);
-                    const cohortP = document.createElement('p');
-                    cohortP.style.color = '#666';
-                    cohortP.style.marginBottom = '15px';
-                    cohortP.style.fontSize = '13px';
-                    cohortP.textContent = 'Cohort analysis patterns using first(), running_sum(), prior(), and other window functions. These showcase how to build retention, LTV, and user segmentation queries.';
-                    cohortSection.appendChild(cohortP);
-                    const cohortExamplesDiv = document.createElement('div');
-                    cohortExamplesDiv.className = 'example-list';
-                    cohortExamplesDiv.id = 'cohort-examples';
-                    cohortSection.appendChild(cohortExamplesDiv);
-                    container.appendChild(cohortSection);
+                    createExampleSection(container, 'Data Reshaping Examples',
+                        'Pivot (rows to columns), unpivot (columns to rows), and explode (arrays to rows) operations for reshaping data.',
+                        dataReshapingExamples, { ensureAsql: true });
                     
-                    if (!cohortExamples || !Array.isArray(cohortExamples)) {
-                        console.error('cohortExamples array is not defined or is not an array');
-                        cohortExamplesDiv.innerHTML = '<p style="color: var(--asql-red-dark); padding: 20px;">Error: Cohort examples data not available.</p>';
-                    } else {
-                        cohortExamples.forEach(example => {
-                        const btn = document.createElement('button');
-                        btn.className = 'example-btn';
-                        const titleDiv = document.createElement('div');
-                        titleDiv.className = 'example-title';
-                        titleDiv.textContent = example.title;
-                        const descDiv = document.createElement('div');
-                        descDiv.className = 'example-desc';
-                        descDiv.textContent = example.desc;
-                        btn.appendChild(titleDiv);
-                        btn.appendChild(descDiv);
-                        btn.onclick = () => {
-                            closeExamplesModal();
-                            // Set "from" to ASQL if not already set
-                            const fromDialect = document.getElementById('from-dialect').value;
-                            if (fromDialect !== 'asql') {
-                                document.getElementById('from-dialect').value = 'asql';
-                                updateUITitles();
-                            }
-                            inputEditor.setValue(example.query);
-                            translateQuery();
-                            // Update URL after a short delay to allow translation to complete
-                            setTimeout(() => {
-                                updateURL();
-                            }, 1000);
-                        };
-                        cohortExamplesDiv.appendChild(btn);
-                        });
-                    }
+                    createExampleSection(container, 'Column Operator Examples',
+                        'Except (exclude columns), rename, and replace operators for column manipulation without listing all columns.',
+                        columnOperatorExamples, { ensureAsql: true });
                     
-                    // Sampling Examples section
-                    const samplingSection = document.createElement('div');
-                    samplingSection.className = 'example-section';
-                    const samplingH3 = document.createElement('h3');
-                    samplingH3.textContent = 'Sampling Examples';
-                    samplingSection.appendChild(samplingH3);
-                    const samplingP = document.createElement('p');
-                    samplingP.style.color = '#666';
-                    samplingP.style.marginBottom = '15px';
-                    samplingP.style.fontSize = '13px';
-                    samplingP.textContent = 'Random sampling for data exploration. Fixed counts, percentages, and stratified sampling per group.';
-                    samplingSection.appendChild(samplingP);
-                    const samplingExamplesDiv = document.createElement('div');
-                    samplingExamplesDiv.className = 'example-list';
-                    samplingExamplesDiv.id = 'sampling-examples';
-                    samplingSection.appendChild(samplingExamplesDiv);
-                    container.appendChild(samplingSection);
-                    
-                    if (typeof samplingExamples !== 'undefined' && Array.isArray(samplingExamples)) {
-                        samplingExamples.forEach(example => {
-                        const btn = document.createElement('button');
-                        btn.className = 'example-btn';
-                        const titleDiv = document.createElement('div');
-                        titleDiv.className = 'example-title';
-                        titleDiv.textContent = example.title;
-                        const descDiv = document.createElement('div');
-                        descDiv.className = 'example-desc';
-                        descDiv.textContent = example.desc;
-                        btn.appendChild(titleDiv);
-                        btn.appendChild(descDiv);
-                        btn.onclick = () => {
-                            closeExamplesModal();
-                            const fromDialect = document.getElementById('from-dialect').value;
-                            if (fromDialect !== 'asql') {
-                                document.getElementById('from-dialect').value = 'asql';
-                                updateUITitles();
-                            }
-                            inputEditor.setValue(example.query);
-                            translateQuery();
-                            setTimeout(() => { updateURL(); }, 1000);
-                        };
-                        samplingExamplesDiv.appendChild(btn);
-                        });
-                    }
-                    
-                    // Data Reshaping Examples section
-                    const reshapingSection = document.createElement('div');
-                    reshapingSection.className = 'example-section';
-                    const reshapingH3 = document.createElement('h3');
-                    reshapingH3.textContent = 'Data Reshaping Examples';
-                    reshapingSection.appendChild(reshapingH3);
-                    const reshapingP = document.createElement('p');
-                    reshapingP.style.color = '#666';
-                    reshapingP.style.marginBottom = '15px';
-                    reshapingP.style.fontSize = '13px';
-                    reshapingP.textContent = 'Pivot (rows to columns), unpivot (columns to rows), and explode (arrays to rows) operations for reshaping data.';
-                    reshapingSection.appendChild(reshapingP);
-                    const reshapingExamplesDiv = document.createElement('div');
-                    reshapingExamplesDiv.className = 'example-list';
-                    reshapingExamplesDiv.id = 'reshaping-examples';
-                    reshapingSection.appendChild(reshapingExamplesDiv);
-                    container.appendChild(reshapingSection);
-                    
-                    if (typeof dataReshapingExamples !== 'undefined' && Array.isArray(dataReshapingExamples)) {
-                        dataReshapingExamples.forEach(example => {
-                        const btn = document.createElement('button');
-                        btn.className = 'example-btn';
-                        const titleDiv = document.createElement('div');
-                        titleDiv.className = 'example-title';
-                        titleDiv.textContent = example.title;
-                        const descDiv = document.createElement('div');
-                        descDiv.className = 'example-desc';
-                        descDiv.textContent = example.desc;
-                        btn.appendChild(titleDiv);
-                        btn.appendChild(descDiv);
-                        btn.onclick = () => {
-                            closeExamplesModal();
-                            const fromDialect = document.getElementById('from-dialect').value;
-                            if (fromDialect !== 'asql') {
-                                document.getElementById('from-dialect').value = 'asql';
-                                updateUITitles();
-                            }
-                            inputEditor.setValue(example.query);
-                            translateQuery();
-                            setTimeout(() => { updateURL(); }, 1000);
-                        };
-                        reshapingExamplesDiv.appendChild(btn);
-                        });
-                    }
-                    
-                    // Column Operators Examples section
-                    const columnOpsSection = document.createElement('div');
-                    columnOpsSection.className = 'example-section';
-                    const columnOpsH3 = document.createElement('h3');
-                    columnOpsH3.textContent = 'Column Operator Examples';
-                    columnOpsSection.appendChild(columnOpsH3);
-                    const columnOpsP = document.createElement('p');
-                    columnOpsP.style.color = '#666';
-                    columnOpsP.style.marginBottom = '15px';
-                    columnOpsP.style.fontSize = '13px';
-                    columnOpsP.textContent = 'Except (exclude columns), rename, and replace operators for column manipulation without listing all columns.';
-                    columnOpsSection.appendChild(columnOpsP);
-                    const columnOpsExamplesDiv = document.createElement('div');
-                    columnOpsExamplesDiv.className = 'example-list';
-                    columnOpsExamplesDiv.id = 'column-ops-examples';
-                    columnOpsSection.appendChild(columnOpsExamplesDiv);
-                    container.appendChild(columnOpsSection);
-                    
-                    if (typeof columnOperatorExamples !== 'undefined' && Array.isArray(columnOperatorExamples)) {
-                        columnOperatorExamples.forEach(example => {
-                        const btn = document.createElement('button');
-                        btn.className = 'example-btn';
-                        const titleDiv = document.createElement('div');
-                        titleDiv.className = 'example-title';
-                        titleDiv.textContent = example.title;
-                        const descDiv = document.createElement('div');
-                        descDiv.className = 'example-desc';
-                        descDiv.textContent = example.desc;
-                        btn.appendChild(titleDiv);
-                        btn.appendChild(descDiv);
-                        btn.onclick = () => {
-                            closeExamplesModal();
-                            const fromDialect = document.getElementById('from-dialect').value;
-                            if (fromDialect !== 'asql') {
-                                document.getElementById('from-dialect').value = 'asql';
-                                updateUITitles();
-                            }
-                            inputEditor.setValue(example.query);
-                            translateQuery();
-                            setTimeout(() => { updateURL(); }, 1000);
-                        };
-                        columnOpsExamplesDiv.appendChild(btn);
-                        });
-                    }
-                    
-                    // Count Inference Examples section
-                    const countSection = document.createElement('div');
-                    countSection.className = 'example-section';
-                    const countH3 = document.createElement('h3');
-                    countH3.textContent = 'Smart Count Examples';
-                    countSection.appendChild(countH3);
-                    const countP = document.createElement('p');
-                    countP.style.color = '#666';
-                    countP.style.marginBottom = '15px';
-                    countP.style.fontSize = '13px';
-                    countP.textContent = 'The # shorthand with table names infers primary keys. "# users" becomes COUNT(DISTINCT user_id).';
-                    countSection.appendChild(countP);
-                    const countExamplesDiv = document.createElement('div');
-                    countExamplesDiv.className = 'example-list';
-                    countExamplesDiv.id = 'count-inference-examples';
-                    countSection.appendChild(countExamplesDiv);
-                    container.appendChild(countSection);
-                    
-                    if (typeof countInferenceExamples !== 'undefined' && Array.isArray(countInferenceExamples)) {
-                        countInferenceExamples.forEach(example => {
-                        const btn = document.createElement('button');
-                        btn.className = 'example-btn';
-                        const titleDiv = document.createElement('div');
-                        titleDiv.className = 'example-title';
-                        titleDiv.textContent = example.title;
-                        const descDiv = document.createElement('div');
-                        descDiv.className = 'example-desc';
-                        descDiv.textContent = example.desc;
-                        btn.appendChild(titleDiv);
-                        btn.appendChild(descDiv);
-                        btn.onclick = () => {
-                            closeExamplesModal();
-                            const fromDialect = document.getElementById('from-dialect').value;
-                            if (fromDialect !== 'asql') {
-                                document.getElementById('from-dialect').value = 'asql';
-                                updateUITitles();
-                            }
-                            inputEditor.setValue(example.query);
-                            translateQuery();
-                            setTimeout(() => { updateURL(); }, 1000);
-                        };
-                        countExamplesDiv.appendChild(btn);
-                        });
-                    }
+                    createExampleSection(container, 'Smart Count Examples',
+                        'The # shorthand with table names infers primary keys. "# users" becomes COUNT(DISTINCT user_id).',
+                        countInferenceExamples, { ensureAsql: true });
                 } else {
-                    const section = document.createElement('div');
-                    section.className = 'example-section';
-                    const sqlH3 = document.createElement('h3');
-                    sqlH3.textContent = 'SQL Translation Examples';
-                    section.appendChild(sqlH3);
-                    const sqlExamplesDiv = document.createElement('div');
-                    sqlExamplesDiv.className = 'example-list';
-                    sqlExamplesDiv.id = 'sql-examples';
-                    section.appendChild(sqlExamplesDiv);
-                    container.appendChild(section);
+                    // SQL examples mode
+                    const examplesDiv = createExampleSection(container, 'SQL Translation Examples', null, sqlExamples);
                     
-                    const examplesDiv = document.getElementById('sql-examples');
                     if (sqlExamples.length === 0) {
                         examplesDiv.innerHTML = '<p style="color: #666; padding: 20px;">SQL examples will be loaded from the server...</p>';
                         loadSQLExamples();
-                    } else {
-                        sqlExamples.forEach(example => {
-                            const btn = document.createElement('button');
-                            btn.className = 'example-btn';
-                            const titleDiv = document.createElement('div');
-                            titleDiv.className = 'example-title';
-                            titleDiv.textContent = example.title;
-                            const descDiv = document.createElement('div');
-                            descDiv.className = 'example-desc';
-                            descDiv.textContent = example.desc;
-                            btn.appendChild(titleDiv);
-                            btn.appendChild(descDiv);
-                            btn.onclick = () => {
-                                closeExamplesModal();
-                                inputEditor.setValue(example.query);
-                                document.getElementById('from-dialect').value = example.dialect || '';
-                                updateUITitles();
-                                translateQuery();
-                                // Update URL after a short delay to allow translation to complete
-                                setTimeout(() => {
-                                    updateURL();
-                                }, 1000);
-                            };
-                            examplesDiv.appendChild(btn);
-                        });
                     }
                 }
                 
@@ -2382,14 +1979,6 @@
             } catch (error) {
                 showError('Error: ' + (error && error.message ? error.message : String(error)));
             }
-        }
-        
-        function clearAll() {
-            if (!inputEditor || !outputEditor) return;
-            inputEditor.setValue('');
-            outputEditor.setValue('');
-            document.getElementById('error').style.display = 'none';
-            document.getElementById('detected-dialect').style.display = 'none';
         }
         
         // showToast, copyInput, and copyOutput are now defined globally above
