@@ -175,20 +175,17 @@ body .md-header,
     color: #cdd6f4 !important;
 }
 
-/* Copy button visibility */
-[data-md-color-scheme="default"] .md-typeset .highlight .md-clipboard,
-[data-md-color-scheme="default"] .md-clipboard {
-    color: #666 !important;
+/* Copy button colors */
+[data-md-color-scheme="default"] .md-code__button {
+    color: #666;
 }
 
-[data-md-color-scheme="slate"] .md-typeset .highlight .md-clipboard,
-[data-md-color-scheme="slate"] .md-clipboard {
-    color: #a6adc8 !important;
+[data-md-color-scheme="slate"] .md-code__button {
+    color: #a6adc8;
 }
 
-.md-typeset .highlight .md-clipboard:hover,
-.md-clipboard:hover {
-    color: var(--asql-red) !important;
+.md-code__button:hover {
+    color: var(--asql-red);
 }
 
 /* Admonitions */
@@ -805,30 +802,33 @@ body .md-header,
     border-top-color: rgba(255, 255, 255, 0.65);
 }
 
-/* Copy buttons - no background, only show on hover */
-.asql-mini-playground .md-clipboard,
-.asql-code-block .md-clipboard {
+/* Copy buttons - transparent background, only show on hover (like GitHub/ChatGPT) */
+.md-code__nav {
     background: transparent !important;
-    opacity: 0;
-    transition: opacity 0.2s;
+    background-color: transparent !important;
 }
 
-.asql-mini-playground:hover .md-clipboard,
-.asql-code-block:hover .md-clipboard {
+.md-code__button {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+/* Show copy button when hovering over code block */
+.highlight:hover .md-code__button,
+pre:hover .md-code__button,
+.asql-mini-playground:hover .md-code__button,
+.asql-code-block:hover .md-code__button,
+.asql-mini-playground .asql-mp-pane:hover .md-code__button {
     opacity: 1;
 }
 
-/* Also hide copy buttons by default in regular code blocks */
-.md-typeset .highlight:hover .md-clipboard,
-.md-typeset pre:hover .md-clipboard {
+/* Keep button visible when hovering over it */
+.md-code__button:hover {
     opacity: 1;
-}
-
-.md-typeset .highlight .md-clipboard,
-.md-typeset pre .md-clipboard {
-    background: transparent !important;
-    opacity: 0;
-    transition: opacity 0.2s;
+    background: transparent;
 }
 
 /* Make panes feel full-height and avoid white gutters */
