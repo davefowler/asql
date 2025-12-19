@@ -949,37 +949,44 @@ def _apply_auto_spine(
 
     cte_parts: List[str] = []
     # Track CTE names and their comments for adding after parsing
+    # Only generate comments if include_transpilation_comments is enabled
+    include_comments = settings.include_transpilation_comments if settings else False
     cte_comments: dict[str, str] = {}
 
     # When any spine needs data bounds, the data CTE must come FIRST
     # (because the spine references MIN/MAX from the data CTE)
     if any_spine_needs_data_bounds:
         cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
-        cte_comments[data_cte_name] = "Original aggregation query - data CTE defined first for MIN/MAX bounds"
+        if include_comments:
+            cte_comments[data_cte_name] = "Original aggregation query - data CTE defined first for MIN/MAX bounds"
 
     for cte_name, cte_select, metadata in spine_ctes:
         cte_parts.append(f"{cte_name} AS ({cte_select.sql(dialect=dialect)})")
-        cte_comments[cte_name] = _generate_spine_comment(metadata)
+        if include_comments:
+            cte_comments[cte_name] = _generate_spine_comment(metadata)
 
     # Only add combined_spine CTE when we have multiple GROUP BY columns or rollup
     if combined_spine_sql is not None:
         cte_parts.append(f"{combined_spine_name} AS ({combined_spine_sql})")
-        cte_comments[combined_spine_name] = "Cross-join of all spine dimensions to ensure every combination appears"
+        if include_comments:
+            cte_comments[combined_spine_name] = "Cross-join of all spine dimensions to ensure every combination appears"
     
     # If data CTE wasn't added first, add it now (normal case)
     if not any_spine_needs_data_bounds:
         cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
-        cte_comments[data_cte_name] = "Original aggregation query"
+        if include_comments:
+            cte_comments[data_cte_name] = "Original aggregation query"
 
     result_sql = "WITH " + ", ".join(cte_parts) + " " + final_sql
     try:
         result_stmt = sqlglot.parse_one(result_sql.strip(), dialect=dialect)
         
-        # Add comments to each CTE node
-        for cte_node in result_stmt.find_all(exp.CTE):
-            cte_name = cte_node.alias
-            if cte_name in cte_comments:
-                cte_node.comments = [cte_comments[cte_name]]
+        # Add comments to each CTE node (only if comments are enabled)
+        if include_comments and cte_comments:
+            for cte_node in result_stmt.find_all(exp.CTE):
+                cte_name = cte_node.alias
+                if cte_name in cte_comments:
+                    cte_node.comments = [cte_comments[cte_name]]
         
         return result_stmt
     except Exception as e:

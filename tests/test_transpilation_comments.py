@@ -94,8 +94,8 @@ class TestPassthroughComments:
 class TestIncludeTranspilationComments:
     """Test include_transpilation_comments setting."""
     
-    def test_transpilation_comments_default_false(self):
-        """By default, transpilation comments are not added."""
+    def test_transpilation_comments_default_true(self):
+        """By default, transpilation comments ARE added."""
         asql = """
         from orders
         where order_date >= @2024-01-01 and order_date < @2024-02-01
@@ -104,8 +104,8 @@ class TestIncludeTranspilationComments:
         )
         """
         sql = compile(asql, dialect="snowflake")
-        
-        assert "ASQL auto-spine" not in sql
+
+        assert "ASQL auto-spine" in sql
     
     def test_transpilation_comments_true_auto_spine(self):
         """Enabling transpilation comments adds auto-spine explanation."""
@@ -291,8 +291,8 @@ class TestCommentSettingsInConfig:
     def test_default_values(self):
         """Test default values for comment settings."""
         settings = CompileSettings()
-        
-        assert settings.include_transpilation_comments is False
+
+        assert settings.include_transpilation_comments is True
         assert settings.passthrough_comments is True
 
 
