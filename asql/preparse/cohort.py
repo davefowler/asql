@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Dict, List, Optional, Tuple
 
+from asql.errors import ASQLSyntaxError
+
 class CohortMixin:
 
     def _transform_cohort_by(self, text: str) -> str:
@@ -53,12 +55,14 @@ class CohortMixin:
         
         activity_table = from_match.group(1)
         
-        # Infer join key if not explicit
+        # Join key must be explicit - no guessing
         if explicit_join_key:
             join_key = explicit_join_key
         else:
-            # Default convention: user_id
-            join_key = 'user_id'
+            raise ASQLSyntaxError(
+                "Cohort analysis requires an explicit join key. "
+                "Use 'cohort by <join_key>' syntax, e.g., 'cohort by user_id' or 'cohort by customer_id'."
+            )
         
         # Determine period calculation - use EXTRACT with AGE for PostgreSQL-style
         period_expr_map = {
@@ -85,7 +89,7 @@ class CohortMixin:
             if date_func_match:
                 activity_date_col = date_func_match.group(2)
         
-        # Default activity date column if not found
+        # Try to find activity date column if not found in GROUP BY
         if not activity_date_col:
             common_dates = ['event_date', 'created_at', 'timestamp', 'date', 'order_date']
             for col in common_dates:
@@ -94,7 +98,12 @@ class CohortMixin:
                     break
         
         if not activity_date_col:
-            activity_date_col = 'created_at'  # Fallback
+            raise ASQLSyntaxError(
+                "Cannot determine activity date column for cohort analysis. "
+                "Use a date function in GROUP BY (e.g., 'group by month(event_date)') "
+                "or ensure your query references a recognizable date column "
+                "(event_date, created_at, timestamp, date, order_date)."
+            )
         
         # Build period expression - use alias for activity table
         period_template = period_expr_map.get(granularity, period_expr_map['month'])

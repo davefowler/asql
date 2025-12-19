@@ -74,9 +74,12 @@ class CountMixin:
         # # of <table_name> → COUNT(DISTINCT {table}_id)
         def replace_hash_of_table(match: re.Match) -> str:
             table_name = match.group(1)
-            # Don't treat SQL keywords as table names (should have been handled above, but double-check)
+            # SQL keywords should have been handled above - if we get here, it's a bug
             if table_name.lower() in sql_keywords:
-                return 'COUNT(*)'  # Shouldn't happen due to above pattern, but safe fallback
+                raise ValueError(
+                    f"Unexpected: SQL keyword '{table_name}' matched as table name in '# of {table_name}'. "
+                    f"This indicates a bug in the regex pattern ordering."
+                )
             pk_column = self._infer_primary_key_column(table_name)
             return f'COUNT(DISTINCT {pk_column})'
         
@@ -88,9 +91,12 @@ class CountMixin:
         # And NOT if it's a SQL keyword (already handled above)
         def replace_hash_table(match: re.Match) -> str:
             table_name = match.group(1)
-            # Don't treat SQL keywords as table names (should have been handled above)
+            # SQL keywords should have been handled above - if we get here, it's a bug
             if table_name.lower() in sql_keywords:
-                return 'COUNT(*)'  # Shouldn't happen, but safe fallback
+                raise ValueError(
+                    f"Unexpected: SQL keyword '{table_name}' matched as table name in '# {table_name}'. "
+                    f"This indicates a bug in the regex pattern ordering."
+                )
             pk_column = self._infer_primary_key_column(table_name)
             return f'COUNT(DISTINCT {pk_column})'
         

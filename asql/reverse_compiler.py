@@ -747,8 +747,7 @@ def _format_function_shorthand(func_name: str, col: str, style: "StyleConfig") -
     elif shorthand == "space":
         return f"{func_name} {col}"
     else:
-        # Fallback to parens if unknown
-        return f"{func_name}({col})"
+        raise ValueError(f"Unknown function_shorthand style: {shorthand!r}. Must be 'parens', 'underscore', or 'space'.")
 
 
 def _aggregation_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> str:

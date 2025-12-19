@@ -214,3 +214,35 @@ class TestCompilationErrorsNotSwallowed:
         
         with pytest.raises(ASQLSyntaxError):
             asql_compile("   ")
+
+
+class TestFallbackRemovals:
+    """Tests for removed fallback patterns - verify errors are raised."""
+    
+    def test_unknown_function_shorthand_raises_error(self):
+        """Unknown function_shorthand style should raise ValueError."""
+        from asql.reverse_compiler import _format_function_shorthand
+        from asql.config import StyleConfig
+        
+        style = StyleConfig()
+        # Temporarily set an invalid shorthand
+        style.function_shorthand = "invalid_style"  # type: ignore
+        
+        with pytest.raises(ValueError, match="Unknown function_shorthand style"):
+            _format_function_shorthand("sum", "amount", style)
+    
+    def test_valid_function_shorthands_work(self):
+        """Valid function_shorthand styles should work."""
+        from asql.reverse_compiler import _format_function_shorthand
+        from asql.config import StyleConfig
+        
+        style = StyleConfig()
+        
+        style.function_shorthand = "parens"
+        assert _format_function_shorthand("sum", "amount", style) == "sum(amount)"
+        
+        style.function_shorthand = "underscore"
+        assert _format_function_shorthand("sum", "amount", style) == "sum_amount"
+        
+        style.function_shorthand = "space"
+        assert _format_function_shorthand("sum", "amount", style) == "sum amount"

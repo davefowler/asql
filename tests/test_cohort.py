@@ -10,7 +10,7 @@ def test_basic_cohort():
     """Test basic cohort by syntax."""
     query = """from events
 group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)"""
+cohort by month(users.signup_date) on user_id"""
     
     sql = compile(query)
     sql_lower = sql.lower()
@@ -46,7 +46,7 @@ def test_cohort_revenue():
     """Test revenue cohort analysis."""
     query = """from orders
 group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date)"""
+cohort by month(customers.first_order_date) on customer_id"""
     
     sql = compile(query)
     sql_lower = sql.lower()
@@ -67,7 +67,7 @@ def test_cohort_weekly():
     """Test weekly cohort granularity."""
     query = """from events
 group by week(event_date) (count(distinct user_id) as active)
-cohort by week(users.signup_date)"""
+cohort by week(users.signup_date) on user_id"""
     
     sql = compile(query)
     sql_lower = sql.lower()
@@ -105,7 +105,7 @@ def test_cohort_period_calculation():
     """Test that period is calculated correctly."""
     query = """from events
 group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)"""
+cohort by month(users.signup_date) on user_id"""
     
     sql = compile(query)
     sql_lower = sql.lower()
@@ -124,7 +124,7 @@ def test_cohort_auto_order_by():
     """Test that cohort automatically adds ORDER BY."""
     query = """from events
 group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)"""
+cohort by month(users.signup_date) on user_id"""
     
     sql = compile(query)
     sql_upper = sql.upper()

@@ -2,8 +2,6 @@
 
 Cohort analysis groups users by a shared characteristic (usually when they "started") and tracks their behavior over time. ASQL's `cohort by` operator dramatically simplifies this complex pattern.
 
-**Reference**: See [`ai_notes/archive/designs/COHORT_ANALYSIS.md`](https://github.com/davefowler/asql/blob/main/ai_notes/archive/designs/COHORT_ANALYSIS.md) for full design details.
-
 ## The Problem: Cohort Queries Are Complex
 
 Traditional SQL requires 3-5 CTEs and 50+ lines for even basic cohort queries. A simple retention cohort requires:
