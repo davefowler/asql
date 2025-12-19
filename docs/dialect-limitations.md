@@ -8,6 +8,8 @@ This document tracks features that have inconsistent behavior or limited support
 
 ### 1. Column Operators (`except`, `rename`, `replace`)
 
+**Tracking**: [Issue #80](https://github.com/davefowler/asql/issues/80) - Schema-aware fallback planned
+
 **Features**: 
 - `except col1, col2` - exclude columns from result
 - `rename old as new` - rename columns  
@@ -138,7 +140,7 @@ Open an issue at: https://github.com/davefowler/asql/issues
 
 ## Future Improvements
 
-- [ ] Add compile-time warnings for features not supported by target dialect
-- [ ] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE`
+- [ ] Add compile-time warnings for features not supported by target dialect - [Issue #81](https://github.com/davefowler/asql/issues/81)
+- [ ] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE` - [Issue #80](https://github.com/davefowler/asql/issues/80)
 - [ ] Add comprehensive ROLLUP/CUBE testing for auto-spine
 - [ ] Document all dialect-specific SQL generation differences

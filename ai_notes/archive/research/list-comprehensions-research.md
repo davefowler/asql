@@ -1,7 +1,8 @@
 # List Comprehensions / Array Transformations Research
 
 **Date:** 2024-12-19
-**Status:** Research complete, feasibility assessed
+**Status:** Research complete, implementation planned
+**Tracking:** [Issue #82](https://github.com/davefowler/asql/issues/82)
 
 ## Summary
 
@@ -102,7 +103,9 @@ SELECT ARRAY(SELECT LOWER(e) FROM UNNEST(strings) AS e) AS lowered FROM t
 
 ## Implementation Strategy
 
-### Recommended Approach
+### Recommended Approach: AST-Based
+
+Build SQLGlot AST nodes rather than string manipulation. This is cleaner and lets SQLGlot handle dialect quirks.
 
 1. **Preparser parses list comprehension syntax:**
    ```asql
@@ -110,11 +113,40 @@ SELECT ARRAY(SELECT LOWER(e) FROM UNNEST(strings) AS e) AS lowered FROM t
    [expr for var in array_col if condition]
    ```
 
-2. **Dialect-aware transformation:**
-   - **DuckDB:** Pass through as-is (native support)
-   - **Postgres/BigQuery:** Emit `ARRAY(SELECT expr FROM UNNEST(array_col) AS var)`
-   - **Snowflake:** Emit custom `ARRAY_AGG` + `FLATTEN` pattern
-   - **MySQL:** Error with helpful message
+2. **Build SQLGlot AST:**
+   ```python
+   exp.Array(expressions=[
+       exp.Select(
+           expressions=[parsed_expr],
+           from_=exp.From(this=exp.Unnest(
+               expressions=[exp.Column(this=array_col)],
+               alias=exp.TableAlias(this=exp.Identifier(this=var))
+           )),
+           where=parsed_condition  # if present
+       )
+   ])
+   ```
+
+3. **Let SQLGlot transpile** - handles DuckDB/BigQuery/Postgres automatically
+
+4. **Snowflake special case** - SQLGlot output is broken, needs custom handling
+
+### SQLGlot AST Transpilation (Tested)
+
+| Dialect | From AST | Works? |
+|---------|----------|--------|
+| DuckDB | `ARRAY(SELECT LOWER(x) FROM UNNEST(tags) AS x)` | ✅ |
+| BigQuery | `ARRAY(SELECT LOWER(x) FROM UNNEST(tags))` | ✅ |
+| Postgres | `ARRAY(SELECT LOWER(x) FROM UNNEST(tags) AS x)` | ✅ |
+| Snowflake | `[SELECT ... FROM TABLE(FLATTEN(...))]` | ❌ Invalid |
+| MySQL | N/A (no arrays) | ❌ |
+
+### Why AST is Better Than String Manipulation
+
+- **Structured** - not error-prone string concatenation
+- **Composable** - can combine with other AST transformations
+- **SQLGlot handles quirks** - like BigQuery dropping alias automatically
+- **Easier to test** - compare AST nodes, not strings
 
 ### Example Transformations
 
