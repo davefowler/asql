@@ -352,12 +352,13 @@ def define_env(env):
     This is called by mkdocs-macros-plugin on startup.
     """
     # Get config for split pane toggle (check env var first, then config)
-    # Env var takes precedence: ASQL_SHOW_SPLIT_PANE=false disables it
+    # Env var takes precedence: ASQL_SHOW_SPLIT_PANE=true enables it
+    # Default is False (split pane disabled by default)
     env_var = os.environ.get("ASQL_SHOW_SPLIT_PANE", "").lower()
-    if env_var in ("false", "0", "no", "off"):
-        show_split_pane = False
-    elif env_var in ("true", "1", "yes", "on"):
+    if env_var in ("true", "1", "yes", "on"):
         show_split_pane = True
+    elif env_var in ("false", "0", "no", "off"):
+        show_split_pane = False
     else:
         # Check mkdocs config if env var not set
         # plugins is a list, need to find the macros plugin config
@@ -373,10 +374,10 @@ def define_env(env):
                 break
         
         if macros_config is not None:
-            show_split_pane = macros_config.get("show_split_pane", True)
+            show_split_pane = macros_config.get("show_split_pane", False)
         else:
-            # Default to True if not configured
-            show_split_pane = True
+            # Default to False if not configured
+            show_split_pane = False
     
     # Store in env for use in hooks
     env.variables["asql_show_split_pane"] = show_split_pane
