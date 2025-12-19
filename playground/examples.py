@@ -236,21 +236,11 @@ from leads
         "desc": "Use ?? operator for null handling",
         "query": """-- ?? is the null coalesce operator (preferred over COALESCE())
 -- Returns first non-null value
-from products
-  & order_items on products.id = order_items.product_id
-  where products.category = "electronics"
-  group by products.id, products.name (
-    sum order_items.quantity as units_sold,
-    sum(order_items.price * order_items.quantity) as revenue
-  )
-  -- Use ?? to handle NULLs in results
+from users
   select
-    products.id,
-    products.name,
-    units_sold ?? 0 as units_sold,
-    revenue ?? 0 as revenue
-  order by -revenue
-  limit 20"""
+    name ?? "Unknown" as display_name,
+    email ?? "no-email@example.com" as email,
+    phone ?? "N/A" as phone"""
     },
     {
         "title": "Date Grouping",
@@ -270,20 +260,11 @@ from transactions
     {
         "title": "CTEs with stash as",
         "desc": "Create reusable CTEs inline",
-        "query": """-- stash as creates a CTE (Common Table Expression)
--- Use it to break complex queries into steps
-from users
+        "query": """from users  -- stash as creates CTEs mid-pipeline
   where signup_date >= @2023-01-01
-  stash as recent_users
-
--- Now use the stashed CTE
-from recent_users
-  & orders on recent_users.id = orders.user_id
-  group by month(signup_date) (
-    # as users_in_cohort,
-    sum orders.total as cohort_revenue
-  )
-  order by month_signup_date"""
+  group by country (# as user_count)
+  stash as country_counts  -- Everything above becomes a CTE
+  order by -user_count     -- Pipeline continues with the CTE"""
     },
     {
         "title": "Chained Joins",
@@ -554,78 +535,60 @@ SYNTAX_STYLES_EXAMPLES: list[Example] = [
 -- 1. Underscore shorthand: sum_amount (declarative, matches output column)
 -- 2. Space shorthand: sum amount (natural language feel)
 -- 3. Parens form: sum(amount) (explicit, required for complex expressions)
+-- Each example below shows a different style:
 
--- Underscore shorthand - preferred when NOT using 'as' alias
--- What you write (sum_amount) = what the output column is named
+-- Style 1: Underscore shorthand - what you write = output column name
+from sales
+  group by region (sum_amount, avg_price)
+  order by -sum_amount;
+
+-- Style 2: Space shorthand - natural language style
+from sales
+  group by region (sum amount, avg price);
+
+-- Style 3: Parens form - required for complex expressions
 from sales
   group by region (
-    sum_amount,      -- Creates column named sum_amount
-    avg_price        -- Creates column named avg_price
-  )
-  order by -sum_amount
-
--- Space shorthand - natural language style
-from sales
-  group by region (
-    sum amount,      -- Same result: sum_amount column
-    avg price
-  )
-
--- Parens form - required for complex expressions
-from sales
-  group by region (
-    sum(amount * quantity) as revenue,  -- Complex expression needs parens
+    sum(amount * quantity) as revenue,
     avg(price / 100) as avg_cents
   )"""
     },
     {
         "title": "When to Use Each Style",
         "desc": "Guidelines for underscore vs space vs parens",
-        "query": """-- Use UNDERSCORE when: not aliasing, single column, want declarative continuity
+        "query": """-- UNDERSCORE: when not aliasing, want declarative continuity
+-- What you write (sum_amount) = what the output column is named
+from sales
+  group by region (sum_amount)
+  order by -sum_amount;
+
+-- SPACE or PARENS: when using 'as' alias
 from sales
   group by region (
-    sum_amount       -- Column will be named sum_amount - can reference it later
-  )
-  where sum_amount > 1000  -- Reference the same name!
+    sum amount as revenue,
+    avg(price) as avg_price
+  );
 
--- Use SPACE or PARENS when: using 'as' alias (underscore benefit doesn't apply)
+-- PARENS: required for multiple arguments or complex expressions
 from sales
-  group by region (
-    sum amount as revenue,     -- Space form with alias
-    avg(price) as avg_price    -- Parens form with alias
-  )
-
--- Use PARENS when: multiple arguments or complex expressions
-from sales
-  select max(price, cost) as highest,  -- Multiple args need parens
-    sum(amount * quantity) as total    -- Complex expression needs parens"""
+  select
+    max(price, cost) as highest,
+    sum(amount * quantity) as total"""
     },
     {
         "title": "Count Shorthand Styles",
         "desc": "Different ways to write COUNT expressions",
-        "query": """-- # shorthand for COUNT (preferred style)
+        "query": """-- # by itself = COUNT(*) row count
 from orders
-  group by status (
-    # as total              -- COUNT(*) row count
-  )
+  group by status (# as total);
 
--- # with table name for distinct count
+-- # with table name = COUNT(DISTINCT primary_key)
 from orders
-  group by status (
-    # users as customers    -- COUNT(DISTINCT user_id)
-  )
+  group by status (# users as customers);
 
--- # of syntax - natural language
+-- Explicit parens form for full control
 from orders
-  group by status (
-    # of users as customers -- Same as above, more natural
-  )
-
--- Explicit parens form when needed
-from orders
-  group by status (
-    #(distinct product_id) as unique_products
-  )"""
+  group by status (#(distinct product_id) as unique_products)"""
     },
     {
         "title": "Equality Operators",
@@ -674,29 +637,21 @@ from users
     },
     {
         "title": "Conditional Styles",
-        "desc": "Ternary ? : vs when expressions vs CASE WHEN",
+        "desc": "Ternary ? : vs when expressions",
         "query": """-- Ternary for simple binary conditions (preferred)
+-- Syntax: condition ? true_value : false_value
 from orders
-  select
-    amount > 1000 ? "high" : "low" as tier
+  select amount > 1000 ? "high" : "low" as tier;
 
 -- when for multi-branch conditions (preferred)
+-- More readable than SQL CASE WHEN
 from users
   select
     when status
       is "active" then "Active User"
       is "pending" then "Pending"
       otherwise "Unknown"
-    as status_label
-
--- CASE WHEN also works but is more verbose
-from users
-  select
-    CASE
-      WHEN status = "active" THEN "Active User"
-      WHEN status = "pending" THEN "Pending"
-      ELSE "Unknown"
-    END as status_label"""
+    as status_label"""
     },
     {
         "title": "Join Styles",
@@ -732,15 +687,13 @@ from users
     {
         "title": "CTE Styles",
         "desc": "stash as (preferred) vs WITH ... AS",
-        "query": """-- stash as - preferred, inline CTE definition
-from users
+        "query": """from users  -- ASQL style: stash as creates inline CTEs
   where status = "active"
-  stash as active_users
-
-from active_users
   group by country (# as total)
+  stash as by_country     -- Everything above becomes CTE "by_country"
+  order by -total;        -- Continue pipeline with the CTE
 
--- WITH ... AS also works (SQL style)
+-- SQL style WITH ... AS also works
 WITH active_users AS (
   SELECT * FROM users WHERE status = "active"
 )
