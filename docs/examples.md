@@ -19,7 +19,7 @@ Real-world examples of Analytic SQL queries. Each example shows the Analytic SQL
 ### Simple FROM
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from users
     ```
 
@@ -46,9 +46,9 @@ Real-world examples of Analytic SQL queries. Each example shows the Analytic SQL
 ### FROM with WHERE
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from users
-    where status == "active"
+    where status = "active"
     ```
 
 === "PostgreSQL"
@@ -74,7 +74,7 @@ Real-world examples of Analytic SQL queries. Each example shows the Analytic SQL
 ### FROM with SELECT
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from users
     select name, email
     ```
@@ -102,9 +102,9 @@ Real-world examples of Analytic SQL queries. Each example shows the Analytic SQL
 ### FROM WHERE SELECT
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from users
-    where status == "active"
+    where status = "active"
     select name, email
     ```
 
@@ -135,7 +135,7 @@ Real-world examples of Analytic SQL queries. Each example shows the Analytic SQL
 ### Comparison Operators
 
 **ASQL:**
-```asql
+```asql-play
 from users
 where age < 18
 ```
@@ -146,7 +146,7 @@ SELECT * FROM users WHERE age < 18
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from users
 where age > 65
 ```
@@ -157,7 +157,7 @@ SELECT * FROM users WHERE age > 65
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from users
 where age >= 18
 ```
@@ -168,7 +168,7 @@ SELECT * FROM users WHERE age >= 18
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from users
 where status != "inactive"
 ```
@@ -181,7 +181,7 @@ SELECT * FROM users WHERE status <> 'inactive'
 ### NULL Checks
 
 **ASQL:**
-```asql
+```asql-play
 from users
 where email is null
 ```
@@ -192,7 +192,7 @@ SELECT * FROM users WHERE email IS NULL
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from users
 where email is not null
 ```
@@ -205,9 +205,9 @@ SELECT * FROM users WHERE email IS NOT NULL
 ### Logical Operators
 
 **ASQL:**
-```asql
+```asql-play
 from users
-where status == "active" 
+where status = "active" 
     and age >= 18
 ```
 
@@ -217,10 +217,10 @@ SELECT * FROM users WHERE status = 'active' AND age >= 18
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from users
-where status == "active" 
-    or status == "pending"
+where status = "active" 
+    or status = "pending"
 ```
 
 **SQL (PostgreSQL):**
@@ -229,9 +229,9 @@ SELECT * FROM users WHERE status = 'active' OR status = 'pending'
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from users
-where not status == "inactive"
+where not status = "inactive"
 ```
 
 **SQL (PostgreSQL):**
@@ -242,9 +242,9 @@ SELECT * FROM users WHERE NOT status = 'inactive'
 ### Multiple Conditions
 
 **ASQL:**
-```asql
+```asql-play
 from users
-where status == "active" 
+where status = "active" 
     and age >= 18 
     and email is not null
 ```
@@ -257,7 +257,7 @@ SELECT * FROM users WHERE status = 'active' AND age >= 18 AND email IS NOT NULL
 ### IN Operator
 
 **ASQL:**
-```asql
+```asql-play
 from users
 where status in ("active", "pending", "verified")
 ```
@@ -268,7 +268,7 @@ SELECT * FROM users WHERE status IN ('active', 'pending', 'verified')
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from users
 where age in (18, 19, 20, 21)
 ```
@@ -281,7 +281,7 @@ SELECT * FROM users WHERE age IN (18, 19, 20, 21)
 ### NOT IN Operator
 
 **ASQL:**
-```asql
+```asql-play
 from users
 where status not in ("inactive", "deleted", "banned")
 ```
@@ -298,7 +298,7 @@ SELECT * FROM users WHERE NOT status IN ('inactive', 'deleted', 'banned')
 ### GROUP BY with COUNT (#)
 
 **ASQL:**
-```asql
+```asql-play
 from users
 group by country ( # as total_users )
 ```
@@ -311,7 +311,7 @@ SELECT country, COUNT(*) AS total_users FROM users GROUP BY country
 ### GROUP BY with SUM
 
 **ASQL:**
-```asql
+```asql-play
 from sales
 group by region ( sum(amount) as revenue )
 ```
@@ -324,7 +324,7 @@ SELECT region, SUM(amount) AS revenue FROM sales GROUP BY region
 ### GROUP BY with AVG
 
 **ASQL:**
-```asql
+```asql-play
 from users
 group by country ( avg(age) as avg_age )
 ```
@@ -337,7 +337,7 @@ SELECT country, AVG(age) AS avg_age FROM users GROUP BY country
 ### Multiple Aggregations
 
 **ASQL:**
-```asql
+```asql-play
 from sales
 group by region ( 
     sum(amount) as revenue, 
@@ -356,7 +356,7 @@ GROUP BY region
 ### Multiple Grouping Columns
 
 **ASQL:**
-```asql
+```asql-play
 from sales
 group by region, month ( sum(amount) as revenue )
 ```
@@ -369,9 +369,9 @@ SELECT region, month, SUM(amount) AS revenue FROM sales GROUP BY region, month
 ### GROUP BY with WHERE
 
 **ASQL:**
-```asql
+```asql-play
 from sales
-where year == 2024
+where year = 2024
 group by region ( sum(amount) as revenue )
 ```
 
@@ -386,12 +386,12 @@ GROUP BY region
 ### All Aggregation Functions
 
 **ASQL:**
-```asql
+```asql-play
 from sales
 group by region (
     sum(amount) as total_revenue,
     avg(amount) as avg_order,
-    count(*) as order_count,
+    # as order_count,
     min(amount) as min_order,
     max(amount) as max_order
 )
@@ -417,7 +417,7 @@ GROUP BY region
 ### SORT Ascending
 
 **ASQL:**
-```asql
+```asql-play
 from users
 order by name
 ```
@@ -430,7 +430,7 @@ SELECT * FROM users ORDER BY name ASC
 ### SORT Descending
 
 **ASQL:**
-```asql
+```asql-play
 from users
 order by -total_users
 ```
@@ -443,7 +443,7 @@ SELECT * FROM users ORDER BY total_users DESC
 ### Multiple Sort Columns
 
 **ASQL:**
-```asql
+```asql-play
 from users
 order by -total_users, name
 ```
@@ -456,7 +456,7 @@ SELECT * FROM users ORDER BY total_users DESC, name ASC
 ### TAKE/LIMIT
 
 **ASQL:**
-```asql
+```asql-play
 from users
 limit 10
 ```
@@ -469,7 +469,7 @@ SELECT * FROM users LIMIT 10
 ### GROUP BY + SORT
 
 **ASQL:**
-```asql
+```asql-play
 from users
 group by country ( # as total_users )
 order by -total_users
@@ -486,9 +486,9 @@ ORDER BY total_users DESC
 ### Complete Pipeline
 
 **ASQL:**
-```asql
+```asql-play
 from users 
-where status == "active" 
+where status = "active" 
 group by country ( # as total_users ) 
 order by -total_users 
 limit 10
@@ -507,7 +507,7 @@ LIMIT 10
 ### Sort by Column (Descending)
 
 **ASQL:**
-```asql
+```asql-play
 from users
 order by -updated_at
 ```
@@ -518,7 +518,7 @@ SELECT * FROM users ORDER BY updated_at DESC
 ```
 
 **ASQL:**
-```asql
+```asql-play
 from users
 order by -updated_at, name
 ```
@@ -537,9 +537,9 @@ The `-` prefix makes it easy to order by by columns in descending order. It also
 ### Complex Analytics Query
 
 **ASQL:**
-```asql
+```asql-play
 from sales 
-where status == "completed" and amount > 100
+where status = "completed" and amount > 100
 group by region, month ( 
     sum(amount) as revenue,
     # as order_count,
@@ -567,9 +567,9 @@ LIMIT 20
 ### User Analytics
 
 **ASQL:**
-```asql
+```asql-play
 from users
-where status == "active" and age >= 18 and email is not null
+where status = "active" and age >= 18 and email is not null
 group by country (
     # as total_users,
     avg(age) as avg_age
@@ -592,9 +592,9 @@ ORDER BY total_users DESC
 ### Sales Report
 
 **ASQL:**
-```asql
+```asql-play
 from sales
-where (status == "completed" or status == "pending") 
+where (status = "completed" or status = "pending") 
     and amount >= 50 
     and created_at is not null
 group by product_category (
@@ -633,7 +633,7 @@ Cohort analysis tracks user behavior over time by grouping users by when they st
 ### User Retention by Cohort
 
 **ASQL (3 lines):**
-```asql
+```asql-play
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -668,7 +668,7 @@ ORDER BY cb.cohort_month, period
 ### Revenue Cohort with LTV
 
 **ASQL:**
-```asql
+```asql-play
 from orders
 group by month(order_date) (sum(total) as revenue)
 cohort by month(customers.first_order_date)
@@ -677,7 +677,7 @@ cohort by month(customers.first_order_date)
 ### Retention with Period-over-Period Change
 
 **ASQL:**
-```asql
+```asql-play
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -686,7 +686,7 @@ cohort by month(users.signup_date)
 ### Segmented Cohorts by Channel
 
 **ASQL:**
-```asql
+```asql-play
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by users.channel, month(users.signup_date)
@@ -707,7 +707,7 @@ from asql import compile
 
 asql_query = """
 from users 
-where status == "active" 
+where status = "active" 
 group by country ( # as total_users ) 
 order by -total_users 
 limit 10

@@ -82,47 +82,46 @@ class ClausesMixin:
 
     def _transform_implicit_function_aliases(self, text: str) -> str:
         """
-        Expand implicit function aliases in SELECT projections.
+        Expand implicit function aliases in SELECT projections and GROUP BY aggregate blocks.
 
         This supports the "auto-alias" convention where a single-arg function call's
         natural alias is `func_col`, and ASQL lets you write that alias directly:
 
         - select sum_amount  → select sum(amount) as sum_amount
         - select year_created_at → select year(created_at) as year_created_at
+        - group by region ( sum_amount ) → group by region ( sum(amount) as sum_amount )
 
         Notes / constraints:
-        - Applied only to SELECT projection items (not WHERE / GROUP BY / ORDER BY).
+        - Applied to SELECT projection items and GROUP BY aggregate blocks.
         - Only expands *plain identifiers* (no dots, no parens, no quotes).
         - Only for a conservative set of single-arg functions (and their aliases).
         """
+        result = text
 
-        # Only attempt if there's a SELECT clause
-        select_match = re.search(r'\bselect\s+', text, re.IGNORECASE)
-        if not select_match:
-            return text
+        # Conservative allowlist: single-arg functions that follow func_col aliasing.
+        single_arg_funcs: Set[str] = {
+            # Aggregates
+            'sum', 'avg', 'count', 'min', 'max',
+            # Date parts / truncs
+            'year', 'quarter', 'month', 'week', 'day', 'hour', 'minute', 'second',
+            'day_of_week', 'day_of_month', 'day_of_year',
+            'week_of_year', 'month_of_year', 'quarter_of_year',
+            # Window-ish single-arg helpers
+            'running_sum', 'running_avg', 'running_count',
+            'rolling_sum', 'rolling_avg',
+        }
 
-        # Find SELECT clause extent (similar to _transform_from_first)
-        select_start = select_match.end()
-        select_end = len(text)
+        # Include aliases (total/average/etc) as valid shorthand prefixes, but expand to canonical fn.
+        alias_prefixes: Set[str] = set(FUNCTION_ALIASES.keys())
 
-        paren_depth = 0
-        i = select_start
-        while i < len(text):
-            char = text[i]
-            if char == '(':
-                paren_depth += 1
-            elif char == ')':
-                paren_depth = max(0, paren_depth - 1)
-            elif paren_depth == 0:
-                remaining = text[i:].lower()
-                for kw in [' from ', '\nfrom ', '\tfrom ', ' where ', ' group by ', ' order by ', ' limit ', ' having ', ' qualify ']:
-                    if remaining.startswith(kw):
-                        select_end = i
-                        i = len(text)
-                        break
-            i += 1
+        # Include any registered function that is in our allowlist
+        allowed_prefixes: List[str] = sorted(
+            {fn for fn in FUNCTION_REGISTRY if fn in single_arg_funcs}.union(alias_prefixes),
+            key=len,
+            reverse=True,
+        )
 
-        raw_clause = text[select_start:select_end]
+        identifier_pattern = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 
         def split_csv(exprs: str) -> List[str]:
             items: List[str] = []
@@ -154,32 +153,14 @@ class ClausesMixin:
                 items.append(tail)
             return items
 
-        # Conservative allowlist: single-arg functions that follow func_col aliasing.
-        single_arg_funcs: Set[str] = {
-            # Aggregates
-            'sum', 'avg', 'count', 'min', 'max',
-            # Date parts / truncs
-            'year', 'quarter', 'month', 'week', 'day', 'hour', 'minute', 'second',
-            'day_of_week', 'day_of_month', 'day_of_year',
-            'week_of_year', 'month_of_year', 'quarter_of_year',
-            # Window-ish single-arg helpers
-            'running_sum', 'running_avg', 'running_count',
-            'rolling_sum', 'rolling_avg',
-        }
-
-        # Include aliases (total/average/etc) as valid shorthand prefixes, but expand to canonical fn.
-        alias_prefixes: Set[str] = set(FUNCTION_ALIASES.keys())
-
-        # Include any registered function that is in our allowlist
-        allowed_prefixes: List[str] = sorted(
-            {fn for fn in FUNCTION_REGISTRY if fn in single_arg_funcs}.union(alias_prefixes),
-            key=len,
-            reverse=True,
-        )
-
-        identifier_pattern = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
-
-        def expand_token(token: str) -> str:
+        def expand_token(token: str, add_alias: bool = True) -> str:
+            """
+            Expand a token if it matches a function pattern.
+            
+            Args:
+                token: The token to expand
+                add_alias: If True, add 'as func_col' alias (for SELECT/GROUP BY).
+            """
             trimmed = token.strip()
             if not trimmed:
                 return token
@@ -199,17 +180,124 @@ class ClausesMixin:
                 if not identifier_pattern.match(arg):
                     return token
                 fn = FUNCTION_ALIASES.get(prefix_lower, prefix_lower)
-                return f"{fn}({arg}) as {trimmed}"
+                if add_alias:
+                    return f"{fn}({arg}) as {trimmed}"
+                else:
+                    return f"{fn}({arg})"
             return token
+        
+        # Process SELECT clause
+        select_match = re.search(r'\bselect\s+', result, re.IGNORECASE)
+        if select_match:
+            select_start = select_match.end()
+            select_end = len(result)
 
-        items = split_csv(raw_clause)
-        if not items:
-            return text
+            paren_depth = 0
+            i = select_start
+            while i < len(result):
+                char = result[i]
+                if char == '(':
+                    paren_depth += 1
+                elif char == ')':
+                    paren_depth = max(0, paren_depth - 1)
+                elif paren_depth == 0:
+                    remaining = result[i:].lower()
+                    for kw in [' from ', '\nfrom ', '\tfrom ', ' where ', ' group by ', ' order by ', ' limit ', ' having ', ' qualify ']:
+                        if remaining.startswith(kw):
+                            select_end = i
+                            i = len(result)
+                            break
+                i += 1
 
-        expanded_items = [expand_token(item) for item in items]
-        new_clause = ", ".join(expanded_items)
+            raw_clause = result[select_start:select_end]
+            items = split_csv(raw_clause)
+            if items:
+                expanded_items = [expand_token(item, add_alias=True) for item in items]
+                new_clause = ", ".join(expanded_items)
+                result = result[:select_start] + new_clause + result[select_end:]
 
-        return text[:select_start] + new_clause + text[select_end:]
+        # Process GROUP BY aggregate blocks: group by <keys> ( agg1, agg2 )
+        #
+        # IMPORTANT: group-by keys can include function calls like month(created_at).
+        # So we can't use a naive regex that stops at the first "(".
+        def expand_group_by_aggregate_blocks(text: str) -> str:
+            out_text = text
+            search_pos = 0
+
+            while True:
+                gb_match = re.search(r'\bgroup\s+by\s+', out_text[search_pos:], re.IGNORECASE)
+                if not gb_match:
+                    return out_text
+
+                gb_start = search_pos + gb_match.start()
+                keys_start = search_pos + gb_match.end()
+
+                # Find the opening paren of the aggregate list, skipping function-call parens in keys.
+                paren_pos = -1
+                i = keys_start
+                while i < len(out_text):
+                    ch = out_text[i]
+                    if ch == '(':
+                        j = i - 1
+                        # function call: identifier directly before "("
+                        if j >= keys_start and (out_text[j].isalnum() or out_text[j] == '_'):
+                            depth = 1
+                            i += 1
+                            while i < len(out_text) and depth > 0:
+                                if out_text[i] == '(':
+                                    depth += 1
+                                elif out_text[i] == ')':
+                                    depth -= 1
+                                i += 1
+                            continue
+                        # otherwise: this is the aggregate list paren
+                        paren_pos = i
+                        break
+                    # stop if we hit another clause keyword before an aggregate list
+                    if ch == '\n' or ch == ';':
+                        break
+                    i += 1
+
+                if paren_pos == -1:
+                    search_pos = keys_start
+                    continue
+
+                group_cols = out_text[keys_start:paren_pos].strip()
+
+                # Find the matching closing paren for the aggregate list
+                depth = 1
+                i = paren_pos + 1
+                while i < len(out_text) and depth > 0:
+                    if out_text[i] == '(':
+                        depth += 1
+                    elif out_text[i] == ')':
+                        depth -= 1
+                    i += 1
+
+                if depth != 0:
+                    # Unmatched parens; give up on this one
+                    search_pos = paren_pos + 1
+                    continue
+
+                aggs_inner_start = paren_pos + 1
+                aggs_inner_end = i - 1
+                aggs_text = out_text[aggs_inner_start:aggs_inner_end].strip()
+
+                items = split_csv(aggs_text)
+                if items:
+                    expanded_items = [expand_token(item, add_alias=True) for item in items]
+                    new_aggs = ", ".join(expanded_items)
+                    replacement = f"group by {group_cols} ( {new_aggs} )"
+
+                    # Replace from "group by" up through closing paren
+                    out_text = out_text[:gb_start] + replacement + out_text[i:]
+                    search_pos = gb_start + len(replacement)
+                else:
+                    search_pos = i
+
+        result = expand_group_by_aggregate_blocks(result)
+
+        return result
 
     def _transform_column_operators(self, text: str) -> str:
         """

@@ -35,7 +35,7 @@ Truncate dates to a specific unit:
 | `hour(date)` | Truncate to hour | `2025-01-15 14:00:00` |
 | `quarter(date)` | Truncate to quarter start | `2025-01-01` |
 
-```asql
+```asql-play
 from orders
   group by month(created_at) (
     sum(amount) as revenue
@@ -274,18 +274,18 @@ created_at::UTC + 7 days
 
 ### Daily Revenue for Last 30 Days
 
-```asql
+```asql-play
 from orders
   where created_at >= 30 days ago
-  group by day(created_at) as date (
+  group by day(created_at) (
     sum(amount) as revenue
   )
-  order by date
+  order by day(created_at)
 ```
 
 ### Monthly User Signups
 
-```asql
+```asql-play
 from users
   group by month(created_at) (
     # as signups
@@ -307,7 +307,7 @@ from orders
 
 ### Active Users Last Week
 
-```asql
+```asql-play
 from users
   where last_login >= 7 days ago
   select name, email, days_since_last_login

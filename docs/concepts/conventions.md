@@ -26,7 +26,7 @@ Foreign keys follow the pattern: `{entity}_id` or `{alias}_{entity}_id`
 
 ### How It Works
 
-```asql
+```asql-play
 from orders
   select orders.user.name
 ```
@@ -64,7 +64,7 @@ ASQL recognizes these as timestamp columns:
 
 Tables with `created_at` automatically use it as the primary time field for time-based aggregations.
 
-```asql
+```asql-play
 from users
   group by month(created_at) (# as signups)
 ```
@@ -151,7 +151,7 @@ sum of amount
 
 This enables natural language queries:
 
-```asql
+```asql-play
 from sales
   group by region (
     total revenue,          -- sum(revenue)
@@ -166,7 +166,7 @@ If your schema doesn't follow conventions:
 
 ### Non-Standard FK Names
 
-```asql
+```asql-play
 -- accounts.primary_contact → contacts.id (non-standard)
 from accounts
   &? contacts on accounts.primary_contact = contacts.id

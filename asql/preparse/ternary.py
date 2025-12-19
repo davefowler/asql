@@ -53,6 +53,35 @@ class TernaryMixin:
             condition, cond_start = self._parse_expression_backward(result, q_pos)
             true_value, true_end = self._parse_expression_forward(result, q_pos + 1, colon_pos)
             false_value, false_end = self._parse_expression_forward(result, colon_pos + 1, len(result))
+
+            def strip_condition_prefix(expr: str) -> str:
+                lowered = expr.lower()
+                # If we accidentally captured leading clause text like "from t select ...",
+                # keep only the expression after the last SELECT.
+                # Handle both " select " and "select " (start of string).
+                idx = lowered.rfind(" select ")
+                if idx != -1:
+                    return expr[idx + len(" select "):].strip()
+                idx = lowered.rfind("select ")
+                if idx != -1:
+                    return expr[idx + len("select "):].strip()
+                return expr.strip()
+
+            def strip_trailing_clause(expr: str) -> str:
+                lowered = expr.lower()
+                # Stop before common clause/alias keywords when the false arm is inside SELECT lists.
+                for marker in [" as ", " from ", " where ", " group by ", " order by ", " limit ", " having ", " qualify "]:
+                    idx = lowered.find(marker)
+                    if idx != -1:
+                        return expr[:idx].strip()
+                return expr.strip()
+
+            if condition:
+                condition = strip_condition_prefix(condition)
+            if true_value is not None:
+                true_value = strip_trailing_clause(true_value)
+            if false_value is not None:
+                false_value = strip_trailing_clause(false_value)
             
             if condition and true_value is not None and false_value is not None:
                 # Build CASE WHEN expression
@@ -133,34 +162,45 @@ class TernaryMixin:
             (expression, start_pos)
         """
         pos = end_pos - 1
-        
+
         # Skip whitespace
         while pos >= 0 and text[pos] in ' \t\n':
             pos -= 1
-        
+
         if pos < 0:
             return None, end_pos
-        
-        # Track parentheses and brackets
+
         paren_depth = 0
         bracket_depth = 0
         in_string = False
         string_char: Optional[str] = None
-        start_pos = pos + 1
-        
+
+        start_pos = 0
+
         while pos >= 0:
             char = text[pos]
-            
+
+            # Clause boundaries (only meaningful at top level, outside strings).
+            if not in_string and paren_depth == 0 and bracket_depth == 0:
+                lower_prefix = text[:pos + 1].lower()
+                for marker in ("select ", "where ", "having ", "qualify "):
+                    if lower_prefix.endswith(marker):
+                        start_pos = pos + 1
+                        pos = -1
+                        break
+                if pos == -1:
+                    break
+
             # Handle string literals
             if not in_string and char in ('"', "'"):
                 in_string = True
                 string_char = char
                 pos -= 1
                 continue
-            
+
             if in_string:
                 if char == string_char:
-                    # Check for escaped quote
+                    # Check for escaped quote ('' or "")
                     if pos > 0 and text[pos - 1] == string_char:
                         pos -= 2
                         continue
@@ -168,48 +208,39 @@ class TernaryMixin:
                     string_char = None
                 pos -= 1
                 continue
-            
-            # Track parentheses and brackets
+
+            # Track parentheses/brackets
             if char == ')':
                 paren_depth += 1
-            elif char == '(':
-                paren_depth -= 1
-                if paren_depth == 0:
-                    # Found matching open paren, check for function name
-                    start_pos = pos
-                    pos -= 1
-                    # Skip whitespace
-                    while pos >= 0 and text[pos] in ' \t\n':
-                        pos -= 1
-                    # Parse identifier
-                    while pos >= 0 and (text[pos].isalnum() or text[pos] == '_'):
-                        pos -= 1
-                    start_pos = pos + 1
-                    break
-            elif char == ']':
+                pos -= 1
+                continue
+            if char == ']':
                 bracket_depth += 1
-            elif char == '[':
-                bracket_depth -= 1
-            
-            # Stop at operators or delimiters at top level
-            if paren_depth == 0 and bracket_depth == 0 and not in_string:
-                if char in (',', ';', '=', '<', '>', '!', '+', '-', '*', '/', '%', '&', '|', '^'):
-                    # Check for multi-character operators
-                    if char in ('=', '<', '>', '!', '&', '|') and pos > 0:
-                        prev_char = text[pos - 1]
-                        if (char == '=' and prev_char in ('=', '<', '>', '!')) or \
-                           (char == '&' and prev_char == '&') or \
-                           (char == '|' and prev_char == '|'):
-                            pos -= 1
-                            continue
+                pos -= 1
+                continue
+            if char == '(':
+                if paren_depth == 0:
                     start_pos = pos + 1
                     break
-            
+                paren_depth -= 1
+                pos -= 1
+                continue
+            if char == '[':
+                if bracket_depth == 0:
+                    start_pos = pos + 1
+                    break
+                bracket_depth -= 1
+                pos -= 1
+                continue
+
+            # Stop at delimiters at top level
+            if paren_depth == 0 and bracket_depth == 0:
+                if char in (',', ';', '\n'):
+                    start_pos = pos + 1
+                    break
+
             pos -= 1
-        
-        if start_pos > end_pos:
-            return None, end_pos
-        
+
         expr = text[start_pos:end_pos].strip()
         if not expr:
             return None, end_pos
@@ -232,16 +263,16 @@ class TernaryMixin:
         if pos >= max_pos:
             return None, start_pos
         
-        # Track parentheses and brackets
         paren_depth = 0
         bracket_depth = 0
         in_string = False
         string_char: Optional[str] = None
+
         end_pos = pos
-        
+
         while pos < max_pos:
             char = text[pos]
-            
+
             # Handle string literals
             if not in_string and char in ('"', "'"):
                 in_string = True
@@ -249,75 +280,70 @@ class TernaryMixin:
                 pos += 1
                 end_pos = pos
                 continue
-            
+
             if in_string:
                 if char == string_char:
-                    # Check for escaped quote
+                    # Check for escaped quote ('' or "")
                     if pos + 1 < max_pos and text[pos + 1] == string_char:
                         pos += 2
                         end_pos = pos
                         continue
                     in_string = False
                     string_char = None
-                    pos += 1
-                    end_pos = pos
-                    continue
                 pos += 1
                 end_pos = pos
                 continue
-            
-            # Track parentheses and brackets
+
+            # Stop at a closing paren/bracket that would end our expression at top level
+            if char == ')' and paren_depth == 0 and bracket_depth == 0:
+                break
+            if char == ']' and bracket_depth == 0 and paren_depth == 0:
+                break
+
+            # Track parentheses/brackets
             if char == '(':
                 paren_depth += 1
                 pos += 1
                 end_pos = pos
                 continue
-            elif char == ')':
-                paren_depth -= 1
+            if char == ')':
+                paren_depth = max(0, paren_depth - 1)
                 pos += 1
                 end_pos = pos
-                if paren_depth == 0:
-                    # Check if there's more (function call, cast, etc.)
-                    # For now, stop here
-                    break
                 continue
-            elif char == '[':
+            if char == '[':
                 bracket_depth += 1
                 pos += 1
                 end_pos = pos
                 continue
-            elif char == ']':
-                bracket_depth -= 1
+            if char == ']':
+                bracket_depth = max(0, bracket_depth - 1)
                 pos += 1
                 end_pos = pos
                 continue
-            
-            # Stop at operators or delimiters at top level
-            if paren_depth == 0 and bracket_depth == 0 and not in_string:
-                if char in (',', ';', '=', '<', '>', '!', '+', '-', '*', '/', '%', '&', '|', '^', '?', ':'):
-                    # Check for multi-character operators
-                    if char in ('=', '<', '>', '!', '&', '|') and pos + 1 < max_pos:
-                        next_char = text[pos + 1]
-                        if (char == '=' and next_char == '=') or \
-                           (char == '<' and next_char == '=') or \
-                           (char == '>' and next_char == '=') or \
-                           (char == '!' and next_char == '=') or \
-                           (char == '&' and next_char == '&') or \
-                           (char == '|' and next_char == '|'):
-                            # Multi-character operator, but we stop before it
-                            break
-                    # Stop before this operator
+
+            # Stop at delimiters at top level
+            if paren_depth == 0 and bracket_depth == 0:
+                remaining = text[pos:max_pos].lower()
+                for marker in (" as ", " from ", " where ", " group by ", " order by ", " limit ", " having ", " qualify "):
+                    if remaining.startswith(marker):
+                        break
+                else:
+                    remaining = None
+                if remaining is not None:
                     break
-                elif char == '?':
+                if char in (',', ';', '\n'):
+                    break
+                if char == '?':
                     # Nested ternary - stop here, let outer ternary handle it
                     break
-                elif char == ':':
+                if char == ':':
                     # This is the matching colon for a nested ternary - stop here
                     break
-            
+
             pos += 1
             end_pos = pos
-        
+
         expr = text[start_pos:end_pos].strip()
         if not expr:
             return None, start_pos

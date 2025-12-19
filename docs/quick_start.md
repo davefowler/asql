@@ -19,7 +19,7 @@ Get started with Analytic SQL. This guide covers the essential language features
 
 Every Analytic SQL query starts with `from`:
 
-```asql
+```asql-play
 from users
 ```
 
@@ -29,7 +29,7 @@ This selects all columns from the `users` table.
 
 Use `select` to specify which columns you want:
 
-```asql
+```asql-play
 from users
 select name, email, created_at
 ```
@@ -38,22 +38,22 @@ select name, email, created_at
 
 Filter rows with `where`:
 
-```asql
+```asql-play
 from users
-where status == "active"
+where status = "active"
 ```
 
 ## Filtering
 
 ### Comparison Operators
 
-- `==` - equals
+- `=` - equals (preferred; `==` also works)
 - `!=` - not equals
 - `<`, `>`, `<=`, `>=` - comparisons
 - `is null` / `is not null` - null checks
 - `in` / `not in` - membership checks
 
-```asql
+```asql-play
 from orders
 where amount > 100
   and status != "cancelled"
@@ -66,17 +66,17 @@ where amount > 100
 - `or` - logical OR
 - `not` - logical NOT
 
-```asql
+```asql-play
 from users
-where (status == "active" or status == "pending")
+where (status = "active" or status = "pending")
   and email is not null
 ```
 
 ### String Matching
 
-```asql
+```asql-play
 from products
-where name like "%widget%"
+where name contains "widget"
   and category in ("electronics", "computers")
 ```
 
@@ -86,7 +86,7 @@ where name like "%widget%"
 
 Group rows and compute aggregates:
 
-```asql
+```asql-play
 from orders
 group by customer_id (
     sum(amount) as total_spent,
@@ -100,7 +100,7 @@ The `#` symbol is shorthand for `COUNT(*)`.
 
 You can compute multiple aggregates in a single group by:
 
-```asql
+```asql-play
 from sales
 group by product (
     sum(amount) as revenue,
@@ -113,11 +113,27 @@ group by product (
 
 ### Aggregation Functions
 
-- `#` or `count(*)` - count rows
+- `#` (preferred) or `count(*)` - count rows
 - `sum(column)` - sum values
 - `avg(column)` - average values
 - `min(column)` - minimum value
 - `max(column)` - maximum value
+
+### Auto-Generated Column Names
+
+When you use functions without explicit `AS` aliases, ASQL automatically generates meaningful names:
+
+```asql
+from orders
+group by customer_id (
+    sum(amount),     -- → column: sum_amount
+    avg(amount),     -- → column: avg_amount
+    count(*)         -- → column: num
+)
+order by -sum_amount  -- Reference the auto-generated name!
+```
+
+No more SQL's unusable defaults like `count`, `f0_`, or `SUM(amount)`. See the [Auto-Aliasing Reference](reference/auto-aliasing.md) for complete details.
 
 ## Ordering & Limiting
 
@@ -135,7 +151,7 @@ order by -created_at        # Descending (use - prefix)
 
 ### Multiple Order Columns
 
-```asql
+```asql-play
 from orders
 order by -amount, created_at          -- Order by amount DESC, then created_at ASC
 ```
@@ -144,7 +160,7 @@ order by -amount, created_at          -- Order by amount DESC, then created_at A
 
 Use `limit` to limit the number of rows:
 
-```asql
+```asql-play
 from users
 order by -created_at
 limit 10
@@ -156,7 +172,7 @@ limit 10
 
 Extract parts of dates:
 
-```asql
+```asql-play
 from events
 group by year(date), month(date) (
     # as event_count
@@ -171,7 +187,7 @@ Available functions:
 
 ### Date Truncation
 
-```asql
+```asql-play
 from events
 group by date_trunc("month", date) (
     # as events_per_month
@@ -203,22 +219,22 @@ ASQL uses symbolic operators for joins where `&` represents the join point and `
 
 ### INNER JOIN
 
-```asql
-from orders & users on orders.user_id == users.id
+```asql-play
+from orders & users on orders.user_id = users.id
 ```
 
 ### LEFT JOIN
 
-```asql
-from users &? orders on users.id == orders.user_id
+```asql-play
+from users &? orders on users.id = orders.user_id
 ```
 
 ### Multiple Joins
 
 ```asql
 from orders 
-  & users on orders.user_id == users.id
-  & products on orders.product_id == products.id
+  & users on orders.user_id = users.id
+  & products on orders.product_id = products.id
 select 
     users.name,
     products.name as product_name,
@@ -317,14 +333,14 @@ For more complex window function filtering:
 ```asql
 from orders
 select *, row_number() over (partition by customer_id order by -order_date) as rn
-qualify rn == 1
+qualify rn = 1
 ```
 
 ### DISTINCT ON
 
 PostgreSQL-style deduplication:
 
-```asql
+```asql-play
 from orders
 distinct on (customer_id)
 order by customer_id, -order_date
@@ -340,7 +356,7 @@ See the [Window Functions](window_functions.md) guide for more details and patte
 
 Find the top 5 products by revenue in each category:
 
-```asql
+```asql-play
 from sales
 group by category, product (
     sum(amount) as revenue
@@ -352,9 +368,9 @@ order by category, -revenue
 
 Daily revenue for the last 30 days:
 
-```asql
+```asql-play
 from orders
-where date >= date("now") - 30
+where date >= 30 days ago
 group by date(date) (
     sum(amount) as daily_revenue,
     # as order_count
@@ -366,7 +382,7 @@ order by date
 
 User signups by month:
 
-```asql
+```asql-play
 from users
 group by year(created_at), month(created_at) (
     # as signups
@@ -378,9 +394,9 @@ order by year, month
 
 Count active users per country:
 
-```asql
+```asql-play
 from users
-where status == "active"
+where status = "active"
 group by country (
     # as active_users
 )
@@ -391,11 +407,11 @@ order by -active_users
 
 Here's a complete query that demonstrates multiple features:
 
-```asql
+```asql-play
 from orders
-  where date >= "2024-01-01"
-    and status == "completed"
-  & products on orders.product_id == products.id
+  where date >= @2024-01-01
+    and status = "completed"
+  & products on orders.product_id = products.id
   group by products.category (
       sum(orders.amount) as revenue,
       avg(orders.amount) as avg_order_value,

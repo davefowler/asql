@@ -64,7 +64,7 @@ Below are the equivalents you can reach for directly in ASQL, without wrapping y
 - **Default**: ASQL returns all columns unless you narrow it with `select`.
 - **Exclude columns**: use `except` to drop noisy or sensitive fields.
 
-```asql
+```asql-play
 from users
 except password_hash, ssn
 ```
@@ -75,7 +75,7 @@ Use `key(col1, col2, ...)` to build a stable surrogate key from one or more colu
 
 **Status**: Planned (inspired by dbt macros). See the repo’s GitHub issues for the current implementation status.
 
-```asql
+```asql-play
 from orders
 select *, key(user_id, order_id) as order_key
 ```
@@ -91,7 +91,7 @@ select *, key(user_id, order_id) as order_key
 Most “latest row per key” / “one row per entity” macros are a window function pattern.
 In ASQL, it’s a one-liner:
 
-```asql
+```asql-play
 from events
 per user_id, event_type first by -created_at
 ```
@@ -104,14 +104,14 @@ ASQL’s compiler already provides **auto-spine** (enabled by default) which gap
 
 Pivoting is intentionally terse in ASQL:
 
-```asql
+```asql-play
 from issue_custom_fields
 pivot field_value by field_name values ('priority', 'status', 'assignee')
 ```
 
 And unpivoting (“pivot longer”) is equally direct:
 
-```asql
+```asql-play
 from monthly_data
 unpivot jan, feb, mar into month, value
 ```
@@ -144,7 +144,7 @@ first_name ?? nickname ?? 'Unknown'
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from users
     except password_hash, ssn
     ```
@@ -162,7 +162,7 @@ first_name ?? nickname ?? 'Unknown'
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     -- Planned helper inspired by dbt_utils.generate_surrogate_key
     -- (See GitHub issues)
@@ -239,7 +239,7 @@ first_name ?? nickname ?? 'Unknown'
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from events
     per user_id, event_type first by -created_at
     ```
@@ -259,7 +259,7 @@ first_name ?? nickname ?? 'Unknown'
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     -- Denormalize Jira/Salesforce custom fields
     from issue_custom_fields
     pivot field_value by field_name values ('priority', 'status', 'assignee')

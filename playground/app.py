@@ -31,16 +31,12 @@ from .examples import (
 app = FastAPI(title="ASQL Playground", version="1.0.0")
 
 # Mount static files
-STATIC_DIR = Path(__file__).parent.parent / "static"
 SYNTAX_DIR = Path(__file__).parent.parent / "syntax"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
-# Mount syntax files first (more specific path)
+# Mount syntax files
 if SYNTAX_DIR.exists():
     app.mount("/static/syntax", StaticFiles(directory=str(SYNTAX_DIR)), name="syntax")
-
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # --- Pydantic Models ---
@@ -192,7 +188,6 @@ async def api_normalize(request: NormalizeRequest) -> dict:
             cast=style_config.get('cast', 'double_colon'),
             quotes=style_config.get('quotes', 'double'),
             week_start=style_config.get('week_start', 'monday'),
-            sort_keyword=style_config.get('sort_keyword', 'order_by'),
             squash_empty_ctes=style_config.get('squash_empty_ctes', True),
         )
         config = ASQLConfig(style=style)

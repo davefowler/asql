@@ -7,15 +7,6 @@ from typing import Dict, List, Optional, Set, Tuple
 from sqlglot import exp
 
 
-def _get_table_name(table_expr: exp.Expression) -> Optional[str]:
-    """Extract table name from a table expression (handles aliases)."""
-    if isinstance(table_expr, exp.Table):
-        return table_expr.alias_or_name
-    elif isinstance(table_expr, exp.Alias):
-        return table_expr.alias
-    return None
-
-
 def _collect_joined_tables(expression: exp.Expression) -> List[Tuple[str, Optional[str]]]:
     """
     Collect all table names and aliases from a query with joins.

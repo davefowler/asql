@@ -45,7 +45,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     where status = 'active'
     where amount > 100
@@ -66,11 +66,11 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     group by region (
         sum(amount) as total_amount,
-        count(*) as order_count,
+        # as order_count,
         count(distinct customer_id) as unique_customers
     )
     ```
@@ -87,7 +87,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select *,
         price * quantity as total,
@@ -204,9 +204,9 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
-    group by status (count(*) as count)
+    group by status ( # as count )
     order by -count
     ```
 
@@ -256,7 +256,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     pivot sum(amount) by category values ('Electronics', 'Clothing', 'Home')
     ```
@@ -276,7 +276,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from monthly_data
     unpivot jan, feb, mar into month, value
     ```
@@ -325,7 +325,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select *,
         year(date) as year,

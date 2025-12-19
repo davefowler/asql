@@ -9,9 +9,12 @@ ASQL always accepts all valid syntaxes on input.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Dict, Any, List, Tuple
+from typing import Literal, Optional, Dict, Any, List, Tuple, TYPE_CHECKING
 from pathlib import Path
 import json
+
+if TYPE_CHECKING:
+    from asql.schema import Schema
 
 
 # Registry of known compile settings for SET statement parsing
@@ -24,6 +27,8 @@ KNOWN_COMPILE_SETTINGS = {
     'alias_template',
     'alias_prefixes',
     'alias_templates',
+    # Join key inference - used for docs/playground examples that don't have real schemas
+    'invent_join_keys',
 }
 
 
@@ -70,12 +75,23 @@ class CompileSettings:
     # Example: {"count": "{prefix}", "arg_max": "{prefix}_{arg1}_{arg2}"}
     alias_templates: Dict[str, str] = field(default_factory=dict)
     
+    # Invent join keys: when True, infer join keys using {table}_id convention
+    # when no schema information is available. Useful for docs/playground examples.
+    # When False (default), raises an error if join key cannot be determined from schema.
+    invent_join_keys: bool = False
+    
+    # Schema: provides table/column metadata and relationships for join inference.
+    # Can be loaded from dbt schema.yml, asql_schema.yml, or database introspection.
+    # When provided, enables smart join inference without explicit ON clauses.
+    schema: Optional["Schema"] = None
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
             "auto_spine": self.auto_spine,
             "week_start": self.week_start,
             "relative_date_type": self.relative_date_type,
+            "invent_join_keys": self.invent_join_keys,
         }
         if self.alias_prefixes:
             result["alias_prefixes"] = self.alias_prefixes
@@ -83,6 +99,8 @@ class CompileSettings:
             result["alias_template"] = self.alias_template
         if self.alias_templates:
             result["alias_templates"] = self.alias_templates
+        # Note: schema is not serialized to dict (it's a complex object)
+        # Use Schema.to_dict() separately if needed
         return result
     
     @classmethod
@@ -158,9 +176,6 @@ class StyleConfig:
     # Week start day for week() function
     week_start: Literal["monday", "sunday"] = "monday"
     
-    # Sort keyword: order by or sort
-    sort_keyword: Literal["order_by", "sort"] = "order_by"
-    
     # CTE handling: squash pass-through CTEs like "from table stash as name"
     # When True, removes CTEs that are just SELECT * FROM table with no transforms
     squash_empty_ctes: bool = True
@@ -169,6 +184,10 @@ class StyleConfig:
     # When True, keeps this pattern even if squash_empty_ctes is True
     # Only applies to empty CTEs - non-empty CTEs are never squashed
     keep_final_empty_cte: bool = False
+    
+    # Function shorthand: underscore (sum_amount), space (sum amount), or parens (sum(amount))
+    # Default is "underscore" for declarative continuity - what you write matches the output column name
+    function_shorthand: Literal["underscore", "space", "parens"] = "underscore"
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -181,9 +200,9 @@ class StyleConfig:
             "cast": self.cast,
             "quotes": self.quotes,
             "week_start": self.week_start,
-            "sort_keyword": self.sort_keyword,
             "squash_empty_ctes": self.squash_empty_ctes,
             "keep_final_empty_cte": self.keep_final_empty_cte,
+            "function_shorthand": self.function_shorthand,
         }
     
     @classmethod
@@ -260,18 +279,16 @@ class ASQLConfig:
     @classmethod
     def _load_from_file(cls, path: Path) -> "ASQLConfig":
         """Load config from a file."""
-        try:
-            import yaml
+        if path.suffix == ".json":
             with open(path) as f:
-                data = yaml.safe_load(f)
-            return cls.from_dict(data or {})
-        except ImportError:
-            # YAML not available, try JSON
-            if path.suffix == ".json":
-                with open(path) as f:
-                    data = json.load(f)
-                return cls.from_dict(data)
-            raise ImportError("PyYAML required to load YAML config files")
+                data = json.load(f)
+            return cls.from_dict(data)
+        
+        # YAML files require PyYAML
+        import yaml
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        return cls.from_dict(data or {})
     
     @classmethod
     def from_preset(cls, preset: str) -> "ASQLConfig":
@@ -311,7 +328,6 @@ class ASQLConfig:
                 descending="prefix",
                 cast="double_colon",
                 quotes="double",
-                sort_keyword="order_by",
             )
         )
     
@@ -327,7 +343,6 @@ class ASQLConfig:
                 descending="suffix",
                 cast="function",
                 quotes="single",
-                sort_keyword="order_by",
             )
         )
     
@@ -343,7 +358,6 @@ class ASQLConfig:
                 descending="prefix",
                 cast="double_colon",
                 quotes="double",
-                sort_keyword="sort",
             )
         )
     

@@ -8,7 +8,7 @@ ASQL currently provides **one** way to create CTEs (Common Table Expressions): `
 
 Because ASQL uses pipelines, you often don't need CTEs at all:
 
-```asql
+```asql-play
 -- No CTE needed - just a continuous pipeline
 from users
   where is_active
@@ -23,7 +23,7 @@ In SQL, this would typically require a CTE or subquery. ASQL handles the complex
 
 Use `stash as` to save an intermediate result within a pipeline:
 
-```asql
+```asql-play
 from users
   where status = "active"
   stash as active_users
@@ -166,7 +166,7 @@ from this_month
 
 When you don't need a true CTE, use comments to mark logical sections:
 
-```asql
+```asql-play
 from users
   where is_active
   -- cleaned and filtered users

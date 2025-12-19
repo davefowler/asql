@@ -6,11 +6,11 @@ ASQL's `group by` works like SQL's—but with guaranteed complete results by def
 
 ## Basic Syntax
 
-```asql
+```asql-play
 from orders
   group by region (
     sum(amount) as revenue,
-    count(*) as order_count
+    # as order_count
   )
 ```
 
@@ -26,7 +26,7 @@ GROUP BY region
 
 ## Multiple Columns
 
-```asql
+```asql-play
 from orders
   group by region, month(order_date) (
     sum(amount) as revenue
@@ -93,7 +93,7 @@ Use `??` (null coalesce) to specify the default value for missing data:
 
 ```asql
 sum(amount) ?? 0 as revenue      -- zeros for missing
-count(*) ?? 0 as orders          -- zeros for missing
+# ?? 0 as orders          -- zeros for missing
 avg(price) ?? null as avg_price  -- null for missing (explicit)
 ```
 
@@ -103,10 +103,10 @@ avg(price) ?? null as avg_price  -- null for missing (explicit)
 
 Sometimes you want specific values guaranteed, not just what's in the data.
 
-```asql
+```asql-play
 from orders
   group by guarantee(status, ['pending', 'processing', 'shipped', 'delivered', 'cancelled']) (
-    count(*) ?? 0 as order_count
+    # ?? 0 as order_count
   )
 ```
 
@@ -124,7 +124,7 @@ All five statuses will appear in results, even if some have zero orders. This is
 
 The most common approach—just filter out zeros:
 
-```asql
+```asql-play
 from orders
   group by month(order_date) ( sum(amount) as revenue )
   where revenue > 0
@@ -155,7 +155,7 @@ ASQL supports several ways to express grouping:
 
 ### Standard (Recommended)
 
-```asql
+```asql-play
 from orders
   group by region ( sum(amount) as revenue )
 ```
@@ -168,7 +168,7 @@ sum of amount by region
 
 ### Shorthand Aggregates
 
-```asql
+```asql-play
 from orders
   group by region ( sum(amount) as sum_amount, # as order_count )
 ```

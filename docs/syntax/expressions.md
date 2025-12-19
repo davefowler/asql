@@ -13,11 +13,11 @@ ASQL provides familiar operators for filtering, calculating, and transforming da
 | `<=` | Less than or equal | `where age <= 65` |
 | `>=` | Greater than or equal | `where amount >= 1000` |
 
-Both `=` and `==` work for equality. Use whichever feels natural:
+Both `=` and `==` work for equality. `=` is preferred as it's standard SQL:
 
 ```asql
-where status = "active"   -- SQL style
-where status == "active"  -- programmer style
+where status = "active"   -- Preferred (SQL style)
+where status == "active"  -- Also works (programmer style)
 ```
 
 ## Null Checks
@@ -99,7 +99,7 @@ where phone matches "555-___-____"
 
 **With logical operators:**
 ```asql
-where email contains "@gmail.com" and status == "active"
+where email contains "@gmail.com" and status = "active"
 where name starts with "John" or name starts with "Jane"
 ```
 
@@ -224,11 +224,11 @@ select
 
 ### In Aggregations
 
-```asql
+```asql-play
 from orders
   group by customer_id (
-    sum(status == "completed" ? 1 : 0) as completed_count,
-    sum(status == "returned" ? amount : 0) as returned_total
+    sum(status = "completed" ? 1 : 0) as completed_count,
+    sum(status = "returned" ? amount : 0) as returned_total
   )
 ```
 
@@ -236,11 +236,11 @@ All `when` expressions compile to SQL `CASE WHEN ... THEN ... ELSE ... END`.
 
 ## String Literals
 
-Strings can use single or double quotes:
+Strings can use single or double quotes. Double quotes are preferred:
 
 ```asql
-where status = "active"
-where status = 'active'
+where status = "active"  -- Preferred
+where status = 'active'   -- Also works
 ```
 
 ## Numeric Literals
@@ -257,7 +257,7 @@ where discount = 0.15
 
 ASQL uses SQL-style comments:
 
-```asql
+```asql-play
 -- This is a single-line comment
 from users
   where is_active  -- inline comment
