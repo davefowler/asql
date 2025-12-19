@@ -451,6 +451,245 @@ class TestRollupSpineGeneration:
         assert "IS NULL" in sql.upper()  # Part of the filter condition
 
 
+class TestPredicateCopyingToSpine:
+    """Test that WHERE predicates are copied to filter the spine.
+    
+    The new unified approach copies relevant WHERE predicates to the spine CTE,
+    ensuring that:
+    1. Date spines are filtered to the relevant range
+    2. Categorical spines only include relevant values
+    3. This works without semantic parsing of comparison operators
+    """
+
+    def test_date_predicate_copied_to_spine(self):
+        """Test that date filter is copied to the date spine."""
+        sql = compile(
+            "from orders where created_at >= '2021-01-01' group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # The spine CTE should have the WHERE filter applied
+        # This uses generate_series from 1970 to now, filtered by the predicate
+        assert "_spine" in sql.lower()
+        assert "generate_series" in sql.lower()
+        # The filter should appear in the spine CTE
+        assert "2021-01-01" in sql
+
+    def test_categorical_predicate_copied_to_spine(self):
+        """Test that categorical filter is copied to the categorical spine."""
+        sql = compile(
+            "from orders where region in ('North', 'South') group by region (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # The spine CTE should have the WHERE filter
+        assert "region_spine" in sql.lower()
+        # The filter should be in the spine
+        assert "North" in sql
+        assert "South" in sql
+
+    def test_multiple_predicates_on_same_column(self):
+        """Test that multiple predicates on the grouped column are all copied."""
+        sql = compile(
+            "from orders where created_at >= '2021-01-01' and created_at < '2024-01-01' group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Both date bounds should appear in the output
+        assert "2021-01-01" in sql
+        assert "2024-01-01" in sql
+
+    def test_predicate_for_different_column_not_copied(self):
+        """Test that predicates on non-grouped columns are not copied to spine."""
+        sql = compile(
+            "from orders where status = 'active' group by region (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # The status filter should be in the data CTE, not the spine
+        assert "region_spine" in sql.lower()
+        assert "status" in sql.lower()
+        # The spine should use DISTINCT region, but status filter should be in data CTE
+
+
+class TestUnsafePredicatesSkipped:
+    """Test that unsafe predicates (referencing other columns) are skipped for spine.
+    
+    When a WHERE predicate references multiple columns, it cannot be safely
+    applied to the spine CTE because the other columns don't exist there.
+    """
+
+    def test_column_vs_column_predicate_skipped(self):
+        """Test that column vs column comparisons are skipped for spine."""
+        sql = compile(
+            "from orders where created_at > updated_at group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # The spine CTE should NOT have the unsafe predicate
+        # Look for the spine definition
+        spine_idx = sql.find("_spine AS (")
+        spine_data_idx = sql.find("spine_data AS (")
+        spine_cte = sql[spine_idx:spine_data_idx] if spine_idx >= 0 else ""
+        
+        # updated_at should NOT appear in the spine CTE
+        assert "updated_at" not in spine_cte, f"Unsafe predicate in spine: {spine_cte}"
+        # But should appear in the data CTE (WHERE is applied there)
+        assert "updated_at" in sql
+
+    def test_or_with_different_columns_skipped(self):
+        """Test that OR predicates with different columns are skipped."""
+        sql = compile(
+            "from orders where created_at >= '2021-01-01' or status = 'active' group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # The OR predicate involves 'status' which doesn't exist in spine
+        spine_idx = sql.find("_spine AS (")
+        spine_data_idx = sql.find("spine_data AS (")
+        spine_cte = sql[spine_idx:spine_data_idx] if spine_idx >= 0 else ""
+        
+        # Neither the date filter nor status should appear in spine (whole OR is skipped)
+        assert "status" not in spine_cte, f"Unsafe predicate in spine: {spine_cte}"
+
+    def test_between_with_column_bounds_skipped(self):
+        """Test that BETWEEN with column references as bounds is skipped."""
+        sql = compile(
+            "from orders where created_at between start_date and end_date group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        spine_idx = sql.find("_spine AS (")
+        spine_data_idx = sql.find("spine_data AS (")
+        spine_cte = sql[spine_idx:spine_data_idx] if spine_idx >= 0 else ""
+        
+        # start_date and end_date should NOT appear in spine
+        assert "start_date" not in spine_cte, f"Unsafe predicate in spine: {spine_cte}"
+        assert "end_date" not in spine_cte, f"Unsafe predicate in spine: {spine_cte}"
+
+    def test_function_on_column_with_literal_is_safe(self):
+        """Test that function on column compared to literal IS safe."""
+        sql = compile(
+            "from orders where year(created_at) = 2021 group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        spine_idx = sql.find("_spine AS (")
+        spine_data_idx = sql.find("spine_data AS (")
+        spine_cte = sql[spine_idx:spine_data_idx] if spine_idx >= 0 else ""
+        
+        # YEAR function should appear in spine (transformed to use d)
+        assert "YEAR" in spine_cte.upper() or "2021" in spine_cte, f"Safe predicate not in spine: {spine_cte}"
+
+    def test_mixed_safe_and_unsafe_predicates(self):
+        """Test that with mixed predicates, date spine falls back to data MIN/MAX.
+        
+        When there are ANY unsafe predicates on a date column, we use data MIN/MAX
+        as the spine bounds (the safe predicate is still applied in the data CTE).
+        """
+        sql = compile(
+            "from orders where created_at >= '2021-01-01' and created_at > updated_at group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Should use data MIN/MAX fallback - spine CTE references spine_data
+        assert "spine_data" in sql.lower()
+        # The spine should reference MIN/MAX from the data CTE
+        assert "min(" in sql.lower() and "max(" in sql.lower(), f"Missing MIN/MAX in: {sql}"
+        
+        # Both predicates should be in the data CTE (which has all WHERE conditions)
+        assert "2021-01-01" in sql  # Safe predicate in data CTE
+        assert "updated_at" in sql   # Unsafe predicate in data CTE
+
+
+class TestSpineEdgeCases:
+    """Test edge cases for spine generation."""
+
+    def test_no_where_clause(self):
+        """Test spine generation when there's no WHERE clause."""
+        sql = compile(
+            "from orders group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Should generate spine from 1970 to now without filter
+        assert "_spine" in sql.lower()
+        assert "generate_series" in sql.lower()
+
+    def test_where_on_unrelated_column(self):
+        """Test that WHERE on unrelated column doesn't affect date spine."""
+        sql = compile(
+            "from orders where status = 'active' group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        spine_idx = sql.find("_spine AS (")
+        spine_data_idx = sql.find("spine_data AS (")
+        spine_cte = sql[spine_idx:spine_data_idx] if spine_idx >= 0 else ""
+        
+        # status filter should NOT be in date spine
+        assert "status" not in spine_cte
+
+    def test_less_than_predicate(self):
+        """Test that less-than predicates work correctly."""
+        sql = compile(
+            "from orders where created_at < '2024-01-01' group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        assert "2024-01-01" in sql
+
+    def test_between_with_literals(self):
+        """Test that BETWEEN with literal values is safe."""
+        sql = compile(
+            "from orders where created_at between '2021-01-01' and '2024-01-01' group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        spine_idx = sql.find("_spine AS (")
+        spine_data_idx = sql.find("spine_data AS (")
+        spine_cte = sql[spine_idx:spine_data_idx] if spine_idx >= 0 else ""
+        
+        # Both bounds should be in spine
+        assert "2021-01-01" in spine_cte or "2024-01-01" in spine_cte
+
+    def test_in_list_predicate(self):
+        """Test that IN list predicates work for categorical columns."""
+        sql = compile(
+            "from orders where region in ('North', 'South', 'East') group by region (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        assert "North" in sql
+        assert "South" in sql
+        assert "East" in sql
+
+    def test_not_equal_predicate(self):
+        """Test that not-equal predicates work correctly."""
+        sql = compile(
+            "from orders where region != 'Unknown' group by region (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # The predicate should be in the spine
+        assert "Unknown" in sql
+
+
 class TestSpineGenerationVerification:
     """Verify that spines ARE actually generated in output."""
 

@@ -400,6 +400,60 @@ class TestTableGetPrimaryKey:
         assert table.get_primary_key() is None
 
 
+class TestInferenceDisabled:
+    """Test disabling relationship inference."""
+    
+    def test_from_yaml_no_inference(self) -> None:
+        """Test loading YAML with inference disabled."""
+        yaml_content = """
+tables:
+  orders:
+    columns: [id, user_id, amount]
+  users:
+    columns: [id, name]
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            
+            try:
+                # With inference disabled, should not create user_id -> users relationship
+                schema = Schema.from_yaml(f.name, infer_relationships=False)
+                
+                assert schema.has_table("orders")
+                assert schema.has_table("users")
+                
+                # No relationships should be inferred
+                rel = schema.find_relationship("orders", "users")
+                assert rel is None
+            finally:
+                os.unlink(f.name)
+    
+    def test_from_yaml_with_inference(self) -> None:
+        """Test loading YAML with inference enabled (default)."""
+        yaml_content = """
+tables:
+  orders:
+    columns: [id, user_id, amount]
+  users:
+    columns: [id, name]
+"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yml', delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+            
+            try:
+                # Default behavior - inference is on
+                schema = Schema.from_yaml(f.name)
+                
+                # Should have inferred relationship
+                rel = schema.find_relationship("orders", "users")
+                assert rel is not None
+                assert rel.source == "inferred"
+            finally:
+                os.unlink(f.name)
+
+
 class TestSchemaFromYaml:
     """Test loading schema from YAML files."""
     
@@ -595,3 +649,4 @@ class TestSchemaToDict:
         rel = schema.find_relationship("orders", "users")
         assert rel is not None
         assert rel.alias == "user"
+

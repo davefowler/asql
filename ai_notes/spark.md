@@ -521,3 +521,4 @@ Similar to `docs/coming-from/pandas.md`, we should create `docs/coming-from/spar
 - [Unity Catalog Overview](https://docs.databricks.com/unity-catalog/)
 - [Higher-Order Functions in Spark](https://spark.apache.org/docs/latest/sql-ref-functions-builtin.html)
 
+

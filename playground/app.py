@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from asql import compile
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 from asql.reverse_compiler import reverse_compile, detect_dialect
-from asql.config import ASQLConfig, StyleConfig
+from asql.config import ASQLConfig, StyleConfig, CompileSettings
 
 from .jinja_utils import strip_jinja_templates
 from .examples import (
@@ -45,11 +45,13 @@ if SYNTAX_DIR.exists():
 class CompileRequest(BaseModel):
     asql: str
     dialect: str = ""
+    settings: dict = {}  # CompileSettings overrides
 
 
 class ReverseCompileRequest(BaseModel):
     sql: str
     source_dialect: str = ""
+    settings: dict = {}  # StyleConfig overrides
 
 
 class DetectDialectRequest(BaseModel):
@@ -118,10 +120,16 @@ async def api_compile(request: CompileRequest) -> dict:
         if not request.asql.strip():
             return {"error": "Empty ASQL query"}
         
+        # Build compile settings from request
+        compile_settings = None
+        if request.settings:
+            compile_settings = CompileSettings.from_dict(request.settings)
+        
         sql = compile(
             request.asql,
             dialect=request.dialect if request.dialect else None,
-            pretty=True
+            pretty=True,
+            settings=compile_settings
         )
         return {"sql": sql}
         
@@ -140,9 +148,16 @@ async def api_reverse_compile(request: ReverseCompileRequest) -> dict:
         if not request.sql.strip():
             return {"error": "Empty SQL query"}
         
+        # Build style config from request settings
+        config = None
+        if request.settings:
+            style = StyleConfig.from_dict(request.settings)
+            config = ASQLConfig(style=style)
+        
         asql = reverse_compile(
             request.sql,
-            source_dialect=request.source_dialect if request.source_dialect else None
+            source_dialect=request.source_dialect if request.source_dialect else None,
+            config=config
         )
         return {"asql": asql}
         
@@ -206,6 +221,147 @@ async def api_normalize(request: NormalizeRequest) -> dict:
         return {"error": f"Compilation Error: {str(e)}"}
     except Exception as e:
         return {"error": f"Error: {str(e)}"}
+
+
+@app.get("/api/settings-schema")
+async def api_settings_schema() -> dict:
+    """Get the settings schema for the playground settings modal."""
+    return {
+        "compile": {
+            "title": "Compile Settings",
+            "description": "Settings that affect how ASQL is compiled to SQL",
+            "fields": [
+                {
+                    "name": "auto_spine",
+                    "label": "Auto Spine",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Automatically add gap-filling for date truncations in GROUP BY"
+                },
+                {
+                    "name": "week_start",
+                    "label": "Week Start",
+                    "type": "select",
+                    "options": ["monday", "sunday"],
+                    "default": "monday",
+                    "description": "Which day the week() function starts on"
+                },
+                {
+                    "name": "relative_date_type",
+                    "label": "Relative Date Type",
+                    "type": "select",
+                    "options": ["timestamp", "date"],
+                    "default": "timestamp",
+                    "description": "What type '7 days ago' compiles to"
+                },
+                {
+                    "name": "invent_join_keys",
+                    "label": "Invent Join Keys",
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Infer join keys using {table}_id convention when no schema is available"
+                },
+                {
+                    "name": "passthrough_comments",
+                    "label": "Passthrough Comments",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Preserve ASQL source comments in the generated SQL output"
+                },
+                {
+                    "name": "include_transpilation_comments",
+                    "label": "Transpilation Comments",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Add explanatory comments about ASQL transformations (auto-spine, cohort, etc.)"
+                }
+            ]
+        },
+        "style": {
+            "title": "Style Settings",
+            "description": "Settings that affect ASQL output style (for SQL → ASQL)",
+            "fields": [
+                {
+                    "name": "equality",
+                    "label": "Equality Operator",
+                    "type": "select",
+                    "options": [
+                        {"value": "single", "label": "= (SQL style)"},
+                        {"value": "double", "label": "== (Python style)"}
+                    ],
+                    "default": "single",
+                    "description": "Which equality operator to use"
+                },
+                {
+                    "name": "count",
+                    "label": "Count Notation",
+                    "type": "select",
+                    "options": [
+                        {"value": "hash", "label": "# (shorthand)"},
+                        {"value": "function", "label": "count(*) (function)"}
+                    ],
+                    "default": "hash",
+                    "description": "How to write count expressions"
+                },
+                {
+                    "name": "coalesce",
+                    "label": "Null Coalescing",
+                    "type": "select",
+                    "options": [
+                        {"value": "operator", "label": "?? (operator)"},
+                        {"value": "function", "label": "coalesce() (function)"}
+                    ],
+                    "default": "operator",
+                    "description": "How to write null coalescing"
+                },
+                {
+                    "name": "descending",
+                    "label": "Descending Order",
+                    "type": "select",
+                    "options": [
+                        {"value": "prefix", "label": "-col (prefix)"},
+                        {"value": "suffix", "label": "col DESC (suffix)"}
+                    ],
+                    "default": "prefix",
+                    "description": "How to write descending order"
+                },
+                {
+                    "name": "cast",
+                    "label": "Type Casting",
+                    "type": "select",
+                    "options": [
+                        {"value": "double_colon", "label": ":: (PostgreSQL)"},
+                        {"value": "function", "label": "CAST() (SQL standard)"}
+                    ],
+                    "default": "double_colon",
+                    "description": "How to write type casts"
+                },
+                {
+                    "name": "quotes",
+                    "label": "String Quotes",
+                    "type": "select",
+                    "options": [
+                        {"value": "double", "label": "\"double\""},
+                        {"value": "single", "label": "'single'"}
+                    ],
+                    "default": "double",
+                    "description": "Which quote style to use for strings"
+                },
+                {
+                    "name": "function_shorthand",
+                    "label": "Function Shorthand",
+                    "type": "select",
+                    "options": [
+                        {"value": "underscore", "label": "sum_amount (underscore)"},
+                        {"value": "space", "label": "sum amount (space)"},
+                        {"value": "parens", "label": "sum(amount) (parens)"}
+                    ],
+                    "default": "underscore",
+                    "description": "How to write function shorthands"
+                }
+            ]
+        }
+    }
 
 
 @app.get("/api/examples")

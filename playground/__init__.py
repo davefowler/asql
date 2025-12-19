@@ -15,12 +15,8 @@ from .examples import (
 )
 
 # Import app directly for Railway/uvicorn compatibility
-# Lazy import would work but direct import is more reliable for production
-try:
-    from .app import app
-except ImportError:
-    # Fallback for when FastAPI isn't installed (shouldn't happen in production)
-    app = None
+# Don't catch ImportError - let real errors surface so we can debug them
+from .app import app
 
 __all__ = [
     "strip_jinja_templates",
