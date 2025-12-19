@@ -9,12 +9,6 @@ if TYPE_CHECKING:
     from asql.config import CompileSettings
 
 
-def _is_set_statement(text: str) -> bool:
-    """Check if text is a SET statement (configuration, not a query)."""
-    stripped = text.strip().upper()
-    return stripped.startswith('SET ') and '=' in stripped
-
-
 def _split_statements(text: str) -> List[str]:
     """Split text into individual statements.
     
@@ -22,7 +16,10 @@ def _split_statements(text: str) -> List[str]:
     1. Semicolons (SQL standard): "from a; from b"
     2. Blank lines (ASQL natural): "from a\\n\\nfrom b"
     
-    SET statements are kept with the query they configure (not split separately).
+    Valid statements can start with:
+    - FROM (queries)
+    - SET (global configuration)
+    - WITH (CTEs, for SQL compatibility)
     
     Respects strings and parentheses when splitting.
     
@@ -30,16 +27,14 @@ def _split_statements(text: str) -> List[str]:
         "from users; from orders"      -> ["from users", "from orders"]
         "from users\\n\\nfrom orders"  -> ["from users", "from orders"]
         "from users\\n  where x"       -> ["from users\\n  where x"] (no blank line)
-        "SET x = 1; from users"        -> ["SET x = 1; from users"] (SET stays with query)
+        "SET x = 1"                    -> ["SET x = 1"] (standalone SET is valid)
     """
     depth = 0
     in_string: Optional[str] = None
     
     # First pass: split by semicolons (respecting strings and parens)
-    # BUT keep SET statements attached to the next query
     chunks: List[str] = []
     current: List[str] = []
-    pending_sets: List[str] = []  # SET statements waiting for a query
     
     i = 0
     while i < len(text):
@@ -61,15 +56,7 @@ def _split_statements(text: str) -> List[str]:
             elif char == ';' and depth == 0:
                 chunk = ''.join(current).strip()
                 if chunk:
-                    if _is_set_statement(chunk):
-                        # Keep SET statements pending until we find a real query
-                        pending_sets.append(chunk)
-                    else:
-                        # Prepend any pending SET statements
-                        if pending_sets:
-                            chunk = '; '.join(pending_sets) + '; ' + chunk
-                            pending_sets = []
-                        chunks.append(chunk)
+                    chunks.append(chunk)
                 current = []
                 i += 1
                 continue
@@ -81,20 +68,7 @@ def _split_statements(text: str) -> List[str]:
     if current:
         chunk = ''.join(current).strip()
         if chunk:
-            if _is_set_statement(chunk):
-                pending_sets.append(chunk)
-            else:
-                if pending_sets:
-                    chunk = '; '.join(pending_sets) + '; ' + chunk
-                    pending_sets = []
-                chunks.append(chunk)
-    
-    # If only SET statements remain, add them as a chunk (rare edge case)
-    if pending_sets and not chunks:
-        chunks.append('; '.join(pending_sets))
-    elif pending_sets:
-        # Attach remaining SETs to the last chunk
-        chunks[-1] = '; '.join(pending_sets) + '; ' + chunks[-1]
+            chunks.append(chunk)
     
     # Second pass: split each chunk by blank lines
     statements: List[str] = []
@@ -105,15 +79,13 @@ def _split_statements(text: str) -> List[str]:
         for line in lines:
             stripped = line.strip()
             
-            # Blank line = query separator (but not if we only have SET statements so far)
+            # Blank line = query separator
             if not stripped:
                 if current_block:
                     block_text = '\n'.join(current_block).strip()
-                    # Only split if the block is a real query (not just SET statements)
-                    if block_text and not all(_is_set_statement(s.strip()) for s in block_text.split(';') if s.strip()):
+                    if block_text:
                         statements.append(block_text)
-                        current_block = []
-                    # If it's just SETs, keep them in current_block for the next query
+                    current_block = []
             else:
                 current_block.append(line)
         
@@ -152,6 +124,8 @@ def preparse_asql(text: str, settings: Optional["CompileSettings"] = None) -> st
     preparsed_statements: List[str] = []
     for stmt in statements:
         preparsed = ASQLPreParser(stmt, settings=settings).preparse()
+        # Strip trailing semicolons to avoid double semicolons when joining
+        preparsed = preparsed.rstrip().rstrip(';').rstrip()
         preparsed_statements.append(preparsed)
     
     return ";\n\n".join(preparsed_statements)
