@@ -981,12 +981,22 @@ def _apply_auto_spine(
     try:
         result_stmt = sqlglot.parse_one(result_sql.strip(), dialect=dialect)
         
-        # Add comments to each CTE node (only if comments are enabled)
+        # Add comments inside each CTE (before the SELECT) if comments are enabled
         if include_comments and cte_comments:
             for cte_node in result_stmt.find_all(exp.CTE):
                 cte_name = cte_node.alias
                 if cte_name in cte_comments:
-                    cte_node.comments = [cte_comments[cte_name]]
+                    # Add comment to the inner SELECT statement, not the CTE wrapper
+                    inner_select = cte_node.this
+                    if inner_select:
+                        existing = inner_select.comments or []
+                        inner_select.comments = [cte_comments[cte_name]] + existing
+        
+        # Preserve original statement's comments (passthrough)
+        if stmt.comments:
+            # Prepend original comments to the result statement's comments
+            existing_comments = result_stmt.comments or []
+            result_stmt.comments = list(stmt.comments) + existing_comments
         
         return result_stmt
     except Exception as e:
