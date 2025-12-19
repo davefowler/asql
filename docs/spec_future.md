@@ -199,10 +199,6 @@ order by -sum_amount                -- Can reference auto-aliased column
 4. **Backward compatibility**: Explicit `as` aliases would still work and override auto-aliases
 5. **Shorthand support**: Functions that support shorthand (like `sum_amount`) already work - this extends the pattern
 
-### Complete Mapping Table
-
-See [Auto-Alias Mapping Table](../../ai_notes/auto-alias-mapping-table.md) for a comprehensive table of all function → auto-alias mappings and which functions support shorthand syntax.
-
 ### Current
 
 Most aggregates require explicit `as` aliases. Shorthand forms like `sum_amount` already work and create columns with matching names.
@@ -255,7 +251,7 @@ ASQL may rename `running_count()` to `running_num()` for consistency with the `n
 ### Rationale
 
 - **Consistency**: If `#` → `num` and `count(*)` → `num`, then `running_count(*)` should be `running_num(*)`
-- **Analytics-friendly**: `num` is more analytics-friendly than `count` (see [Auto-Alias Mapping Table](../../ai_notes/auto-alias-mapping-table.md))
+- **Analytics-friendly**: `num` is more analytics-friendly than `count`
 - **Declarative continuity**: `running_num` matches the auto-alias pattern `running_num`
 
 ### Current Behavior
@@ -332,5 +328,3 @@ compile:
 **See Also**:
 - `docs/spec.md` - Current specification of implemented features
 - GitHub issues - Work tracked as issues when prioritized
-- `ai_notes/COHORT_ANALYSIS.md` - Detailed cohort analysis design
-- `ai_notes/auto-alias-mapping-table.md` - Auto-aliasing patterns and rationale

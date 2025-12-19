@@ -202,4 +202,4 @@ Some ASQL features have limited support across SQL dialects. See [Dialect Limita
 
 ## Next Steps
 
-See `docs/spec_future.md` for planned features and `ai_notes/` for implementation notes.
+See `docs/spec_future.md` for planned features.
