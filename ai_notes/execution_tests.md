@@ -1,7 +1,13 @@
 # Execution Testing in ASQL
 
 **Date**: 2025-12-18  
-**Status**: Research and recommendations
+**Status**: Research complete → Implementation planned
+
+**Tracking**: [GitHub Issue #78](https://github.com/davefowler/asql/issues/78) - DuckDB-based execution testing with multi-dialect abstraction
+
+## Decision
+
+**Use DuckDB** as the primary execution testing engine with an abstraction layer for future multi-database support. See Issue #78 for full implementation plan.
 
 ## Current State
 

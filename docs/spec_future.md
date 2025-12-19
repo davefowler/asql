@@ -436,6 +436,496 @@ compile:
 
 ---
 
+## Reusable Column Aliases (Future Consideration)
+
+ASQL may add support for referencing column aliases within the same SELECT clause and subsequent clauses, eliminating one of SQL's most frustrating limitations.
+
+**Tracking**: Not yet tracked
+
+### Motivation
+
+Standard SQL doesn't allow referencing an alias defined in the same SELECT clause. This forces verbose patterns:
+
+```sql
+-- Standard SQL: Must repeat the expression or use subquery/CTE
+SELECT 
+    unit_price * (1 - discount) AS discount_price,
+    unit_price * (1 - discount) * quantity AS total_price,  -- repeated!
+    unit_price * (1 - discount) * quantity * (1 + tax_rate) AS taxed_price  -- repeated again!
+FROM order_items
+```
+
+DuckDB solved this elegantly by allowing alias reuse.
+
+### DuckDB Reference
+
+```sql
+SELECT
+    unit_price * (1 - discount) AS discount_price,
+    discount_price * quantity AS total_price,  -- reuses discount_price!
+    total_price * (1 + tax_rate) AS taxed_price  -- reuses total_price!
+FROM order_items
+WHERE taxed_price > 100;  -- can filter on derived column!
+```
+
+### Proposed ASQL Syntax
+
+```asql
+from order_items
+  select
+    unit_price * (1 - discount) as discount_price,
+    discount_price * quantity as total_price,
+    total_price * (1 + tax_rate) as taxed_price
+  where taxed_price > 100
+```
+
+### Benefits
+
+- **DRY principle**: Define expression once, reference by name
+- **Readability**: Shows logical dependency between columns
+- **Maintainability**: Change expression in one place
+- **Fewer errors**: No risk of updating one copy but not another
+
+### Implementation Approach
+
+1. **DuckDB target**: Emit directly (native support)
+2. **Other dialects**: Auto-generate CTE chain or subquery wrapping:
+
+```sql
+-- Generated for non-DuckDB dialects
+WITH _step1 AS (
+  SELECT *, unit_price * (1 - discount) AS discount_price FROM order_items
+),
+_step2 AS (
+  SELECT *, discount_price * quantity AS total_price FROM _step1
+),
+_step3 AS (
+  SELECT *, total_price * (1 + tax_rate) AS taxed_price FROM _step2
+)
+SELECT * FROM _step3 WHERE taxed_price > 100
+```
+
+### Open Design Questions
+
+1. **Detection**: How to detect alias references vs column names? Need to track defined aliases
+2. **Order dependency**: Aliases can only reference earlier aliases (same row, left-to-right)
+3. **Circular references**: Must detect and error on `a as b, b as a`
+4. **WHERE/HAVING**: Should alias references work in WHERE? (DuckDB allows this)
+5. **Performance**: CTE chain for non-DuckDB may have performance implications
+
+### Current Workaround
+
+Use explicit CTEs or ASQL's `with` clause:
+
+```asql
+from order_items
+  select *, unit_price * (1 - discount) as discount_price
+with discount_price * quantity as total_price
+with total_price * (1 + tax_rate) as taxed_price
+  where taxed_price > 100
+```
+
+Or repeat expressions (error-prone).
+
+**Priority**: High - Addresses a major SQL pain point. Very high value for analytics workflows with chained calculations.
+
+---
+
+## ASOF JOIN (Future Consideration)
+
+ASQL may add support for ASOF joins, which join on the nearest preceding key value. This is essential for time-series analytics.
+
+**Tracking**: Not yet tracked
+
+### Motivation
+
+Time-series data often requires joining records based on "as of" semantics - finding the most recent value before a given timestamp. Common use cases:
+- Financial trades matched with the latest quote
+- IoT sensor readings matched with configuration changes
+- Event streams matched with state snapshots
+
+Standard SQL requires complex window functions or correlated subqueries to achieve this.
+
+### DuckDB Reference
+
+```sql
+SELECT *
+FROM trades
+ASOF JOIN quotes
+ON trades.symbol = quotes.symbol
+AND trades.timestamp >= quotes.timestamp;
+```
+
+Gets the most recent quote as of each trade time.
+
+### Proposed ASQL Syntax
+
+**Option 1: Explicit ASOF keyword**
+
+```asql
+from trades
+  asof join quotes on symbol 
+    and trades.timestamp >= quotes.timestamp
+```
+
+**Option 2: ASOF modifier on regular join**
+
+```asql
+from trades
+  & quotes on symbol asof timestamp  -- implicit >= semantics
+```
+
+**Option 3: ASOF as join operator**
+
+```asql
+from trades
+  &~ quotes on symbol, timestamp  -- &~ as "asof join" operator
+```
+
+### Benefits
+
+- **Time-series analytics**: Essential for finance, IoT, event streams
+- **Cleaner syntax**: Replaces complex window function patterns
+- **Performance**: Database can optimize ASOF joins better than equivalent SQL
+
+### Open Design Questions
+
+1. **Operator syntax**: Should we use a new join operator (`&~`) or keyword (`asof join`)?
+2. **Implicit semantics**: Should `asof timestamp` imply `>=` or require explicit comparison?
+3. **Multiple columns**: How to handle ASOF on multiple time columns?
+4. **Dialect support**: DuckDB has native support; other dialects need window function fallback
+5. **Direction**: Support both "as of before" (`>=`) and "as of after" (`<=`)?
+
+### Current Workaround
+
+Use window functions with explicit logic:
+
+```asql
+from trades
+  &? quotes on trades.symbol = quotes.symbol
+    and quotes.timestamp <= trades.timestamp
+  per trades.id first by -quotes.timestamp
+```
+
+Or use raw SQL with correlated subquery.
+
+**Priority**: Medium-High - Very valuable for time-series use cases (finance, IoT, event analytics).
+
+---
+
+## List Comprehensions / Array Transformations (Future Consideration)
+
+ASQL may add Python-style list comprehensions for transforming array columns.
+
+**Tracking**: Not yet tracked  
+**Research**: See [ai_notes/archive/research/list-comprehensions-research.md](../ai_notes/archive/research/list-comprehensions-research.md) for detailed analysis.
+
+### Proposed Syntax
+
+```asql
+from events
+  select [lower(tag) for tag in tags] as normalized_tags
+
+from data
+  select [x * 2 for x in numbers if x > 0] as doubled
+```
+
+### Dialect Support
+
+| Dialect | Strategy | SQLGlot Help? |
+|---------|----------|---------------|
+| DuckDB | Pass through (native) | ✅ |
+| BigQuery | `ARRAY(SELECT ... FROM UNNEST(...))` | ✅ |
+| Postgres | `ARRAY(SELECT ... FROM UNNEST(...))` | ✅ |
+| Snowflake | `ARRAY_AGG(...) + FLATTEN` | ❌ Custom needed |
+| MySQL | Not supported (no arrays) | N/A |
+
+### Implementation Notes
+
+- **Postgres-style is portable** for most dialects: `ARRAY(SELECT expr FROM UNNEST(arr) AS var)`
+- **SQLGlot transpiles correctly** for DuckDB/BigQuery/Postgres
+- **Snowflake requires custom handling** - SQLGlot generates invalid syntax
+- **Preparser needs dialect awareness** (like pivot) for Snowflake support
+
+### Benefits
+
+- Clean syntax for array transformations
+- Useful for JSON/nested data structures
+- Familiar to Python users
+
+**Priority**: Medium - valuable for semi-structured data but not critical for most analytics.
+
+---
+
+## Dynamic Column Selection: `columns matching` (Future Consideration)
+
+ASQL may add pattern-based column selection for working with wide tables that follow naming conventions.
+
+**Tracking**: Not yet tracked
+
+### Motivation
+
+Wide tables often have columns following naming patterns (e.g., `sales_q1`, `sales_q2`, `amount_usd`, `amount_eur`). Selecting or transforming these requires tedious enumeration. DuckDB's `COLUMNS()` expression solves this elegantly.
+
+### DuckDB Reference
+
+```sql
+-- Select columns matching regex
+SELECT COLUMNS('.*_id') FROM orders;
+
+-- Apply function to matching columns
+SELECT COLUMNS('sales_.*')::DECIMAL(10,2) FROM quarterly_data;
+
+-- With lambda for transformation
+SELECT COLUMNS(c -> c LIKE '%_amount')::INT FROM payments;
+```
+
+### Proposed ASQL Syntax
+
+```asql
+# Select columns matching a pattern
+from quarterly_data
+  select columns matching 'sales_*'
+
+# With alias grouping
+from events
+  select columns matching '*_at' as timestamps
+
+# Apply transformations to matching columns
+from dirty_data
+  select columns matching 'amount_*' :: decimal(10,2)
+
+# Exclude pattern (inverse matching)
+from users
+  select * except columns matching '*_internal'
+```
+
+### Benefits
+
+- **ETL workflows**: Easily select/transform groups of related columns
+- **Wide tables**: Work with tables that have 50+ columns following conventions
+- **Schema evolution**: Queries automatically include new columns matching the pattern
+- **Less repetition**: No need to enumerate `sales_q1, sales_q2, sales_q3, sales_q4`
+
+### Open Design Questions
+
+1. **Pattern syntax**: Use glob patterns (`sales_*`) or regex (`sales_.*`)? Glob is simpler but regex is more powerful
+2. **Transformation syntax**: How to apply functions to matched columns? `:: type` for casts, but what about `upper()` or other functions?
+3. **Alias handling**: What happens when you alias a pattern match? Create array? Struct? Just document column names?
+4. **Dialect support**: DuckDB has native `COLUMNS()`, but other dialects would need column enumeration at compile time (requires schema)
+5. **Interaction with `except`**: Should `except columns matching 'pattern'` be supported?
+
+### Current Workaround
+
+Explicitly list all columns:
+
+```asql
+from quarterly_data
+  select sales_q1, sales_q2, sales_q3, sales_q4
+```
+
+Or use `select *` and filter in downstream processing.
+
+**Priority**: Medium-High - Very useful for ETL and analytics on wide tables, but requires schema awareness for non-DuckDB dialects.
+
+---
+
+## Pipe Syntax Standard Alignment (Future Consideration)
+
+ASQL may adopt compatibility with the emerging SQL pipe syntax standard used by BigQuery, Spark/Databricks, and (with variation) Snowflake. This would position ASQL as a **multi-dialect transpiler for pipe syntax**, allowing users to write the emerging standard and deploy anywhere.
+
+**Tracking**: Not yet tracked  
+**Research**: See [ai_notes/archive/research/pipe-syntax-adoption-analysis.md](../ai_notes/archive/research/pipe-syntax-adoption-analysis.md)
+
+### Background
+
+In 2024-2025, major platforms independently converged on nearly identical pipe syntax:
+
+| Platform | Operator | Status | Reference |
+|----------|----------|--------|-----------|
+| BigQuery | `\|>` | GA (Feb 2025) | [VLDB 2024 paper](https://www.vldb.org/pvldb/vol17/p4051-shute.pdf) |
+| Spark/Databricks | `\|>` | Available (v4.0) | [Databricks docs](https://docs.databricks.com/sql/language-manual/sql-ref-syntax-qry-pipeline) |
+| Snowflake | `->>` | Available (May 2025) | Different operator, similar concept |
+| ASQL | newline / `\|` | Current | Implicit piping |
+
+This convergence validates ASQL's FROM-first, pipeline-based design. Rather than competing, ASQL can embrace this standard while adding value through multi-dialect transpilation.
+
+### Strategy: Accept Pipe Syntax as Input Aliases
+
+ASQL would accept pipe syntax operators as **aliases** for existing ASQL features, enabling users familiar with BigQuery/Spark to use ASQL immediately.
+
+### Proposed Additions
+
+#### 1. Accept `|>` Operator (Alias)
+
+The `|>` operator would be accepted and effectively ignored (ASQL already uses newlines or `|` for pipelining).
+
+```asql
+# These would be equivalent:
+from orders |> where status = 'active' |> select id, total
+
+from orders
+  where status = 'active'
+  select id, total
+```
+
+**Implementation**: Lexer treats `|>` as whitespace/newline equivalent.
+
+#### 2. `drop` as Alias for `except`
+
+Pipe syntax uses `DROP` to remove columns. ASQL would accept `drop` as an alias for `except`.
+
+```asql
+# Pipe syntax style
+from users
+  drop ssn, internal_notes
+
+# Current ASQL style (remains valid)
+from users
+  except ssn, internal_notes
+```
+
+**Implementation**: Parser treats `drop` as synonym for `except` when followed by column list.
+
+**Note**: Context distinguishes from SQL `DROP TABLE`. In ASQL pipeline context, `drop` operates on columns.
+
+#### 3. `aggregate` as Alternative Aggregation Syntax
+
+Pipe syntax uses `AGGREGATE ... GROUP BY`. ASQL would accept this as alternative to inline `group by (agg)` syntax.
+
+```asql
+# Pipe syntax style
+from orders
+  aggregate 
+    sum(total) as revenue,
+    count(*) as order_count
+  group by region
+
+# Current ASQL style (remains valid)
+from orders
+  group by region (
+    sum(total) as revenue,
+    count(*) as order_count
+  )
+```
+
+**Implementation**: Parser accepts `aggregate ... group by` pattern and transforms to ASQL's internal representation.
+
+**Note**: Both syntaxes would be valid. The inline `group by col (agg)` style remains recommended for ASQL as it's more compact.
+
+#### 4. `extend` Keyword for Adding Columns
+
+Pipe syntax uses `EXTEND` to add columns while keeping all existing ones. This is cleaner than `select *, expr as col`.
+
+```asql
+from sales
+  extend revenue - cost as profit
+  extend profit / revenue as margin
+
+# Equivalent to (but cleaner than):
+from sales
+  select *, revenue - cost as profit
+  select *, profit / revenue as margin
+```
+
+**Key behavior**: 
+- `extend` implicitly includes all existing columns (like `select *`)
+- Multiple `extend` statements can chain, each seeing columns from previous extends
+- This naturally enables column reuse (see "Reusable Column Aliases" section)
+
+**Implementation**: 
+- `extend expr as col` → `select *, expr as col`
+- With column reuse feature, later extends can reference earlier ones
+
+**Value**: High - significantly cleaner for incremental column creation.
+
+### Operators NOT Being Added
+
+#### `SET` - Intentionally Omitted
+
+Pipe syntax uses `SET col = expr` to modify existing columns. ASQL intentionally does **not** adopt this keyword because:
+
+1. **Term overloading**: `SET` has strong associations with SQL `UPDATE` statements and variable assignment
+2. **ASQL already has `replace`**: The `replace col with expr` syntax serves this purpose
+3. **Semantic clarity**: `replace` makes it clear you're replacing a column's definition
+
+```asql
+# ASQL's existing syntax (preferred)
+from products
+  replace price with price * 1.10
+
+# NOT adding:
+# from products
+#   set price = price * 1.10  -- Rejected: too similar to UPDATE semantics
+```
+
+### Compatibility Matrix
+
+| Pipe Syntax | ASQL Alias | ASQL Native | Status |
+|-------------|------------|-------------|--------|
+| `\|>` | Accept & ignore | newline / `\|` | 📋 Planned |
+| `WHERE` | N/A | `where` | ✅ Already compatible |
+| `SELECT` | N/A | `select` | ✅ Already compatible |
+| `DROP` | `drop` | `except` | 📋 Planned alias |
+| `RENAME` | N/A | `rename` | ✅ Already identical |
+| `EXTEND` | `extend` | `select *, expr` | 📋 Planned |
+| `SET` | ❌ Not adding | `replace col with expr` | ❌ Intentionally omitted |
+| `AGGREGATE ... GROUP BY` | `aggregate ... group by` | `group by col (agg)` | 📋 Planned alias |
+| `ORDER BY` | N/A | `order by` | ✅ Already compatible |
+| `LIMIT` | N/A | `limit` | ✅ Already compatible |
+| `DISTINCT` | N/A | `distinct` | ✅ Already compatible |
+| `JOIN` | N/A | `join` / `&` | ✅ Already compatible |
+| `TABLESAMPLE` | N/A | `sample` | ✅ Already compatible |
+| `PIVOT` / `UNPIVOT` | N/A | `pivot` / `unpivot` | ✅ Already compatible |
+
+### Output Mode: Emit Pipe Syntax
+
+When targeting BigQuery or Spark, ASQL could optionally emit native pipe syntax for better readability of generated SQL.
+
+```asql
+# Input
+from orders
+  where status = 'completed'
+  except internal_notes
+  group by region (sum(total) as revenue)
+  order by -revenue
+```
+
+```sql
+-- Output for BigQuery (with pipe syntax mode)
+FROM orders
+|> WHERE status = 'completed'
+|> DROP internal_notes
+|> AGGREGATE SUM(total) AS revenue GROUP BY region
+|> ORDER BY revenue DESC
+```
+
+**Implementation**: Add `--emit-pipe-syntax` flag or config option for BigQuery/Spark targets.
+
+### Benefits
+
+1. **Industry alignment**: Users familiar with BigQuery/Spark pipe syntax can use ASQL immediately
+2. **Knowledge transfer**: Skills learned in ASQL transfer to native platforms and vice versa
+3. **Polyfill capability**: ASQL brings pipe syntax to databases that don't support it natively (Postgres, MySQL, SQLite)
+4. **dbt integration**: ASQL could preprocess pipe syntax in dbt models, compiling to any warehouse
+5. **Future-proofing**: If pipe syntax becomes ISO standard, ASQL is already compatible
+
+### Migration Path
+
+1. **Phase 1**: Accept `|>`, `drop`, `extend` as aliases (input compatibility)
+2. **Phase 2**: Add `aggregate ... group by` alternative syntax
+3. **Phase 3**: Optional pipe syntax output for BigQuery/Spark targets
+4. **Phase 4**: Documentation positioning ASQL as "Pipe Syntax for Every Database"
+
+### Related Features
+
+- **Reusable Column Aliases**: Enables `extend` chaining to reference earlier columns
+- **Replace Syntax**: ASQL's `replace col with expr` covers pipe syntax's `SET` use case
+
+**Priority**: High - Industry alignment with major platforms. Low implementation complexity (mostly parser aliases).
+
+---
+
 **See Also**:
 - `docs/spec.md` - Current specification of implemented features
 - GitHub issues - Work tracked as issues when prioritized
