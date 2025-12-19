@@ -9,25 +9,37 @@ if TYPE_CHECKING:
     from asql.config import CompileSettings
 
 
+def _is_set_statement(text: str) -> bool:
+    """Check if text is a SET statement (configuration, not a query)."""
+    stripped = text.strip().upper()
+    return stripped.startswith('SET ') and '=' in stripped
+
+
 def _split_statements(text: str) -> List[str]:
-    """Split text into individual statements by semicolons or new FROM clauses.
+    """Split text into individual statements.
     
-    Supports two ways to separate queries:
+    Query separators:
     1. Semicolons (SQL standard): "from a; from b"
-    2. New FROM at start of line (ASQL natural): A `from` at column 0 starts a new query
+    2. Blank lines (ASQL natural): "from a\\n\\nfrom b"
+    
+    SET statements are kept with the query they configure (not split separately).
     
     Respects strings and parentheses when splitting.
     
     Examples:
-        "from users; from orders"  -> ["from users", "from orders"]
-        "from users\\nfrom orders" -> ["from users", "from orders"]
-        "from users\\n  where x"   -> ["from users\\n  where x"] (indented = same query)
+        "from users; from orders"      -> ["from users", "from orders"]
+        "from users\\n\\nfrom orders"  -> ["from users", "from orders"]
+        "from users\\n  where x"       -> ["from users\\n  where x"] (no blank line)
+        "SET x = 1; from users"        -> ["SET x = 1; from users"] (SET stays with query)
     """
-    statements: List[str] = []
-    current: List[str] = []
     depth = 0
     in_string: Optional[str] = None
-    at_line_start = True  # Track if we're at the start of a line
+    
+    # First pass: split by semicolons (respecting strings and parens)
+    # BUT keep SET statements attached to the next query
+    chunks: List[str] = []
+    current: List[str] = []
+    pending_sets: List[str] = []  # SET statements waiting for a query
     
     i = 0
     while i < len(text):
@@ -40,28 +52,6 @@ def _split_statements(text: str) -> List[str]:
             elif in_string is None:
                 in_string = char
         
-        # Track line starts
-        if char == '\n':
-            at_line_start = True
-            current.append(char)
-            i += 1
-            continue
-        
-        # Check for 'from' at the start of a line (not indented)
-        # This starts a new query if we already have content
-        if (at_line_start and 
-            in_string is None and 
-            depth == 0 and
-            text[i:i+4].lower() == 'from' and
-            (i + 4 >= len(text) or not text[i+4].isalnum() and text[i+4] != '_')):
-            
-            # Check if current has meaningful content (not just whitespace)
-            current_text = ''.join(current).strip()
-            if current_text:
-                # This is a new FROM starting a new query
-                statements.append(current_text)
-                current = []
-        
         # Parentheses tracking (only outside strings)
         if in_string is None:
             if char == '(':
@@ -69,26 +59,69 @@ def _split_statements(text: str) -> List[str]:
             elif char == ')':
                 depth -= 1
             elif char == ';' and depth == 0:
-                stmt = ''.join(current).strip()
-                if stmt:
-                    statements.append(stmt)
+                chunk = ''.join(current).strip()
+                if chunk:
+                    if _is_set_statement(chunk):
+                        # Keep SET statements pending until we find a real query
+                        pending_sets.append(chunk)
+                    else:
+                        # Prepend any pending SET statements
+                        if pending_sets:
+                            chunk = '; '.join(pending_sets) + '; ' + chunk
+                            pending_sets = []
+                        chunks.append(chunk)
                 current = []
                 i += 1
-                at_line_start = True  # After semicolon, treat as line start
                 continue
-        
-        # Update at_line_start: only whitespace keeps us at line start
-        if char not in ' \t':
-            at_line_start = False
         
         current.append(char)
         i += 1
     
-    # Don't forget the last statement
+    # Don't forget the last chunk
     if current:
-        stmt = ''.join(current).strip()
-        if stmt:
-            statements.append(stmt)
+        chunk = ''.join(current).strip()
+        if chunk:
+            if _is_set_statement(chunk):
+                pending_sets.append(chunk)
+            else:
+                if pending_sets:
+                    chunk = '; '.join(pending_sets) + '; ' + chunk
+                    pending_sets = []
+                chunks.append(chunk)
+    
+    # If only SET statements remain, add them as a chunk (rare edge case)
+    if pending_sets and not chunks:
+        chunks.append('; '.join(pending_sets))
+    elif pending_sets:
+        # Attach remaining SETs to the last chunk
+        chunks[-1] = '; '.join(pending_sets) + '; ' + chunks[-1]
+    
+    # Second pass: split each chunk by blank lines
+    statements: List[str] = []
+    for chunk in chunks:
+        lines = chunk.split('\n')
+        current_block: List[str] = []
+        
+        for line in lines:
+            stripped = line.strip()
+            
+            # Blank line = query separator (but not if we only have SET statements so far)
+            if not stripped:
+                if current_block:
+                    block_text = '\n'.join(current_block).strip()
+                    # Only split if the block is a real query (not just SET statements)
+                    if block_text and not all(_is_set_statement(s.strip()) for s in block_text.split(';') if s.strip()):
+                        statements.append(block_text)
+                        current_block = []
+                    # If it's just SETs, keep them in current_block for the next query
+            else:
+                current_block.append(line)
+        
+        # Don't forget the last block
+        if current_block:
+            block_text = '\n'.join(current_block).strip()
+            if block_text:
+                statements.append(block_text)
     
     return statements if statements else [text.strip()]
 
