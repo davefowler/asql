@@ -113,8 +113,12 @@ from asql.schema import Schema
 from asql.config import CompileSettings
 from asql import compile
 
-# Load schema
+# Load schema (inference enabled by default)
 schema = Schema.from_yaml("asql_schema.yml")
+
+# Load schema WITHOUT convention-based inference
+# (only use explicitly defined relationships)
+schema = Schema.from_yaml("asql_schema.yml", infer_relationships=False)
 
 # Compile with schema
 settings = CompileSettings(schema=schema)
@@ -130,7 +134,21 @@ schema = Schema.from_dbt("/path/to/dbt/project")
 
 # Or from specific schema files
 schema = Schema.from_dbt("/path/to/models/schema.yml")
+
+# Disable convention-based inference
+schema = Schema.from_dbt("/path/to/dbt/project", infer_relationships=False)
 ```
+
+### Settings
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `infer_relationships` | `True` | Whether to auto-infer relationships from FK naming conventions |
+
+When `infer_relationships=False`:
+- Only explicitly defined relationships (from YAML/dbt) are used
+- No convention-based inference (`user_id` → `users.id`)
+- Useful for strict schemas where you want full control
 
 ### YAML Format
 
@@ -160,7 +178,7 @@ relationships:
 
 ## Tests
 
-All 38 schema tests pass:
+All 40 schema tests pass:
 - Column/Table/Relationship dataclass tests
 - Schema methods (add, find, inference)
 - YAML loading
@@ -171,6 +189,7 @@ All 38 schema tests pass:
 - Irregular plural handling (person → people)
 - PK convention detection (id, pk, {singular}_id)
 - Plural FK support (users_id)
+- Inference toggle (infer_relationships=True/False)
 
 Plus all 1549 existing tests still pass.
 
