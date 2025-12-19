@@ -223,15 +223,20 @@ This creates cohorts segmented by acquisition channel, allowing you to compare r
 - `active`: Active users
 - `cohort_size`: Total users in that channel cohort
 
-## Explicit Join Keys
+## Join Key Inference
 
-When join inference fails (non-standard foreign key names), use the `on` clause:
+ASQL automatically infers join keys using foreign key naming conventions. For example:
+
+- `events.user_id` → joins to `users.id`
+- `orders.customer_id` → joins to `customers.id`
 
 ```asql-play
 from orders
 group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date) on customer_id
+cohort by month(customers.first_order_date)
 ```
+
+If your schema doesn't follow these conventions, provide schema information or enable `invent_join_keys` mode for examples.
 
 ## Common Use Cases
 
@@ -304,7 +309,7 @@ When you use `cohort by`, ASQL automatically:
 ## Best Practices
 
 1. **Match granularities**: Use the same granularity in `group by` and `cohort by` (e.g., both `month()`)
-2. **Use explicit join keys**: When foreign key inference fails, use `on` clause
+2. **Follow FK conventions**: Use `{table}_id` naming (e.g., `user_id`, `customer_id`) for automatic join inference
 3. **Filter activity**: Apply filters before `cohort by` to analyze specific event types
 4. **Combine with window functions**: Use `prior()`, `running_sum()`, etc. for advanced analysis
 
