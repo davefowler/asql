@@ -346,20 +346,27 @@ Built-in sampling:
 X = SAMPLE A 0.1;  -- 10% sample
 ```
 
-#### ASQL Comparison ⚠️ Gap Identified
-ASQL doesn't have a portable sampling syntax. This was also identified in the pandas learnings document.
-
-#### Potential Enhancement (Already Proposed)
-From pandas-python-notebooks-learnings.md:
+#### ASQL Comparison ✅ Now Implemented
+ASQL now has a portable `sample` operator (inspired by the pandas learnings document):
 
 ```asql
 from orders
-sample 100              -- random n rows
-sample 10%              -- random percentage
-sample 100 per category -- stratified sampling
+sample 100              -- random N rows
+
+from orders
+sample 10%              -- random 10% of rows (uses TABLESAMPLE BERNOULLI where supported)
+
+from orders
+sample 100 per category -- stratified: 100 random rows per category value
 ```
 
-This remains a high-value addition.
+**Compilation:**
+- `sample N` → `ORDER BY RANDOM() LIMIT N`
+- `sample N%` → `TABLESAMPLE BERNOULLI(N)` (or fallback for dialects without TABLESAMPLE)
+- `sample N per col` → Window function with `ORDER BY RANDOM()` for stratified sampling
+
+#### Takeaway
+ASQL covers this well. Pig Latin validates this was the right feature to add.
 
 ---
 
@@ -550,6 +557,7 @@ This is appropriate. ASQL is a semantic layer; execution optimization belongs to
 | RANK | `per ... number` |
 | Nested FILTER per group | `per` with ordering |
 | Named pipelines | CTEs / subqueries |
+| SAMPLE | `sample N`, `sample N%`, `sample N per col` |
 
 ### 🔶 High-Value Ideas from Pig Latin
 
@@ -557,7 +565,8 @@ This is appropriate. ASQL is a semantic layer; execution optimization belongs to
 |---------|----------------------|-------|
 | **GROUP preserves rows as nested bag** | Access grouped rows beyond aggregates | **Very High** - enables powerful per-group operations |
 | **Nested FOREACH blocks** | Richer per-group transformations | High - ASQL's `per` partially covers this |
-| **SAMPLE operator** | Portable sampling syntax | High - already proposed in pandas doc |
+
+Note: SAMPLE operator was identified as high-value and has since been implemented in ASQL.
 
 ### 🔷 Medium-Value Ideas
 
@@ -621,9 +630,9 @@ ASQL's `per` helps with some of these patterns, but the full "grouped bag" conce
 
 Based on value and complexity:
 
-| Priority | Feature | Notes |
-|----------|---------|-------|
-| P1 | `sample` operator | Already proposed, high value, medium complexity |
+| Priority | Feature | Status/Notes |
+|----------|---------|--------------|
+| ~~P1~~ | ~~`sample` operator~~ | ✅ **Implemented** - `sample N`, `sample N%`, `sample N per col` |
 | P2 | CUBE/ROLLUP | Standard SQL, straightforward compilation |
 | P3 | Nested group access | High value but significant language change |
 | P3 | COGROUP equivalent | Niche use cases |
