@@ -168,7 +168,11 @@ def assert_sql_structure(sql: str, **kwargs: str) -> None:
     Raises:
         AssertionError: If structure is incorrect
     """
-    sql_upper = sql.upper()
+    import re
+    # Strip block comments /* ... */ before checking structure
+    # This prevents transpilation comments from interfering with structure checks
+    sql_no_comments = re.sub(r'/\*[^*]*\*/', '', sql)
+    sql_upper = sql_no_comments.upper()
     positions = {}
     for element, _ in kwargs.items():
         pos = sql_upper.find(element.replace('_', ' '))
