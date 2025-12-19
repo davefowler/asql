@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from asql.preparse.comments import CommentsMixin
 from asql.preparse.settings import SettingsMixin
@@ -23,6 +23,9 @@ from asql.preparse.cohort import CohortMixin
 from asql.preparse.key import KeyMixin
 from asql.preparse.when import WhenMixin
 from asql.preparse.ternary import TernaryMixin
+
+if TYPE_CHECKING:
+    from asql.config import CompileSettings
 
 @dataclass
 class PreParseResult:
@@ -51,11 +54,12 @@ class ASQLPreParser(
     WhenMixin,
     KeyMixin,
 ):
-    def __init__(self, text: str):
+    def __init__(self, text: str, settings: Optional["CompileSettings"] = None):
         self.text = text.strip()
         self.original = text
         self.pos = 0
         self.ctes: List[Tuple[str, str]] = []
+        self.settings = settings  # Compile settings with schema for join inference
 
     def preparse(self) -> str:
         """Apply all transformations and return SQL-like text."""

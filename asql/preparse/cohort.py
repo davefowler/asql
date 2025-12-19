@@ -3,11 +3,44 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 
 from asql.errors import ASQLSyntaxError
 
+if TYPE_CHECKING:
+    from asql.schema import Schema
+
 class CohortMixin:
+    
+    def _infer_cohort_join_key(self, activity_table: str, cohort_table: str) -> str:
+        """
+        Infer the join key between activity and cohort tables.
+        
+        Priority:
+        1. Schema lookup (explicit relationships)
+        2. Convention-based inference ({singular_table}_id)
+        
+        Args:
+            activity_table: The activity table (FROM clause)
+            cohort_table: The cohort table (e.g., users)
+            
+        Returns:
+            The join key column name (e.g., user_id)
+        """
+        # Try schema-based lookup first
+        settings = getattr(self, 'settings', None)
+        if settings:
+            schema: Optional["Schema"] = getattr(settings, 'schema', None)
+            if schema:
+                # Look for relationship from activity_table to cohort_table
+                rel = schema.find_relationship(activity_table, cohort_table)
+                if rel:
+                    return rel.from_column
+        
+        # Fall back to convention-based inference
+        # e.g., users → user_id, customers → customer_id
+        singular = cohort_table.rstrip('s') if cohort_table.endswith('s') else cohort_table
+        return f"{singular}_id"
 
     def _transform_cohort_by(self, text: str) -> str:
         """
@@ -55,13 +88,15 @@ class CohortMixin:
         
         activity_table = from_match.group(1)
         
-        # Join key must be explicit - no guessing
+        # Determine join key: explicit > schema lookup > convention inference
         if explicit_join_key:
             join_key = explicit_join_key
+        elif cohort_table:
+            join_key = self._infer_cohort_join_key(activity_table, cohort_table)
         else:
             raise ASQLSyntaxError(
-                "Cohort analysis requires an explicit join key. "
-                "Use 'cohort by <join_key>' syntax, e.g., 'cohort by user_id' or 'cohort by customer_id'."
+                "Cohort analysis requires a cohort table reference or explicit join key. "
+                "Use 'cohort by month(users.signup_date)' or 'cohort by month(signup_date) on user_id'."
             )
         
         # Determine period calculation - use EXTRACT with AGE for PostgreSQL-style
