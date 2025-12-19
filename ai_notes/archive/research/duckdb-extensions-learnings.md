@@ -565,7 +565,7 @@ select name[1:10] as short_name  -- first 10 chars
 ### 14. Struct Access with Dot Notation ✅ Passes Through
 
 #### DuckDB
-Access struct fields naturally:
+Access struct fields naturally:     
 
 ```sql
 SELECT my_struct.field_name FROM table;
