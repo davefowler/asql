@@ -12,7 +12,11 @@ from asql.errors import ASQLCompilationError, ASQLSyntaxError
 from asql.preparse import preparse_asql
 from asql.compiler.auto_spine import _apply_auto_spine, _remove_guarantee_wrappers
 from asql.compiler.explode import process_explode_markers
-from asql.compiler.inline_settings import extract_dialect_from_comment, extract_inline_settings
+from asql.compiler.inline_settings import (
+    extract_dialect_from_comment,
+    extract_inline_settings,
+    extract_comment_settings,
+)
 from asql.compiler.auto_qualify import auto_qualify_columns
 from asql.compiler.auto_alias import apply_auto_aliasing
 
@@ -79,6 +83,13 @@ def compile(
             raise ASQLSyntaxError("Empty ASQL query")
 
         base_settings = settings or CompileSettings()
+        
+        # Pre-scan for comment settings (these affect preparsing)
+        include_transpilation, passthrough = extract_comment_settings(asql_query)
+        if include_transpilation is not None:
+            base_settings.include_transpilation_comments = include_transpilation
+        if passthrough is not None:
+            base_settings.passthrough_comments = passthrough
 
         if not dialect:
             dialect = extract_dialect_from_comment(asql_query)
@@ -119,12 +130,17 @@ def compile(
 
         for stmt in query_statements:
             transformed_stmt: exp.Expression = stmt
+            transformations_applied: list[str] = []
 
             # Apply auto-aliasing FIRST so auto_spine can use the generated aliases
             transformed_stmt = apply_auto_aliasing(transformed_stmt, final_settings)
 
             if final_settings.auto_spine:
+                original_sql = transformed_stmt.sql()
                 transformed_stmt = _apply_auto_spine(transformed_stmt, final_settings, dialect)
+                # Check if auto-spine was actually applied by comparing SQL
+                if transformed_stmt.sql() != original_sql:
+                    transformations_applied.append("auto_spine")
 
             # Auto-qualify conflicting column names in joins
             transformed_stmt = auto_qualify_columns(transformed_stmt)
@@ -140,7 +156,15 @@ def compile(
                     f"\n\nOriginal query:\n{asql_query[:500]}"
                 )
             
-            sql_parts.append(transformed_stmt.sql(dialect=sql_dialect, pretty=pretty))
+            generated_sql = transformed_stmt.sql(dialect=sql_dialect, pretty=pretty)
+            
+            # Add transpilation comments if enabled
+            if final_settings.include_transpilation_comments and transformations_applied:
+                generated_sql = _add_transpilation_comments(
+                    generated_sql, transformations_applied, pretty
+                )
+            
+            sql_parts.append(generated_sql)
 
         return ";\n\n".join(sql_parts)
 
@@ -150,6 +174,43 @@ def compile(
         raise ASQLSyntaxError(f"ASQL syntax error: {e}") from e
     except Exception as e:
         raise ASQLCompilationError(f"Compilation error: {e}") from e
+
+
+def _add_transpilation_comments(
+    sql: str,
+    transformations: list[str],
+    pretty: bool,
+) -> str:
+    """Add explanatory comments about ASQL transformations to generated SQL.
+    
+    Args:
+        sql: The generated SQL string
+        transformations: List of transformation names that were applied
+        pretty: Whether pretty printing is enabled
+        
+    Returns:
+        SQL with explanatory comments prepended
+    """
+    comments: list[str] = []
+    
+    for transform in transformations:
+        if transform == "auto_spine":
+            comments.append(
+                "/* ASQL auto-spine: Gap-filling CTEs were generated to ensure all "
+                "expected GROUP BY values appear (even with zero/null aggregates). "
+                "Disable with: SET auto_spine = false; */"
+            )
+        elif transform == "cohort":
+            comments.append(
+                "/* ASQL cohort: Cohort analysis CTEs were generated to track "
+                "user cohorts over time periods. */"
+            )
+    
+    if not comments:
+        return sql
+    
+    separator = "\n\n" if pretty else " "
+    return separator.join(comments) + separator + sql
 
 
 def compile_to_ast(asql_query: str) -> exp.Expression:
