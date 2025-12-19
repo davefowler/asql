@@ -201,6 +201,36 @@ ASQL generates dialect-appropriate date generation:
 - For very large date ranges, consider explicit bounds
 - Non-date DISTINCT spines query the source table
 
+### Column-to-Column Comparisons in WHERE
+
+When your WHERE clause compares the grouped date column to another column, ASQL bounds the spine by your actual data:
+
+```asql
+from orders
+  where created_at > updated_at  -- Data-dependent bound
+  group by month(created_at) (sum(amount) ?? 0 as revenue)
+```
+
+**This is the correct behavior.** When you write `created_at > updated_at`, you're saying "my bounds should be defined by this data relationship." The spine correctly represents all periods where your predicate could be satisfied—there's no "missing" data before the MIN because by definition, no data could exist there that satisfies your condition.
+
+**Want explicit bounds instead?** Add them:
+
+```asql
+from orders
+  where created_at > updated_at 
+    and created_at >= @2024-01-01  -- Explicit bound added
+  group by month(created_at) (sum(amount) ?? 0 as revenue)
+```
+
+Or filter the grouped results:
+
+```asql
+from orders
+  where created_at > updated_at
+  group by month(created_at) (sum(amount) ?? 0 as revenue)
+  where month_created_at >= @2024-01-01  -- Filter after grouping
+```
+
 ## Best Practices
 
 1. **Always use `??` for aggregates** — Decide what missing means (0? NULL? N/A?)

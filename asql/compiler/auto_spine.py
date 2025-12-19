@@ -23,6 +23,7 @@ This approach:
 
 from __future__ import annotations
 
+import logging
 from typing import List, Optional, Tuple, Set
 
 import sqlglot
@@ -30,6 +31,8 @@ from sqlglot import exp
 
 from asql.config import CompileSettings
 from asql.errors import ASQLCompilationError
+
+logger = logging.getLogger(__name__)
 
 
 # Default spine date bounds (can be made configurable later)
@@ -175,26 +178,62 @@ def _get_source_column_from_trunc(trunc_expr: exp.Expression) -> Optional[exp.Ex
     return None
 
 
+def _is_predicate_safe_for_spine(
+    predicate: exp.Expression,
+    target_column: str,
+) -> bool:
+    """Check if a predicate is safe to use in a spine CTE.
+    
+    A predicate is "safe" if:
+    - It only references the target column (no other table columns)
+    - Other referenced values are literals, functions, or constants
+    
+    Unsafe predicates reference other columns that won't exist in the spine context.
+    
+    Examples:
+    - Safe: created_at >= '2021-01-01' (column + literal)
+    - Safe: YEAR(created_at) = 2021 (function on column + literal)
+    - Unsafe: created_at > updated_at (two columns)
+    - Unsafe: created_at BETWEEN start_date AND end_date (columns as bounds)
+    """
+    columns = _get_column_names_from_expr(predicate)
+    
+    # If the predicate doesn't reference our target column, it's not relevant
+    if target_column not in columns:
+        return False
+    
+    # If it references ONLY our target column, it's safe
+    if columns == {target_column}:
+        return True
+    
+    # If it references other columns besides the target, it's unsafe
+    # (those columns won't exist in the spine CTE)
+    return False
+
+
 def _extract_predicates_for_column(
     where_clause: Optional[exp.Where],
     source_column_name: str,
-) -> List[exp.Expression]:
+) -> Tuple[List[exp.Expression], List[exp.Expression]]:
     """Extract predicates from WHERE that involve a specific column.
     
     This finds any predicate (comparison, IN, BETWEEN, etc.) that references
-    the given column and returns them as a list of expressions.
+    the given column and returns them as two lists:
+    1. Safe predicates - only reference the target column (can be used in spine)
+    2. Unsafe predicates - reference other columns (skipped for spine)
     
     Args:
         where_clause: The WHERE clause expression
         source_column_name: The column name to look for (e.g., 'created_at')
         
     Returns:
-        List of predicate expressions involving the column
+        Tuple of (safe_predicates, unsafe_predicates)
     """
     if not where_clause:
-        return []
+        return [], []
     
-    predicates: List[exp.Expression] = []
+    safe_predicates: List[exp.Expression] = []
+    unsafe_predicates: List[exp.Expression] = []
     
     def find_predicates(node: exp.Expression) -> None:
         """Recursively find predicates involving the target column."""
@@ -204,21 +243,29 @@ def _extract_predicates_for_column(
             find_predicates(node.expression)
             return
         
-        # Handle OR - if either side involves our column, take the whole OR
+        # Handle OR - if either side involves our column, check safety
         if isinstance(node, exp.Or):
             columns_in_node = _get_column_names_from_expr(node)
             if source_column_name in columns_in_node:
-                predicates.append(node.copy())
+                # OR predicates with other columns are always unsafe
+                # because we can't partially apply them
+                if _is_predicate_safe_for_spine(node, source_column_name):
+                    safe_predicates.append(node.copy())
+                else:
+                    unsafe_predicates.append(node.copy())
             return
         
         # For other predicates (comparisons, IN, BETWEEN, etc.)
         # Check if they reference our target column
         columns_in_node = _get_column_names_from_expr(node)
         if source_column_name in columns_in_node:
-            predicates.append(node.copy())
-    
+            if _is_predicate_safe_for_spine(node, source_column_name):
+                safe_predicates.append(node.copy())
+            else:
+                unsafe_predicates.append(node.copy())
+
     find_predicates(where_clause.this)
-    return predicates
+    return safe_predicates, unsafe_predicates
 
 
 def _transform_predicate_for_spine(
@@ -385,9 +432,13 @@ def _build_spine_cte_sql(
     explicit_values: Optional[List[str]],
     source_column: Optional[str],
     source_table: str,
-    where_predicates: List[exp.Expression],
+    safe_predicates: List[exp.Expression],
+    all_predicates: List[exp.Expression],
+    has_unsafe_predicates: bool,
     dialect: Optional[str] = None,
     include_null: bool = False,
+    use_data_bounds: bool = False,
+    data_cte_name: Optional[str] = None,
 ) -> str:
     """Build SQL for a spine CTE - unified for both dates and categoricals.
     
@@ -398,9 +449,13 @@ def _build_spine_cte_sql(
         explicit_values: Explicit values from guarantee() if any
         source_column: Source column name for predicate transformation
         source_table: Source table name
-        where_predicates: Predicates to apply to the spine
+        safe_predicates: Predicates that only reference the target column (safe for dates)
+        all_predicates: All predicates involving the column (safe for categoricals)
+        has_unsafe_predicates: Whether any predicates reference other columns
         dialect: SQL dialect
         include_null: Include NULL for ROLLUP/CUBE support
+        use_data_bounds: For date spines, use data MIN/MAX instead of wide range
+        data_cte_name: Name of the data CTE to reference for MIN/MAX bounds
     """
     dialect_lower = dialect.lower() if dialect else ""
     null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
@@ -409,13 +464,26 @@ def _build_spine_cte_sql(
     if explicit_values:
         return _build_explicit_values_spine_sql(alias, explicit_values, dialect, include_null)
     
-    # Case 2: Date column - use generate_series with wide range + filter
+    # Case 2: Date column
     if is_date and trunc_unit:
         interval = TRUNC_TO_INTERVAL.get(trunc_unit, "1 day")
         
-        # Transform predicates to use 'd' (the series variable)
+        # If we have unsafe predicates, use data MIN/MAX fallback
+        if has_unsafe_predicates and use_data_bounds and data_cte_name:
+            # Emit info-level message (not a warning - this is correct behavior)
+            logger.info(
+                f"Date spine for '{alias}' is bounded by data MIN/MAX because WHERE clause "
+                f"contains column-to-column comparisons. This correctly represents the range "
+                f"where your predicate can be satisfied. Add explicit date bounds if you want "
+                f"a fixed range instead."
+            )
+            return _build_date_spine_from_data_bounds_sql(
+                alias, trunc_unit, interval, data_cte_name, dialect, include_null
+            )
+        
+        # Transform safe predicates to use 'd' (the series variable)
         spine_predicates = []
-        for pred in where_predicates:
+        for pred in safe_predicates:
             if source_column:
                 transformed = _transform_predicate_for_spine(pred, source_column, "d")
                 spine_predicates.append(transformed)
@@ -427,10 +495,11 @@ def _build_spine_cte_sql(
         )
     
     # Case 3: Categorical column - SELECT DISTINCT with filter
+    # For categoricals, ALL predicates are safe because we query from source table
     col_expr = source_column or alias
     
-    # Build WHERE clause for the spine (predicates already reference source column)
-    where_sql = _predicates_to_where_sql(where_predicates, dialect)
+    # Use all predicates (they're all safe for categoricals)
+    where_sql = _predicates_to_where_sql(all_predicates, dialect)
     
     if include_null:
         return (
@@ -438,6 +507,75 @@ def _build_spine_cte_sql(
             f"UNION ALL SELECT NULL AS {alias}"
         )
     return f"SELECT DISTINCT {col_expr} AS {alias} FROM {source_table} {where_sql}"
+
+
+def _build_date_spine_from_data_bounds_sql(
+    alias: str,
+    trunc_unit: str,
+    interval: str,
+    data_cte_name: str,
+    dialect: Optional[str] = None,
+    include_null: bool = False,
+) -> str:
+    """Build SQL for a date spine using MIN/MAX from the data CTE.
+    
+    This is used as a fallback when WHERE predicates reference other columns
+    that don't exist in the generate_series context.
+    
+    The spine is built by:
+    1. Getting MIN/MAX of the grouped date column from the data CTE
+    2. Generating dates between those bounds
+    """
+    dialect_lower = dialect.lower() if dialect else ""
+    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
+    
+    # We reference the data CTE to get the date bounds
+    # The data CTE already has the grouped date column aliased as 'alias'
+    
+    if dialect_lower in ("postgres", "postgresql", "redshift"):
+        return (
+            f"SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias} "
+            f"FROM generate_series("
+            f"(SELECT MIN({alias}) FROM {data_cte_name})::date, "
+            f"(SELECT MAX({alias}) FROM {data_cte_name})::date, "
+            f"INTERVAL '{interval}') AS d"
+        ) + null_union
+    
+    if dialect_lower == "duckdb":
+        return (
+            f"SELECT DATE_TRUNC('{trunc_unit}', d) AS {alias} "
+            f"FROM generate_series("
+            f"(SELECT MIN({alias}) FROM {data_cte_name})::date, "
+            f"(SELECT MAX({alias}) FROM {data_cte_name})::date, "
+            f"INTERVAL '{interval}') AS t(d)"
+        ) + null_union
+    
+    if dialect_lower == "bigquery":
+        return (
+            f"SELECT DATE_TRUNC(d, {trunc_unit.upper()}) AS {alias} "
+            f"FROM UNNEST(GENERATE_DATE_ARRAY("
+            f"(SELECT MIN({alias}) FROM {data_cte_name}), "
+            f"(SELECT MAX({alias}) FROM {data_cte_name}))) AS d"
+        ) + null_union
+    
+    if dialect_lower == "snowflake":
+        return (
+            f"SELECT DISTINCT DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), "
+            f"(SELECT MIN({alias}) FROM {data_cte_name}))) AS {alias} "
+            f"FROM TABLE(GENERATOR(ROWCOUNT => 100000)) "
+            f"WHERE DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), "
+            f"(SELECT MIN({alias}) FROM {data_cte_name}))) <= "
+            f"(SELECT MAX({alias}) FROM {data_cte_name})"
+        ) + null_union
+    
+    # Default: postgres-style
+    return (
+        f"SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias} "
+        f"FROM generate_series("
+        f"(SELECT MIN({alias}) FROM {data_cte_name})::date, "
+        f"(SELECT MAX({alias}) FROM {data_cte_name})::date, "
+        f"INTERVAL '{interval}') AS d"
+    ) + null_union
 
 
 def _build_explicit_values_spine_sql(
@@ -572,6 +710,8 @@ def _apply_auto_spine(
     # spine_columns: (alias, cte_name, original_expr_sql)
     spine_columns: List[Tuple[str, str, str]] = []
     rollup_column_order: List[str] = []
+    # Track if any spine needs data bounds (affects CTE ordering)
+    any_spine_needs_data_bounds = False
 
     for alias, group_expr, is_date, trunc_unit, explicit_values, source_column in group_cols:
         # Get the original expression SQL for matching SELECT expressions
@@ -586,9 +726,21 @@ def _apply_auto_spine(
             rollup_column_order.append(alias)
 
         # Extract predicates for this column from WHERE clause
-        where_predicates: List[exp.Expression] = []
+        safe_predicates: List[exp.Expression] = []
+        unsafe_predicates: List[exp.Expression] = []
+        all_predicates: List[exp.Expression] = []
+        has_unsafe_predicates = False
+        
         if source_column and where_clause:
-            where_predicates = _extract_predicates_for_column(where_clause, source_column)
+            safe_predicates, unsafe_predicates = _extract_predicates_for_column(where_clause, source_column)
+            all_predicates = safe_predicates + unsafe_predicates
+            has_unsafe_predicates = len(unsafe_predicates) > 0
+        
+        # For date spines with unsafe predicates, we need data CTE to be defined first
+        # We'll use a two-pass approach: first collect info, then generate in correct order
+        needs_data_bounds = is_date and has_unsafe_predicates and trunc_unit is not None
+        if needs_data_bounds:
+            any_spine_needs_data_bounds = True
 
         # Build unified spine SQL
         spine_sql = _build_spine_cte_sql(
@@ -598,9 +750,13 @@ def _apply_auto_spine(
             explicit_values=explicit_values,
             source_column=source_column,
             source_table=source_table,
-            where_predicates=where_predicates,
+            safe_predicates=safe_predicates,
+            all_predicates=all_predicates,
+            has_unsafe_predicates=has_unsafe_predicates,
             dialect=dialect,
             include_null=is_in_rollup_cube,
+            use_data_bounds=needs_data_bounds,
+            data_cte_name="spine_data" if needs_data_bounds else None,
         )
 
         try:
@@ -741,13 +897,21 @@ def _apply_auto_spine(
 
     cte_parts: List[str] = []
 
+    # When any spine needs data bounds, the data CTE must come FIRST
+    # (because the spine references MIN/MAX from the data CTE)
+    if any_spine_needs_data_bounds:
+        cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
+
     for cte_name, cte_select in spine_ctes:
         cte_parts.append(f"{cte_name} AS ({cte_select.sql(dialect=dialect)})")
 
     # Only add combined_spine CTE when we have multiple GROUP BY columns or rollup
     if combined_spine_sql is not None:
         cte_parts.append(f"{combined_spine_name} AS ({combined_spine_sql})")
-    cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
+    
+    # If data CTE wasn't added first, add it now (normal case)
+    if not any_spine_needs_data_bounds:
+        cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
 
     result_sql = "WITH " + ", ".join(cte_parts) + " " + final_sql
     try:
