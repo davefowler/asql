@@ -87,10 +87,13 @@ class TestSQLStructure:
     
     def test_group_by_structure(self) -> None:
         """Test GROUP BY SQL structure."""
+        import re
         asql = "from users group by country ( # as total_users )"
         sql = compile(asql)
-        sql_upper = sql.upper()
-        
+        # Strip comments before checking structure
+        sql_no_comments = re.sub(r'/\*[^*]*\*/', '', sql)
+        sql_upper = sql_no_comments.upper()
+
         assert "GROUP BY" in sql_upper
         assert "COUNT" in sql_upper
         # GROUP BY should come after FROM
