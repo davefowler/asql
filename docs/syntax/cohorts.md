@@ -2,8 +2,6 @@
 
 Cohort analysis groups users by a shared characteristic (usually when they "started") and tracks their behavior over time. ASQL's `cohort by` operator dramatically simplifies this complex pattern.
 
-**Reference**: See `ai_notes/COHORT_ANALYSIS.md` for full design details.
-
 ## The Problem: Cohort Queries Are Complex
 
 Traditional SQL requires 3-5 CTEs and 50+ lines for even basic cohort queries. A simple retention cohort requires:
@@ -50,7 +48,7 @@ ORDER BY ca.cohort_month, ca.period;
 ```
 
 **ASQL (3 lines):**
-```asql
+```asql-play
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -82,7 +80,7 @@ cohort by <granularity>(<cohort_table>.<cohort_date>)
 
 Track monthly active users by their signup month:
 
-```asql
+```asql-play
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -98,7 +96,7 @@ cohort by month(users.signup_date)
 
 Track revenue by first purchase cohort:
 
-```asql
+```asql-play
 from orders
 group by month(order_date) (sum(total) as revenue)
 cohort by month(customers.first_order_date)
@@ -108,7 +106,7 @@ cohort by month(customers.first_order_date)
 
 Track weekly active users:
 
-```asql
+```asql-play
 from events
 group by week(event_date) (count(distinct user_id) as active)
 cohort by week(users.signup_date)
@@ -118,11 +116,11 @@ cohort by week(users.signup_date)
 
 Track multiple metrics simultaneously:
 
-```asql
+```asql-play
 from events
 group by month(event_date) (
   count(distinct user_id) as active,
-  count(*) as events,
+  # as events,
   sum(revenue) as revenue
 )
 cohort by month(users.signup_date)
@@ -151,7 +149,7 @@ The period calculation uses:
 
 With `cohort by`, retention calculations become straightforward. The `cohort_size` column is automatically available:
 
-```asql
+```asql-play
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -210,7 +208,7 @@ select
 
 Add segment dimensions before the time function to create segmented cohorts:
 
-```asql
+```asql-play
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by users.channel, month(users.signup_date)
@@ -225,21 +223,26 @@ This creates cohorts segmented by acquisition channel, allowing you to compare r
 - `active`: Active users
 - `cohort_size`: Total users in that channel cohort
 
-## Explicit Join Keys
+## Join Key Inference
 
-When join inference fails (non-standard foreign key names), use the `on` clause:
+ASQL automatically infers join keys using foreign key naming conventions. For example:
 
-```asql
+- `events.user_id` → joins to `users.id`
+- `orders.customer_id` → joins to `customers.id`
+
+```asql-play
 from orders
 group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date) on customer_id
+cohort by month(customers.first_order_date)
 ```
+
+If your schema doesn't follow these conventions, provide schema information or enable `invent_join_keys` mode for examples.
 
 ## Common Use Cases
 
 ### 1. User Retention Analysis
 
-```asql
+```asql-play
 from events
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date)
@@ -261,18 +264,18 @@ select
 
 ### 3. Feature Adoption Cohorts
 
-```asql
+```asql-play
 from feature_events
-where feature_name == "dashboard"
+where feature_name = "dashboard"
 group by week(event_date) (count(distinct user_id) as feature_users)
 cohort by week(users.first_dashboard_use_date)
 ```
 
 ### 4. Subscription Survival Analysis
 
-```asql
+```asql-play
 from subscription_events
-where status == "active"
+where status = "active"
 group by month(event_date) (count(distinct subscription_id) as active_subs)
 cohort by month(subscriptions.start_date)
 ```
@@ -306,7 +309,7 @@ When you use `cohort by`, ASQL automatically:
 ## Best Practices
 
 1. **Match granularities**: Use the same granularity in `group by` and `cohort by` (e.g., both `month()`)
-2. **Use explicit join keys**: When foreign key inference fails, use `on` clause
+2. **Follow FK conventions**: Use `{table}_id` naming (e.g., `user_id`, `customer_id`) for automatic join inference
 3. **Filter activity**: Apply filters before `cohort by` to analyze specific event types
 4. **Combine with window functions**: Use `prior()`, `running_sum()`, etc. for advanced analysis
 

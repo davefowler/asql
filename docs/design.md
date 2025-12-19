@@ -77,7 +77,7 @@ ASQL doesn't force you to rewrite everything. You can:
 
 Good code should be readable without comments. ASQL aims for queries that explain themselves:
 
-```asql
+```asql-play
 from orders
   where created_at > 7 days ago
   group by month(created_at) ( sum(amount) as revenue )

@@ -118,7 +118,7 @@ This compiles to native `QUALIFY` for databases that support it (BigQuery, Snowf
 
 For PostgreSQL-style deduplication:
 
-```asql
+```asql-play
 from orders
   distinct on (customer_id)
   order by customer_id, -order_date
@@ -311,7 +311,7 @@ from orders
 # Pattern 2: Using QUALIFY
 from orders
   select *, row_number() over (partition by customer_id order by -order_date) as rn
-  qualify rn == 1
+  qualify rn = 1
 
 # Pattern 3: Using DISTINCT ON (PostgreSQL-style)
 from orders

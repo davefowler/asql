@@ -8,7 +8,7 @@ Transform row values into columns. Use when you have data in "long" format and w
 
 ### Basic Syntax
 
-```asql
+```asql-play
 from sales
   pivot sum(amount) by category values ('Electronics', 'Clothing', 'Food')
 ```
@@ -23,7 +23,7 @@ This creates columns `Electronics`, `Clothing`, and `Food` with the sum of amoun
 
 ### With Aggregation
 
-```asql
+```asql-play
 from orders
   pivot sum(amount) by status values ('pending', 'shipped', 'delivered')
   group by customer_id
@@ -44,7 +44,7 @@ GROUP BY customer_id
 
 When no aggregate function is specified, MAX is used:
 
-```asql
+```asql-play
 from user_settings
   pivot value by setting_name values ('theme', 'language', 'timezone')
   group by user_id
@@ -63,7 +63,7 @@ Many SaaS platforms store custom fields in Entity-Attribute-Value format:
 
 Pivot to denormalize:
 
-```asql
+```asql-play
 from issue_custom_fields
   pivot field_value by field_name values ('priority', 'sprint')
   group by issue_id
@@ -122,7 +122,7 @@ Transform columns into rows. Use when you have data in "wide" format and want it
 
 ### Basic Syntax
 
-```asql
+```asql-play
 from monthly_metrics
   unpivot jan, feb, mar, apr into month, value
 ```
@@ -153,7 +153,7 @@ SELECT *, 'apr' AS month, apr AS value FROM monthly_metrics
 
 Unpivot:
 
-```asql
+```asql-play
 from quarterly_data
   unpivot q1_sales, q2_sales, q3_sales, q4_sales into quarter, sales
 ```
@@ -183,7 +183,7 @@ Expand array-typed columns into multiple rows. One row per array element.
 
 ### Basic Syntax
 
-```asql
+```asql-play
 from posts
   explode tags as tag
 ```
@@ -203,7 +203,7 @@ This takes an array column `tags` and creates one row per tag.
 
 **Query:**
 
-```asql
+```asql-play
 from posts
   explode tags as tag
   select post_id, title, tag
@@ -237,7 +237,7 @@ from posts
 
 ### Example: Tag Frequency
 
-```asql
+```asql-play
 from posts
   explode tags as tag
   group by tag (# as post_count)
@@ -255,7 +255,7 @@ ASQL provides operators for manipulating columns without listing them all.
 
 Exclude specific columns from the result:
 
-```asql
+```asql-play
 from users
   except password_hash, internal_notes
 ```
@@ -270,7 +270,7 @@ SELECT * EXCEPT(password_hash, internal_notes) FROM users
 
 Rename columns inline:
 
-```asql
+```asql-play
 from users
   rename id as user_id, name as user_name
 ```
@@ -302,7 +302,7 @@ SELECT * EXCEPT(name, email), upper(name) AS name, lower(email) AS email FROM us
 
 ### Combining Operators
 
-```asql
+```asql-play
 from users
   except password_hash
   rename id as user_id

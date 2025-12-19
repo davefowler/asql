@@ -11,6 +11,7 @@ exclude_docs: |
   status.md
   playground.md
   style_analysis.md
+  README.md
 
 # Repository
 repo_name: asql
@@ -29,6 +30,7 @@ theme:
     accent: custom
   features:
     - navigation.sections       # Render section headers in sidebar
+    - navigation.indexes        # Make section headers link to index pages
     - navigation.top            # Back-to-top button
     - navigation.instant        # Faster page loads
     - navigation.tracking       # URL updates as you scroll
@@ -36,8 +38,13 @@ theme:
     - search.highlight
     - content.code.annotate
     - content.code.copy
+  logo: static/logo.svg
   icon:
     repo: fontawesome/brands/github
+
+# Watch additional directories for hot reload
+watch:
+  - docs/static  # Watch docs/static/ for CSS/JS changes
 
 # Custom CSS and JavaScript
 extra_css:
@@ -79,6 +86,7 @@ markdown_extensions:
   - md_in_html
   - toc:
       permalink: true
+      toc_depth: 2  # Only show H1 and H2 headings in TOC
 
 # Plugins
 plugins:
@@ -86,14 +94,15 @@ plugins:
   - macros:
       module_name: docs/macros
       render_by_default: false  # Don't process {{ }} as Jinja2 - only use hooks
+      show_split_pane: false  # Set to true to enable compiled SQL pane (default: false, saves build time)
   # - minify:
   #     minify_html: true
 
 # Navigation
 # With navigation.indexes, use index.md directly for clickable section headers
 nav:
-  - Home: index.md
-  - Getting Started:
+  - Home:
+    - index.md
     - Quick Start: quick_start.md
     - Tutorial: tutorial.md
     - Examples: examples.md
@@ -106,6 +115,7 @@ nav:
     - Dates & Time: syntax/dates.md
     - Window Functions: syntax/window-functions.md
     - CTEs & Variables: syntax/ctes.md
+    - Cohorts: syntax/cohorts.md
     - Sampling: syntax/sampling.md
     - Pivot, Unpivot & Explode: syntax/pivot-unpivot.md
   - Concepts:
@@ -119,6 +129,7 @@ nav:
     - Functions: reference/functions.md
     - Operators: reference/operators.md
     - Keywords: reference/keywords.md
+    - Dialect Limitations: dialect-limitations.md
     - Full Specification: spec.md
   - Coming From:
     - coming-from/index.md
@@ -127,8 +138,10 @@ nav:
     - R / dplyr: coming-from/r.md
     - SQL: coming-from/sql.md
   - Learn More:
+    - learn-more/index.md
     - Grouping Guide: group_by.md
     - Window Functions Deep Dive: window_functions.md
+    - Style Guide: style_guide.md
     - Design Principles: design.md
     - Integrating ASQL: integrating.md
     - Architecture: architecture.md

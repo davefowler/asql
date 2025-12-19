@@ -6,11 +6,11 @@ ASQL provides a clean syntax for grouping and aggregating data, with natural lan
 
 Use `group by` with parentheses to define aggregations:
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     sum(amount) as total_spent,
-    count(*) as order_count,
+    # as order_count,
     avg(amount) as avg_order
   )
 ```
@@ -23,7 +23,7 @@ The `#` symbol provides flexible counting syntax:
 
 ### Basic Row Count
 
-```asql
+```asql-play
 from users
   group by country (
     # as user_count          -- COUNT(*)
@@ -46,6 +46,12 @@ When followed by a table name, `#` automatically infers the primary key and coun
 # of users         -- COUNT(DISTINCT user_id)
 # orders           -- COUNT(DISTINCT order_id)
 ```
+
+**Important distinction**:
+- `#` (standalone) → `COUNT(*)` (row count)
+- `# orders` or `# of orders` → `COUNT(DISTINCT order_id)` (distinct count)
+
+Always be explicit when you want distinct count. The standalone `#` never automatically becomes a distinct count.
 
 This uses convention: the table name (singular form) + `_id` is assumed to be the primary key.
 
@@ -72,7 +78,7 @@ Use `# *` when you explicitly want row count (not distinct):
 
 Group by multiple columns separated by commas:
 
-```asql
+```asql-play
 from sales
   group by region, year(date) (
     sum(amount) as revenue,
@@ -84,7 +90,7 @@ from sales
 
 | Function | Description | Example |
 |----------|-------------|---------|
-| `count(*)` or `#` | Count rows | `# as total` |
+| `#` or `count(*)` | Count rows | `# as total` (preferred) |
 | `count(col)` | Count non-null values | `count(email)` |
 | `count(distinct col)` | Count distinct values | `count(distinct customer_id)` |
 | `sum(col)` | Sum values | `sum(amount)` |
@@ -106,7 +112,7 @@ sum of amount
 
 Using shorthand:
 
-```asql
+```asql-play
 from sales
   group by region (
     sum_amount,
@@ -114,6 +120,24 @@ from sales
     # as total
   )
 ```
+
+## Auto-Aliasing
+
+When you use functions without explicit `AS` aliases, ASQL automatically generates meaningful column names:
+
+```asql-play
+from orders
+  group by region (
+    sum(amount),         -- → column: sum_amount
+    avg(price),          -- → column: avg_price
+    count(*)             -- → column: num
+  )
+  order by -sum_amount   -- Reference the auto-generated alias!
+```
+
+This solves SQL's problem of unusable default names like `count`, `f0_`, or `SUM(amount)`. Auto-aliases follow the `{func}_{col}` pattern and can be referenced in `ORDER BY`, `WHERE`, and subsequent queries.
+
+See the [Auto-Aliasing Reference](../reference/auto-aliasing.md) for the complete mapping table.
 
 ## Function Aliases
 
@@ -126,7 +150,7 @@ Natural language aliases map to SQL functions:
 | `maximum` | `MAX` |
 | `minimum` | `MIN` |
 
-```asql
+```asql-play
 from sales
   group by product (
     total amount as revenue,
@@ -138,7 +162,7 @@ from sales
 
 Group by computed values like date truncations:
 
-```asql
+```asql-play
 from orders
   group by month(created_at) (
     sum(amount) as revenue
@@ -147,7 +171,7 @@ from orders
 
 Group by multiple expressions:
 
-```asql
+```asql-play
 from orders
   group by year(created_at), month(created_at) (
     sum(amount) as revenue,
@@ -159,7 +183,7 @@ from orders
 
 Use `as` to alias group columns:
 
-```asql
+```asql-play
 from orders
   group by month(created_at) (
     sum(amount) as revenue
@@ -172,7 +196,7 @@ This is especially useful for date truncations where you want a clean column nam
 
 Filter grouped results using another `where` clause after grouping:
 
-```asql
+```asql-play
 from orders
   group by customer_id (
     sum(amount) as total_spent
@@ -190,20 +214,24 @@ You can use aggregates without grouping to get totals:
 from orders
   select
     sum(amount) as total_revenue,
-    count(*) as total_orders,
+    # as total_rows,              -- COUNT(*) - total number of rows
     avg(amount) as avg_order_value
 ```
+
+**Important**: `#` by itself is always `COUNT(*)` (row count), never a distinct count. If you want to count distinct entities, be explicit:
+- `#` → `COUNT(*)` (row count - safe, understood interpretation)
+- `# orders` or `# of orders` → `COUNT(DISTINCT order_id)` (distinct count - explicit)
 
 ## Conditional Aggregates
 
 Use `when` inside aggregates for conditional counting/summing:
 
-```asql
+```asql-play
 from orders
   group by customer_id (
-    count(*) as total_orders,
-    sum(status == "completed" ? 1 : 0) as completed_orders,
-    sum(status == "returned" ? amount : 0) as returned_amount
+    # as total_orders,
+    sum(status = "completed" ? 1 : 0) as completed_orders,
+    sum(status = "returned" ? amount : 0) as returned_amount
   )
 ```
 
@@ -224,7 +252,7 @@ from orders
 
 If you don't specify a `select` after grouping, ASQL returns all grouping columns followed by all aggregations:
 
-```asql
+```asql-play
 from orders
   group by region (
     sum(amount) as revenue,
@@ -237,7 +265,7 @@ from orders
 
 ### Top Customers by Revenue
 
-```asql
+```asql-play
 from orders
   where status = "completed"
   group by customer_id (
@@ -250,7 +278,7 @@ from orders
 
 ### Monthly Revenue Trend
 
-```asql
+```asql-play
 from orders
   where year(created_at) = 2024
   group by month(created_at) (
@@ -263,7 +291,7 @@ from orders
 
 ### Category Performance
 
-```asql
+```asql-play
 from products
   & orders on products.id = orders.product_id
   group by products.category (

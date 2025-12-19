@@ -30,7 +30,7 @@ But analytics is different. When you build a time-series chart, missing data poi
 
 ASQL automatically fills gaps:
 
-```asql
+```asql-play
 from orders
   group by month(order_date) (
     sum(amount) ?? 0 as revenue
@@ -73,10 +73,10 @@ All months from January to June will appear.
 
 For non-date columns, ASQL uses DISTINCT values from the source data:
 
-```asql
+```asql-play
 from orders
   group by status (
-    count(*) ?? 0 as count
+    # ?? 0 as count
   )
 ```
 
@@ -86,7 +86,7 @@ If your data has orders with status "pending", "shipped", and "delivered", all t
 
 When grouping by multiple columns, ASQL creates all combinations:
 
-```asql
+```asql-play
 from orders
   group by region, month(order_date) (
     sum(amount) ?? 0 as revenue
@@ -99,10 +99,10 @@ Every region × month combination will appear.
 
 Specify exactly which values should appear:
 
-```asql
+```asql-play
 from orders
   group by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
-    count(*) ?? 0 as order_count
+    # ?? 0 as order_count
   )
 ```
 
@@ -118,11 +118,11 @@ This ensures all four statuses appear, even if some have zero orders.
 
 Use the nullish coalescing operator to provide defaults for missing values:
 
-```asql
+```asql-play
 from orders
   group by month(order_date) (
     sum(amount) ?? 0 as revenue,        -- Default to 0
-    count(*) ?? 0 as orders,            -- Default to 0
+    # ?? 0 as orders,            -- Default to 0
     avg(amount) as avg_order            -- Leave as NULL
   )
 ```
@@ -135,7 +135,7 @@ Different columns can have different default behaviors.
 
 The most common approach—just filter out zeros:
 
-```asql
+```asql-play
 from orders
   group by month(order_date) (
     sum(amount) as revenue
@@ -226,23 +226,23 @@ from orders
   where order_date >= @2024-01-01 and order_date < @2025-01-01
   group by month(order_date) (
     sum(amount) ?? 0 as revenue,
-    count(*) ?? 0 as orders
+    # ?? 0 as orders
   )
   order by month
 ```
 
 ### Status Dashboard
 
-```asql
+```asql-play
 from tickets
   group by guarantee(status, ['open', 'in_progress', 'resolved', 'closed']) (
-    count(*) ?? 0 as ticket_count
+    # ?? 0 as ticket_count
   )
 ```
 
 ### Sales by Region and Quarter
 
-```asql
+```asql-play
 from sales
   where year(sale_date) = 2024
   group by region, quarter(sale_date) (

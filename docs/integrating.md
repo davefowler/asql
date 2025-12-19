@@ -16,7 +16,7 @@ from asql import compile
 # Basic query
 asql_query = """
 from users
-where status == "active"
+where status = "active"
 group by country ( # as total_users )
 order by -total_users
 limit 10

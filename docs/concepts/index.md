@@ -15,7 +15,7 @@ ASQL is built on several key principles:
 
 ### 1. Queries Should Read Like Questions
 
-```asql
+```asql-play
 from users
   where status = "active"
   group by country (# as total)

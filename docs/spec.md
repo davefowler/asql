@@ -214,7 +214,7 @@ from users where phone matches "555-___-____"
 **With logical operators:**
 ```asql
 from users 
-  where email contains "@gmail.com" and status == "active"
+  where email contains "@gmail.com" and status = "active"
   where name starts with "John" or name starts with "Jane"
 ```
 
@@ -289,7 +289,7 @@ condition ? true_value : false_value
 from orders
   select 
     amount > 1000 ? "high" : "low" as tier,
-    status == "active" ? 1 : 0 as is_active
+    status = "active" ? 1 : 0 as is_active
 
 # With expressions
 from users
@@ -378,8 +378,8 @@ from orders
   group by customer_id
   select
     customer_id,
-    sum(status == "completed" ? 1 : 0) as completed_count,
-    sum(status == "returned" ? amount : 0) as returned_value
+    sum(status = "completed" ? 1 : 0) as completed_count,
+    sum(status = "returned" ? amount : 0) as returned_value
 ```
 
 **Operators supported:**
@@ -421,7 +421,7 @@ from users
 
 # Cast in WHERE clauses
 from orders
-  where created_at::DATE == "2024-01-01"
+  where created_at::DATE = @2024-01-01
 ```
 
 **Precedence:**
@@ -553,15 +553,23 @@ from products
 
 #### NULLIF Alternative
 
-Instead of SQL's `NULLIF()` function, use SQL `NULLIF()` directly (or a `CASE WHEN` expression).
+Instead of SQL's `NULLIF()` function, use ASQL's `when` expression (or SQL `NULLIF()` directly).
 
 ```asql
 from transactions
   select 
-    CASE WHEN amount == 0 THEN NULL ELSE amount END as safe_amount
+    when
+      amount = 0 then null
+      otherwise amount
+    as safe_amount
 ```
 
 This is clearer than `nullif(amount, 0)` for some readers, but either is valid.
+
+**Note**: You can also use SQL `NULLIF()` directly if you prefer:
+```sql
+SELECT NULLIF(amount, 0) AS safe_amount
+```
 
 
 ### 4.13 Function Shorthand (Underscore/Space Principle)
@@ -620,6 +628,29 @@ from sales
     min(amount) as min_order
   )
 ```
+
+**Auto-Aliasing**:
+
+ASQL automatically generates meaningful column names when functions are used without explicit `AS` aliases. This solves SQL's problem of unusable default names like `count`, `f0_`, or `SUM(amount)`.
+
+| Aggregate Form | With `as` Alias | Auto-Generated Alias (No `as`) |
+|----------------|----------------|--------------------------------|
+| `sum(amount)` | `sum(amount) as revenue` → column: `revenue` | `sum_amount` |
+| `avg(price)` | `avg(price) as avg_price` → column: `avg_price` | `avg_price` |
+| `count(*)` / `#` | `# as total` → column: `total` | `num` |
+| `count(email)` | `count(email) as emails` → column: `emails` | `num_email` |
+| `count(distinct user_id)` | `count(distinct user_id) as unique_users` → column: `unique_users` | `num_distinct_user_id` |
+| `month(created_at)` | `month(created_at) as month` → column: `month` | `month_created_at` |
+| `first(col order by ...)` | `first(order_id order by -date) as latest` → column: `latest` | `first_order_id` |
+
+**Pattern rules**:
+- Single-arg functions: `func(col)` → `func_col`
+- Multi-arg functions: `func(a, b)` → `func_a_b`  
+- Special cases: `count(*)` → `num`, `row_number()` → `row_num`
+
+**Explicit aliases always win**: If you provide an `as` alias, it overrides the auto-generated name.
+
+**Configuration**: Auto-aliasing is configurable via `asql.config.yaml` or `SET` statements. See the [Auto-Aliasing Reference](reference/auto-aliasing.md) for the complete mapping table, template system, and configuration options.
 
 **Default return behavior**: If no `select` clause is specified, the query returns all grouping columns followed by all aggregations in the order they're listed. `select *` has the same behavior.
 
@@ -704,7 +735,7 @@ ASQL encourages natural language expressions. The `of` keyword can replace paren
 
 ```asql
 # Instead of: count(*) from Users where country = 'US'
-# of Users where country == "US"
+# of Users where country = "US"
 
 # Instead of: sum(amount) from sales
 # Sum of amount from sales
@@ -790,7 +821,7 @@ from orders
   group by customer_id (
     first(order_id order by -order_date) as latest_order,
     last(order_id order by order_date) as first_order,
-    count(*) as total_orders
+    # as total_orders
   )
 ```
 
@@ -937,7 +968,7 @@ Use `guarantee()` to specify exactly which values should appear:
 ```asql
 from orders
   group by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
-    count(*) ?? 0 as order_count
+    # ?? 0 as order_count
   )
 ```
 
@@ -1017,11 +1048,11 @@ from opportunities &? users as owner
 When automatic FK inference isn't desired or possible, specify the join condition with `on`:
 
 ```asql
-from opportunities &? owners on opportunities.owner_id == owners.id
+from opportunities &? owners on opportunities.owner_id = owners.id
   select opportunities.amount, owners.name
 
 -- With alias
-from opportunities &? users as owner on opportunities.owner_id == owner.id
+from opportunities &? users as owner on opportunities.owner_id = owner.id
   select opportunities.amount, owner.name
 ```
 
@@ -1087,8 +1118,8 @@ The FK naming pattern `<alias>_user_id` enables `.alias.` dot traversal to the `
 Or with explicit joins:
 ```asql
 from accounts 
-  &? users as owner on accounts.owner_user_id == owner.id
-  &? users as manager on accounts.manager_user_id == manager.id
+  &? users as owner on accounts.owner_user_id = owner.id
+  &? users as manager on accounts.manager_user_id = manager.id
   select owner.name, manager.name
 ```
 
@@ -1119,7 +1150,7 @@ ASQL uses naming conventions to auto-detect joins:
 
 ```asql
 -- Employees and their managers (explicit)
-from employees &? employees as manager on employees.manager_id == manager.id
+from employees &? employees as manager on employees.manager_id = manager.id
   select employees.name, manager.name as manager_name
 
 -- Or with dot notation (uses manager_id FK automatically)
@@ -1160,7 +1191,7 @@ relationships:
 | Feature | Syntax | Example |
 |---------|--------|---------|
 | Aliasing | `as` | `&? users as owner` |
-| Explicit condition | `on` | `&? users on orders.user_id == users.id` |
+| Explicit condition | `on` | `&? users on orders.user_id = users.id` |
 | FK traversal | `.fk.` | `orders.user.name` (via `user_id`) |
 
 **Key principles:**
@@ -1490,7 +1521,7 @@ from opportunities
 **Using `or` (with parentheses for grouping):**
 ```asql
 from opportunities
-  where (status == "open" or status == "pending")
+  where (status = "open" or status = "pending")
     and owner.is_active
 ```
 
@@ -1501,7 +1532,7 @@ All of these compile to SQL `WHERE` clauses. The pipeline approach makes complex
 ```asql
 from opportunities
   group by owner.name ( total as sum(amount) )
-  if status == "open"
+  if status = "open"
   if owner.is_active
 ```
 
@@ -1608,7 +1639,7 @@ When `stash as` appears in the middle, it stashes everything before it as a CTE,
 **Multiple queries reusing a stashed CTE:**
 ```asql
 from sales
-  where year(date) == 2025
+  where year(date) = 2025
   group by region ( sum(amount) as revenue )
   stash as use_this_later
   order by -revenue
@@ -1736,11 +1767,11 @@ When you know the pivot values at compile time, specify them explicitly:
 ```asql
 # Pivot with explicit values
 from sales
-  pivot sum(amount) by category values ('Electronics', 'Clothing', 'Food')
+  pivot sum(amount) by category values ("Electronics", "Clothing", "Food")
 
 # Non-aggregate pivot (uses MAX)
 from sales
-  pivot amount by category values ('A', 'B', 'C')
+  pivot amount by category values ("A", "B", "C")
 ```
 
 **Note**: Pivot currently requires an explicit values list. “Dynamic pivot” (values from a subquery) is **not implemented**.
@@ -1859,7 +1890,7 @@ cohort by week(users.signup_date)
 -- Explicit join key
 from orders
 group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date) on customer_id
+cohort by month(customers.first_order_date)
 ```
 
 ### 14.3 Period Calculation
@@ -1922,7 +1953,7 @@ cohort by month(customers.first_order_date)
 from events
 group by month(event_date) (
   count(distinct user_id) as active,
-  count(*) as events,
+  # as events,
   sum(revenue) as revenue
 )
 cohort by month(users.signup_date)
@@ -2045,7 +2076,7 @@ from countries
 | select {
     name,
     users = from users 
-      | filter users.country == countries.code 
+      | filter users.country = countries.code 
       | select name, age
   }
 ```
@@ -2060,7 +2091,7 @@ Every line must return a new table. For multi-line operations, indent:
 
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   where age >= 18
   group by country ( count() as count )
 ```
@@ -2211,7 +2242,7 @@ select users.id as user_id, orders.id as order_id
 
 ```asql
 from sales
-  where year(date) == 2025
+  where year(date) = 2025
   group by region ( sum(amount) as revenue )
   order by -revenue
 ```
@@ -2258,7 +2289,7 @@ Avg Users.age by country
 
 ```asql
 from users
-  where plan == "premium"
+  where plan = "premium"
   stash as premium_users
 
 from premium_users
@@ -2342,7 +2373,7 @@ Each pipeline step becomes a CTE:
 
 ```asql
 from users
-  where status == "active"
+  where status = "active"
   group by country ( count() as count )
 ```
 

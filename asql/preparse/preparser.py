@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
 from asql.preparse.comments import CommentsMixin
 from asql.preparse.settings import SettingsMixin
@@ -23,6 +23,9 @@ from asql.preparse.cohort import CohortMixin
 from asql.preparse.key import KeyMixin
 from asql.preparse.when import WhenMixin
 from asql.preparse.ternary import TernaryMixin
+
+if TYPE_CHECKING:
+    from asql.config import CompileSettings
 
 @dataclass
 class PreParseResult:
@@ -51,11 +54,12 @@ class ASQLPreParser(
     WhenMixin,
     KeyMixin,
 ):
-    def __init__(self, text: str):
+    def __init__(self, text: str, settings: Optional["CompileSettings"] = None):
         self.text = text.strip()
         self.original = text
         self.pos = 0
         self.ctes: List[Tuple[str, str]] = []
+        self.settings = settings  # Compile settings with schema for join inference
 
     def preparse(self) -> str:
         """Apply all transformations and return SQL-like text."""
@@ -79,6 +83,7 @@ class ASQLPreParser(
         result = self._transform_date_arithmetic(result)
         result = self._transform_since_until_patterns(result)
         result = self._transform_per_commands(result)
+        result = self._transform_implicit_function_aliases(result)  # sum_amount → sum(amount) as sum_amount (SELECT and GROUP BY)
         result = self._transform_aggregate_blocks(result)
         result = self._transform_column_operators(result)  # except, rename, replace - before from_first
         result = self._transform_multiple_where(result)  # Combine multiple WHERE clauses
@@ -90,7 +95,6 @@ class ASQLPreParser(
         result = self._transform_pivot_marker(result)  # Expand __PIVOT_COLS__ markers after from_first
         result = self._transform_distinct_on(result)  # Move DISTINCT ON to after SELECT
         result = self._transform_star_column_override(result)  # select *, col as name → select * EXCEPT(name), col as name
-        result = self._transform_implicit_function_aliases(result)  # sum_amount → sum(amount) as sum_amount (SELECT only)
         result = self._transform_cohort_by(result)  # cohort by - transforms to CTEs and joins (after FROM-first)
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
         result = self._transform_qualify_clause(result)  # qualify rn == 1

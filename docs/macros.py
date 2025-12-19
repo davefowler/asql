@@ -166,18 +166,30 @@ def format_asql_for_docs(asql_query: str) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def precompile_asql_query(asql_query: str) -> Dict[str, str]:
+def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Dict[str, str]:
     """
     Pre-compile an ASQL query to all dialects.
+    
+    Args:
+        asql_query: The ASQL query to compile
+        skip_compilation: If True, skip SQL compilation and only return formatted ASQL
     
     Returns a dict mapping dialect -> SQL string.
     """
     import sys
     import io
     from asql import compile
+    from asql.config import CompileSettings
     
     formatted_asql = format_asql_for_docs(asql_query)
     results = {"asql": formatted_asql}
+    
+    # Skip compilation if flag is set
+    if skip_compilation:
+        return results
+    
+    # For docs examples, enable invent_join_keys since we don't have real schemas
+    docs_settings = CompileSettings(invent_join_keys=True)
     
     compilation_errors: list[str] = []
 
@@ -189,7 +201,7 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
                 old_stdout, old_stderr = sys.stdout, sys.stderr
                 sys.stdout = sys.stderr = io.StringIO()
                 try:
-                    sql = compile(formatted_asql, dialect=dialect)
+                    sql = compile(formatted_asql, dialect=dialect, settings=docs_settings)
                 finally:
                     sys.stdout, sys.stderr = old_stdout, old_stderr
             # Pretty-print for docs readability (adds newlines/indentation)
@@ -217,15 +229,38 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
     return results
 
 
-def generate_mini_playground_html(compiled: Dict[str, str], block_id: str) -> str:
-    """Generate HTML for the ASQL mini-playground (split pane + global 'to' dialect)."""
+def generate_mini_playground_html(compiled: Dict[str, str], block_id: str, show_split_pane: bool = True) -> str:
+    """Generate HTML for the ASQL mini-playground (split pane + global 'to' dialect).
+    
+    Args:
+        compiled: Dict mapping dialect -> SQL string
+        block_id: Unique ID for this code block
+        show_split_pane: If False, only show ASQL pane (no compiled SQL)
+    """
+    initial_asql = html.escape(compiled.get("asql", ""))
+    
+    # If split pane is disabled, return simple single-pane HTML
+    if not show_split_pane:
+        return f'''<div class="asql-code-block asql-mini-playground" data-block-id="{block_id}">
+  <div class="asql-mp-pane asql-mp-pane-left">
+    <div class="asql-mp-pane-header">
+      <span class="asql-mp-pane-title">ASQL</span>
+      <a href="#" onclick="openInPlayground('{block_id}'); return false;" class="asql-mp-play-button" title="Open in Playground" aria-label="Open in Playground">
+        <span class="asql-mp-play-label">Playground</span>
+        <span class="asql-mp-play-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </span>
+      </a>
+    </div>
+    <pre><code class="language-asql" id="asql-{block_id}">{initial_asql}</code></pre>
+  </div>
+</div>'''
 
     # Encode compiled SQL for embedding in HTML
     compiled_json = json.dumps(compiled)
     compiled_b64 = base64.b64encode(compiled_json.encode()).decode()
 
     # Initial content (JS will update the "to" pane based on localStorage)
-    initial_asql = html.escape(compiled.get("asql", ""))
     default_to_dialect = "postgres"
     initial_to_sql = html.escape(compiled.get(default_to_dialect, ""))
 
@@ -269,94 +304,21 @@ def generate_mini_playground_html(compiled: Dict[str, str], block_id: str) -> st
     return playground_html
 
 
-def process_asql_blocks(markdown_content: str) -> str:
+def process_asql_blocks(markdown_content: str, show_split_pane: bool = True) -> str:
     """
-    Process markdown content, finding ASQL code blocks and replacing them
-    with tabbed code blocks that include pre-compiled SQL for all dialects.
-    """
-    # Pattern to match ASQL code blocks: ```asql ... ```
-    # We need to match standalone ```asql blocks (not in === tabs)
-    asql_pattern = r'```asql\s*\n(.*?)```'
+    Process markdown content, finding ASQL playground blocks and replacing them
+    with split-pane mini-playground HTML (ASQL → compiled SQL).
     
-    def should_compile_asql_block(asql_query: str) -> bool:
-        """
-        Only compile full ASQL queries into the mini-playground.
-
-        Many docs pages include small ASQL *snippets* (e.g. `sum amount`, `# users`)
-        that are intended as syntax examples, not standalone queries. We leave those
-        as normal fenced code blocks (still syntax-highlighted), and only compile
-        blocks that look like real queries.
-        """
-        non_comment_lines: list[str] = []
-        for line in asql_query.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith("--"):
-                continue
-            non_comment_lines.append(stripped)
-
-        if not non_comment_lines:
-            return False
-
-        # Only compile blocks that appear to contain a *single* query.
-        # If there are multiple independent examples in one fenced block (e.g. multiple `from ...`),
-        # leave it as a normal code block.
-        query_starters = 0
-        order_by_lines = 0
-        for line in non_comment_lines:
-            lowered = line.lower()
-            if lowered.startswith("from ") or lowered.startswith("with "):
-                query_starters += 1
-            if lowered.startswith("order by"):
-                order_by_lines += 1
-        if query_starters != 1:
-            return False
-        # Multiple ORDER BY clauses in one fenced block are usually documentation snippets.
-        if order_by_lines > 1:
-            return False
-
-        # Multi-line SELECT blocks ("select" on its own line + indented columns)
-        # are not reliably supported by the current compiler. Leave them as plain
-        # fenced code blocks for now.
-        select_lines = 0
-        for line in non_comment_lines:
-            lowered = line.lower()
-            if lowered == "select":
-                return False
-            if lowered.startswith("select "):
-                select_lines += 1
-        # Multiple SELECT statements inside one fenced block are usually documentation snippets.
-        if select_lines > 1:
-            return False
-
-        # Spec/WIP conditional syntax isn't implemented yet.
-        for line in non_comment_lines:
-            if line.lower().startswith("if "):
-                return False
-            # WIP / not-implemented keywords sometimes appear in reference docs.
-            if line.lower().startswith("sample "):
-                return False
-
-        # Spec-only pseudo syntax (pipeline/object literal examples) should not be compiled.
-        for line in non_comment_lines:
-            if line.startswith("|"):
-                return False
-            if "{" in line or "}" in line:
-                return False
-            lowered = line.lower()
-            # Raw SQL window syntax snippets (OVER ...) are documentation-only.
-            if " over " in lowered or "over(" in lowered:
-                return False
-            # Ellipsis placeholders are documentation-only.
-            if "..." in line:
-                return False
-            # Placeholder templates like <table> / <col> are documentation-only.
-            if "<" in line and ">" in line:
-                return False
-
-        first = non_comment_lines[0].lower()
-        return first.startswith("from ") or first.startswith("with ")
+    Args:
+        markdown_content: The markdown content to process
+        show_split_pane: If False, skip compilation and only show ASQL pane
+    """
+    # Pattern to match ASQL playground code blocks: ```asql-play ... ```
+    #
+    # We intentionally do NOT auto-compile plain ```asql fences anymore.
+    # - ```asql       : syntax-highlight only (snippets, templates, reference docs)
+    # - ```asql-play  : must be a runnable query; compiled and shown as mini-playground
+    asql_pattern = r'```asql-play\s*\n(.*?)```'
 
     def replace_asql_block(match):
         asql_query = match.group(1).strip()
@@ -364,19 +326,15 @@ def process_asql_blocks(markdown_content: str) -> str:
         # Skip if empty
         if not asql_query:
             return match.group(0)
-
-        # Skip snippet blocks (leave as fenced code, no compilation)
-        if not should_compile_asql_block(asql_query):
-            return match.group(0)
         
-        # Pre-compile to all dialects
-        compiled = precompile_asql_query(asql_query)
+        # Pre-compile to all dialects (skip if split pane is disabled)
+        compiled = precompile_asql_query(asql_query, skip_compilation=not show_split_pane)
         
         # Create a unique ID for this code block
         block_id = hashlib.md5(asql_query.encode()).hexdigest()[:8]
         
         # Generate HTML for mini playground
-        tabs_html = generate_mini_playground_html(compiled, block_id)
+        tabs_html = generate_mini_playground_html(compiled, block_id, show_split_pane=show_split_pane)
         
         return tabs_html
     
@@ -393,6 +351,36 @@ def define_env(env):
     Define the mkdocs-macros environment.
     This is called by mkdocs-macros-plugin on startup.
     """
+    # Get config for split pane toggle (check env var first, then config)
+    # Env var takes precedence: ASQL_SHOW_SPLIT_PANE=true enables it
+    # Default is False (split pane disabled by default)
+    env_var = os.environ.get("ASQL_SHOW_SPLIT_PANE", "").lower()
+    if env_var in ("true", "1", "yes", "on"):
+        show_split_pane = True
+    elif env_var in ("false", "0", "no", "off"):
+        show_split_pane = False
+    else:
+        # Check mkdocs config if env var not set
+        # plugins is a list, need to find the macros plugin config
+        plugins = env.conf.get("plugins", [])
+        macros_config = None
+        for plugin in plugins:
+            if isinstance(plugin, dict) and "macros" in plugin:
+                macros_config = plugin["macros"]
+                break
+            elif plugin == "macros":
+                # If macros is just a string, it has no config
+                macros_config = {}
+                break
+        
+        if macros_config is not None:
+            show_split_pane = macros_config.get("show_split_pane", False)
+        else:
+            # Default to False if not configured
+            show_split_pane = False
+    
+    # Store in env for use in hooks
+    env.variables["asql_show_split_pane"] = show_split_pane
     
     @env.macro
     def asql(query: str) -> str:
@@ -402,9 +390,9 @@ def define_env(env):
         Usage in markdown:
             {{ asql("SELECT * FROM users |> WHERE active") }}
         """
-        compiled = precompile_asql_query(query.strip())
+        compiled = precompile_asql_query(query.strip(), skip_compilation=not show_split_pane)
         block_id = hashlib.md5(query.encode()).hexdigest()[:8]
-        return generate_mini_playground_html(compiled, block_id)
+        return generate_mini_playground_html(compiled, block_id, show_split_pane=show_split_pane)
     
     @env.macro
     def dialect_name(dialect: str) -> str:
@@ -425,7 +413,7 @@ def define_env(env):
 def on_pre_page_macros(env) -> None:
     """
     Hook called by mkdocs-macros-plugin before macro rendering.
-    This automatically converts ```asql blocks to dialect tabs.
+    This automatically converts ```asql-play blocks to the mini-playground.
     """
     # Access the markdown content and process it
     if hasattr(env, 'markdown') and env.markdown:
@@ -437,8 +425,11 @@ def on_pre_page_macros(env) -> None:
         # Provide runtime config for docs/static/docs.js
         env.markdown = _runtime_config_script_tag() + env.markdown
 
+        # Get split pane setting from env variables (set in define_env)
+        show_split_pane = env.variables.get("asql_show_split_pane", True)
+
         try:
-            env.markdown = process_asql_blocks(env.markdown)
+            env.markdown = process_asql_blocks(env.markdown, show_split_pane=show_split_pane)
         except Exception as e:
             page = getattr(env, "page", None)
             page_file = getattr(page, "file", None) if page is not None else None

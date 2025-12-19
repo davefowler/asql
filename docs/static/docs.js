@@ -39,29 +39,50 @@ function getCompiledFromBlock(block) {
 function highlightIntoCodeElement(codeElement, code, language) {
     if (!codeElement) return;
 
-    if (window.hljs) {
-        try {
-            if (language === 'asql' && (!window.hljs.getLanguage || !window.hljs.getLanguage('asql'))) {
-                if (window.registerASQLLanguage) {
-                    window.registerASQLLanguage();
-                }
-            }
-
-            const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
-            if (langAvailable) {
-                const result = hljs.highlight(code, { language, ignoreIllegals: true });
-                codeElement.innerHTML = result.value;
-                codeElement.className = `hljs language-${language}`;
-                return;
-            }
-        } catch (e) {
-            console.warn('Highlight.js error:', e);
-        }
+    // Don't overwrite if already highlighted (unless code content changed)
+    const currentText = codeElement.textContent || codeElement.innerText || '';
+    if (codeElement.classList.contains('hljs') && currentText.trim() === code.trim()) {
+        // Already highlighted with same content, don't overwrite
+        return;
     }
 
-    // Fallback if highlight.js isn't available or failed
-    codeElement.textContent = code;
-    codeElement.className = `language-${language}`;
+    // If highlight.js isn't ready yet, schedule a retry instead of clearing highlighting
+    if (!window.hljs) {
+        // If already highlighted, preserve it; otherwise schedule retry
+        if (!codeElement.classList.contains('hljs')) {
+            setTimeout(() => highlightIntoCodeElement(codeElement, code, language), 100);
+        }
+        return;
+    }
+
+    try {
+        // Ensure ASQL language is registered if needed
+        if (language === 'asql' && (!window.hljs.getLanguage || !window.hljs.getLanguage('asql'))) {
+            if (window.registerASQLLanguage) {
+                window.registerASQLLanguage();
+                // If language wasn't available, retry after registration
+                setTimeout(() => highlightIntoCodeElement(codeElement, code, language), 50);
+                return;
+            }
+        }
+
+        const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
+        if (langAvailable) {
+            const result = hljs.highlight(code, { language, ignoreIllegals: true });
+            codeElement.innerHTML = result.value;
+            codeElement.className = `hljs language-${language}`;
+            return;
+        }
+    } catch (e) {
+        console.warn('Highlight.js error:', e);
+    }
+
+    // Fallback if highlight.js isn't available or failed - but preserve existing highlighting if present
+    // Only set plain text if not already highlighted (to avoid clearing highlighting)
+    if (!codeElement.classList.contains('hljs')) {
+        codeElement.textContent = code;
+        codeElement.className = `language-${language}`;
+    }
 }
 
 function updateMiniPlaygroundBlock(block, toDialect) {
@@ -85,12 +106,22 @@ function updateMiniPlaygroundBlock(block, toDialect) {
     const asqlElement = document.getElementById(`asql-${blockId}`);
     const toElement = document.getElementById(`to-${blockId}`);
 
-    if (asqlElement) {
+    // Only update if hljs is ready and language is available
+    if (asqlElement && window.hljs) {
         const asqlCode = compiled.asql || asqlElement.textContent || '';
-        highlightIntoCodeElement(asqlElement, asqlCode, 'asql');
+        // Check if ASQL language is available before highlighting
+        if (window.hljs.getLanguage && window.hljs.getLanguage('asql')) {
+            highlightIntoCodeElement(asqlElement, asqlCode, 'asql');
+        } else if (window.registerASQLLanguage) {
+            // Try to register and highlight
+            window.registerASQLLanguage();
+            setTimeout(() => {
+                highlightIntoCodeElement(asqlElement, asqlCode, 'asql');
+            }, 50);
+        }
     }
 
-    if (toElement) {
+    if (toElement && window.hljs) {
         const sqlCode = compiled[toDialect] || compiled[ASQL_DEFAULT_TO_DIALECT] || '';
         highlightIntoCodeElement(toElement, sqlCode, 'sql');
     }
@@ -216,39 +247,8 @@ function showDialect(blockId, dialect) {
         // Determine language based on dialect
         const language = dialect === 'asql' ? 'asql' : 'sql';
         
-        // Highlight syntax - ensure highlight.js is available
-        if (window.hljs) {
-            try {
-                // Ensure ASQL language is registered if needed
-                if (language === 'asql' && (!window.hljs.getLanguage || !window.hljs.getLanguage('asql'))) {
-                    if (window.registerASQLLanguage) {
-                        window.registerASQLLanguage();
-                    }
-                }
-                
-                // Check if language is available
-                const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
-                if (langAvailable) {
-                    // Use highlight() directly for more control
-                    const result = hljs.highlight(compiled[dialect], { language: language, ignoreIllegals: true });
-                    codeElement.innerHTML = result.value;
-                    codeElement.className = `hljs language-${language}`;
-                } else {
-                    // Fallback: just set text content
-                    codeElement.textContent = compiled[dialect];
-                    codeElement.className = `language-${language}`;
-                }
-            } catch (e) {
-                console.warn('Highlight.js error:', e);
-                // Fallback: just set text content
-                codeElement.textContent = compiled[dialect];
-                codeElement.className = `language-${language}`;
-            }
-        } else {
-            // Fallback if highlight.js isn't loaded
-            codeElement.textContent = compiled[dialect];
-            codeElement.className = `language-${language}`;
-        }
+        // Use the shared highlighting function which preserves existing highlighting
+        highlightIntoCodeElement(codeElement, compiled[dialect], language);
     }
     
     // Update active tab
@@ -400,6 +400,32 @@ function syncHeaderHeightVar() {
     document.documentElement.style.setProperty('--asql-header-height', `${height}px`);
 }
 
+// Make header title clickable
+function makeHeaderTitleClickable() {
+    // Make the header title text clickable (not just the icon)
+    const headerTitle = document.querySelector('.md-header__title');
+    const headerTopic = document.querySelector('.md-header__topic');
+    
+    // Function to make an element clickable
+    const makeClickable = (element) => {
+        if (!element) return;
+        
+        // Add click handler that navigates to home
+        // Only navigate if not clicking on an existing link
+        element.addEventListener('click', (e) => {
+            // Don't navigate if clicking on an existing link (like the icon)
+            if (e.target.closest('a')) {
+                return;
+            }
+            // Navigate to home
+            window.location.href = '/';
+        });
+    };
+    
+    makeClickable(headerTitle);
+    makeClickable(headerTopic);
+}
+
 // Add playground button to header
 function addPlaygroundButton() {
     // Check if button already exists
@@ -452,46 +478,45 @@ function highlightAllCodeBlocks() {
         return;
     }
     
-    // Highlight code blocks
+    // Highlight code blocks (including those in mini-playgrounds)
     document.querySelectorAll('pre code[class*="language-"], pre code:not([class])').forEach((block) => {
-        if (block.textContent && block.textContent.trim()) {
-            try {
-                const code = block.textContent;
-                // Determine language from class name
-                let language = null;
-                const langMatch = block.className.match(/language-(\w+)/);
-                if (langMatch) {
-                    language = langMatch[1];
-                } else {
-                    // Check if parent pre has a class
-                    const parentPre = block.parentElement;
-                    if (parentPre && parentPre.className) {
-                        const parentLangMatch = parentPre.className.match(/language-(\w+)/);
-                        if (parentLangMatch) {
-                            language = parentLangMatch[1];
-                        }
+        // Skip if already highlighted - preserve existing highlighting
+        if (block.classList.contains('hljs')) {
+            return;
+        }
+        
+        // Get plain text content (before any highlighting)
+        const code = block.textContent || block.innerText || '';
+        if (!code || !code.trim()) {
+            return;
+        }
+        
+        try {
+            // Determine language from class name
+            let language = null;
+            const langMatch = block.className.match(/language-(\w+)/);
+            if (langMatch) {
+                language = langMatch[1];
+            } else {
+                // Check if parent pre has a class
+                const parentPre = block.parentElement;
+                if (parentPre && parentPre.className) {
+                    const parentLangMatch = parentPre.className.match(/language-(\w+)/);
+                    if (parentLangMatch) {
+                        language = parentLangMatch[1];
                     }
                 }
-                
-                // Default to sql if no language detected
-                if (!language) {
-                    language = 'sql';
-                }
-                
-                // Only highlight if not already highlighted
-                if (!block.classList.contains('hljs')) {
-                    const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
-                    if (langAvailable) {
-                        const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
-                        block.innerHTML = result.value;
-                        block.classList.add('hljs', `language-${language}`);
-                    } else {
-                        block.classList.add(`language-${language}`);
-                    }
-                }
-            } catch (e) {
-                console.warn('Highlight.js error on block:', e);
             }
+            
+            // Default to sql if no language detected
+            if (!language) {
+                language = 'sql';
+            }
+            
+            // Use the shared highlighting function which handles all edge cases
+            highlightIntoCodeElement(block, code, language);
+        } catch (e) {
+            console.warn('Highlight.js error on block:', e);
         }
     });
     
@@ -505,8 +530,11 @@ function highlightAllCodeBlocks() {
         showDialect(blockId, 'asql');
     });
 
-    // Initialize split-pane mini playgrounds
-    initMiniPlaygrounds();
+    // Initialize split-pane mini playgrounds (after highlighting is done)
+    // This ensures highlighting isn't overwritten
+    setTimeout(() => {
+        initMiniPlaygrounds();
+    }, 100);
 }
 
 function initDocsPage() {
@@ -516,6 +544,9 @@ function initDocsPage() {
     // Sync banner/header height vars (used for sticky sidebar offsets)
     syncBannerHeightVar();
     syncHeaderHeightVar();
+
+    // Make header title clickable
+    makeHeaderTitleClickable();
 
     // Add playground button to header
     addPlaygroundButton();
@@ -537,6 +568,7 @@ function initDocsPage() {
     }
 
     // Wait a bit for highlight.js and ASQL language to be fully loaded
+    // Also wait a bit longer to ensure Material's scripts have finished
     const initHighlighting = () => {
         if (!window.hljs) {
             setTimeout(initHighlighting, 100);
@@ -551,11 +583,18 @@ function initDocsPage() {
             return;
         }
 
-        // Highlight any code blocks in the current page content
-        document.querySelectorAll('pre code[class*="language-"], pre code:not([class])').forEach((block) => {
-            if (block.textContent && block.textContent.trim()) {
-                try {
-                    const code = block.textContent;
+        // Use the dedicated highlightAllCodeBlocks function which handles all cases
+        // Add a small delay to ensure Material's scripts have finished running
+        setTimeout(() => {
+            highlightAllCodeBlocks();
+            
+            // Re-check after a short delay to catch any highlighting that got cleared
+            setTimeout(() => {
+                // Only re-highlight blocks that lost their highlighting
+                document.querySelectorAll('pre code[class*="language-"]:not(.hljs)').forEach((block) => {
+                    const code = block.textContent || block.innerText || '';
+                    if (!code || !code.trim()) return;
+                    
                     let language = null;
                     const langMatch = block.className.match(/language-(\w+)/);
                     if (langMatch) {
@@ -569,44 +608,18 @@ function initDocsPage() {
                             }
                         }
                     }
-
-                    if (!language) {
-                        language = 'sql';
+                    
+                    if (!language) language = 'sql';
+                    
+                    // Only re-highlight if highlight.js is ready and language is available
+                    if (window.hljs && window.hljs.getLanguage && window.hljs.getLanguage(language)) {
+                        highlightIntoCodeElement(block, code, language);
                     }
-
-                    if (!block.classList.contains('hljs')) {
-                        const langAvailable = window.hljs.getLanguage && window.hljs.getLanguage(language);
-                        if (langAvailable) {
-                            const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
-                            block.innerHTML = result.value;
-                            block.classList.add('hljs', `language-${language}`);
-                        } else {
-                            block.classList.add(`language-${language}`);
-                        }
-                    }
-                } catch (e) {
-                    console.warn('Highlight.js error on initial block:', e);
-                    if (!block.classList.contains('hljs')) {
-                        block.className = block.className || 'language-sql';
-                    }
-                }
-            }
-        });
-
-        // Legacy tabbed blocks (if any remain)
-        const blocks = document.querySelectorAll('.asql-code-block');
-        blocks.forEach(block => {
-            const blockId = block.getAttribute('data-block-id');
-            if (!blockId) return;
-            if (block.classList.contains('asql-mini-playground')) return;
-            reorderTabsOnLoad(blockId);
-            showDialect(blockId, 'asql');
-        });
-
-        // Split-pane mini playgrounds (global to-dialect)
-        initMiniPlaygrounds();
+                });
+            }, 200);
+        }, 150);
     };
-
+    
     initHighlighting();
 }
 

@@ -20,7 +20,7 @@ ASQL uses symbolic operators for joins, making the join type visually clear at a
 
 Only rows where both tables match:
 
-```asql
+```asql-play
 from orders & customers on orders.customer_id = customers.id
   select orders.id, customers.name, orders.amount
 ```
@@ -29,7 +29,7 @@ from orders & customers on orders.customer_id = customers.id
 
 All rows from the left table, with matching rows from the right (or NULL):
 
-```asql
+```asql-play
 from customers &? orders on customers.id = orders.customer_id
   select customers.name, orders.amount
 ```
@@ -38,7 +38,7 @@ from customers &? orders on customers.id = orders.customer_id
 
 All rows from the right table, with matching rows from the left (or NULL):
 
-```asql
+```asql-play
 from orders ?& customers on orders.customer_id = customers.id
 ```
 
@@ -46,7 +46,7 @@ from orders ?& customers on orders.customer_id = customers.id
 
 All rows from both tables:
 
-```asql
+```asql-play
 from orders ?&? customers on orders.customer_id = customers.id
 ```
 
@@ -54,7 +54,7 @@ from orders ?&? customers on orders.customer_id = customers.id
 
 Every combination of rows (cartesian product):
 
-```asql
+```asql-play
 from products * colors
   select products.name, colors.name as color
 ```
@@ -63,7 +63,7 @@ from products * colors
 
 Use `as` to alias joined tables:
 
-```asql
+```asql-play
 from orders &? users as customer on orders.customer_id = customer.id
   select orders.amount, customer.name, customer.email
 ```
@@ -227,7 +227,7 @@ When resolving joins, ASQL uses this priority:
 
 Combine joins with GROUP BY:
 
-```asql
+```asql-play
 from orders
   & customers on orders.customer_id = customers.id
   group by customers.country (

@@ -11,16 +11,23 @@ class AggregatesMixin:
 
     def _transform_natural_aggregates(self, text: str) -> str:
         """
-        Transform natural language aggregates to function calls.
+        Transform natural language function calls to explicit function calls.
         
-        sum amount → sum(amount)
-        sum of amount → sum(amount)
-        avg of price → avg(price)
+        Supports both aggregates and date functions:
+        - sum amount → sum(amount)
+        - sum of amount → sum(amount)
+        - year created_at → year(created_at)
+        - month created_at → month(created_at)
         """
         result = text
         
+        # Aggregate functions (plus natural-language aliases like total/average).
+        funcs = [
+            'sum', 'avg', 'average', 'total', 'count', 'min', 'max', 'maximum', 'minimum',
+        ]
+        
         # Pattern: func <column> or func of <column> (not followed by opening paren)
-        for func in ['sum', 'avg', 'average', 'total', 'count', 'min', 'max', 'maximum', 'minimum']:
+        for func in funcs:
             def normalize_fn(raw_fn: str) -> str:
                 lowered = raw_fn.lower()
                 return FUNCTION_ALIASES.get(lowered, lowered)

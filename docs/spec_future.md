@@ -8,10 +8,123 @@ This document contains features that are planned for future implementation, unde
 
 ---
 
+## FK Dot Notation (Future Consideration)
+
+ASQL may add support for automatic join traversal using FK dot notation:
+
+**Tracking**: Not yet tracked
+
+```asql
+-- Proposed syntax
+from orders
+  select 
+    orders.amount,
+    orders.user.name,       -- Auto-joins via user_id → users.id
+    orders.user.email       -- Same join, different column
+
+-- Would compile to:
+SELECT 
+  orders.amount,
+  user_1.name,
+  user_1.email
+FROM orders
+LEFT JOIN users AS user_1 ON orders.user_id = user_1.id
+```
+
+### How It Would Work
+
+1. **Pattern detection**: Preparser detects `table.fk.column` patterns where `fk` matches a `{name}_id` column
+2. **Schema lookup**: Uses the relationship map to find the target table
+3. **Auto-join generation**: Injects LEFT JOIN with appropriate ON clause
+4. **Alias deduplication**: Multiple references to same FK reuse the same join
+
+### Key Features
+
+- **Convention-based**: `{name}_id` enables `.{name}.` traversal without configuration
+- **Schema-aware**: Explicit relationships in schema take precedence over conventions
+- **Chained traversal**: `order_items.order.user.name` traverses multiple relationships
+- **LEFT JOIN default**: FK might be NULL, so outer join is safer default
+
+### Current Workaround
+
+Use explicit joins:
+
+```asql
+-- Instead of: from orders select orders.user.name
+from orders &? users on orders.user_id = users.id
+  select users.name
+```
+
+### Why Not Implemented Yet
+
+- **Preparser complexity**: Requires detecting column patterns before SQL generation
+- **Alias management**: Need to track generated aliases to avoid duplicates
+- **Schema dependency**: Most useful with schema information (which is now available)
+
+**Priority**: Medium - useful but explicit joins work well. May implement after schema support is fully tested.
+
+---
+
+## Database Schema Introspection (Future Consideration)
+
+ASQL may add database introspection to auto-generate `asql_schema.yml` from a live database connection.
+
+**Tracking**: Not yet tracked
+
+```python
+# Proposed CLI usage
+asql introspect postgresql://user:pass@host/db --output asql_schema.yml
+
+# Proposed Python API
+from asql.schema import Schema
+schema = Schema.from_database("postgresql://user:pass@host/db")
+schema.to_yaml("asql_schema.yml")
+```
+
+### What It Would Extract
+
+1. **Tables and columns**: Names, types, primary keys
+2. **Foreign keys**: Explicit FK constraints from database metadata
+3. **Inferred relationships**: Convention-based (`{name}_id` → `{names}.id`)
+
+### Generated Output
+
+```yaml
+# asql_schema.yml (auto-generated)
+tables:
+  orders:
+    columns: [id, user_id, amount, created_at]
+  users:
+    columns: [id, name, email]
+    
+relationships:
+  # Explicit FK from database
+  - from: orders.user_id
+    to: users.id
+    alias: user
+    source: explicit
+  
+  # Inferred from naming convention
+  - from: orders.customer_id
+    to: customers.id
+    alias: customer
+    source: inferred
+```
+
+### Current Workaround
+
+Manually create `asql_schema.yml` or use dbt's `schema.yml` files.
+
+**Priority**: Low - most users have dbt or can manually define schemas. Introspection is a convenience feature.
+
+---
+
 
 ## Ternary-Style Conditionals (Future Consideration)
 
 ASQL may add support for concise ternary expressions in the future:
+
+**Tracking**: [#28](https://github.com/davefowler/asql/issues/28)
 
 ```asql
 -- Potential future syntax (not yet decided)
@@ -32,6 +145,8 @@ CASE WHEN amount == 0 THEN NULL ELSE amount END
 ## Shorthand Natural Language (50/50 on implementation)
 
 For very simple exploratory queries, you can omit the `from` clause and infer it from the aggregation:
+
+**Tracking**: [#40](https://github.com/davefowler/asql/issues/40)
 
 ```asql
 # of Users by country
@@ -104,7 +219,223 @@ Use SQL `CASE` / `NULLIF` patterns directly, e.g. `a / NULLIF(b, 0)` (dialect de
 
 ---
 
+## Table sources: `series(...)` / `date_spine(...)` (Future Consideration)
+
+ASQL may add table-producing functions that can be used directly in `from`:
+
+```asql
+from series(1, 100)
+from date_spine(start = @2024-01-01, end = @2024-12-31, grain = day)
+```
+
+**Why it exists**: Sometimes you want to generate rows without an existing source table (numbers/date dimension).
+
+**Current**: Prefer compiler `auto_spine` (gap-filling for grouped date dimensions) where applicable, or use warehouse-native generators in raw SQL.
+
+---
+
+## Union relations: `from union(t1, t2, ...)` (Future Consideration)
+
+ASQL may add a convenience table source for unioning a list of relations:
+
+```asql-play
+from union(users_2022, users_2023, users_2024)
+```
+
+Open design questions:
+- schema alignment vs “union all as-is”
+- `fill_missing = null` behavior
+- dialect differences
+
+---
+
+## `slugify(expr)` (Future Consideration)
+
+ASQL may add a helper to convert strings to URL-friendly slugs:
+
+**Tracking**: [#64](https://github.com/davefowler/asql/issues/64)
+
+```asql
+select slugify(name) as slug
+```
+
+Open design questions:
+- dialect portability (regex replace differences)
+- unicode normalization behavior
+
+---
+
+## Universal Auto-Aliasing for All Aggregates (Future Consideration)
+
+ASQL may implement automatic column aliasing for all aggregate and transformation functions, enabling declarative continuity where the function call syntax matches the output column name.
+
+**Tracking**: [#65](https://github.com/davefowler/asql/issues/65)
+
+### Proposed Behavior
+
+When any aggregate or transformation function is used without an explicit `as` alias, ASQL would automatically generate a column name following predictable patterns:
+
+```asql
+-- Current (requires explicit aliases)
+from orders
+  group by customer_id (
+    sum(amount) as total_spent,
+    first(order_id order by -order_date) as latest_order,
+    # as order_count
+  )
+
+-- Future (auto-aliases)
+from orders
+  group by customer_id (
+    sum(amount),                    -- → column: sum_amount
+    first(order_id order by -order_date),  -- → column: first_order_id
+    #                                -- → column: num (analytics-friendly)
+    # orders                         -- → column: num_orders
+  )
+order by -sum_amount                -- Can reference auto-aliased column
+```
+
+### Benefits
+
+- **Declarative continuity**: Write `sum_amount` and reference `sum_amount` - no mismatch
+- **Less verbosity**: Fewer `as` clauses needed
+- **Consistency**: All functions follow the same pattern
+- **Shorthand integration**: Auto-aliases work seamlessly with underscore shorthand syntax
+
+### Design Considerations
+
+1. **Pattern**: `func(col)` → `func_col` for single-arg functions
+2. **Multi-arg functions**: May require explicit aliases (e.g., `concat(col1, col2)`)
+3. **Complex expressions**: Functions with expressions (e.g., `sum(amount * quantity)`) may require explicit aliases
+4. **Backward compatibility**: Explicit `as` aliases would still work and override auto-aliases
+5. **Shorthand support**: Functions that support shorthand (like `sum_amount`) already work - this extends the pattern
+
+### Current
+
+Most aggregates require explicit `as` aliases. Shorthand forms like `sum_amount` already work and create columns with matching names.
+
+---
+
+## Date Aggregate Convention: Dropping `_at` Suffix (Future Consideration)
+
+ASQL may add a convention where date aggregates on columns ending in `_at` can optionally drop the `_at` suffix for brevity.
+
+### Proposed syntax
+
+```asql
+-- Current (always works)
+month_created_at  -- → month(created_at)
+year_updated_at   -- → year(updated_at)
+
+-- Future (optional shorthand)
+month_created     -- → month(created_at) (infers _at suffix)
+year_updated      -- → year(updated_at) (infers _at suffix)
+```
+
+### Rationale
+
+- **Convention-based**: Columns ending in `_at` are almost always timestamps
+- **Brevity**: Shorter syntax for common patterns
+- **Readability**: `month_created` reads naturally
+
+### Open design questions
+
+- Should this only work for columns ending in `_at`, or also `_date`, `_time`?
+- What if both `created_at` and `created` exist? (prefer explicit)
+- Should this be opt-in via config, or always available?
+- Does this apply to all date functions (`year`, `month`, `day`, `date`, `date_trunc`, etc.)?
+
+### Current
+
+Use explicit column names: `month_created_at`, `year_updated_at`, etc.
+
+---
+
+## Function Naming Consistency: `running_num` vs `running_count` (Future Consideration)
+
+ASQL may rename `running_count()` to `running_num()` for consistency with the `num` naming convention used for count auto-aliases.
+
+**Current**: `running_count(*)` → column: `running_count` (or `running_num` if auto-aliased)
+
+**Proposed**: `running_num(*)` → column: `running_num`
+
+### Rationale
+
+- **Consistency**: If `#` → `num` and `count(*)` → `num`, then `running_count(*)` should be `running_num(*)`
+- **Analytics-friendly**: `num` is more analytics-friendly than `count`
+- **Declarative continuity**: `running_num` matches the auto-alias pattern `running_num`
+
+### Current Behavior
+
+```asql
+-- Current syntax
+from orders
+  select running_count(*) as row_num
+```
+
+### Proposed Behavior
+
+```asql
+-- Future syntax
+from orders
+  select running_num(*) as row_num
+  -- Or with auto-aliasing:
+  select running_num(*)  -- → column: running_num
+```
+
+### Migration Considerations
+
+- **Backward compatibility**: `running_count()` could remain as an alias for `running_num()`
+- **Deprecation path**: Support both, document `running_count` as deprecated
+- **Auto-aliasing**: If auto-aliasing is implemented, `running_count(*)` would auto-alias to `running_num` anyway
+
+### Related Functions
+
+This could also apply to:
+- `running_count(*)` → `running_num(*)`
+- Consider if `count()` function itself should have a `num()` alias (probably not, as `count()` is standard SQL)
+
+**Status**: Under consideration - would improve consistency but requires breaking change or careful migration path.
+
+---
+
+## Preset Alias Templates (Future Consideration)
+
+ASQL may provide preset alias templates as shortcuts for common naming conventions, allowing users to quickly apply standard styles without writing custom templates.
+
+**Proposed syntax**:
+
+```yaml
+# asql.config.yaml
+compile:
+  alias_preset: "snake_case"  # or "camelCase", "UPPER_SNAKE", "PascalCase"
+```
+
+**Available presets** (proposed):
+
+| Preset | Template | Example Output |
+|--------|----------|----------------|
+| `snake_case` | `{prefix}_{col}` | `sum_amount`, `num_orders` |
+| `camelCase` | `{prefix|title}{col|title}` | `SumAmount`, `NumOrders` |
+| `UPPER_SNAKE` | `{prefix|upper}_{col|upper}` | `SUM_AMOUNT`, `NUM_ORDERS` |
+| `PascalCase` | `{prefix|title}{col|title}` | `SumAmount`, `NumOrders` |
+| `lower_snake` | `{prefix|lower}_{col|lower}` | `sum_amount`, `num_orders` |
+
+**Benefits**:
+- Quick setup for common conventions
+- Shareable styles across projects
+- Less configuration needed for standard cases
+- Can still override individual functions if needed
+
+**Implementation**:
+- Preset sets `alias_template` automatically
+- Can be overridden by explicit `alias_template` setting
+- Function-specific templates still take precedence
+
+**Status**: Future consideration - nice-to-have convenience feature, not critical for initial implementation.
+
+---
+
 **See Also**:
 - `docs/spec.md` - Current specification of implemented features
 - GitHub issues - Work tracked as issues when prioritized
-- `ai_notes/COHORT_ANALYSIS.md` - Detailed cohort analysis design

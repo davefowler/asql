@@ -1,6 +1,6 @@
 # ASQL Default Style Settings Analysis
 
-**Date**: 2025-01-XX  
+**Date**: 2025-12-16  
 **Status**: Analysis report (may become outdated)
 
 ## Default "Pretty" Settings
@@ -15,7 +15,6 @@ Based on `asql/config.py` `StyleConfig` class (default preset):
 | **descending** | `"prefix"` | Use `-col` not `col DESC` | `order by -created_at` |
 | **cast** | `"double_colon"` | Use `::` not `CAST()` | `created_at::DATE` |
 | **quotes** | `"double"` | Use `"` not `'` | `where status = "active"` |
-| **sort_keyword** | `"order_by"` | Use `order by` not `sort` | `order by -revenue` |
 
 ## Other Preferred Syntax Patterns (Beyond "Pretty" Settings)
 
@@ -185,18 +184,6 @@ These are syntax choices that represent preferred ASQL patterns:
 
 ---
 
-### 7. Sort Keyword: `sort` vs `order by`
-
-**Default**: `order by` (not `sort`)
-
-**Found**: 248 instances of "order by" (correct), 0 instances of standalone `sort` keyword
-
-**Analysis**:
-- ✅ **All correct**: All instances use `order by`, which matches the default.
-
-**Recommendation**: No changes needed.
-
----
 
 ## Summary of Recommended Changes
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Optional, Dict, List, Any
 import re
 
+from jinja2 import Environment
 from sqlglot import exp
 
 from asql.config import CompileSettings
@@ -60,7 +61,7 @@ def _get_function_prefix(
 
 
 def _extract_template_variables(
-    func_call: exp.Function,
+    func_call: exp.Func,
     func_name: str,
     prefix: str,
 ) -> Dict[str, Any]:
@@ -81,9 +82,23 @@ def _extract_template_variables(
     }
     
     # Extract arguments
+    # Handle typed date functions (Month, Year, etc.) that use .this instead of .expressions
     args = func_call.expressions
+    is_distinct = False
+    
+    if not args and hasattr(func_call, "this") and func_call.this is not None:
+        this_val = func_call.this
+        # Handle DISTINCT modifier (e.g., COUNT(DISTINCT customer_id))
+        if isinstance(this_val, exp.Distinct):
+            is_distinct = True
+            # Get the actual column(s) from inside DISTINCT
+            args = this_val.expressions if this_val.expressions else []
+        else:
+            # Typed date functions like Month, Year store their arg in .this
+            args = [this_val]
+    
     if args:
-        # Handle count(*) case - empty args list
+        # Handle count(*) case - Star in args
         if len(args) == 1 and isinstance(args[0], exp.Star):
             vars_dict["arg1"] = None
             vars_dict["col"] = None
@@ -98,7 +113,7 @@ def _extract_template_variables(
         vars_dict["col"] = None
     
     # Extract DISTINCT modifier
-    if func_call.is_distinct:
+    if is_distinct or (hasattr(func_call, "is_distinct") and func_call.is_distinct):
         vars_dict["distinct"] = "distinct"
     else:
         vars_dict["distinct"] = ""
@@ -133,63 +148,11 @@ def _extract_template_variables(
     return vars_dict
 
 
-def _render_template_fallback(
-    template: str,
-    vars_dict: Dict[str, Any],
-) -> str:
-    """Render template using simple string replacement (fallback when Jinja2 unavailable).
-    
-    Supports basic {variable} substitution and simple filters:
-    - {prefix|lower} -> lowercase
-    - {prefix|upper} -> uppercase
-    - {prefix|title} -> title case
-    """
-    result = template
-    
-    # Handle filters (simple implementation)
-    def apply_filter(value: Any, filter_name: str) -> str:
-        if value is None:
-            return ""
-        value_str = str(value)
-        if filter_name == "lower":
-            return value_str.lower()
-        elif filter_name == "upper":
-            return value_str.upper()
-        elif filter_name == "title":
-            return value_str.title()
-        elif filter_name == "camel":
-            # Simple camelCase: split on _, capitalize each part except first
-            parts = value_str.split("_")
-            return parts[0].lower() + "".join(p.capitalize() for p in parts[1:])
-        elif filter_name == "snake":
-            # Convert to snake_case
-            # Insert _ before uppercase letters
-            return re.sub(r'(?<!^)(?=[A-Z])', '_', value_str).lower()
-        return value_str
-    
-    # Find all {variable|filter} patterns
-    pattern = r'\{(\w+)(?:\|(\w+))?\}'
-    
-    def replace_match(match: re.Match) -> str:
-        var_name = match.group(1)
-        filter_name = match.group(2)
-        
-        if var_name in vars_dict:
-            value = vars_dict[var_name]
-            if filter_name:
-                return apply_filter(value, filter_name)
-            return str(value) if value is not None else ""
-        return match.group(0)  # Keep original if variable not found
-    
-    result = re.sub(pattern, replace_match, result)
-    
-    # Clean up any remaining {variable} patterns
-    result = re.sub(r'\{(\w+)\}', lambda m: str(vars_dict.get(m.group(1), "")), result)
-    
-    # Remove double underscores and trailing/leading underscores
-    result = re.sub(r'_+', '_', result)
-    result = result.strip('_')
-    
+def _convert_to_jinja_syntax(template: str) -> str:
+    """Convert {var} and {var|filter} syntax to Jinja2 {{ var }} and {{ var|filter }} syntax."""
+    # Convert {variable|filter} patterns to {{ variable|filter }}
+    # But don't convert {{ which is already Jinja2 escape syntax
+    result = re.sub(r'(?<!\{)\{([^{}]+)\}(?!\})', r'{{ \1 }}', template)
     return result
 
 
@@ -197,72 +160,68 @@ def _render_template(
     template: str,
     vars_dict: Dict[str, Any],
 ) -> str:
-    """Render template using Jinja2 if available, otherwise fallback.
+    """Render template using Jinja2.
+    
+    Accepts templates in simplified {var} syntax or Jinja2 {{ var }} syntax.
     
     Args:
-        template: Jinja2 template string
+        template: Template string with {var} or {{ var }} syntax
         vars_dict: Dictionary of template variables
         
     Returns:
         Rendered alias string
     """
-    try:
-        from jinja2 import Environment, Template
-        
-        # Create Jinja2 environment with custom filters
-        env = Environment()
-        
-        def lower_filter(value: Any) -> str:
-            return str(value).lower() if value else ""
-        
-        def upper_filter(value: Any) -> str:
-            return str(value).upper() if value else ""
-        
-        def title_filter(value: Any) -> str:
-            return str(value).title() if value else ""
-        
-        def camel_filter(value: Any) -> str:
-            """Convert to camelCase."""
-            if not value:
-                return ""
-            parts = str(value).split("_")
-            return parts[0].lower() + "".join(p.capitalize() for p in parts[1:])
-        
-        def snake_filter(value: Any) -> str:
-            """Convert to snake_case."""
-            if not value:
-                return ""
-            # Insert _ before uppercase letters
-            return re.sub(r'(?<!^)(?=[A-Z])', '_', str(value)).lower()
-        
-        env.filters["lower"] = lower_filter
-        env.filters["upper"] = upper_filter
-        env.filters["title"] = title_filter
-        env.filters["camel"] = camel_filter
-        env.filters["snake"] = snake_filter
-        
-        jinja_template = env.from_string(template)
-        result = jinja_template.render(**vars_dict)
-        
-        # Clean up double underscores and trailing/leading underscores
-        result = re.sub(r'_+', '_', result)
-        result = result.strip('_')
-        
-        return result
-    except ImportError:
-        # Jinja2 not available, use fallback
-        return _render_template_fallback(template, vars_dict)
+    # Convert {var} syntax to Jinja2 {{ var }} syntax
+    jinja_template_str = _convert_to_jinja_syntax(template)
+    
+    # Create Jinja2 environment with custom filters
+    env = Environment()
+    
+    def lower_filter(value: Any) -> str:
+        return str(value).lower() if value else ""
+    
+    def upper_filter(value: Any) -> str:
+        return str(value).upper() if value else ""
+    
+    def title_filter(value: Any) -> str:
+        return str(value).title() if value else ""
+    
+    def camel_filter(value: Any) -> str:
+        """Convert to camelCase."""
+        if not value:
+            return ""
+        parts = str(value).split("_")
+        return parts[0].lower() + "".join(p.capitalize() for p in parts[1:])
+    
+    def snake_filter(value: Any) -> str:
+        """Convert to snake_case."""
+        if not value:
+            return ""
+        # Insert _ before uppercase letters
+        return re.sub(r'(?<!^)(?=[A-Z])', '_', str(value)).lower()
+    
+    env.filters["lower"] = lower_filter
+    env.filters["upper"] = upper_filter
+    env.filters["title"] = title_filter
+    env.filters["camel"] = camel_filter
+    env.filters["snake"] = snake_filter
+    
+    jinja_template = env.from_string(jinja_template_str)
+    result = jinja_template.render(**vars_dict)
+    
+    # Clean up double underscores and trailing/leading underscores
+    result = re.sub(r'_+', '_', result)
+    result = result.strip('_')
+    
+    return result
 
 
-def _get_function_name(func_call: exp.Function) -> str:
+def _get_function_name(func_call: exp.Func) -> str:
     """Get the function name from a Function expression."""
-    # Try sql_name() first (handles most cases)
-    try:
-        name = func_call.sql_name()
-        if name:
-            return name.lower()
-    except Exception:
-        pass
+    # sql_name() handles most cases
+    name = func_call.sql_name()
+    if name:
+        return name.lower()
     
     # Fallback to this.name or this.this.name
     if hasattr(func_call, "this"):
@@ -276,11 +235,16 @@ def _get_function_name(func_call: exp.Function) -> str:
     if class_name.endswith("function"):
         return class_name[:-8]  # Remove "Function" suffix
     
-    return "unknown"
+    # If we get here, sql_name() returned empty and the class doesn't follow
+    # the "XxxFunction" naming convention. This is unexpected - surface it.
+    raise ValueError(
+        f"Cannot determine function name for {func_call.__class__.__name__}. "
+        f"sql_name() returned empty and class name doesn't end with 'Function'."
+    )
 
 
 def _generate_alias(
-    func_call: exp.Function,
+    func_call: exp.Func,
     func_name: str,
     settings: CompileSettings,
 ) -> Optional[str]:
@@ -298,10 +262,13 @@ def _generate_alias(
     vars_dict = _extract_template_variables(func_call, func_name, prefix)
     
     # Special case: count(*) should use prefix only if template allows it
+    # Note: For Count(*), the Star is stored in .this, not .expressions
     is_count_star = (
         func_name.lower() == "count" and 
-        len(func_call.expressions) == 1 and 
-        isinstance(func_call.expressions[0], exp.Star)
+        (
+            (len(func_call.expressions) == 1 and isinstance(func_call.expressions[0], exp.Star)) or
+            (hasattr(func_call, "this") and isinstance(func_call.this, exp.Star))
+        )
     )
     
     # Precedence 1: Function-specific template
@@ -358,7 +325,7 @@ def _should_add_alias(expr: exp.Expression) -> bool:
         return False
     
     # Function calls should get aliases
-    if isinstance(expr, exp.Function):
+    if isinstance(expr, exp.Func):
         return True
     
     return False
@@ -399,7 +366,7 @@ def apply_auto_aliasing(
             new_expressions = []
             for expr in node.expressions:
                 if _should_add_alias(expr):
-                    if isinstance(expr, exp.Function):
+                    if isinstance(expr, exp.Func):
                         func_name = _get_function_name(expr)
                         alias = _generate_alias(expr, func_name, settings)
                         if alias:
@@ -421,19 +388,27 @@ def apply_auto_aliasing(
             node.set("expressions", new_expressions)
         
         # Recursively visit children (skip expressions for SELECT since we handled them above)
+        # Also skip GROUP BY, ORDER BY, etc. where aliases are not valid
         skip_keys = {"expressions"} if isinstance(node, exp.Select) else set()
+        
+        # Don't add aliases in GROUP BY, ORDER BY, WHERE, HAVING, etc.
+        no_alias_contexts = (exp.Group, exp.Order, exp.Where, exp.Having, exp.Join)
+        in_no_alias_context = isinstance(node, no_alias_contexts)
         
         for key, value in node.args.items():
             if key in skip_keys:
                 continue
                 
             if key == "expressions" and isinstance(value, list):
-                # Handle expressions lists (GROUP BY, etc. - SELECT already handled above)
+                # For non-SELECT expressions (GROUP BY, ORDER BY, etc.), don't add aliases
                 new_list = []
                 for item in value:
                     if isinstance(item, exp.Expression):
-                        if _should_add_alias(item):
-                            if isinstance(item, exp.Function):
+                        # Don't add aliases in GROUP BY, ORDER BY, etc.
+                        if in_no_alias_context:
+                            new_list.append(visit(item))
+                        elif _should_add_alias(item):
+                            if isinstance(item, exp.Func):
                                 func_name = _get_function_name(item)
                                 alias = _generate_alias(item, func_name, settings)
                                 if alias:

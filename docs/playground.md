@@ -56,7 +56,7 @@ Here's a simple workflow to get started:
 
 1. Open the playground
 2. Click "Simple FROM" example
-3. Modify it: `from users where status == "active"`
+3. Modify it: `from users where status = "active"`
 4. Add grouping: `group by country ( # as total_users )`
 5. Sort results: `order by -total_users`
 6. Limit output: `limit 10`

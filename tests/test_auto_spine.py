@@ -449,3 +449,115 @@ class TestRollupSpineGeneration:
         # Should have the hierarchical filter for ROLLUP
         # SQLGlot may normalize "IS NOT NULL" to "NOT ... IS NULL"
         assert "IS NULL" in sql.upper()  # Part of the filter condition
+
+
+class TestSpineGenerationVerification:
+    """Verify that spines ARE actually generated in output."""
+
+    def test_categorical_group_by_generates_spine_cte(self):
+        """Verify categorical GROUP BY generates spine CTE."""
+        sql = compile(
+            "from orders group by region (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Must have a spine CTE
+        assert "region_spine" in sql.lower(), f"Missing region_spine CTE in: {sql}"
+        # Must have LEFT JOIN
+        assert "left join" in sql.lower(), f"Missing LEFT JOIN in: {sql}"
+        # Must have DISTINCT for categorical spine
+        assert "distinct" in sql.lower(), f"Missing DISTINCT in spine: {sql}"
+        # Must have spine_data CTE
+        assert "spine_data" in sql.lower(), f"Missing spine_data CTE in: {sql}"
+
+    def test_date_function_group_by_generates_spine_cte(self):
+        """Verify date function GROUP BY (like month()) generates spine CTE."""
+        sql = compile(
+            "from orders group by month(order_date) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Must have a spine CTE (col_0_spine for auto-generated alias)
+        assert "_spine" in sql.lower(), f"Missing spine CTE in: {sql}"
+        # Must have LEFT JOIN
+        assert "left join" in sql.lower(), f"Missing LEFT JOIN in: {sql}"
+        # Must have spine_data CTE
+        assert "spine_data" in sql.lower(), f"Missing spine_data CTE in: {sql}"
+        # Must use date series generation (generate_series for postgres)
+        assert "generate_series" in sql.lower(), f"Missing date series in: {sql}"
+
+    def test_year_function_group_by_generates_spine_cte(self):
+        """Verify year() function GROUP BY generates spine CTE."""
+        sql = compile(
+            "from orders group by year(order_date) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Must have a spine CTE
+        assert "_spine" in sql.lower(), f"Missing spine CTE in: {sql}"
+        # Must have LEFT JOIN
+        assert "left join" in sql.lower(), f"Missing LEFT JOIN in: {sql}"
+        # Must have spine_data CTE
+        assert "spine_data" in sql.lower(), f"Missing spine_data CTE in: {sql}"
+
+    def test_guarantee_generates_spine_cte(self):
+        """Verify guarantee() generates spine CTE."""
+        sql = compile(
+            "from orders group by guarantee(status) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Must have a spine CTE
+        assert "_spine" in sql.lower(), f"Missing spine CTE in: {sql}"
+        # Must have LEFT JOIN
+        assert "left join" in sql.lower(), f"Missing LEFT JOIN in: {sql}"
+        # Must have spine_data CTE
+        assert "spine_data" in sql.lower(), f"Missing spine_data CTE in: {sql}"
+        # guarantee must be stripped
+        assert "guarantee" not in sql.lower(), f"guarantee not stripped: {sql}"
+
+    def test_multiple_group_by_generates_combined_spine(self):
+        """Verify multiple GROUP BY columns generate combined_spine with CROSS JOIN."""
+        sql = compile(
+            "from orders group by region, category (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Must have individual spine CTEs
+        assert "region_spine" in sql.lower(), f"Missing region_spine CTE in: {sql}"
+        assert "category_spine" in sql.lower(), f"Missing category_spine CTE in: {sql}"
+        # Must have combined_spine CTE
+        assert "combined_spine" in sql.lower(), f"Missing combined_spine CTE in: {sql}"
+        # Must have CROSS JOIN for combining spines
+        assert "cross join" in sql.lower(), f"Missing CROSS JOIN in: {sql}"
+
+    def test_single_group_by_no_combined_spine(self):
+        """Verify single GROUP BY does NOT generate redundant combined_spine."""
+        sql = compile(
+            "from orders group by region (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Should NOT have combined_spine (optimization)
+        assert "combined_spine" not in sql.lower(), f"Should not have combined_spine for single GROUP BY: {sql}"
+        # Should use region_spine directly
+        assert "region_spine" in sql.lower(), f"Missing region_spine CTE in: {sql}"
+
+    def test_disabled_auto_spine_no_spine_ctes(self):
+        """Verify disabled auto_spine generates no spine CTEs."""
+        sql = compile(
+            "from orders group by region (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=False)
+        )
+        
+        # Should NOT have spine CTEs
+        assert "_spine" not in sql.lower(), f"Should not have spine CTEs when disabled: {sql}"
+        # Should NOT have LEFT JOIN for spine
+        assert "left join" not in sql.lower() or "spine_data" not in sql.lower(), f"Should not have spine join when disabled: {sql}"
