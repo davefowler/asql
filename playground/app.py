@@ -272,7 +272,7 @@ async def api_settings_schema() -> dict:
                     "name": "include_transpilation_comments",
                     "label": "Transpilation Comments",
                     "type": "boolean",
-                    "default": False,
+                    "default": True,
                     "description": "Add explanatory comments about ASQL transformations (auto-spine, cohort, etc.)"
                 }
             ]

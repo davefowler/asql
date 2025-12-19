@@ -935,7 +935,9 @@
                 auto_spine: true,
                 week_start: 'monday',
                 relative_date_type: 'timestamp',
-                invent_join_keys: true  // On by default for playground examples
+                invent_join_keys: true,  // On by default for playground examples
+                passthrough_comments: true,
+                include_transpilation_comments: true
             },
             style: {
                 equality: 'single',
@@ -1034,12 +1036,12 @@
         }
         
         // Open settings modal
-        function openSettingsModal() {
+        async function openSettingsModal() {
             const modal = document.getElementById('settings-modal');
             if (modal) {
                 modal.classList.add('open');
                 document.body.style.overflow = 'hidden';
-                renderSettingsForm();
+                await renderSettingsForm();
                 updateModifiedIndicator();
             }
         }
@@ -1056,8 +1058,27 @@
             }
         }
         
-        // Render the settings form based on schema
-        function renderSettingsForm() {
+        // Cache for settings schema from API
+        let settingsSchemaCache = null;
+        
+        // Fetch settings schema from backend API
+        async function fetchSettingsSchema() {
+            if (settingsSchemaCache) return settingsSchemaCache;
+            
+            try {
+                const response = await fetch('/api/settings-schema');
+                if (response.ok) {
+                    settingsSchemaCache = await response.json();
+                    return settingsSchemaCache;
+                }
+            } catch (e) {
+                console.warn('Failed to fetch settings schema:', e);
+            }
+            return null;
+        }
+        
+        // Render the settings form based on schema from API
+        async function renderSettingsForm() {
             const compileGrid = document.getElementById('compile-settings-grid');
             const styleGrid = document.getElementById('style-settings-grid');
             
@@ -1067,41 +1088,38 @@
             compileGrid.innerHTML = '';
             styleGrid.innerHTML = '';
             
-            // Compile settings (checkboxes first, then dropdowns)
-            const compileFields = [
-                { name: 'auto_spine', label: 'Auto Spine', type: 'boolean', description: 'Add gap-filling for date truncations in GROUP BY' },
-                { name: 'invent_join_keys', label: 'Invent Join Keys', type: 'boolean', description: 'Infer join keys from {table}_id convention' },
-                { name: 'week_start', label: 'Week Start', type: 'select', options: ['monday', 'sunday'], description: 'Day the week() function starts on' },
-                { name: 'relative_date_type', label: 'Relative Date Type', type: 'select', options: ['timestamp', 'date'], description: 'Type for "7 days ago" expressions' }
-            ];
+            // Fetch schema from API
+            const schema = await fetchSettingsSchema();
             
-            compileFields.forEach(field => {
-                const fieldEl = createSettingField(field, 'compile');
-                compileGrid.appendChild(fieldEl);
-            });
-            
-            // Style settings
-            const styleFields = [
-                { name: 'equality', label: 'Equality Operator', type: 'select', 
-                  options: [{ value: 'single', label: '= (SQL)' }, { value: 'double', label: '== (Python)' }] },
-                { name: 'count', label: 'Count Notation', type: 'select',
-                  options: [{ value: 'hash', label: '# (shorthand)' }, { value: 'function', label: 'count(*)' }] },
-                { name: 'coalesce', label: 'Null Coalescing', type: 'select',
-                  options: [{ value: 'operator', label: '?? (operator)' }, { value: 'function', label: 'coalesce()' }] },
-                { name: 'descending', label: 'Descending Order', type: 'select',
-                  options: [{ value: 'prefix', label: '-col (prefix)' }, { value: 'suffix', label: 'col DESC' }] },
-                { name: 'cast', label: 'Type Casting', type: 'select',
-                  options: [{ value: 'double_colon', label: ':: (PostgreSQL)' }, { value: 'function', label: 'CAST()' }] },
-                { name: 'quotes', label: 'String Quotes', type: 'select',
-                  options: [{ value: 'double', label: '"double"' }, { value: 'single', label: "'single'" }] },
-                { name: 'function_shorthand', label: 'Function Style', type: 'select',
-                  options: [{ value: 'underscore', label: 'sum_amount' }, { value: 'space', label: 'sum amount' }, { value: 'parens', label: 'sum(amount)' }] }
-            ];
-            
-            styleFields.forEach(field => {
-                const fieldEl = createSettingField(field, 'style');
-                styleGrid.appendChild(fieldEl);
-            });
+            if (schema) {
+                // Sort fields: booleans first, then selects
+                const sortFields = (fields) => {
+                    return [...fields].sort((a, b) => {
+                        if (a.type === 'boolean' && b.type !== 'boolean') return -1;
+                        if (a.type !== 'boolean' && b.type === 'boolean') return 1;
+                        return 0;
+                    });
+                };
+                
+                // Render compile settings from API
+                if (schema.compile && schema.compile.fields) {
+                    sortFields(schema.compile.fields).forEach(field => {
+                        const fieldEl = createSettingField(field, 'compile');
+                        compileGrid.appendChild(fieldEl);
+                    });
+                }
+                
+                // Render style settings from API
+                if (schema.style && schema.style.fields) {
+                    sortFields(schema.style.fields).forEach(field => {
+                        const fieldEl = createSettingField(field, 'style');
+                        styleGrid.appendChild(fieldEl);
+                    });
+                }
+            } else {
+                // Fallback if API fails
+                compileGrid.innerHTML = '<p style="color: #999;">Failed to load settings</p>';
+            }
         }
         
         // Create a setting field element
@@ -1179,10 +1197,10 @@
         }
         
         // Reset all settings to defaults
-        function resetSettings() {
+        async function resetSettings() {
             currentSettings = JSON.parse(JSON.stringify(defaultSettings));
             saveSettingsToStorage();
-            renderSettingsForm();
+            await renderSettingsForm();
             // Trigger re-translation
             if (typeof translateQuery === 'function') {
                 translateQuery();
