@@ -295,6 +295,109 @@ class TestSchemaInference:
         
         # Should not find any relationships
         assert len(schema.relationships) == 0
+    
+    def test_infer_multi_underscore_alias(self) -> None:
+        """Test inferring FK with multi-underscore alias like created_by_user_id."""
+        schema = Schema()
+        
+        schema.add_table(Table.from_column_list("posts", ["id", "created_by_user_id", "content"]))
+        schema.add_table(Table.from_column_list("users", ["id", "name"]))
+        
+        schema.infer_relationships()
+        
+        rel = schema.find_relationship("posts", "users")
+        assert rel is not None
+        assert rel.from_column == "created_by_user_id"
+        assert rel.alias == "created_by"
+    
+    def test_infer_plural_fk(self) -> None:
+        """Test inferring FK using plural table name like users_id."""
+        schema = Schema()
+        
+        # Some systems use users_id instead of user_id
+        schema.add_table(Table.from_column_list("orders", ["id", "users_id", "amount"]))
+        schema.add_table(Table.from_column_list("users", ["id", "name"]))
+        
+        schema.infer_relationships()
+        
+        rel = schema.find_relationship("orders", "users")
+        assert rel is not None
+        assert rel.from_column == "users_id"
+    
+    def test_infer_with_irregular_plural(self) -> None:
+        """Test inferring FK with irregular plurals like person -> people."""
+        schema = Schema()
+        
+        schema.add_table(Table.from_column_list("contacts", ["id", "person_id"]))
+        schema.add_table(Table.from_column_list("people", ["id", "name"]))
+        
+        schema.infer_relationships()
+        
+        rel = schema.find_relationship("contacts", "people")
+        assert rel is not None
+        assert rel.from_column == "person_id"
+        assert rel.alias == "person"
+    
+    def test_infer_with_pk_convention(self) -> None:
+        """Test inferring FK when target uses 'pk' instead of 'id'."""
+        schema = Schema()
+        
+        schema.add_table(Table.from_column_list("orders", ["id", "customer_id"]))
+        schema.add_table(Table.from_column_list("customers", ["pk", "name"]))
+        
+        schema.infer_relationships()
+        
+        rel = schema.find_relationship("orders", "customers")
+        assert rel is not None
+        assert rel.to_column == "pk"
+    
+    def test_infer_with_table_name_pk(self) -> None:
+        """Test inferring FK when target uses '{table}_id' as PK."""
+        schema = Schema()
+        
+        schema.add_table(Table.from_column_list("orders", ["id", "customer_id"]))
+        # Some systems use customers.customer_id as PK
+        schema.add_table(Table.from_column_list("customers", ["customer_id", "name"]))
+        
+        schema.infer_relationships()
+        
+        rel = schema.find_relationship("orders", "customers")
+        assert rel is not None
+        assert rel.to_column == "customer_id"
+
+
+class TestTableGetPrimaryKey:
+    """Test Table.get_primary_key() method."""
+    
+    def test_explicit_pk(self) -> None:
+        """Test finding explicitly marked primary key."""
+        from asql.schema import Column
+        
+        table = Table(name="users")
+        table.add_column(Column(name="user_pk", primary_key=True))
+        table.add_column(Column(name="name"))
+        
+        assert table.get_primary_key() == "user_pk"
+    
+    def test_id_convention(self) -> None:
+        """Test 'id' as default primary key."""
+        table = Table.from_column_list("users", ["id", "name", "email"])
+        assert table.get_primary_key() == "id"
+    
+    def test_pk_convention(self) -> None:
+        """Test 'pk' as fallback primary key."""
+        table = Table.from_column_list("users", ["pk", "name", "email"])
+        assert table.get_primary_key() == "pk"
+    
+    def test_table_name_id_convention(self) -> None:
+        """Test '{singular}_id' as fallback primary key."""
+        table = Table.from_column_list("users", ["user_id", "name", "email"])
+        assert table.get_primary_key() == "user_id"
+    
+    def test_no_pk_found(self) -> None:
+        """Test when no primary key can be found."""
+        table = Table.from_column_list("data", ["col1", "col2"])
+        assert table.get_primary_key() is None
 
 
 class TestSchemaFromYaml:
