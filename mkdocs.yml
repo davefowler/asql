@@ -94,7 +94,7 @@ plugins:
   - macros:
       module_name: docs/macros
       render_by_default: false  # Don't process {{ }} as Jinja2 - only use hooks
-      show_split_pane: true  # Set to false to disable compiled SQL pane (saves build time)
+      show_split_pane: false  # Set to true to enable compiled SQL pane (default: false, saves build time)
   # - minify:
   #     minify_html: true
 

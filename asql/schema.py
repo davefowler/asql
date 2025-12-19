@@ -489,6 +489,139 @@ class Schema:
         return schema
     
     @classmethod
+    def _from_dbt_manifest(cls, manifest_path: Path) -> "Schema":
+        """Load schema from dbt manifest.json.
+        
+        The manifest.json is the best source for relationships because:
+        1. It's always generated when dbt runs
+        2. It contains all parsed refs (model dependencies)
+        3. It has column metadata and relationship tests
+        
+        Args:
+            manifest_path: Path to manifest.json
+            
+        Returns:
+            Schema instance with tables and relationships
+        """
+        import json
+        
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        
+        schema = cls()
+        
+        # Extract nodes (models, sources, seeds)
+        nodes = manifest.get("nodes", {})
+        sources = manifest.get("sources", {})
+        
+        # Process models
+        for node_id, node in nodes.items():
+            if node.get("resource_type") not in ("model", "seed"):
+                continue
+            
+            model_name = node.get("name", "")
+            if not model_name:
+                continue
+            
+            table = Table(name=model_name)
+            
+            # Extract columns
+            columns = node.get("columns", {})
+            for col_name, col_info in columns.items():
+                is_pk = col_name.lower() == "id"
+                col_type = col_info.get("data_type") if isinstance(col_info, dict) else None
+                table.add_column(Column(name=col_name, type=col_type, primary_key=is_pk))
+            
+            schema.add_table(table)
+            
+            # Extract relationships from depends_on.nodes (refs)
+            depends_on = node.get("depends_on", {})
+            ref_nodes = depends_on.get("nodes", [])
+            
+            for ref_id in ref_nodes:
+                # ref_id format: "model.project.table_name" or "source.project.source.table"
+                parts = ref_id.split(".")
+                if len(parts) >= 3 and parts[0] == "model":
+                    to_table = parts[-1]
+                    
+                    # Try to find the FK column in this model
+                    # Look for {to_table_singular}_id pattern
+                    to_singular = to_table.rstrip('s') if to_table.endswith('s') else to_table
+                    fk_col = f"{to_singular}_id"
+                    
+                    if table.has_column(fk_col):
+                        rel = Relationship(
+                            from_table=model_name,
+                            from_column=fk_col,
+                            to_table=to_table,
+                            to_column="id",
+                            alias=to_singular,
+                            source="explicit"  # From dbt refs
+                        )
+                        schema.add_relationship(rel)
+        
+        # Process sources
+        for source_id, source_node in sources.items():
+            source_name = source_node.get("name", "")
+            if source_name:
+                table = Table(name=source_name)
+                columns = source_node.get("columns", {})
+                for col_name, col_info in columns.items():
+                    col_type = col_info.get("data_type") if isinstance(col_info, dict) else None
+                    table.add_column(Column(name=col_name, type=col_type))
+                schema.add_table(table)
+        
+        # Also check for relationship tests in the manifest
+        # These are in the "nodes" with resource_type="test"
+        for node_id, node in nodes.items():
+            if node.get("resource_type") != "test":
+                continue
+            
+            test_metadata = node.get("test_metadata", {})
+            if test_metadata.get("name") != "relationships":
+                continue
+            
+            # Extract relationship test info
+            kwargs = test_metadata.get("kwargs", {})
+            to_ref = kwargs.get("to", "")
+            to_field = kwargs.get("field", "id")
+            column_name = kwargs.get("column_name", "")
+            
+            # Get the model this test is on
+            depends_on = node.get("depends_on", {})
+            ref_nodes = depends_on.get("nodes", [])
+            
+            from_model = None
+            to_model = None
+            
+            for ref_id in ref_nodes:
+                parts = ref_id.split(".")
+                if len(parts) >= 3:
+                    model_name = parts[-1]
+                    # Parse ref('model') from to field
+                    if f"ref('{model_name}')" in to_ref or f'ref("{model_name}")' in to_ref:
+                        to_model = model_name
+                    else:
+                        from_model = model_name
+            
+            if from_model and to_model and column_name:
+                alias = column_name[:-3] if column_name.lower().endswith("_id") else None
+                rel = Relationship(
+                    from_table=from_model,
+                    from_column=column_name,
+                    to_table=to_model,
+                    to_column=to_field,
+                    alias=alias,
+                    source="explicit"
+                )
+                schema.add_relationship(rel)
+        
+        # Infer additional relationships from naming conventions
+        schema.infer_relationships()
+        
+        return schema
+    
+    @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Schema":
         """Create schema from a dictionary.
         
