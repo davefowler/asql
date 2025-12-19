@@ -166,9 +166,13 @@ def format_asql_for_docs(asql_query: str) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def precompile_asql_query(asql_query: str) -> Dict[str, str]:
+def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Dict[str, str]:
     """
     Pre-compile an ASQL query to all dialects.
+    
+    Args:
+        asql_query: The ASQL query to compile
+        skip_compilation: If True, skip SQL compilation and only return formatted ASQL
     
     Returns a dict mapping dialect -> SQL string.
     """
@@ -178,6 +182,10 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
     
     formatted_asql = format_asql_for_docs(asql_query)
     results = {"asql": formatted_asql}
+    
+    # Skip compilation if flag is set
+    if skip_compilation:
+        return results
     
     compilation_errors: list[str] = []
 
@@ -217,15 +225,38 @@ def precompile_asql_query(asql_query: str) -> Dict[str, str]:
     return results
 
 
-def generate_mini_playground_html(compiled: Dict[str, str], block_id: str) -> str:
-    """Generate HTML for the ASQL mini-playground (split pane + global 'to' dialect)."""
+def generate_mini_playground_html(compiled: Dict[str, str], block_id: str, show_split_pane: bool = True) -> str:
+    """Generate HTML for the ASQL mini-playground (split pane + global 'to' dialect).
+    
+    Args:
+        compiled: Dict mapping dialect -> SQL string
+        block_id: Unique ID for this code block
+        show_split_pane: If False, only show ASQL pane (no compiled SQL)
+    """
+    initial_asql = html.escape(compiled.get("asql", ""))
+    
+    # If split pane is disabled, return simple single-pane HTML
+    if not show_split_pane:
+        return f'''<div class="asql-code-block asql-mini-playground" data-block-id="{block_id}">
+  <div class="asql-mp-pane asql-mp-pane-left">
+    <div class="asql-mp-pane-header">
+      <span class="asql-mp-pane-title">ASQL</span>
+      <a href="#" onclick="openInPlayground('{block_id}'); return false;" class="asql-mp-play-button" title="Open in Playground" aria-label="Open in Playground">
+        <span class="asql-mp-play-label">Playground</span>
+        <span class="asql-mp-play-icon" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        </span>
+      </a>
+    </div>
+    <pre><code class="language-asql" id="asql-{block_id}">{initial_asql}</code></pre>
+  </div>
+</div>'''
 
     # Encode compiled SQL for embedding in HTML
     compiled_json = json.dumps(compiled)
     compiled_b64 = base64.b64encode(compiled_json.encode()).decode()
 
     # Initial content (JS will update the "to" pane based on localStorage)
-    initial_asql = html.escape(compiled.get("asql", ""))
     default_to_dialect = "postgres"
     initial_to_sql = html.escape(compiled.get(default_to_dialect, ""))
 
@@ -269,10 +300,14 @@ def generate_mini_playground_html(compiled: Dict[str, str], block_id: str) -> st
     return playground_html
 
 
-def process_asql_blocks(markdown_content: str) -> str:
+def process_asql_blocks(markdown_content: str, show_split_pane: bool = True) -> str:
     """
     Process markdown content, finding ASQL playground blocks and replacing them
     with split-pane mini-playground HTML (ASQL → compiled SQL).
+    
+    Args:
+        markdown_content: The markdown content to process
+        show_split_pane: If False, skip compilation and only show ASQL pane
     """
     # Pattern to match ASQL playground code blocks: ```asql-play ... ```
     #
@@ -288,14 +323,14 @@ def process_asql_blocks(markdown_content: str) -> str:
         if not asql_query:
             return match.group(0)
         
-        # Pre-compile to all dialects
-        compiled = precompile_asql_query(asql_query)
+        # Pre-compile to all dialects (skip if split pane is disabled)
+        compiled = precompile_asql_query(asql_query, skip_compilation=not show_split_pane)
         
         # Create a unique ID for this code block
         block_id = hashlib.md5(asql_query.encode()).hexdigest()[:8]
         
         # Generate HTML for mini playground
-        tabs_html = generate_mini_playground_html(compiled, block_id)
+        tabs_html = generate_mini_playground_html(compiled, block_id, show_split_pane=show_split_pane)
         
         return tabs_html
     
@@ -312,6 +347,35 @@ def define_env(env):
     Define the mkdocs-macros environment.
     This is called by mkdocs-macros-plugin on startup.
     """
+    # Get config for split pane toggle (check env var first, then config)
+    # Env var takes precedence: ASQL_SHOW_SPLIT_PANE=false disables it
+    env_var = os.environ.get("ASQL_SHOW_SPLIT_PANE", "").lower()
+    if env_var in ("false", "0", "no", "off"):
+        show_split_pane = False
+    elif env_var in ("true", "1", "yes", "on"):
+        show_split_pane = True
+    else:
+        # Check mkdocs config if env var not set
+        # plugins is a list, need to find the macros plugin config
+        plugins = env.conf.get("plugins", [])
+        macros_config = None
+        for plugin in plugins:
+            if isinstance(plugin, dict) and "macros" in plugin:
+                macros_config = plugin["macros"]
+                break
+            elif plugin == "macros":
+                # If macros is just a string, it has no config
+                macros_config = {}
+                break
+        
+        if macros_config is not None:
+            show_split_pane = macros_config.get("show_split_pane", True)
+        else:
+            # Default to True if not configured
+            show_split_pane = True
+    
+    # Store in env for use in hooks
+    env.variables["asql_show_split_pane"] = show_split_pane
     
     @env.macro
     def asql(query: str) -> str:
@@ -321,9 +385,9 @@ def define_env(env):
         Usage in markdown:
             {{ asql("SELECT * FROM users |> WHERE active") }}
         """
-        compiled = precompile_asql_query(query.strip())
+        compiled = precompile_asql_query(query.strip(), skip_compilation=not show_split_pane)
         block_id = hashlib.md5(query.encode()).hexdigest()[:8]
-        return generate_mini_playground_html(compiled, block_id)
+        return generate_mini_playground_html(compiled, block_id, show_split_pane=show_split_pane)
     
     @env.macro
     def dialect_name(dialect: str) -> str:
@@ -356,8 +420,11 @@ def on_pre_page_macros(env) -> None:
         # Provide runtime config for docs/static/docs.js
         env.markdown = _runtime_config_script_tag() + env.markdown
 
+        # Get split pane setting from env variables (set in define_env)
+        show_split_pane = env.variables.get("asql_show_split_pane", True)
+
         try:
-            env.markdown = process_asql_blocks(env.markdown)
+            env.markdown = process_asql_blocks(env.markdown, show_split_pane=show_split_pane)
         except Exception as e:
             page = getattr(env, "page", None)
             page_file = getattr(page, "file", None) if page is not None else None

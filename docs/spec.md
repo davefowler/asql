@@ -1890,7 +1890,7 @@ cohort by week(users.signup_date)
 -- Explicit join key
 from orders
 group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date) on customer_id
+cohort by month(customers.first_order_date)
 ```
 
 ### 14.3 Period Calculation

@@ -24,6 +24,8 @@ KNOWN_COMPILE_SETTINGS = {
     'alias_template',
     'alias_prefixes',
     'alias_templates',
+    # Join key inference - used for docs/playground examples that don't have real schemas
+    'invent_join_keys',
 }
 
 
@@ -70,12 +72,18 @@ class CompileSettings:
     # Example: {"count": "{prefix}", "arg_max": "{prefix}_{arg1}_{arg2}"}
     alias_templates: Dict[str, str] = field(default_factory=dict)
     
+    # Invent join keys: when True, infer join keys using {table}_id convention
+    # when no schema information is available. Useful for docs/playground examples.
+    # When False (default), raises an error if join key cannot be determined from schema.
+    invent_join_keys: bool = False
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
             "auto_spine": self.auto_spine,
             "week_start": self.week_start,
             "relative_date_type": self.relative_date_type,
+            "invent_join_keys": self.invent_join_keys,
         }
         if self.alias_prefixes:
             result["alias_prefixes"] = self.alias_prefixes
