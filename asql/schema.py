@@ -404,7 +404,7 @@ class Schema:
         return None
     
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "Schema":
+    def from_yaml(cls, path: str | Path, infer_relationships: bool = True) -> "Schema":
         """Load schema from asql_schema.yml format.
         
         Expected format:
@@ -474,12 +474,13 @@ class Schema:
                 schema.add_relationship(rel)
         
         # Infer additional relationships from naming conventions
-        schema.infer_relationships()
+        if infer_relationships:
+            schema.infer_relationships()
         
         return schema
     
     @classmethod
-    def from_dbt(cls, path: str | Path) -> "Schema":
+    def from_dbt(cls, path: str | Path, infer_relationships: bool = True) -> "Schema":
         """Load schema from dbt project.
         
         Supports multiple dbt artifacts (in order of preference):
@@ -516,7 +517,7 @@ class Schema:
             manifest_path = path / "manifest.json"
         
         if manifest_path:
-            return cls._from_dbt_manifest(manifest_path)
+            return cls._from_dbt_manifest(manifest_path, infer_relationships=infer_relationships)
         
         # Find all schema.yml files
         if path.is_file():
@@ -629,12 +630,13 @@ class Schema:
                             schema.add_table(table)
         
         # Infer additional relationships from naming conventions
-        schema.infer_relationships()
+        if infer_relationships:
+            schema.infer_relationships()
         
         return schema
     
     @classmethod
-    def _from_dbt_manifest(cls, manifest_path: Path) -> "Schema":
+    def _from_dbt_manifest(cls, manifest_path: Path, infer_relationships: bool = True) -> "Schema":
         """Load schema from dbt manifest.json.
         
         The manifest.json is the best source for relationships because:
@@ -762,7 +764,8 @@ class Schema:
                 schema.add_relationship(rel)
         
         # Infer additional relationships from naming conventions
-        schema.infer_relationships()
+        if infer_relationships:
+            schema.infer_relationships()
         
         return schema
     

@@ -4,17 +4,37 @@ Auto-spine automatically adds gap-filling spines for GROUP BY columns.
 
 This module intentionally exports a number of semi-private helpers that the
 test suite imports directly.
+
+## New Unified Approach (v2)
+
+Both date and categorical columns are handled with the same pattern:
+1. Generate a "wide" spine (all possible values)
+2. Copy relevant WHERE predicates to filter the spine
+3. LEFT JOIN with aggregated data
+
+For dates: generate_series(config_min, CURRENT_DATE, interval) + WHERE filter
+For categoricals: SELECT DISTINCT col FROM table + WHERE filter
+
+This approach:
+- Avoids semantic parsing of WHERE bounds (>, <, >=, etc.)
+- Handles edge cases (no data in first/last periods) correctly
+- Provides consistent behavior for dates and categoricals
 """
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Set
 
 import sqlglot
 from sqlglot import exp
 
 from asql.config import CompileSettings
 from asql.errors import ASQLCompilationError
+
+
+# Default spine date bounds (can be made configurable later)
+SPINE_MIN_DATE = "'1970-01-01'"
+SPINE_MAX_DATE = "CURRENT_DATE"
 
 
 DATE_TRUNC_FUNCTIONS = {
@@ -124,174 +144,12 @@ def _remove_guarantee_wrappers(stmt: exp.Expression) -> exp.Expression:
     return stmt
 
 
-def _find_non_date_group_by_columns(stmt: exp.Expression) -> List[Tuple[str, exp.Expression]]:
-    """Find non-date columns in GROUP BY that need cross-join with distinct values."""
-    results: List[Tuple[str, exp.Expression]] = []
-
-    if not isinstance(stmt, exp.Select):
-        return results
-
-    group_by = stmt.find(exp.Group)
-    if not group_by:
-        return results
-
-    for group_expr in group_by.expressions:
-        if isinstance(group_expr, exp.Alias):
-            alias = group_expr.alias
-            inner = group_expr.this
-        else:
-            inner = group_expr
-            alias = inner.name if isinstance(inner, exp.Column) else None
-
-        is_guarantee, _ = _is_guarantee_wrapped(group_expr)
-        if is_guarantee:
-            continue
-
-        func_name = None
-        if isinstance(inner, exp.Anonymous):
-            func_name = inner.name.lower() if inner.name else None
-        elif isinstance(inner, exp.Func):
-            func_name = inner.sql_name().lower() if hasattr(inner, "sql_name") else type(inner).__name__.lower()
-
-        if func_name not in DATE_TRUNC_FUNCTIONS and alias:
-            results.append((alias, group_expr))
-
-    return results
-
-
-def _find_date_trunc_in_group_by(
-    stmt: exp.Expression,
-) -> List[Tuple[str, str, exp.Expression, Optional[List[str]]]]:
-    """Find date truncation expressions in GROUP BY clause."""
-    results: List[Tuple[str, str, exp.Expression, Optional[List[str]]]] = []
-
-    if not isinstance(stmt, exp.Select):
-        return results
-
-    group_by = stmt.find(exp.Group)
-    if not group_by:
-        return results
-
-    for group_expr in group_by.expressions:
-        func_name = None
-        trunc_unit = None
-        alias = None
-        explicit_values = None
-
-        is_guarantee, values = _is_guarantee_wrapped(group_expr)
-        if is_guarantee:
-            explicit_values = values
-
-        if isinstance(group_expr, exp.Alias):
-            alias = group_expr.alias
-            inner = group_expr.this
-            if is_guarantee and isinstance(inner, exp.Anonymous):
-                inner = inner.expressions[0] if inner.expressions else inner
-        else:
-            inner = group_expr
-            if is_guarantee and isinstance(inner, exp.Anonymous):
-                inner = inner.expressions[0] if inner.expressions else inner
-            if isinstance(inner, exp.Column):
-                alias = inner.name
-            elif hasattr(inner, "alias") and inner.alias:
-                alias = inner.alias
-
-        if isinstance(inner, exp.Anonymous):
-            func_name = inner.name.lower() if inner.name else None
-        elif isinstance(inner, exp.Func):
-            func_name = inner.sql_name().lower() if hasattr(inner, "sql_name") else type(inner).__name__.lower()
-
-        if func_name in DATE_TRUNC_FUNCTIONS:
-            if func_name == "date_trunc":
-                if inner.expressions:
-                    unit_arg = inner.expressions[0]
-                    if isinstance(unit_arg, exp.Literal):
-                        trunc_unit = unit_arg.this.strip("'\"").lower()
-            else:
-                trunc_unit = func_name
-
-            if trunc_unit and alias:
-                results.append((alias, trunc_unit, group_expr, explicit_values))
-
-    return results
-
-
-def _find_guarantee_in_group_by(
-    stmt: exp.Expression,
-) -> List[Tuple[str, exp.Expression, Optional[List[str]]]]:
-    """Find guarantee() expressions in GROUP BY clause for categorical columns."""
-    results: List[Tuple[str, exp.Expression, Optional[List[str]]]] = []
-
-    if not isinstance(stmt, exp.Select):
-        return results
-
-    group_by = stmt.find(exp.Group)
-    if not group_by:
-        return results
-
-    for group_expr in group_by.expressions:
-        is_guarantee, explicit_values = _is_guarantee_wrapped(group_expr)
-        if not is_guarantee:
-            continue
-
-        alias = None
-        if isinstance(group_expr, exp.Alias):
-            alias = group_expr.alias
-        else:
-            inner = group_expr
-            if isinstance(inner, exp.Anonymous) and inner.expressions:
-                first_arg = inner.expressions[0]
-                if isinstance(first_arg, exp.Column):
-                    alias = first_arg.name
-
-        if alias:
-            results.append((alias, group_expr, explicit_values))
-
-    return results
-
-
-def _extract_date_bounds_from_where(
-    stmt: exp.Expression,
-    column_expr: exp.Expression,
-) -> Tuple[Optional[str], Optional[str]]:
-    """Extract date bounds from WHERE clause for a given column expression."""
-    where = stmt.find(exp.Where)
-    if not where:
-        return None, None
-
-    min_date: Optional[str] = None
-    max_date: Optional[str] = None
-
-    def check_condition(node: exp.Expression) -> None:
-        nonlocal min_date, max_date
-
-        if isinstance(node, (exp.GTE, exp.GT)):
-            if _columns_match(node.this, column_expr) and isinstance(node.expression, (exp.Literal, exp.Cast)):
-                min_date = node.expression.sql()
-        elif isinstance(node, (exp.LTE, exp.LT)):
-            if _columns_match(node.this, column_expr) and isinstance(node.expression, (exp.Literal, exp.Cast)):
-                max_date = node.expression.sql()
-        elif isinstance(node, exp.Between):
-            if _columns_match(node.this, column_expr):
-                low = node.args.get("low")
-                high = node.args.get("high")
-                if isinstance(low, (exp.Literal, exp.Cast)):
-                    min_date = low.sql()
-                if isinstance(high, (exp.Literal, exp.Cast)):
-                    max_date = high.sql()
-        elif isinstance(node, exp.And):
-            check_condition(node.this)
-            check_condition(node.expression)
-
-    check_condition(where.this)
-    return min_date, max_date
-
-
-def _columns_match(expr1: exp.Expression, expr2: exp.Expression) -> bool:
-    """Check if two expressions refer to the same column."""
-    if isinstance(expr1, exp.Column) and isinstance(expr2, exp.Column):
-        return expr1.name == expr2.name
-    return expr1.sql() == expr2.sql()
+def _get_column_names_from_expr(expr_: exp.Expression) -> Set[str]:
+    """Extract all column names referenced in an expression."""
+    columns: Set[str] = set()
+    for col in expr_.find_all(exp.Column):
+        columns.add(col.name)
+    return columns
 
 
 def _get_source_column_from_trunc(trunc_expr: exp.Expression) -> Optional[exp.Expression]:
@@ -317,6 +175,92 @@ def _get_source_column_from_trunc(trunc_expr: exp.Expression) -> Optional[exp.Ex
     return None
 
 
+def _extract_predicates_for_column(
+    where_clause: Optional[exp.Where],
+    source_column_name: str,
+) -> List[exp.Expression]:
+    """Extract predicates from WHERE that involve a specific column.
+    
+    This finds any predicate (comparison, IN, BETWEEN, etc.) that references
+    the given column and returns them as a list of expressions.
+    
+    Args:
+        where_clause: The WHERE clause expression
+        source_column_name: The column name to look for (e.g., 'created_at')
+        
+    Returns:
+        List of predicate expressions involving the column
+    """
+    if not where_clause:
+        return []
+    
+    predicates: List[exp.Expression] = []
+    
+    def find_predicates(node: exp.Expression) -> None:
+        """Recursively find predicates involving the target column."""
+        # Handle AND - recurse into both sides
+        if isinstance(node, exp.And):
+            find_predicates(node.this)
+            find_predicates(node.expression)
+            return
+        
+        # Handle OR - if either side involves our column, take the whole OR
+        if isinstance(node, exp.Or):
+            columns_in_node = _get_column_names_from_expr(node)
+            if source_column_name in columns_in_node:
+                predicates.append(node.copy())
+            return
+        
+        # For other predicates (comparisons, IN, BETWEEN, etc.)
+        # Check if they reference our target column
+        columns_in_node = _get_column_names_from_expr(node)
+        if source_column_name in columns_in_node:
+            predicates.append(node.copy())
+    
+    find_predicates(where_clause.this)
+    return predicates
+
+
+def _transform_predicate_for_spine(
+    predicate: exp.Expression,
+    source_column_name: str,
+    spine_column_name: str,
+) -> exp.Expression:
+    """Transform a predicate to use the spine column name instead of source column.
+    
+    For date spines, we transform: created_at >= '2021-01-01' -> d >= '2021-01-01'
+    where 'd' is the generate_series output variable.
+    
+    For categorical spines, we just use the same column name.
+    """
+    result = predicate.copy()
+    
+    for col in result.find_all(exp.Column):
+        if col.name == source_column_name:
+            col.set("this", exp.to_identifier(spine_column_name))
+            # Clear table qualifier if present
+            if col.args.get("table"):
+                col.set("table", None)
+    
+    return result
+
+
+def _predicates_to_where_sql(predicates: List[exp.Expression], dialect: Optional[str] = None) -> str:
+    """Convert list of predicates to a WHERE clause SQL string."""
+    if not predicates:
+        return ""
+    
+    if len(predicates) == 1:
+        return f"WHERE {predicates[0].sql(dialect=dialect)}"
+    
+    # Combine with AND
+    combined = predicates[0]
+    for pred in predicates[1:]:
+        combined = exp.And(this=combined, expression=pred)
+    
+    return f"WHERE {combined.sql(dialect=dialect)}"
+
+
 def _find_select_alias_for_expr(stmt: exp.Select, expr: exp.Expression) -> Optional[str]:
     """Find alias from SELECT for a matching expression.
     
@@ -336,9 +280,18 @@ def _find_select_alias_for_expr(stmt: exp.Select, expr: exp.Expression) -> Optio
 
 def _get_all_group_by_columns(
     stmt: exp.Expression,
-) -> List[Tuple[str, exp.Expression, bool, Optional[str], Optional[List[str]]]]:
-    """Get all GROUP BY columns with their spine information."""
-    results: List[Tuple[str, exp.Expression, bool, Optional[str], Optional[List[str]]]] = []
+) -> List[Tuple[str, exp.Expression, bool, Optional[str], Optional[List[str]], Optional[str]]]:
+    """Get all GROUP BY columns with their spine information.
+    
+    Returns list of tuples:
+    - alias: output column alias
+    - group_expr: the GROUP BY expression
+    - is_date: whether this is a date truncation
+    - trunc_unit: the truncation unit (month, day, etc.) if is_date
+    - explicit_values: explicit values from guarantee() if any
+    - source_column: the source column name (for predicate extraction)
+    """
+    results: List[Tuple[str, exp.Expression, bool, Optional[str], Optional[List[str]], Optional[str]]] = []
 
     if not isinstance(stmt, exp.Select):
         return results
@@ -370,6 +323,7 @@ def _get_all_group_by_columns(
         is_date = False
         trunc_unit: Optional[str] = None
         explicit_values: Optional[List[str]] = None
+        source_column: Optional[str] = None
 
         is_guarantee, values = _is_guarantee_wrapped(group_expr)
         if is_guarantee:
@@ -394,11 +348,20 @@ def _get_all_group_by_columns(
         if not alias:
             alias = f"col_{len(results)}"
 
+        # Determine function name and source column
         func_name = None
         if isinstance(inner, exp.Anonymous):
             func_name = inner.name.lower() if inner.name else None
         elif isinstance(inner, exp.Func):
             func_name = inner.sql_name().lower() if hasattr(inner, "sql_name") else type(inner).__name__.lower()
+
+        # Get source column for predicate extraction
+        if isinstance(inner, exp.Column):
+            source_column = inner.name
+        else:
+            source_col_expr = _get_source_column_from_trunc(group_expr)
+            if source_col_expr and isinstance(source_col_expr, exp.Column):
+                source_column = source_col_expr.name
 
         if func_name in DATE_TRUNC_FUNCTIONS:
             is_date = True
@@ -410,9 +373,168 @@ def _get_all_group_by_columns(
             else:
                 trunc_unit = func_name
 
-        results.append((alias, group_expr, is_date, trunc_unit, explicit_values))
+        results.append((alias, group_expr, is_date, trunc_unit, explicit_values, source_column))
 
     return results
+
+
+def _build_spine_cte_sql(
+    alias: str,
+    is_date: bool,
+    trunc_unit: Optional[str],
+    explicit_values: Optional[List[str]],
+    source_column: Optional[str],
+    source_table: str,
+    where_predicates: List[exp.Expression],
+    dialect: Optional[str] = None,
+    include_null: bool = False,
+) -> str:
+    """Build SQL for a spine CTE - unified for both dates and categoricals.
+    
+    Args:
+        alias: Output column alias
+        is_date: Whether this is a date column
+        trunc_unit: Date truncation unit (month, day, etc.) if is_date
+        explicit_values: Explicit values from guarantee() if any
+        source_column: Source column name for predicate transformation
+        source_table: Source table name
+        where_predicates: Predicates to apply to the spine
+        dialect: SQL dialect
+        include_null: Include NULL for ROLLUP/CUBE support
+    """
+    dialect_lower = dialect.lower() if dialect else ""
+    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
+    
+    # Case 1: Explicit values from guarantee()
+    if explicit_values:
+        return _build_explicit_values_spine_sql(alias, explicit_values, dialect, include_null)
+    
+    # Case 2: Date column - use generate_series with wide range + filter
+    if is_date and trunc_unit:
+        interval = TRUNC_TO_INTERVAL.get(trunc_unit, "1 day")
+        
+        # Transform predicates to use 'd' (the series variable)
+        spine_predicates = []
+        for pred in where_predicates:
+            if source_column:
+                transformed = _transform_predicate_for_spine(pred, source_column, "d")
+                spine_predicates.append(transformed)
+        
+        where_sql = _predicates_to_where_sql(spine_predicates, dialect)
+        
+        return _build_date_spine_with_filter_sql(
+            alias, trunc_unit, interval, where_sql, dialect, include_null
+        )
+    
+    # Case 3: Categorical column - SELECT DISTINCT with filter
+    col_expr = source_column or alias
+    
+    # Build WHERE clause for the spine (predicates already reference source column)
+    where_sql = _predicates_to_where_sql(where_predicates, dialect)
+    
+    if include_null:
+        return (
+            f"SELECT DISTINCT {col_expr} AS {alias} FROM {source_table} {where_sql} "
+            f"UNION ALL SELECT NULL AS {alias}"
+        )
+    return f"SELECT DISTINCT {col_expr} AS {alias} FROM {source_table} {where_sql}"
+
+
+def _build_explicit_values_spine_sql(
+    alias: str,
+    values: List[str],
+    dialect: Optional[str] = None,
+    include_null: bool = False,
+) -> str:
+    """Build SQL for a categorical spine with explicit values."""
+    dialect_lower = dialect.lower() if dialect else ""
+
+    values_sql = ", ".join([f"'{v}'" for v in values])
+    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
+
+    if dialect_lower in ("postgres", "postgresql", "redshift", "duckdb"):
+        return f"SELECT unnest(ARRAY[{values_sql}]) AS {alias}{null_union}"
+    if dialect_lower == "bigquery":
+        return f"SELECT {alias} FROM UNNEST([{values_sql}]) AS {alias}{null_union}"
+    if dialect_lower == "snowflake":
+        return (
+            f"SELECT value AS {alias} FROM TABLE(FLATTEN(INPUT => SPLIT('{','.join(values)}', ',')))"
+            f"{null_union}"
+        )
+
+    unions = [f"SELECT '{v}' AS {alias}" for v in values]
+    if include_null:
+        unions.append(f"SELECT NULL AS {alias}")
+    return " UNION ALL ".join(unions)
+
+
+def _build_date_spine_with_filter_sql(
+    alias: str,
+    trunc_unit: str,
+    interval: str,
+    where_sql: str,
+    dialect: Optional[str] = None,
+    include_null: bool = False,
+) -> str:
+    """Build SQL for a date spine with wide range and filter.
+    
+    Uses generate_series from SPINE_MIN_DATE to SPINE_MAX_DATE,
+    then applies the WHERE filter to limit the range.
+    """
+    dialect_lower = dialect.lower() if dialect else ""
+    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
+    
+    if dialect_lower in ("postgres", "postgresql", "redshift"):
+        base = (
+            f"SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias} "
+            f"FROM generate_series({SPINE_MIN_DATE}::date, {SPINE_MAX_DATE}::date, INTERVAL '{interval}') AS d"
+        )
+        if where_sql:
+            return f"{base} {where_sql}{null_union}"
+        return f"{base}{null_union}"
+    
+    if dialect_lower == "duckdb":
+        base = (
+            f"SELECT DATE_TRUNC('{trunc_unit}', d) AS {alias} "
+            f"FROM generate_series({SPINE_MIN_DATE}::date, {SPINE_MAX_DATE}::date, INTERVAL '{interval}') AS t(d)"
+        )
+        if where_sql:
+            return f"{base} {where_sql}{null_union}"
+        return f"{base}{null_union}"
+    
+    if dialect_lower == "bigquery":
+        # BigQuery uses GENERATE_DATE_ARRAY
+        base = (
+            f"SELECT DATE_TRUNC(d, {trunc_unit.upper()}) AS {alias} "
+            f"FROM UNNEST(GENERATE_DATE_ARRAY(DATE {SPINE_MIN_DATE}, CURRENT_DATE())) AS d"
+        )
+        if where_sql:
+            return f"{base} {where_sql}{null_union}"
+        return f"{base}{null_union}"
+    
+    if dialect_lower == "snowflake":
+        # Snowflake uses GENERATOR with DATEADD
+        # We generate more rows than needed and filter
+        base = (
+            f"SELECT DISTINCT DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), DATE {SPINE_MIN_DATE})) AS {alias} "
+            f"FROM TABLE(GENERATOR(ROWCOUNT => 100000)) "
+            f"WHERE DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), DATE {SPINE_MIN_DATE})) <= {SPINE_MAX_DATE}"
+        )
+        if where_sql:
+            # Append additional filter conditions
+            # Replace WHERE with AND since we already have a WHERE
+            additional = where_sql.replace("WHERE ", " AND ", 1)
+            return f"{base}{additional}{null_union}"
+        return f"{base}{null_union}"
+    
+    # Default: use postgres-style
+    base = (
+        f"SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias} "
+        f"FROM generate_series({SPINE_MIN_DATE}::date, {SPINE_MAX_DATE}::date, INTERVAL '{interval}') AS d"
+    )
+    if where_sql:
+        return f"{base} {where_sql}{null_union}"
+    return f"{base}{null_union}"
 
 
 def _apply_auto_spine(
@@ -420,7 +542,13 @@ def _apply_auto_spine(
     settings: CompileSettings,
     dialect: Optional[str] = None,
 ) -> exp.Expression:
-    """Apply auto-spine transformation to ALL GROUP BY columns."""
+    """Apply auto-spine transformation to ALL GROUP BY columns.
+    
+    Unified approach:
+    1. For each GROUP BY column, extract relevant WHERE predicates
+    2. Build spine CTE with those predicates as filters
+    3. LEFT JOIN aggregated data with spine
+    """
     if not settings.auto_spine:
         return stmt
 
@@ -439,14 +567,13 @@ def _apply_auto_spine(
     source_table = from_clause.this.sql()
 
     where_clause = stmt.find(exp.Where)
-    where_sql = f"WHERE {where_clause.this.sql()}" if where_clause else ""
 
     spine_ctes: List[Tuple[str, exp.Expression]] = []
     # spine_columns: (alias, cte_name, original_expr_sql)
     spine_columns: List[Tuple[str, str, str]] = []
     rollup_column_order: List[str] = []
 
-    for alias, group_expr, is_date, trunc_unit, explicit_values in group_cols:
+    for alias, group_expr, is_date, trunc_unit, explicit_values, source_column in group_cols:
         # Get the original expression SQL for matching SELECT expressions
         if isinstance(group_expr, exp.Alias):
             original_expr_sql = group_expr.this.sql()
@@ -458,51 +585,23 @@ def _apply_auto_spine(
         if is_in_rollup_cube and has_rollup:
             rollup_column_order.append(alias)
 
-        if explicit_values:
-            spine_sql = _build_categorical_spine_sql(alias, explicit_values, dialect, include_null=is_in_rollup_cube)
-        elif is_date and trunc_unit:
-            source_col = _get_source_column_from_trunc(group_expr)
-            min_date, max_date = _extract_date_bounds_from_where(stmt, source_col) if source_col else (None, None)
-            interval = TRUNC_TO_INTERVAL.get(trunc_unit, "1 day")
+        # Extract predicates for this column from WHERE clause
+        where_predicates: List[exp.Expression] = []
+        if source_column and where_clause:
+            where_predicates = _extract_predicates_for_column(where_clause, source_column)
 
-            if min_date and max_date:
-                spine_sql = _build_date_spine_sql(
-                    alias,
-                    trunc_unit,
-                    min_date,
-                    max_date,
-                    interval,
-                    dialect,
-                    include_null=is_in_rollup_cube,
-                )
-            else:
-                spine_sql = _build_date_spine_from_data_sql(
-                    alias,
-                    trunc_unit,
-                    source_col.sql() if source_col else alias,
-                    source_table,
-                    where_sql,
-                    interval,
-                    dialect,
-                    include_null=is_in_rollup_cube,
-                )
-        else:
-            inner_expr = group_expr.this if isinstance(group_expr, exp.Alias) else group_expr
-            if _is_guarantee_wrapped(group_expr)[0]:
-                inner = inner_expr
-                if isinstance(inner, exp.Anonymous):
-                    inner = inner.expressions[0] if inner.expressions else inner
-                col_expr = inner.sql()
-            else:
-                col_expr = inner_expr.sql()
-
-            if is_in_rollup_cube:
-                spine_sql = (
-                    f"SELECT DISTINCT {col_expr} AS {alias} FROM {source_table} {where_sql} "
-                    f"UNION ALL SELECT NULL AS {alias}"
-                )
-            else:
-                spine_sql = f"SELECT DISTINCT {col_expr} AS {alias} FROM {source_table} {where_sql}"
+        # Build unified spine SQL
+        spine_sql = _build_spine_cte_sql(
+            alias=alias,
+            is_date=is_date,
+            trunc_unit=trunc_unit,
+            explicit_values=explicit_values,
+            source_column=source_column,
+            source_table=source_table,
+            where_predicates=where_predicates,
+            dialect=dialect,
+            include_null=is_in_rollup_cube,
+        )
 
         try:
             spine_select = sqlglot.parse_one(spine_sql.strip(), dialect=dialect)
@@ -660,6 +759,134 @@ def _apply_auto_spine(
         ) from e
 
 
+# Legacy function exports for backwards compatibility with tests
+def _find_non_date_group_by_columns(stmt: exp.Expression) -> List[Tuple[str, exp.Expression]]:
+    """Find non-date columns in GROUP BY that need cross-join with distinct values."""
+    results: List[Tuple[str, exp.Expression]] = []
+
+    if not isinstance(stmt, exp.Select):
+        return results
+
+    group_by = stmt.find(exp.Group)
+    if not group_by:
+        return results
+
+    for group_expr in group_by.expressions:
+        if isinstance(group_expr, exp.Alias):
+            alias = group_expr.alias
+            inner = group_expr.this
+        else:
+            inner = group_expr
+            alias = inner.name if isinstance(inner, exp.Column) else None
+
+        is_guarantee, _ = _is_guarantee_wrapped(group_expr)
+        if is_guarantee:
+            continue
+
+        func_name = None
+        if isinstance(inner, exp.Anonymous):
+            func_name = inner.name.lower() if inner.name else None
+        elif isinstance(inner, exp.Func):
+            func_name = inner.sql_name().lower() if hasattr(inner, "sql_name") else type(inner).__name__.lower()
+
+        if func_name not in DATE_TRUNC_FUNCTIONS and alias:
+            results.append((alias, group_expr))
+
+    return results
+
+
+def _find_date_trunc_in_group_by(
+    stmt: exp.Expression,
+) -> List[Tuple[str, str, exp.Expression, Optional[List[str]]]]:
+    """Find date truncation expressions in GROUP BY clause."""
+    results: List[Tuple[str, str, exp.Expression, Optional[List[str]]]] = []
+
+    if not isinstance(stmt, exp.Select):
+        return results
+
+    group_by = stmt.find(exp.Group)
+    if not group_by:
+        return results
+
+    for group_expr in group_by.expressions:
+        func_name = None
+        trunc_unit = None
+        alias = None
+        explicit_values = None
+
+        is_guarantee, values = _is_guarantee_wrapped(group_expr)
+        if is_guarantee:
+            explicit_values = values
+
+        if isinstance(group_expr, exp.Alias):
+            alias = group_expr.alias
+            inner = group_expr.this
+            if is_guarantee and isinstance(inner, exp.Anonymous):
+                inner = inner.expressions[0] if inner.expressions else inner
+        else:
+            inner = group_expr
+            if is_guarantee and isinstance(inner, exp.Anonymous):
+                inner = inner.expressions[0] if inner.expressions else inner
+            if isinstance(inner, exp.Column):
+                alias = inner.name
+            elif hasattr(inner, "alias") and inner.alias:
+                alias = inner.alias
+
+        if isinstance(inner, exp.Anonymous):
+            func_name = inner.name.lower() if inner.name else None
+        elif isinstance(inner, exp.Func):
+            func_name = inner.sql_name().lower() if hasattr(inner, "sql_name") else type(inner).__name__.lower()
+
+        if func_name in DATE_TRUNC_FUNCTIONS:
+            if func_name == "date_trunc":
+                if inner.expressions:
+                    unit_arg = inner.expressions[0]
+                    if isinstance(unit_arg, exp.Literal):
+                        trunc_unit = unit_arg.this.strip("'\"").lower()
+            else:
+                trunc_unit = func_name
+
+            if trunc_unit and alias:
+                results.append((alias, trunc_unit, group_expr, explicit_values))
+
+    return results
+
+
+def _find_guarantee_in_group_by(
+    stmt: exp.Expression,
+) -> List[Tuple[str, exp.Expression, Optional[List[str]]]]:
+    """Find guarantee() expressions in GROUP BY clause for categorical columns."""
+    results: List[Tuple[str, exp.Expression, Optional[List[str]]]] = []
+
+    if not isinstance(stmt, exp.Select):
+        return results
+
+    group_by = stmt.find(exp.Group)
+    if not group_by:
+        return results
+
+    for group_expr in group_by.expressions:
+        is_guarantee, explicit_values = _is_guarantee_wrapped(group_expr)
+        if not is_guarantee:
+            continue
+
+        alias = None
+        if isinstance(group_expr, exp.Alias):
+            alias = group_expr.alias
+        else:
+            inner = group_expr
+            if isinstance(inner, exp.Anonymous) and inner.expressions:
+                first_arg = inner.expressions[0]
+                if isinstance(first_arg, exp.Column):
+                    alias = first_arg.name
+
+        if alias:
+            results.append((alias, group_expr, explicit_values))
+
+    return results
+
+
+# Legacy exports - keep for backwards compatibility
 def _build_categorical_spine_sql(
     alias: str,
     values: List[str],
@@ -667,25 +894,7 @@ def _build_categorical_spine_sql(
     include_null: bool = False,
 ) -> str:
     """Build SQL for a categorical spine with explicit values."""
-    dialect_lower = dialect.lower() if dialect else ""
-
-    values_sql = ", ".join([f"'{v}'" for v in values])
-    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
-
-    if dialect_lower in ("postgres", "postgresql", "redshift", "duckdb"):
-        return f"SELECT unnest(ARRAY[{values_sql}]) AS {alias}{null_union}"
-    if dialect_lower == "bigquery":
-        return f"SELECT {alias} FROM UNNEST([{values_sql}]) AS {alias}{null_union}"
-    if dialect_lower == "snowflake":
-        return (
-            f"SELECT value AS {alias} FROM TABLE(FLATTEN(INPUT => SPLIT('{','.join(values)}', ',')))"
-            f"{null_union}"
-        )
-
-    unions = [f"SELECT '{v}' AS {alias}" for v in values]
-    if include_null:
-        unions.append(f"SELECT NULL AS {alias}")
-    return " UNION ALL ".join(unions)
+    return _build_explicit_values_spine_sql(alias, values, dialect, include_null)
 
 
 def _build_date_spine_sql(
@@ -697,7 +906,9 @@ def _build_date_spine_sql(
     dialect: Optional[str] = None,
     include_null: bool = False,
 ) -> str:
-    """Build SQL for a date spine with explicit bounds."""
+    """Build SQL for a date spine with explicit bounds (legacy)."""
+    # This is kept for backwards compatibility but the new approach
+    # uses _build_date_spine_with_filter_sql instead
     dialect_lower = dialect.lower() if dialect else ""
     null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
 
@@ -729,6 +940,55 @@ def _build_date_spine_sql(
     ) + null_union
 
 
+def _columns_match(expr1: exp.Expression, expr2: exp.Expression) -> bool:
+    """Check if two expressions refer to the same column (legacy)."""
+    if isinstance(expr1, exp.Column) and isinstance(expr2, exp.Column):
+        return expr1.name == expr2.name
+    return expr1.sql() == expr2.sql()
+
+
+def _extract_date_bounds_from_where(
+    stmt: exp.Expression,
+    column_expr: exp.Expression,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Extract date bounds from WHERE clause for a given column expression (legacy).
+    
+    Note: The new unified approach doesn't use this function - it copies
+    predicates directly instead of extracting bounds. This is kept for
+    backwards compatibility.
+    """
+    where = stmt.find(exp.Where)
+    if not where:
+        return None, None
+
+    min_date: Optional[str] = None
+    max_date: Optional[str] = None
+
+    def check_condition(node: exp.Expression) -> None:
+        nonlocal min_date, max_date
+
+        if isinstance(node, (exp.GTE, exp.GT)):
+            if _columns_match(node.this, column_expr) and isinstance(node.expression, (exp.Literal, exp.Cast)):
+                min_date = node.expression.sql()
+        elif isinstance(node, (exp.LTE, exp.LT)):
+            if _columns_match(node.this, column_expr) and isinstance(node.expression, (exp.Literal, exp.Cast)):
+                max_date = node.expression.sql()
+        elif isinstance(node, exp.Between):
+            if _columns_match(node.this, column_expr):
+                low = node.args.get("low")
+                high = node.args.get("high")
+                if isinstance(low, (exp.Literal, exp.Cast)):
+                    min_date = low.sql()
+                if isinstance(high, (exp.Literal, exp.Cast)):
+                    max_date = high.sql()
+        elif isinstance(node, exp.And):
+            check_condition(node.this)
+            check_condition(node.expression)
+
+    check_condition(where.this)
+    return min_date, max_date
+
+
 def _build_date_spine_from_data_sql(
     alias: str,
     trunc_unit: str,
@@ -739,7 +999,8 @@ def _build_date_spine_from_data_sql(
     dialect: Optional[str] = None,
     include_null: bool = False,
 ) -> str:
-    """Build SQL for a date spine derived from data MIN/MAX."""
+    """Build SQL for a date spine derived from data MIN/MAX (legacy)."""
+    # This is kept for backwards compatibility
     dialect_lower = dialect.lower() if dialect else ""
     null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
 
@@ -759,5 +1020,3 @@ def _build_date_spine_from_data_sql(
     return (
         f"SELECT DISTINCT DATE_TRUNC('{trunc_unit}', {col_expr}) AS {alias} FROM {source_table} {where_sql}"
     ) + null_union
-
-

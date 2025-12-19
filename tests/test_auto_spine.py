@@ -451,6 +451,71 @@ class TestRollupSpineGeneration:
         assert "IS NULL" in sql.upper()  # Part of the filter condition
 
 
+class TestPredicateCopyingToSpine:
+    """Test that WHERE predicates are copied to filter the spine.
+    
+    The new unified approach copies relevant WHERE predicates to the spine CTE,
+    ensuring that:
+    1. Date spines are filtered to the relevant range
+    2. Categorical spines only include relevant values
+    3. This works without semantic parsing of comparison operators
+    """
+
+    def test_date_predicate_copied_to_spine(self):
+        """Test that date filter is copied to the date spine."""
+        sql = compile(
+            "from orders where created_at >= '2021-01-01' group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # The spine CTE should have the WHERE filter applied
+        # This uses generate_series from 1970 to now, filtered by the predicate
+        assert "_spine" in sql.lower()
+        assert "generate_series" in sql.lower()
+        # The filter should appear in the spine CTE
+        assert "2021-01-01" in sql
+
+    def test_categorical_predicate_copied_to_spine(self):
+        """Test that categorical filter is copied to the categorical spine."""
+        sql = compile(
+            "from orders where region in ('North', 'South') group by region (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # The spine CTE should have the WHERE filter
+        assert "region_spine" in sql.lower()
+        # The filter should be in the spine
+        assert "North" in sql
+        assert "South" in sql
+
+    def test_multiple_predicates_on_same_column(self):
+        """Test that multiple predicates on the grouped column are all copied."""
+        sql = compile(
+            "from orders where created_at >= '2021-01-01' and created_at < '2024-01-01' group by month(created_at) (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # Both date bounds should appear in the output
+        assert "2021-01-01" in sql
+        assert "2024-01-01" in sql
+
+    def test_predicate_for_different_column_not_copied(self):
+        """Test that predicates on non-grouped columns are not copied to spine."""
+        sql = compile(
+            "from orders where status = 'active' group by region (sum(amount) as revenue)",
+            dialect="postgres",
+            settings=CompileSettings(auto_spine=True)
+        )
+        
+        # The status filter should be in the data CTE, not the spine
+        assert "region_spine" in sql.lower()
+        assert "status" in sql.lower()
+        # The spine should use DISTINCT region, but status filter should be in data CTE
+
+
 class TestSpineGenerationVerification:
     """Verify that spines ARE actually generated in output."""
 

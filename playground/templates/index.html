@@ -682,6 +682,156 @@
             background: #f8f9fa;
             border-color: var(--asql-red-light);
         }
+        
+        /* Settings Modal Styles */
+        .settings-modal .modal-content {
+            max-width: 600px;
+        }
+        
+        .settings-section {
+            margin-bottom: 24px;
+        }
+        
+        .settings-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .settings-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+        
+        .settings-section-desc {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 12px;
+        }
+        
+        .setting-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .setting-field label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .setting-field select,
+        .setting-field input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            font-size: 13px;
+            background: white;
+            color: #333;
+        }
+        
+        .setting-field select:focus,
+        .setting-field input[type="text"]:focus {
+            outline: none;
+            border-color: var(--asql-red);
+        }
+        
+        .setting-field-checkbox {
+            flex-direction: row;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .setting-field-checkbox input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--asql-red);
+        }
+        
+        .setting-field-checkbox label {
+            cursor: pointer;
+        }
+        
+        .setting-description {
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+        }
+        
+        .settings-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-top: 1px solid #dadce0;
+            background: #f8f9fa;
+        }
+        
+        .settings-footer-left {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .reset-btn {
+            background: white;
+            color: #666;
+            border: 1px solid #dadce0;
+            padding: 8px 16px;
+            font-size: 13px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        .reset-btn:hover {
+            background: #f1f3f4;
+            color: #333;
+        }
+        
+        .settings-modified-indicator {
+            font-size: 12px;
+            color: var(--asql-red);
+            display: none;
+        }
+        
+        .settings-modified-indicator.visible {
+            display: inline;
+        }
+        
+        .settings-btn {
+            background: white;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            padding: 6px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .settings-btn:hover {
+            background: #f8f9fa;
+            border-color: var(--asql-red-light);
+            color: var(--asql-red);
+        }
+        
+        .settings-btn.has-changes {
+            border-color: var(--asql-red);
+            color: var(--asql-red);
+        }
+        
+        .settings-btn svg {
+            width: 16px;
+            height: 16px;
+        }
     </style>
 </head>
 <body>
@@ -689,6 +839,12 @@
         <div class="top-nav" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; border-bottom: 1px solid #dadce0;">
             <h1>🚀 ASQL Playground</h1>
             <div style="display: flex; gap: 8px;">
+                <button onclick="openSettingsModal()" class="settings-btn" id="settings-btn" title="Compiler Settings">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.21-.07.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                    </svg>
+                    Settings
+                </button>
                 <button onclick="openExamplesModal()" class="nav-button">📚 Examples</button>
                 <a href="__DOCS_URL__" class="nav-button">Documentation</a>
             </div>
@@ -777,6 +933,36 @@
         </div>
     </div>
     
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal settings-modal" onclick="closeSettingsModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2>⚙️ Compiler Settings</h2>
+                <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="settings-body">
+                <!-- Settings will be populated by JavaScript -->
+                <div class="settings-section" id="compile-settings-section">
+                    <div class="settings-section-title">Compile Settings</div>
+                    <div class="settings-section-desc">Settings that affect how ASQL is compiled to SQL</div>
+                    <div class="settings-grid" id="compile-settings-grid"></div>
+                </div>
+                <div class="settings-section" id="style-settings-section">
+                    <div class="settings-section-title">Style Settings</div>
+                    <div class="settings-section-desc">Settings that affect ASQL output style (for SQL → ASQL)</div>
+                    <div class="settings-grid" id="style-settings-grid"></div>
+                </div>
+            </div>
+            <div class="settings-footer">
+                <div class="settings-footer-left">
+                    <button class="reset-btn" onclick="resetSettings()">Reset to Defaults</button>
+                    <span class="settings-modified-indicator" id="settings-modified">● Modified</span>
+                </div>
+                <button class="nav-button" onclick="closeSettingsModal()">Done</button>
+            </div>
+        </div>
+    </div>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
@@ -855,10 +1041,309 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 closeExamplesModal();
+                closeSettingsModal();
             }
         });
         
         // ========== End Examples Modal Functions ==========
+        
+        // ========== Settings Modal Functions ==========
+        
+        // Settings schema (loaded from server, with fallback defaults)
+        let settingsSchema = null;
+        
+        // Current settings (merged with defaults)
+        let currentSettings = {
+            compile: {},
+            style: {}
+        };
+        
+        // Default settings (from schema)
+        const defaultSettings = {
+            compile: {
+                auto_spine: true,
+                week_start: 'monday',
+                relative_date_type: 'timestamp',
+                invent_join_keys: false
+            },
+            style: {
+                equality: 'single',
+                count: 'hash',
+                coalesce: 'operator',
+                descending: 'prefix',
+                cast: 'double_colon',
+                quotes: 'double',
+                function_shorthand: 'underscore'
+            }
+        };
+        
+        // Load settings from localStorage on init
+        function loadSettingsFromStorage() {
+            try {
+                const stored = localStorage.getItem('asql_playground_settings');
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    currentSettings = {
+                        compile: { ...defaultSettings.compile, ...(parsed.compile || {}) },
+                        style: { ...defaultSettings.style, ...(parsed.style || {}) }
+                    };
+                } else {
+                    currentSettings = JSON.parse(JSON.stringify(defaultSettings));
+                }
+            } catch (e) {
+                console.warn('Failed to load settings from localStorage:', e);
+                currentSettings = JSON.parse(JSON.stringify(defaultSettings));
+            }
+            updateSettingsButton();
+        }
+        
+        // Save settings to localStorage (only non-default values)
+        function saveSettingsToStorage() {
+            try {
+                // Only save non-default values
+                const toSave = { compile: {}, style: {} };
+                
+                for (const [key, value] of Object.entries(currentSettings.compile)) {
+                    if (value !== defaultSettings.compile[key]) {
+                        toSave.compile[key] = value;
+                    }
+                }
+                for (const [key, value] of Object.entries(currentSettings.style)) {
+                    if (value !== defaultSettings.style[key]) {
+                        toSave.style[key] = value;
+                    }
+                }
+                
+                // Only save if there are non-default values
+                if (Object.keys(toSave.compile).length > 0 || Object.keys(toSave.style).length > 0) {
+                    localStorage.setItem('asql_playground_settings', JSON.stringify(toSave));
+                } else {
+                    localStorage.removeItem('asql_playground_settings');
+                }
+            } catch (e) {
+                console.warn('Failed to save settings to localStorage:', e);
+            }
+            updateSettingsButton();
+            updateModifiedIndicator();
+        }
+        
+        // Check if settings are modified from defaults
+        function hasModifiedSettings() {
+            for (const [key, value] of Object.entries(currentSettings.compile)) {
+                if (value !== defaultSettings.compile[key]) return true;
+            }
+            for (const [key, value] of Object.entries(currentSettings.style)) {
+                if (value !== defaultSettings.style[key]) return true;
+            }
+            return false;
+        }
+        
+        // Update the settings button to show if there are changes
+        function updateSettingsButton() {
+            const btn = document.getElementById('settings-btn');
+            if (btn) {
+                if (hasModifiedSettings()) {
+                    btn.classList.add('has-changes');
+                } else {
+                    btn.classList.remove('has-changes');
+                }
+            }
+        }
+        
+        // Update the modified indicator in the modal
+        function updateModifiedIndicator() {
+            const indicator = document.getElementById('settings-modified');
+            if (indicator) {
+                if (hasModifiedSettings()) {
+                    indicator.classList.add('visible');
+                } else {
+                    indicator.classList.remove('visible');
+                }
+            }
+        }
+        
+        // Open settings modal
+        function openSettingsModal() {
+            const modal = document.getElementById('settings-modal');
+            if (modal) {
+                modal.classList.add('open');
+                document.body.style.overflow = 'hidden';
+                renderSettingsForm();
+                updateModifiedIndicator();
+            }
+        }
+        
+        // Close settings modal
+        function closeSettingsModal(event) {
+            if (event && event.target !== document.getElementById('settings-modal')) {
+                return;
+            }
+            const modal = document.getElementById('settings-modal');
+            if (modal) {
+                modal.classList.remove('open');
+                document.body.style.overflow = '';
+            }
+        }
+        
+        // Render the settings form based on schema
+        function renderSettingsForm() {
+            const compileGrid = document.getElementById('compile-settings-grid');
+            const styleGrid = document.getElementById('style-settings-grid');
+            
+            if (!compileGrid || !styleGrid) return;
+            
+            // Clear existing content
+            compileGrid.innerHTML = '';
+            styleGrid.innerHTML = '';
+            
+            // Compile settings
+            const compileFields = [
+                { name: 'auto_spine', label: 'Auto Spine', type: 'boolean', description: 'Add gap-filling for date truncations in GROUP BY' },
+                { name: 'week_start', label: 'Week Start', type: 'select', options: ['monday', 'sunday'], description: 'Day the week() function starts on' },
+                { name: 'relative_date_type', label: 'Relative Date Type', type: 'select', options: ['timestamp', 'date'], description: 'Type for "7 days ago" expressions' },
+                { name: 'invent_join_keys', label: 'Invent Join Keys', type: 'boolean', description: 'Infer join keys from {table}_id convention' }
+            ];
+            
+            compileFields.forEach(field => {
+                const fieldEl = createSettingField(field, 'compile');
+                compileGrid.appendChild(fieldEl);
+            });
+            
+            // Style settings
+            const styleFields = [
+                { name: 'equality', label: 'Equality Operator', type: 'select', 
+                  options: [{ value: 'single', label: '= (SQL)' }, { value: 'double', label: '== (Python)' }] },
+                { name: 'count', label: 'Count Notation', type: 'select',
+                  options: [{ value: 'hash', label: '# (shorthand)' }, { value: 'function', label: 'count(*)' }] },
+                { name: 'coalesce', label: 'Null Coalescing', type: 'select',
+                  options: [{ value: 'operator', label: '?? (operator)' }, { value: 'function', label: 'coalesce()' }] },
+                { name: 'descending', label: 'Descending Order', type: 'select',
+                  options: [{ value: 'prefix', label: '-col (prefix)' }, { value: 'suffix', label: 'col DESC' }] },
+                { name: 'cast', label: 'Type Casting', type: 'select',
+                  options: [{ value: 'double_colon', label: ':: (PostgreSQL)' }, { value: 'function', label: 'CAST()' }] },
+                { name: 'quotes', label: 'String Quotes', type: 'select',
+                  options: [{ value: 'double', label: '"double"' }, { value: 'single', label: "'single'" }] },
+                { name: 'function_shorthand', label: 'Function Style', type: 'select',
+                  options: [{ value: 'underscore', label: 'sum_amount' }, { value: 'space', label: 'sum amount' }, { value: 'parens', label: 'sum(amount)' }] }
+            ];
+            
+            styleFields.forEach(field => {
+                const fieldEl = createSettingField(field, 'style');
+                styleGrid.appendChild(fieldEl);
+            });
+        }
+        
+        // Create a setting field element
+        function createSettingField(field, category) {
+            const container = document.createElement('div');
+            container.className = 'setting-field' + (field.type === 'boolean' ? ' setting-field-checkbox' : '');
+            
+            const currentValue = currentSettings[category][field.name];
+            
+            if (field.type === 'boolean') {
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `setting-${category}-${field.name}`;
+                checkbox.checked = currentValue;
+                checkbox.addEventListener('change', () => {
+                    currentSettings[category][field.name] = checkbox.checked;
+                    onSettingChanged();
+                });
+                
+                const label = document.createElement('label');
+                label.htmlFor = checkbox.id;
+                label.textContent = field.label;
+                
+                container.appendChild(checkbox);
+                container.appendChild(label);
+            } else if (field.type === 'select') {
+                const label = document.createElement('label');
+                label.htmlFor = `setting-${category}-${field.name}`;
+                label.textContent = field.label;
+                
+                const select = document.createElement('select');
+                select.id = `setting-${category}-${field.name}`;
+                
+                field.options.forEach(opt => {
+                    const option = document.createElement('option');
+                    if (typeof opt === 'object') {
+                        option.value = opt.value;
+                        option.textContent = opt.label;
+                    } else {
+                        option.value = opt;
+                        option.textContent = opt;
+                    }
+                    if (option.value === currentValue) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+                
+                select.addEventListener('change', () => {
+                    currentSettings[category][field.name] = select.value;
+                    onSettingChanged();
+                });
+                
+                container.appendChild(label);
+                container.appendChild(select);
+            }
+            
+            if (field.description) {
+                const desc = document.createElement('div');
+                desc.className = 'setting-description';
+                desc.textContent = field.description;
+                container.appendChild(desc);
+            }
+            
+            return container;
+        }
+        
+        // Called when any setting changes
+        function onSettingChanged() {
+            saveSettingsToStorage();
+            // Trigger re-translation
+            if (typeof translateQuery === 'function') {
+                translateQuery();
+            }
+        }
+        
+        // Reset all settings to defaults
+        function resetSettings() {
+            currentSettings = JSON.parse(JSON.stringify(defaultSettings));
+            saveSettingsToStorage();
+            renderSettingsForm();
+            // Trigger re-translation
+            if (typeof translateQuery === 'function') {
+                translateQuery();
+            }
+            showToast('Settings reset to defaults');
+        }
+        
+        // Get current settings for API calls (only non-default values)
+        function getCompileSettings() {
+            const settings = {};
+            for (const [key, value] of Object.entries(currentSettings.compile)) {
+                if (value !== defaultSettings.compile[key]) {
+                    settings[key] = value;
+                }
+            }
+            return settings;
+        }
+        
+        function getStyleSettings() {
+            const settings = {};
+            for (const [key, value] of Object.entries(currentSettings.style)) {
+                if (value !== defaultSettings.style[key]) {
+                    settings[key] = value;
+                }
+            }
+            return settings;
+        }
+        
+        // Initialize settings on page load
+        loadSettingsFromStorage();
+        
+        // ========== End Settings Modal Functions ==========
         
         // ========== Swap Languages Function (must be global for onclick handlers) ==========
         
@@ -1747,12 +2232,17 @@
             try {
                 if (currentMode === 'asql-to-sql') {
                     // ASQL to SQL
+                    const compileSettings = typeof getCompileSettings === 'function' ? getCompileSettings() : {};
                     const response = await fetch('/api/compile', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({ asql: input, dialect: toDialect || '' })
+                        body: JSON.stringify({ 
+                            asql: input, 
+                            dialect: toDialect || '',
+                            settings: compileSettings
+                        })
                     });
                     
                     if (!response.ok) {
@@ -1797,6 +2287,7 @@
                         }
                     }
                     
+                    const styleSettings = typeof getStyleSettings === 'function' ? getStyleSettings() : {};
                     const response = await fetch('/api/reverse-compile', {
                         method: 'POST',
                         headers: {
@@ -1804,7 +2295,8 @@
                         },
                         body: JSON.stringify({ 
                             sql: input, 
-                            source_dialect: sourceDialect || '' 
+                            source_dialect: sourceDialect || '',
+                            settings: styleSettings
                         })
                     });
                     
@@ -1840,6 +2332,7 @@
                     }
                     
                     // Convert to ASQL first
+                    const styleSettings = typeof getStyleSettings === 'function' ? getStyleSettings() : {};
                     const reverseResponse = await fetch('/api/reverse-compile', {
                         method: 'POST',
                         headers: {
@@ -1847,7 +2340,8 @@
                         },
                         body: JSON.stringify({ 
                             sql: input, 
-                            source_dialect: sourceDialect || '' 
+                            source_dialect: sourceDialect || '',
+                            settings: styleSettings
                         })
                     });
                     
@@ -1859,12 +2353,17 @@
                     }
                     
                     // Then convert ASQL to target SQL dialect
+                    const compileSettings = typeof getCompileSettings === 'function' ? getCompileSettings() : {};
                     const compileResponse = await fetch('/api/compile', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                         },
-                        body: JSON.stringify({ asql: reverseData.asql, dialect: toDialect || '' })
+                        body: JSON.stringify({ 
+                            asql: reverseData.asql, 
+                            dialect: toDialect || '',
+                            settings: compileSettings
+                        })
                     });
                     
                     const compileData = await compileResponse.json();
