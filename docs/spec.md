@@ -454,6 +454,38 @@ ASQL uses SQL-standard comment syntax:
 - `#` is reserved for count aggregation syntax (see Section 5.2)
 - Better compatibility with SQL tooling and editors
 
+#### Comment Settings
+
+ASQL provides two settings to control comment behavior:
+
+**`passthrough_comments`** (default: `true`): Controls whether source ASQL comments are preserved in the generated SQL. Set to `false` to strip all source comments:
+
+```asql
+SET passthrough_comments = false;
+-- This comment will not appear in output
+from users limit 10
+```
+
+**`include_transpilation_comments`** (default: `false`): When enabled, ASQL adds explanatory comments about complex transformations like auto-spine:
+
+```asql
+SET include_transpilation_comments = true;
+from orders
+  where order_date >= @2024-01-01 and order_date < @2024-02-01
+  group by month(order_date) ( sum(amount) as revenue )
+```
+
+Output includes helpful explanation:
+```sql
+/* ASQL auto-spine: Gap-filling CTEs were generated to ensure all 
+   expected GROUP BY values appear (even with zero/null aggregates). 
+   Disable with: SET auto_spine = false; */
+WITH month_order_date_spine AS (...)
+...
+```
+
+This is especially useful when learning how ASQL transformations work or when debugging generated SQL.
+
 ### 4.10 String Functions
 
 ASQL provides clean string manipulation functions.
@@ -1591,10 +1623,12 @@ The `-` prefix applies only to the column immediately following it.
 
 ASQL supports SQL-style `SET` statements for **compile settings** (not CTE variables). Supported settings:
 
-- `auto_spine` (boolean)
-- `dialect` (string)
-- `week_start` (string)
-- `relative_date_type` (string)
+- `auto_spine` (boolean) — Enable/disable gap-filling for GROUP BY
+- `dialect` (string) — Target SQL dialect
+- `week_start` (string) — `"monday"` or `"sunday"`
+- `relative_date_type` (string) — `"timestamp"` or `"date"`
+- `include_transpilation_comments` (boolean) — Add explanatory comments about transformations
+- `passthrough_comments` (boolean) — Preserve source comments in output
 
 Examples:
 
@@ -1605,6 +1639,16 @@ SET dialect = 'postgres';
 from orders
   where status = "active"
   limit 10
+```
+
+```asql
+-- Enable explanatory comments for debugging/learning
+SET include_transpilation_comments = true;
+-- Strip source comments from output  
+SET passthrough_comments = false;
+
+from orders
+  group by month(order_date) ( sum(amount) as revenue )
 ```
 
 **Note**: `set name = <query>` (using `SET` to define a CTE variable) is **not implemented**.
