@@ -196,6 +196,188 @@ class TestBasicExecution:
         assert 50 in alice_orders
 
 
+class TestAliasReuse:
+    """Test alias reuse functionality - referencing earlier aliases in SELECT."""
+
+    def test_simple_alias_reuse(self, executor: Any) -> None:
+        """Test that alias reuse works correctly."""
+        executor.create_table(
+            "order_items",
+            columns={
+                "unit_price": "DOUBLE",
+                "discount": "DOUBLE",
+                "quantity": "INT",
+            },
+            rows=[
+                (100.0, 0.1, 2),  # discount_price = 90, total_price = 180
+                (50.0, 0.2, 3),   # discount_price = 40, total_price = 120
+            ],
+        )
+
+        asql = """
+        from order_items
+          select
+            unit_price * (1 - discount) as discount_price,
+            discount_price * quantity as total_price
+        """
+        sql = compile(asql, dialect=executor.dialect)
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        # Verify columns exist
+        assert "discount_price" in columns
+        assert "total_price" in columns
+
+        # Verify results
+        results = {r[0]: r[1] for r in rows}  # discount_price -> total_price
+        assert 90.0 in results
+        assert results[90.0] == 180.0
+        assert 40.0 in results
+        assert results[40.0] == 120.0
+
+    def test_alias_reuse_three_levels(self, executor: Any) -> None:
+        """Test alias reuse with three levels of dependencies."""
+        executor.create_table(
+            "order_items",
+            columns={
+                "unit_price": "DOUBLE",
+                "discount": "DOUBLE",
+                "quantity": "INT",
+                "tax_rate": "DOUBLE",
+            },
+            rows=[
+                (100.0, 0.1, 2, 0.05),  # discount_price=90, total=180, taxed=189
+                (50.0, 0.2, 3, 0.1),   # discount_price=40, total=120, taxed=132
+            ],
+        )
+
+        asql = """
+        from order_items
+          select
+            unit_price * (1 - discount) as discount_price,
+            discount_price * quantity as total_price,
+            total_price * (1 + tax_rate) as taxed_price
+        """
+        sql = compile(asql, dialect=executor.dialect)
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        # Verify all columns exist
+        assert "discount_price" in columns
+        assert "total_price" in columns
+        assert "taxed_price" in columns
+
+        # Verify first row: discount_price=90, total_price=180, taxed_price=189
+        row1 = rows[0]
+        assert abs(row1[columns.index("discount_price")] - 90.0) < 0.01
+        assert abs(row1[columns.index("total_price")] - 180.0) < 0.01
+        assert abs(row1[columns.index("taxed_price")] - 189.0) < 0.01
+
+    def test_alias_reuse_with_where(self, executor: Any) -> None:
+        """Test alias reuse with WHERE clause filtering on computed alias."""
+        executor.create_table(
+            "order_items",
+            columns={
+                "unit_price": "DOUBLE",
+                "discount": "DOUBLE",
+                "quantity": "INT",
+            },
+            rows=[
+                (100.0, 0.1, 2),  # total_price = 180
+                (50.0, 0.2, 1),   # total_price = 40
+                (200.0, 0.05, 1), # total_price = 190
+            ],
+        )
+
+        asql = """
+        from order_items
+          select
+            unit_price * (1 - discount) as discount_price,
+            discount_price * quantity as total_price
+          where total_price > 100
+        """
+        sql = compile(asql, dialect=executor.dialect)
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        # Should only return rows where total_price > 100
+        assert len(rows) == 2  # 180 and 190
+        total_price_idx = columns.index("total_price")
+        total_prices = [r[total_price_idx] for r in rows]
+        assert 180.0 in total_prices or 180 in total_prices
+        assert 190.0 in total_prices or 190 in total_prices
+        assert 40.0 not in total_prices and 40 not in total_prices
+
+    def test_alias_reuse_with_order_by(self, executor: Any) -> None:
+        """Test alias reuse with ORDER BY on computed alias."""
+        executor.create_table(
+            "order_items",
+            columns={
+                "unit_price": "DOUBLE",
+                "discount": "DOUBLE",
+                "quantity": "INT",
+            },
+            rows=[
+                (100.0, 0.1, 1),  # total_price = 90
+                (50.0, 0.2, 3),   # total_price = 120
+                (200.0, 0.05, 1), # total_price = 190
+            ],
+        )
+
+        asql = """
+        from order_items
+          select
+            unit_price * (1 - discount) as discount_price,
+            discount_price * quantity as total_price
+          order by total_price
+        """
+        sql = compile(asql, dialect=executor.dialect)
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        # Should be ordered by total_price ascending
+        assert len(rows) == 3
+        total_price_idx = columns.index("total_price")
+        total_prices = [r[total_price_idx] for r in rows]
+        # Check ordering (allowing for floating point comparison)
+        assert total_prices[0] <= total_prices[1] <= total_prices[2]
+
+    def test_alias_reuse_mixed_expressions(self, executor: Any) -> None:
+        """Test alias reuse with mix of dependent and independent expressions."""
+        executor.create_table(
+            "order_items",
+            columns={
+                "unit_price": "DOUBLE",
+                "discount": "DOUBLE",
+                "quantity": "INT",
+            },
+            rows=[
+                (100.0, 0.1, 2),
+                (50.0, 0.2, 3),
+            ],
+        )
+
+        asql = """
+        from order_items
+          select
+            unit_price,
+            unit_price * (1 - discount) as discount_price,
+            quantity,
+            discount_price * quantity as total_price
+        """
+        sql = compile(asql, dialect=executor.dialect)
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        # Verify all columns exist
+        assert "unit_price" in columns
+        assert "discount_price" in columns
+        assert "quantity" in columns
+        assert "total_price" in columns
+
+        # Verify first row
+        row1 = rows[0]
+        assert abs(row1[columns.index("unit_price")] - 100.0) < 0.01
+        assert abs(row1[columns.index("discount_price")] - 90.0) < 0.01
+        assert row1[columns.index("quantity")] == 2
+        assert abs(row1[columns.index("total_price")] - 180.0) < 0.01
+
+
 class TestDialectSyntax:
     """Test that generated SQL is syntactically valid for each dialect."""
 
@@ -237,6 +419,29 @@ class TestDialectSyntax:
         if executor.dialect == "duckdb":
             assert is_valid, f"Slice syntax should be valid for DuckDB: {sql}"
         # For other dialects, we document that it may fail (this is the bug)
+
+    def test_alias_reuse_syntax_validation(self, executor: Any) -> None:
+        """Test that alias reuse generates valid SQL syntax."""
+        executor.create_table(
+            "order_items",
+            columns={
+                "unit_price": "DOUBLE",
+                "discount": "DOUBLE",
+                "quantity": "INT",
+            },
+            rows=[],
+        )
+
+        asql = """
+        from order_items
+          select
+            unit_price * (1 - discount) as discount_price,
+            discount_price * quantity as total_price
+        """
+        sql = compile(asql, dialect=executor.dialect)
+        assert executor.validate_syntax(
+            sql
+        ), f"Invalid {executor.dialect} SQL for alias reuse: {sql}"
 
 
 class TestExampleFiles:
