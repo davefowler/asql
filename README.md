@@ -1,300 +1,177 @@
 # ASQL: Analytic SQL
 
-A modern, pipeline-based query language that transpiles to SQL. ASQL uses a FROM-first, pipeline-based syntax that makes complex analytics queries more readable and intuitive.
+> **⚠️ Work in Progress**: ASQL is under active development. Do not rely on this for production use yet.
 
-## Features
+**ASQL** (pronounced "Ask-el") is a pipeline-based query language for analysts. It brings modern pipe syntax to every SQL database—think of it as a **polyfill for the pipe syntaxes emerging in BigQuery, Snowflake, and PostgreSQL**, but available everywhere today.
 
-- 🚀 **Fully Pipeline-based** - Every query is a sequence of transformations, compiled to CTEs
-- 🔄 **SQL Dialect Support** - Generate SQL for PostgreSQL, MySQL, BigQuery, Snowflake, and more
-- 📊 **Powerful Aggregations** - GROUP BY with multiple aggregations
-- 🎯 **Expressive Filtering** - Rich WHERE clause with logical operators
-- 📈 **Sorting & Limiting** - Easy SORT and TAKE operations
-- 🎨 **Interactive Playground** - Try ASQL in your browser
-- 🔗 **CTE-based Compilation** - Each pipeline step becomes a descriptive CTE for readability and debugging
+```asql
+from orders
+  where order_date >= @2024-01-01
+  &? customers on orders.customer_id = customers.id
+  group by month(order_date) (
+    sum(amount) as revenue,
+    # as order_count
+  )
+  order by -revenue
+```
+
+## Why ASQL?
+
+ASQL is designed for **analytics and transformation** work. It takes patterns that analysts use every day—cohorts, gap-filling, deduplication, window functions—and makes them first-class language features instead of 50-line CTEs.
+
+### Key Features
+
+| Feature | What It Does |
+|---------|--------------|
+| **🔀 Pipeline Syntax** | FROM-first, top-to-bottom flow—even on databases without native pipe support |
+| **📊 Guaranteed Groups** | Auto-fills gaps in time series and categorical data (no more missing months!) |
+| **🧱 dbt Macros Built-In** | `pivot`, `unpivot`, `key()`, `except`, deduplication—no Jinja needed |
+| **🏷️ Auto-Aliasing** | Every function gets a meaningful name: `sum(amount)` → `sum_amount` |
+| **📈 Cohort Analysis** | 50 lines of SQL → 3 lines with `cohort by` |
+| **📅 Intuitive Dates** | `@2024-01-01`, `7 days ago`, `month(created_at)` |
+| **💬 Natural Language** | `# of users`, `sum of amount`, `contains "pattern"` |
+| **🪟 Window Helpers** | `per customer first by -date` instead of ROW_NUMBER() boilerplate |
+
+---
+
+## Feature Highlights
+
+### 📊 Guaranteed Groups (Auto-Spine)
+
+SQL's dirty secret: missing data just... disappears. ASQL fills the gaps automatically:
+
+```asql
+from orders
+  where order_date >= @2024-01-01 and order_date < @2024-07-01
+  group by month(order_date) (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+All six months appear—even those with zero revenue. No date spine CTEs, no dimension tables.
+
+### 📈 Cohort Analysis Made Simple
+
+**SQL** requires 50+ lines and 5 CTEs for basic retention analysis.
+
+**ASQL**:
+```asql
+from events
+  group by month(event_date) (count(distinct user_id) as active)
+  cohort by month(users.signup_date)
+```
+
+Automatically generates cohort assignment, period calculation, cohort sizes, and proper ordering.
+
+### 🧱 dbt-Style Helpers, No Jinja
+
+| dbt Macro | ASQL Built-In |
+|-----------|---------------|
+| `{{ dbt_utils.deduplicate() }}` | `per user_id first by -created_at` |
+| `{{ dbt_utils.pivot() }}` | `pivot value by category values ('A', 'B')` |
+| `{{ dbt_utils.unpivot() }}` | `unpivot jan, feb, mar into month, value` |
+| `{{ dbt_utils.date_spine() }}` | Automatic with `group by month(...)` |
+| `{{ dbt_utils.star(except=[...]) }}` | `except password_hash, ssn` |
+| `{{ dbt_utils.generate_surrogate_key() }}` | `key(user_id, order_id)` |
+
+### 🪟 Window Functions Without the Pain
+
+**SQL** (10 lines for "latest order per customer"):
+```sql
+SELECT * FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY customer_id ORDER BY order_date DESC
+    ) as rn FROM orders
+) WHERE rn = 1;
+```
+
+**ASQL** (1 line):
+```asql
+from orders
+  per customer_id first by -order_date
+```
+
+Other window helpers: `number by`, `rank by`, `prior()`, `next()`, `running_sum()`, `rolling_avg()`.
+
+### 📅 Dates That Make Sense
+
+```asql
+from events
+  where created_at >= @2024-01-01        -- Date literals
+  where created_at >= 7 days ago         -- Relative dates
+  where created_at >= 30 days ago        -- Works across dialects
+  group by month(created_at) (...)       -- Clean truncation
+  select days_since_signup               -- Time since patterns
+```
+
+### 🔗 Intuitive Joins
+
+```asql
+from orders & customers on ...      -- INNER JOIN (& = both required)
+from orders &? customers on ...     -- LEFT JOIN  (&? = right optional)
+from orders.customer.name           -- Auto-join via FK convention
+```
+
+---
 
 ## Installation
 
-First, create and activate a virtual environment:
-
 ```bash
-# Create virtual environment
 python -m venv venv
-
-# Activate virtual environment
-# On macOS/Linux:
 source venv/bin/activate
-# On Windows:
-# venv\Scripts\activate
-```
-
-Then install ASQL:
-
-```bash
 pip install -e .
 ```
-
-Or with development dependencies:
-
-```bash
-pip install -e ".[dev]"
-```
-
-## VS Code Extension
-
-ASQL has VS Code extension support for syntax highlighting, snippets, and language features!
-
-📦 **Installation**: See [`vscode-extension/README.md`](vscode-extension/README.md) for installation instructions.
-
-✨ **Features**:
-- Syntax highlighting for ASQL keywords, operators, and functions
-- Code snippets for common query patterns
-- Smart indentation for pipeline syntax
-- File association for `.asql` files
-
-For more details, see [`vscode-extension/VSCODE_INTEGRATION.md`](vscode-extension/VSCODE_INTEGRATION.md).
 
 ## Quick Start
 
 ```python
 from asql import compile
 
-# Simple query
-asql = """
+query = """
 from users
-where status == "active"
-group by country ( # as total_users )
-order by -total_users
-limit 10
+  where status = "active"
+  group by country ( # as total_users )
+  order by -total_users
 """
 
-sql = compile(asql, dialect="postgres")
-print(sql)
+sql = compile(query, dialect="postgres")  # or bigquery, snowflake, mysql...
 ```
 
-**Output:**
-```sql
-WITH 1_where_status AS (
-  SELECT * FROM users WHERE status = 'active'
-),
-2_group_by_country AS (
-  SELECT country, COUNT(*) AS total_users
-  FROM 1_where_status
-  GROUP BY country
-)
-SELECT country, total_users
-FROM 2_group_by_country
-ORDER BY total_users DESC
-LIMIT 10
-```
+## Multi-Dialect Support
 
-Each pipeline step becomes a descriptive CTE, making the generated SQL self-documenting and easy to debug!
+ASQL compiles to PostgreSQL, BigQuery, Snowflake, Redshift, MySQL, DuckDB, and more via [SQLGlot](https://github.com/tobymao/sqlglot). Write once, run anywhere.
+
+---
 
 ## Documentation
 
-The ASQL documentation is served via a web server that includes:
-- 📖 Interactive documentation with dialect tabs
-- 🎮 Embedded playground for trying ASQL
-- 📚 Examples with live SQL compilation
-- 📋 Complete language specification
+- 📖 **[Quick Start](docs/quick_start.md)** — Get started in minutes
+- 📋 **[Language Spec](docs/spec.md)** — Complete syntax reference  
+- 📊 **[Guaranteed Groups](docs/concepts/guaranteed-groups.md)** — Auto-spine deep dive
+- 📈 **[Cohort Analysis](docs/syntax/cohorts.md)** — Retention made easy
+- 🪟 **[Window Functions](docs/window_functions.md)** — Simplified window patterns
+- 🧱 **[Coming from dbt](docs/coming-from/dbt.md)** — Macro equivalents
 
-### Serving the Documentation
+### Interactive Playground
 
 ```bash
-# Install dependencies
 pip install -e ".[docs,playground]"
-
-# Start both MkDocs and Playground
 ./serve.sh
 ```
 
-This starts:
-- **Documentation (MkDocs)**: http://localhost:8000
-- **Playground**: http://localhost:5001
-
-### Documentation Features
-
-- **Dialect Tabs**: Every ASQL code example automatically shows tabs for different SQL dialects (PostgreSQL, BigQuery, Snowflake, Redshift, etc.)
-- **Embedded Playground**: Try ASQL directly in the documentation
-- **Live Compilation**: See SQL output for any ASQL query
-- **Navigation**: Easy navigation between docs pages with persistent sidebar
-
-### Documentation Pages
-
-- 📖 [Quick Start Guide](docs/quick_start.md) - Get started in minutes
-- 📚 [Comprehensive Examples](docs/examples.md) - Extensive examples with SQL output
-- 🎮 [Interactive Playground](docs/playground.md) - Try ASQL in your browser
-- 🏗️ [Architecture](ARCHITECTURE.md) - System design and implementation details
-- 📋 [Language Specification](docs/spec.md) - Complete ASQL syntax reference
-
-## Interactive Playground
-
-Try ASQL in your browser! The playground lets you write ASQL queries and see the generated SQL in real-time.
-
-### Start the Playground
-
-```bash
-# Start docs + playground (recommended)
-./serve.sh
-```
-
-Then open http://localhost:5001 in your browser.
-
-**Note**: The playground runs on FastAPI + Uvicorn.
-
-The playground features:
-- ✨ Real-time ASQL → SQL compilation
-- 🎨 Syntax highlighting
-- 📝 Pre-built example queries
-- 🔄 Multiple SQL dialect support
-- 📋 Copy-to-clipboard functionality
-
-## Examples Library
-
-Run all examples:
-
-```bash
-python examples/run_all.py
-```
-
-Or import specific examples:
-
-```python
-from examples import basic_queries, aggregations, sorting_and_limiting
-
-# Run basic query examples
-basic_queries.example_from_where()
-
-# Run aggregation examples
-aggregations.example_group_by_sum()
-
-# Run sorting examples
-sorting_and_limiting.example_complete_pipeline()
-```
-
-## Language Overview
-
-### Basic Syntax
-
-ASQL uses a pipeline-based syntax where operations flow from top to bottom:
-
-```asql
-from users                    # Start with a table
-where status == "active"      # Filter rows
-group by country (            # Group and aggregate
-    # as total_users
-)
-order by -total_users            # Sort descending
-limit 10                      # Limit results
-```
-
-### Comparison Operators
-
-- `==` - equals
-- `!=` - not equals  
-- `<`, `>`, `<=`, `>=` - comparisons
-- `is null`, `is not null` - null checks
-
-```asql
-from users where age >= 18 and email is not null
-```
-
-### Logical Operators
-
-- `and` - logical AND
-- `or` - logical OR
-- `not` - logical NOT
-
-```asql
-from users where status == "active" or status == "pending"
-```
-
-### Aggregations
-
-Supported functions:
-- `#` or `count(*)` - count rows
-- `sum(column)` - sum values
-- `avg(column)` - average values
-- `min(column)` - minimum value
-- `max(column)` - maximum value
-
-```asql
-from sales group by region (
-    sum(amount) as revenue,
-    # as orders,
-    avg(amount) as avg_order
-)
-```
-
-### Sorting
-
-- `order by column` - ascending
-- `order by -column` - descending (use `-` prefix)
-
-```asql
-from users order by -total_users, name
-```
-
-### Limiting
-
-```asql
-from users limit 10
-```
+Then open http://localhost:5001
 
 ## Development
 
 ```bash
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Run tests
 ./venv/bin/pytest tests/
-
-# Run tests with coverage
-./venv/bin/pytest tests/ --cov=asql --cov-report=html
-
-# Run specific test file
-./venv/bin/pytest tests/test_compiler.py
+./venv/bin/pytest tests/ --cov=asql
 ```
-
-## Project Structure
-
-```
-asql/
-├── asql/              # Core library
-│   ├── parser.py      # ASQL parser
-│   ├── compiler.py    # SQL compiler
-│   ├── dialect.py     # Dialect support
-│   └── errors.py     # Error handling
-├── tests/             # Test suite
-├── examples/          # Example queries
-├── docs/              # Documentation
-├── playground/        # Interactive web playground (FastAPI)
-└── pyproject.toml     # Project configuration
-```
-
-## Supported SQL Dialects
-
-- PostgreSQL
-- MySQL
-- BigQuery
-- Snowflake
-- Redshift
-- SQLite
-- And more (via SQLGlot)
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Write tests for new features
-2. Follow the existing code style
-3. Update documentation as needed
-4. Run tests before submitting
 
 ## License
 
-MIT License
+MIT
 
-## Status
+---
 
-See [STATUS.md](STATUS.md) for current implementation status and known limitations.
+*ASQL is inspired by [PRQL](https://prql-lang.org/), [Malloy](https://www.malloydata.dev/), [KQL](https://learn.microsoft.com/en-us/azure/data-explorer/kusto/query/), and the emerging pipe syntaxes in BigQuery, Snowflake, and PostgreSQL.*
