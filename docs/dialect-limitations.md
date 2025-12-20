@@ -4,6 +4,46 @@ This document tracks features that have inconsistent behavior or limited support
 
 ---
 
+## Compile-Time Validation
+
+ASQL now validates feature support at compile time, catching unsupported feature + dialect combinations before generating invalid SQL.
+
+### Error Behavior
+
+- **❌ Not supported** → Raises `ASQLDialectError` with helpful error message
+- **⚠️ Partial support** → May raise `ASQLDialectWarning` for edge cases
+- **🐛 Known bug** → Raises `ASQLDialectWarning` with issue link
+
+### Example Error Messages
+
+When using `except` on PostgreSQL without a schema:
+
+```
+ASQLDialectError: Column operators ('except', 'rename', 'replace') are not supported for PostgreSQL.
+
+The 'except' operator requires EXCEPT/EXCLUDE syntax which PostgreSQL doesn't support.
+
+Options:
+  1. Provide a schema to enable automatic column enumeration (see docs/schema.md)
+  2. Use explicit SELECT: 'select id, name, email from users'
+  3. Use a dialect with EXCLUDE support: BigQuery, Snowflake, DuckDB
+
+See: https://asql.dev/docs/dialect-limitations#column-operators
+```
+
+When using slice syntax `[1:5]` on PostgreSQL (known bug):
+
+```
+ASQLDialectWarning: Slice syntax '[start:end]' has known issues for PostgreSQL (Issue #77).
+
+The generated SQL may be invalid. Use SUBSTRING() instead:
+  'select substring(name, 1, 5) as prefix'
+
+See: https://asql.dev/docs/dialect-limitations#slice-syntax
+```
+
+---
+
 ## Features with Limited Dialect Support
 
 ### 1. Column Operators (`except`, `rename`, `replace`)
@@ -32,7 +72,14 @@ from users
 - SQLite: ❌ **Not supported**
 - Redshift: ❌ **Not supported**
 
-**Workaround for unsupported dialects**: List columns explicitly instead of using `*`.
+**Compile-time behavior**:
+- **Without schema**: Raises `ASQLDialectError` for unsupported dialects (PostgreSQL, MySQL, SQLite, Redshift)
+- **With schema**: Raises `ASQLDialectWarning` - ASQL attempts automatic column expansion (Issue #80)
+
+**Workaround for unsupported dialects**: 
+- Provide a schema to enable automatic column enumeration
+- List columns explicitly: `select id, name, email from users`
+- Use a dialect with native EXCEPT/EXCLUDE support: BigQuery, Snowflake, DuckDB
 
 ---
 
@@ -59,6 +106,8 @@ group by rollup(year(date), month(date)) (
 
 **Current behavior**: Auto-spine attempts to handle ROLLUP/CUBE by including NULL in spines and filtering invalid patterns, but this is not fully tested with all edge cases.
 
+**Compile-time behavior**: No validation errors or warnings (edge cases are handled at runtime).
+
 **Workaround**: Disable auto-spine for queries using GROUPING SETS:
 
 ```asql
@@ -82,10 +131,10 @@ group by rollup(year(date), month(date)) (
 | Slice syntax `[1:5]` | 🐛 | 🐛 | ✅ | 🐛 | 🐛 | 🐛 | 🐛 |
 
 Legend:
-- ✅ Fully supported
-- ⚠️ Partial support / edge cases
-- ❌ Not supported
-- 🐛 Bug - documented but broken (see Known Bugs section)
+- ✅ Fully supported - No validation errors or warnings
+- ⚠️ Partial support / edge cases - May raise `ASQLDialectWarning`
+- ❌ Not supported - Raises `ASQLDialectError` (unless schema enables fallback)
+- 🐛 Bug - Raises `ASQLDialectWarning` with issue link (see Known Bugs section)
 
 ---
 
@@ -114,6 +163,8 @@ from users
 | BigQuery | `email[1 : 5]` | ❌ Invalid for strings |
 | MySQL | `email[1 : 5]` | ❌ Invalid syntax |
 
+**Compile-time behavior**: Raises `ASQLDialectWarning` for all dialects except DuckDB (which has native support).
+
 **Fix planned**: Convert to `SUBSTRING()` in preparser, let SQLGlot handle dialect-specific output.
 
 **Workaround**: Use `SUBSTRING()` directly:
@@ -140,7 +191,7 @@ Open an issue at: https://github.com/davefowler/asql/issues
 
 ## Future Improvements
 
-- [ ] Add compile-time warnings for features not supported by target dialect - [Issue #81](https://github.com/davefowler/asql/issues/81)
+- [x] Add compile-time warnings for features not supported by target dialect - [Issue #81](https://github.com/davefowler/asql/issues/81) ✅
 - [ ] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE` - [Issue #80](https://github.com/davefowler/asql/issues/80)
 - [ ] Add comprehensive ROLLUP/CUBE testing for auto-spine
 - [ ] Document all dialect-specific SQL generation differences

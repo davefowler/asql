@@ -8,8 +8,16 @@ from sqlglot.dialects import Dialect
 
 from asql.config import CompileSettings
 from asql.dialect import register_asql_dialect
-from asql.errors import ASQLCompilationError, ASQLSyntaxError
+from asql.errors import ASQLCompilationError, ASQLSyntaxError, ASQLDialectError, ASQLDialectWarning
 from asql.preparse import preparse_asql
+from asql.dialect_features import (
+    Feature,
+    check_feature,
+    has_column_operators,
+    has_slice_syntax,
+    get_dialect_display_name,
+)
+import warnings
 from asql.compiler.auto_spine import _apply_auto_spine, _remove_guarantee_wrappers
 from asql.compiler.explode import process_explode_markers
 from asql.compiler.inline_settings import (
@@ -19,6 +27,69 @@ from asql.compiler.inline_settings import (
 )
 from asql.compiler.auto_qualify import auto_qualify_columns
 from asql.compiler.auto_alias import apply_auto_aliasing
+
+
+def _validate_dialect_features(
+    original_query: str,
+    preparsed_query: str,
+    dialect: Optional[str],
+    settings: CompileSettings,
+) -> None:
+    """Validate that features used in the query are supported by the target dialect.
+    
+    Raises ASQLDialectError for unsupported features without workarounds.
+    Raises ASQLDialectWarning for features with known issues or partial support.
+    
+    Args:
+        original_query: Original ASQL query string
+        preparsed_query: Pre-parsed SQL-like query string
+        dialect: Target SQL dialect
+        settings: Compile settings (for schema availability check)
+    """
+    if not dialect:
+        return  # Can't validate without a dialect
+    
+    # 1. Check column operators (except, rename, replace)
+    if has_column_operators(preparsed_query):
+        if not check_feature(Feature.COLUMN_EXCLUDE, dialect):
+            dialect_name = get_dialect_display_name(dialect)
+            schema_available = settings.schema is not None
+            
+            if schema_available:
+                # Schema can enable fallback (Issue #80) - warn but allow
+                warnings.warn(
+                    ASQLDialectWarning(
+                        f"Column operators ('except', 'rename', 'replace') are not natively supported "
+                        f"for {dialect_name}.\n\n"
+                        f"A schema is provided, so ASQL will attempt to expand columns automatically. "
+                        f"If this fails, use explicit SELECT: 'select col1, col2 from table'.\n\n"
+                        f"See: https://asql.dev/docs/dialect-limitations#column-operators"
+                    )
+                )
+            else:
+                # No schema - hard error
+                raise ASQLDialectError(
+                    f"Column operators ('except', 'rename', 'replace') are not supported for {dialect_name}.\n\n"
+                    f"The 'except' operator requires EXCEPT/EXCLUDE syntax which {dialect_name} doesn't support.\n\n"
+                    f"Options:\n"
+                    f"  1. Provide a schema to enable automatic column enumeration (see docs/schema.md)\n"
+                    f"  2. Use explicit SELECT: 'select id, name, email from users'\n"
+                    f"  3. Use a dialect with EXCLUDE support: BigQuery, Snowflake, DuckDB\n\n"
+                    f"See: https://asql.dev/docs/dialect-limitations#column-operators"
+                )
+    
+    # 2. Check slice syntax (known bug #77)
+    if has_slice_syntax(original_query):
+        if not check_feature(Feature.SLICE_SYNTAX, dialect):
+            dialect_name = get_dialect_display_name(dialect)
+            warnings.warn(
+                ASQLDialectWarning(
+                    f"Slice syntax '[start:end]' has known issues for {dialect_name} (Issue #77).\n\n"
+                    f"The generated SQL may be invalid. Use SUBSTRING() instead:\n"
+                    f"  'select substring(name, 1, 5) as prefix'\n\n"
+                    f"See: https://asql.dev/docs/dialect-limitations#slice-syntax"
+                )
+            )
 
 
 def _validate_statement(stmt: exp.Expression, original_query: str) -> List[str]:
@@ -126,6 +197,10 @@ def compile(
             raise ASQLSyntaxError("No valid queries found (only SET statements)")
 
         sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
+        
+        # Validate dialect feature support
+        _validate_dialect_features(asql_query, preparsed, dialect, final_settings)
+        
         sql_parts = []
 
         for stmt in query_statements:
