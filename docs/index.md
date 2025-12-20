@@ -287,7 +287,7 @@ select
 
 ---
 
-## Guaranteed Groups (including dates)
+## Guaranteed Groups (splines by default!)
 
 SQL doesn't guarantee your grouped results are complete. If a dimension value has no data, it simply won't appear in your results.
 
@@ -399,6 +399,11 @@ Quick lookup:
 - [Operators Reference](reference/operators.md) — All operators
 - [Keywords Reference](reference/keywords.md) — Reserved keywords
 - [Language Specification](spec.md) — Complete language reference
+
+### Development
+
+- [Testing](testing.md) — How ASQL is tested, database coverage
+- [Dialect Limitations](dialect-limitations.md) — Known dialect-specific limitations
 
 ---
 
