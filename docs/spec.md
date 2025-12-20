@@ -136,9 +136,11 @@ Operators are applied in logical order using the pipe (`|`) symbol:
 
 ### 4.4 String & Date Literals
 
-- Strings: `"active"`, `'inactive'`
+- Strings: `'active'` (single quotes are standard SQL and recommended)
 - Dates: `@2025-01-10`, `@2025-11-10`
 - Numbers: `42`, `3.14`
+
+> **Note**: Use single quotes for string literals. Double quotes (`"column"`) are reserved for quoted identifiers (column/table names with spaces or special characters), following SQL standard conventions.
 
 ### 4.5 String Matching Operators
 
