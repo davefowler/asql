@@ -57,8 +57,12 @@ class DuckDBExecutor(ExecutorBase):
     def validate_syntax(self, sql: str) -> bool:
         """Check if SQL is syntactically valid without executing."""
         try:
+            # Strip all comments before processing (they can contain semicolons)
+            import re
+            clean_sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
+            
             # Handle multiple statements separated by semicolons
-            statements = [s.strip() for s in sql.split(";") if s.strip()]
+            statements = [s.strip() for s in clean_sql.split(";") if s.strip()]
             for stmt in statements:
                 # Use EXPLAIN to validate syntax without executing
                 self.conn.execute(f"EXPLAIN {stmt}")
