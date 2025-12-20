@@ -32,6 +32,14 @@ def _extract_alias_name(expr: exp.Expression) -> Optional[str]:
     return None
 
 
+def _is_bare_column(expr: exp.Expression) -> bool:
+    """Check if expression is a bare column reference (no computation).
+    
+    These are already included in SELECT * and should not be duplicated.
+    """
+    return isinstance(expr, exp.Column)
+
+
 def _find_column_references(expr: exp.Expression) -> List[str]:
     """Find all column references in an expression.
     
@@ -234,8 +242,11 @@ def _generate_cte_chain(
     prev_cte_name = base_cte_name
     
     # First CTE: base query with first group of expressions
+    # Include SELECT * to preserve all base columns, plus computed expressions (not bare columns)
+    # Bare column references are already included in SELECT * and should not be duplicated
+    computed_exprs_0 = [e for e in expression_groups[0] if not _is_bare_column(e)]
     base_select = select.copy()
-    base_select.set("expressions", expression_groups[0])
+    base_select.set("expressions", [exp.Star(), *computed_exprs_0])
     
     # Remove WHERE/ORDER BY/etc. from base - they'll go in final CTE
     base_select.set("where", None)
@@ -244,17 +255,16 @@ def _generate_cte_chain(
     base_select.set("having", None)
     base_select.set("qualify", None)
     
-    # Get FROM clause from original
-    if not base_select.args.get("from"):
+    # Get FROM clause from original (use from_ which is the correct sqlglot key)
+    if not base_select.args.get("from_"):
         # Need to preserve FROM from original
-        if select.args.get("from"):
-            base_select.set("from", select.args["from"].copy())
+        if select.args.get("from_"):
+            base_select.set("from_", select.args["from_"].copy())
     
     ctes.append(
         exp.CTE(
-            this=exp.TableAlias(this=exp.Identifier(this=base_cte_name, quoted=False)),
-            alias=exp.Identifier(this=base_cte_name, quoted=False),
-            expression=base_select,
+            this=base_select,
+            alias=exp.TableAlias(this=exp.Identifier(this=base_cte_name, quoted=False)),
         )
     )
     
@@ -263,13 +273,15 @@ def _generate_cte_chain(
         step_name = f"_step{step_num}"
         
         # Build SELECT for this step: SELECT *, new_expressions FROM prev_step
+        # Filter out bare column references (already in SELECT *)
+        computed_exprs = [e for e in expr_group if not _is_bare_column(e)]
         step_select = exp.Select()
         step_select.set("expressions", [
             exp.Star(),  # SELECT * from previous step
-            *expr_group,  # Plus the new expressions
+            *computed_exprs,  # Plus the new computed expressions
         ])
         step_select.set(
-            "from",
+            "from_",
             exp.From(
                 this=exp.Table(
                     this=exp.Identifier(this=prev_cte_name, quoted=False)
@@ -279,19 +291,31 @@ def _generate_cte_chain(
         
         ctes.append(
             exp.CTE(
-                this=exp.TableAlias(this=exp.Identifier(this=step_name, quoted=False)),
-                alias=exp.Identifier(this=step_name, quoted=False),
-                expression=step_select,
+                this=step_select,
+                alias=exp.TableAlias(this=exp.Identifier(this=step_name, quoted=False)),
             )
         )
         
         prev_cte_name = step_name
     
     # Final SELECT: apply WHERE/ORDER BY/etc. from original query
+    # Select only the columns from the original SELECT (not SELECT * which would include base columns)
+    final_expressions: List[exp.Expression] = []
+    for orig_expr in select.expressions:
+        alias_name = _extract_alias_name(orig_expr)
+        if alias_name:
+            # Reference the computed alias from the CTE chain
+            final_expressions.append(
+                exp.Column(this=exp.Identifier(this=alias_name, quoted=False))
+            )
+        else:
+            # For non-aliased expressions (like bare column references), copy as-is
+            final_expressions.append(orig_expr.copy())
+    
     final_select = exp.Select()
-    final_select.set("expressions", [exp.Star()])
+    final_select.set("expressions", final_expressions)
     final_select.set(
-        "from",
+        "from_",
         exp.From(
             this=exp.Table(
                 this=exp.Identifier(this=prev_cte_name, quoted=False)
@@ -313,7 +337,7 @@ def _generate_cte_chain(
     
     # Wrap in WITH clause
     with_expr = exp.With(expressions=ctes)
-    final_select.set("with", with_expr)
+    final_select.set("with_", with_expr)
     
     return final_select
 
