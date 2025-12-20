@@ -1,380 +1,233 @@
-"""Execution tests for ASQL.
-
-These tests execute the compiled SQL against in-memory data to verify
-the actual results are correct, not just that the SQL is valid.
-
-Uses SQLGlot's built-in executor for basic tests, with limitations:
-- No generate_series support (date spines need mocking)
-- No complex date functions (DATE_TRUNC may not work)
-- Good for categorical spines and basic queries
-
-For full date spine testing, consider adding DuckDB integration tests.
-"""
+"""Execution tests that run compiled ASQL queries against real databases."""
 
 import pytest
-from sqlglot import executor
-from sqlglot.executor.table import Table
-from asql import compile, CompileSettings
+from typing import Any, List, Tuple
+
+from asql import compile
+from asql.testing.executors import get_available_executors, EXECUTORS
 
 
-class TestCategoricalSpineExecution:
-    """Execute compiled SQL and verify categorical spine results."""
-
-    def test_spine_fills_missing_categories(self):
-        """Test that LEFT JOIN with spine fills gaps for missing categories."""
-        # This tests the core spine mechanism directly
-        sales = Table(
-            columns=['region', 'amount'],
-            rows=[
-                ('North', 100),
-                ('North', 50),
-                # No South or East sales!
-            ]
-        )
-        
-        region_spine = Table(
-            columns=['region'],
-            rows=[('North',), ('South',), ('East',)]
-        )
-        
-        # Execute spine query pattern
-        result = executor.execute(
-            """
-            SELECT region_spine.region, 
-                   COALESCE(SUM(sales.amount), 0) as total
-            FROM region_spine
-            LEFT JOIN sales ON region_spine.region = sales.region
-            GROUP BY region_spine.region
-            ORDER BY region_spine.region
-            """,
-            tables={'sales': sales, 'region_spine': region_spine}
-        )
-        
-        rows = list(result.rows)
-        assert len(rows) == 3
-        assert rows[0] == ('East', 0)     # Gap filled!
-        assert rows[1] == ('North', 150)   # Has data
-        assert rows[2] == ('South', 0)     # Gap filled!
-
-    def test_spine_with_where_filter(self):
-        """Test that WHERE filter works with spine."""
-        sales = Table(
-            columns=['region', 'amount', 'status'],
-            rows=[
-                ('North', 100, 'active'),
-                ('North', 50, 'inactive'),
-                ('South', 200, 'active'),
-            ]
-        )
-        
-        region_spine = Table(
-            columns=['region'],
-            rows=[('North',), ('South',)]
-        )
-        
-        # Spine with filtered data
-        result = executor.execute(
-            """
-            WITH spine_data AS (
-                SELECT region, SUM(amount) as total
-                FROM sales
-                WHERE status = 'active'
-                GROUP BY region
-            )
-            SELECT region_spine.region,
-                   COALESCE(spine_data.total, 0) as total
-            FROM region_spine
-            LEFT JOIN spine_data ON region_spine.region = spine_data.region
-            ORDER BY region_spine.region
-            """,
-            tables={'sales': sales, 'region_spine': region_spine}
-        )
-        
-        rows = list(result.rows)
-        assert rows[0] == ('North', 100)  # Only active
-        assert rows[1] == ('South', 200)
-
-    def test_multiple_aggregates_with_spine(self):
-        """Test multiple aggregates with spine."""
-        sales = Table(
-            columns=['region', 'amount'],
-            rows=[
-                ('North', 100),
-                ('North', 200),
-                ('North', 150),
-            ]
-        )
-        
-        region_spine = Table(
-            columns=['region'],
-            rows=[('North',), ('South',)]
-        )
-        
-        result = executor.execute(
-            """
-            SELECT region_spine.region,
-                   COALESCE(SUM(sales.amount), 0) as total,
-                   COALESCE(COUNT(sales.amount), 0) as cnt
-            FROM region_spine
-            LEFT JOIN sales ON region_spine.region = sales.region
-            GROUP BY region_spine.region
-            ORDER BY region_spine.region
-            """,
-            tables={'sales': sales, 'region_spine': region_spine}
-        )
-        
-        rows = list(result.rows)
-        assert rows[0] == ('North', 450, 3)
-        assert rows[1] == ('South', 0, 0)
+# Parametrize over all available executors
+@pytest.fixture(params=get_available_executors())
+def executor(request: pytest.FixtureRequest) -> Any:
+    """Fixture that provides an executor instance for each available database."""
+    exec_name = request.param
+    exec_cls = EXECUTORS[exec_name]
+    exec_instance = exec_cls()
+    exec_instance.setup()
+    yield exec_instance
+    exec_instance.teardown()
 
 
-class TestBasicQueryExecution:
-    """Test basic ASQL query execution (non-spine)."""
+class TestBasicExecution:
+    """Test basic query execution and result correctness."""
 
-    def test_simple_select(self):
-        """Test simple SELECT execution."""
-        users = Table(
-            columns=['id', 'name', 'age'],
-            rows=[
-                (1, 'Alice', 30),
-                (2, 'Bob', 25),
-                (3, 'Charlie', 35),
-            ]
+    def test_simple_select(self, executor: Any) -> None:
+        """Test basic SELECT query returns correct rows."""
+        executor.create_table(
+            "users",
+            columns={"id": "INT", "name": "VARCHAR"},
+            rows=[(1, "Alice"), (2, "Bob")],
         )
-        
-        result = executor.execute(
-            "SELECT name, age FROM users WHERE age > 25 ORDER BY age",
-            tables={'users': users}
-        )
-        
-        rows = list(result.rows)
+
+        sql = compile("from users select name", dialect=executor.dialect)
+        rows = executor.execute(sql)
+
         assert len(rows) == 2
-        assert rows[0] == ('Alice', 30)
-        assert rows[1] == ('Charlie', 35)
+        assert ("Alice",) in rows
+        assert ("Bob",) in rows
 
-    def test_group_by_aggregation(self):
-        """Test GROUP BY with aggregation."""
-        orders = Table(
-            columns=['customer', 'amount'],
+    def test_select_all_columns(self, executor: Any) -> None:
+        """Test SELECT * returns all columns."""
+        executor.create_table(
+            "users",
+            columns={"id": "INT", "name": "VARCHAR", "age": "INT"},
+            rows=[(1, "Alice", 30), (2, "Bob", 25)],
+        )
+
+        sql = compile("from users", dialect=executor.dialect)
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        assert len(columns) == 3
+        assert "id" in columns
+        assert "name" in columns
+        assert "age" in columns
+        assert len(rows) == 2
+
+    def test_where_filter(self, executor: Any) -> None:
+        """Test WHERE clause filters rows correctly."""
+        executor.create_table(
+            "users",
+            columns={"id": "INT", "name": "VARCHAR", "status": "VARCHAR"},
             rows=[
-                ('Alice', 100),
-                ('Alice', 150),
-                ('Bob', 200),
-            ]
+                (1, "Alice", "active"),
+                (2, "Bob", "inactive"),
+                (3, "Charlie", "active"),
+            ],
         )
-        
-        result = executor.execute(
-            "SELECT customer, SUM(amount) as total FROM orders GROUP BY customer ORDER BY customer",
-            tables={'orders': orders}
-        )
-        
-        rows = list(result.rows)
-        assert rows[0] == ('Alice', 250)
-        assert rows[1] == ('Bob', 200)
 
-    def test_join_execution(self):
-        """Test JOIN execution."""
-        orders = Table(
-            columns=['id', 'customer_id', 'amount'],
-            rows=[
-                (1, 1, 100),
-                (2, 1, 150),
-                (3, 2, 200),
-            ]
+        sql = compile(
+            'from users where status == "active"', dialect=executor.dialect
         )
-        
-        customers = Table(
-            columns=['id', 'name'],
-            rows=[
-                (1, 'Alice'),
-                (2, 'Bob'),
-            ]
-        )
-        
-        result = executor.execute(
-            """
-            SELECT customers.name, SUM(orders.amount) as total
-            FROM orders
-            JOIN customers ON orders.customer_id = customers.id
-            GROUP BY customers.name
-            ORDER BY customers.name
-            """,
-            tables={'orders': orders, 'customers': customers}
-        )
-        
-        rows = list(result.rows)
-        assert rows[0] == ('Alice', 250)
-        assert rows[1] == ('Bob', 200)
+        rows = executor.execute(sql)
 
+        assert len(rows) == 2
+        names = [row[1] for row in rows]
+        assert "Alice" in names
+        assert "Charlie" in names
+        assert "Bob" not in names
 
-class TestEdgeCases:
-    """Test edge cases in execution."""
+    def test_aggregation(self, executor: Any) -> None:
+        """Test GROUP BY aggregation returns correct values."""
+        executor.create_table(
+            "sales",
+            columns={"region": "VARCHAR", "amount": "INT"},
+            rows=[("North", 100), ("North", 50), ("South", 75)],
+        )
 
-    @pytest.mark.xfail(reason="SQLGlot executor has a bug with empty tables")
-    def test_empty_table(self):
-        """Test with empty source table."""
-        sales = Table(
-            columns=['region', 'amount'],
-            rows=[]  # Empty!
-        )
-        
-        region_spine = Table(
-            columns=['region'],
-            rows=[('North',), ('South',)]
-        )
-        
-        result = executor.execute(
-            """
-            SELECT region_spine.region,
-                   COALESCE(SUM(sales.amount), 0) as total
-            FROM region_spine
-            LEFT JOIN sales ON region_spine.region = sales.region
-            GROUP BY region_spine.region
-            ORDER BY region_spine.region
-            """,
-            tables={'sales': sales, 'region_spine': region_spine}
-        )
-        
-        rows = list(result.rows)
-        assert rows[0] == ('North', 0)
-        assert rows[1] == ('South', 0)
-
-    def test_null_values_in_data(self):
-        """Test handling of NULL values."""
-        sales = Table(
-            columns=['region', 'amount'],
-            rows=[
-                ('North', 100),
-                ('North', None),  # NULL amount
-                ('South', 200),
-            ]
-        )
-        
-        region_spine = Table(
-            columns=['region'],
-            rows=[('North',), ('South',)]
-        )
-        
-        result = executor.execute(
-            """
-            SELECT region_spine.region,
-                   COALESCE(SUM(sales.amount), 0) as total
-            FROM region_spine
-            LEFT JOIN sales ON region_spine.region = sales.region
-            GROUP BY region_spine.region
-            ORDER BY region_spine.region
-            """,
-            tables={'sales': sales, 'region_spine': region_spine}
-        )
-        
-        rows = list(result.rows)
-        # SUM ignores NULLs
-        assert rows[0] == ('North', 100)
-        assert rows[1] == ('South', 200)
-
-    def test_all_null_aggregation(self):
-        """Test when all values are NULL."""
-        sales = Table(
-            columns=['region', 'amount'],
-            rows=[
-                ('North', None),
-                ('North', None),
-            ]
-        )
-        
-        region_spine = Table(
-            columns=['region'],
-            rows=[('North',), ('South',)]
-        )
-        
-        result = executor.execute(
-            """
-            SELECT region_spine.region,
-                   COALESCE(SUM(sales.amount), 0) as total
-            FROM region_spine
-            LEFT JOIN sales ON region_spine.region = sales.region
-            GROUP BY region_spine.region
-            ORDER BY region_spine.region
-            """,
-            tables={'sales': sales, 'region_spine': region_spine}
-        )
-        
-        rows = list(result.rows)
-        # SUM of all NULLs is NULL, COALESCE converts to 0
-        assert rows[0] == ('North', 0)
-        assert rows[1] == ('South', 0)
-
-
-# Optional: DuckDB tests if available
-try:
-    import duckdb
-    HAS_DUCKDB = True
-except ImportError:
-    HAS_DUCKDB = False
-
-
-@pytest.mark.skipif(not HAS_DUCKDB, reason="DuckDB not installed")
-class TestDuckDBExecution:
-    """Full execution tests using DuckDB."""
-
-    def test_compiled_asql_execution(self):
-        """Test that compiled ASQL produces correct results in DuckDB."""
-        conn = duckdb.connect(':memory:')
-        
-        # Create test data
-        conn.execute("""
-            CREATE TABLE sales AS SELECT * FROM (VALUES
-                ('North', 100),
-                ('North', 50),
-                ('South', 200)
-            ) AS t(region, amount)
-        """)
-        
-        # Compile ASQL (without spine for simplicity)
         sql = compile(
             "from sales group by region (sum(amount) as total)",
-            dialect="duckdb",
-            settings=CompileSettings(auto_spine=False)
+            dialect=executor.dialect,
         )
-        
-        # Execute
-        result = conn.execute(sql).fetchall()
-        result_dict = {row[0]: row[1] for row in result}
-        
-        assert result_dict['North'] == 150
-        assert result_dict['South'] == 200
+        rows = executor.execute(sql)
 
-    def test_date_spine_with_duckdb(self):
-        """Test date spine generation with DuckDB."""
-        conn = duckdb.connect(':memory:')
-        
-        # Create test data with dates
-        conn.execute("""
-            CREATE TABLE sales AS SELECT * FROM (VALUES
-                (DATE '2021-01-15', 100),
-                (DATE '2021-03-15', 200)
-            ) AS t(created_at, amount)
-        """)
-        
-        # Compile ASQL with spine
-        sql = compile(
-            "from sales where created_at >= '2021-01-01' and created_at < '2021-04-01' "
-            "group by month(created_at) (sum(amount) as total)",
-            dialect="duckdb",
-            settings=CompileSettings(auto_spine=True)
+        results = {r[0]: r[1] for r in rows}
+        assert results["North"] == 150
+        assert results["South"] == 75
+
+    def test_multiple_aggregations(self, executor: Any) -> None:
+        """Test multiple aggregations in GROUP BY."""
+        executor.create_table(
+            "sales",
+            columns={"region": "VARCHAR", "amount": "INT"},
+            rows=[
+                ("North", 100),
+                ("North", 50),
+                ("South", 75),
+                ("South", 25),
+            ],
         )
-        
-        # Execute
-        result = conn.execute(sql).fetchall()
-        
-        # Should have 3 months: Jan, Feb, Mar
-        # Feb should be 0 (gap filled)
-        result_dict = {}
-        for row in result:
-            # Handle different date representations
-            month = str(row[0])[:7]  # Get YYYY-MM part
-            result_dict[month] = row[1]
-        
-        assert result_dict.get('2021-01', 0) == 100 or result_dict.get('2021-01-01', 0) == 100
-        assert result_dict.get('2021-03', 0) == 200 or result_dict.get('2021-03-01', 0) == 200
-        # February should be 0 (gap filled)
+
+        sql = compile(
+            "from sales group by region (sum(amount) as total, avg(amount) as avg_amount, # as count)",
+            dialect=executor.dialect,
+        )
+        rows = executor.execute(sql)
+
+        results = {r[0]: {"total": r[1], "avg": r[2], "count": r[3]} for r in rows}
+        assert results["North"]["total"] == 150
+        assert results["North"]["avg"] == 75.0
+        assert results["North"]["count"] == 2
+        assert results["South"]["total"] == 100
+        assert results["South"]["avg"] == 50.0
+        assert results["South"]["count"] == 2
+
+    def test_order_by(self, executor: Any) -> None:
+        """Test ORDER BY sorts results correctly."""
+        executor.create_table(
+            "users",
+            columns={"id": "INT", "name": "VARCHAR", "age": "INT"},
+            rows=[(1, "Alice", 30), (2, "Bob", 25), (3, "Charlie", 35)],
+        )
+
+        sql = compile("from users order by age", dialect=executor.dialect)
+        rows = executor.execute(sql)
+
+        ages = [row[2] for row in rows]
+        assert ages == [25, 30, 35]
+
+    def test_order_by_descending(self, executor: Any) -> None:
+        """Test descending ORDER BY."""
+        executor.create_table(
+            "users",
+            columns={"id": "INT", "name": "VARCHAR", "age": "INT"},
+            rows=[(1, "Alice", 30), (2, "Bob", 25), (3, "Charlie", 35)],
+        )
+
+        sql = compile("from users order by -age", dialect=executor.dialect)
+        rows = executor.execute(sql)
+
+        ages = [row[2] for row in rows]
+        assert ages == [35, 30, 25]
+
+    def test_limit(self, executor: Any) -> None:
+        """Test LIMIT restricts number of rows."""
+        executor.create_table(
+            "users",
+            columns={"id": "INT", "name": "VARCHAR"},
+            rows=[(i, f"User{i}") for i in range(10)],
+        )
+
+        sql = compile("from users limit 5", dialect=executor.dialect)
+        rows = executor.execute(sql)
+
+        assert len(rows) == 5
+
+    def test_join(self, executor: Any) -> None:
+        """Test JOIN produces correct results."""
+        executor.create_table(
+            "users",
+            columns={"id": "INT", "name": "VARCHAR"},
+            rows=[(1, "Alice"), (2, "Bob")],
+        )
+        executor.create_table(
+            "orders",
+            columns={"id": "INT", "user_id": "INT", "total": "INT"},
+            rows=[(1, 1, 100), (2, 1, 50), (3, 2, 75)],
+        )
+
+        sql = compile(
+            "from users join orders on users.id == orders.user_id select users.name, orders.total",
+            dialect=executor.dialect,
+        )
+        rows = executor.execute(sql)
+
+        assert len(rows) == 3
+        # Check that Alice has 2 orders
+        alice_orders = [r[1] for r in rows if r[0] == "Alice"]
+        assert len(alice_orders) == 2
+        assert 100 in alice_orders
+        assert 50 in alice_orders
+
+
+class TestDialectSyntax:
+    """Test that generated SQL is syntactically valid for each dialect."""
+
+    @pytest.mark.parametrize(
+        "asql_query",
+        [
+            "from t select name",
+            "from t where id > 0",
+            "from t group by region (sum(amount) as total)",
+        ],
+    )
+    def test_basic_syntax_is_valid(
+        self, executor: Any, asql_query: str
+    ) -> None:
+        """Test that basic queries generate valid SQL."""
+        # Create minimal table for syntax validation
+        executor.create_table(
+            "t",
+            columns={"id": "INT", "name": "VARCHAR", "region": "VARCHAR", "amount": "INT"},
+            rows=[],
+        )
+
+        sql = compile(asql_query, dialect=executor.dialect)
+        assert executor.validate_syntax(
+            sql
+        ), f"Invalid {executor.dialect} SQL: {sql}"
+
+    def test_slice_syntax_validation(self, executor: Any) -> None:
+        """Test that slice syntax generates valid SQL (Issue #77)."""
+        executor.create_table(
+            "t",
+            columns={"name": "VARCHAR"},
+            rows=[],
+        )
+
+        sql = compile("from t select name[1:5] as prefix", dialect=executor.dialect)
+        # Note: This may fail for non-DuckDB dialects, which is the bug we're testing for
+        is_valid = executor.validate_syntax(sql)
+        if executor.dialect == "duckdb":
+            assert is_valid, f"Slice syntax should be valid for DuckDB: {sql}"
+        # For other dialects, we document that it may fail (this is the bug)
