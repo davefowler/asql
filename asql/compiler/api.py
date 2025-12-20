@@ -19,6 +19,7 @@ from asql.compiler.inline_settings import (
 )
 from asql.compiler.auto_qualify import auto_qualify_columns
 from asql.compiler.auto_alias import apply_auto_aliasing
+from asql.compiler.alias_reuse import apply_alias_reuse
 from asql.compiler.list_comprehension import (
     check_snowflake_list_comprehensions,
     fix_duckdb_list_comprehensions,
@@ -149,6 +150,9 @@ def compile(
             # Auto-qualify conflicting column names in joins
             transformed_stmt = auto_qualify_columns(transformed_stmt)
 
+            # Apply alias reuse (allow referencing earlier aliases in SELECT)
+            transformed_stmt = apply_alias_reuse(transformed_stmt, dialect)
+
             transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
             
             # Validate the compiled statement for semantic errors
@@ -161,13 +165,13 @@ def compile(
                 )
             
             generated_sql = transformed_stmt.sql(dialect=sql_dialect, pretty=pretty)
-            
+
             # Fix DuckDB list comprehensions (use native syntax)
             generated_sql = fix_duckdb_list_comprehensions(generated_sql, dialect)
-            
+
             # Check for Snowflake list comprehension issues
             check_snowflake_list_comprehensions(generated_sql, dialect)
-            
+
             # Add transpilation comments if enabled
             if final_settings.include_transpilation_comments and transformations_applied:
                 generated_sql = _add_transpilation_comments(
