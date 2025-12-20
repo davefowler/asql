@@ -4,12 +4,13 @@ from typing import List, Type
 
 from asql.testing.executors.base import ExecutorBase
 from asql.testing.executors.duckdb_executor import DuckDBExecutor
+from asql.testing.executors.postgres_executor import PostgresExecutor
 
 # Registry of available executors
 EXECUTORS: dict[str, Type[ExecutorBase]] = {
     "duckdb": DuckDBExecutor,
+    "postgres": PostgresExecutor,
     # Future executors:
-    # 'postgres': PostgresExecutor,
     # 'snowflake': SnowflakeExecutor,
 }
 
@@ -35,6 +36,7 @@ def get_available_executors() -> List[str]:
 __all__ = [
     "ExecutorBase",
     "DuckDBExecutor",
+    "PostgresExecutor",
     "EXECUTORS",
     "get_available_executors",
 ]
