@@ -440,7 +440,7 @@ compile:
 
 ASQL may add support for referencing column aliases within the same SELECT clause and subsequent clauses, eliminating one of SQL's most frustrating limitations.
 
-**Tracking**: Not yet tracked
+**Tracking**: [Issue #83](https://github.com/davefowler/asql/issues/83)
 
 ### Motivation
 

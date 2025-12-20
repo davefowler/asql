@@ -224,6 +224,8 @@ from dirty_data
 
 ### 5. Reusable Column Aliases 📋 Planned (High Priority)
 
+**Tracking**: [Issue #83](https://github.com/davefowler/asql/issues/83)
+
 #### DuckDB
 Reference aliases in the same SELECT and subsequent clauses:
 
