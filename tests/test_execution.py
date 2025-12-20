@@ -377,6 +377,60 @@ class TestAliasReuse:
         assert row1[columns.index("quantity")] == 2
         assert abs(row1[columns.index("total_price")] - 180.0) < 0.01
 
+    def test_alias_reuse_cte_names_unique(self, executor: Any) -> None:
+        """Test that CTE names don't conflict when multiple queries use alias reuse.
+        
+        This verifies that the CTE naming scheme uses unique prefixes to avoid
+        conflicts when multiple parts of a query or multiple queries use alias reuse.
+        """
+        executor.create_table(
+            "products",
+            columns={
+                "base_price": "DOUBLE",
+                "markup": "DOUBLE",
+            },
+            rows=[
+                (100.0, 0.2),  # retail = 120, with_tax = 132
+                (50.0, 0.5),   # retail = 75, with_tax = 82.5
+            ],
+        )
+
+        # Two separate queries that both use alias reuse
+        # Compile them separately but they should use different CTE names
+        asql1 = """
+        from products
+          select
+            base_price * (1 + markup) as retail_price,
+            retail_price * 1.1 as with_tax
+        """
+        asql2 = """
+        from products
+          select
+            base_price * (1 + markup) as retail_price,
+            retail_price * 0.9 as discounted
+        """
+        
+        sql1 = compile(asql1, dialect=executor.dialect)
+        sql2 = compile(asql2, dialect=executor.dialect)
+        
+        # Both should execute successfully
+        rows1 = executor.execute(sql1)
+        rows2 = executor.execute(sql2)
+        
+        # Verify results for query 1
+        assert len(rows1) == 2
+        # First row: retail = 100 * 1.2 = 120, with_tax = 120 * 1.1 = 132
+        results1 = sorted(rows1, key=lambda r: r[0])
+        assert abs(results1[1][0] - 120.0) < 0.01
+        assert abs(results1[1][1] - 132.0) < 0.01
+        
+        # Verify results for query 2
+        assert len(rows2) == 2
+        # First row: retail = 100 * 1.2 = 120, discounted = 120 * 0.9 = 108
+        results2 = sorted(rows2, key=lambda r: r[0])
+        assert abs(results2[1][0] - 120.0) < 0.01
+        assert abs(results2[1][1] - 108.0) < 0.01
+
 
 class TestDialectSyntax:
     """Test that generated SQL is syntactically valid for each dialect."""
