@@ -83,6 +83,65 @@ from users
 
 ---
 
+### 2. Pivot Syntax
+
+**Feature**: Transform row values into columns using the `pivot` keyword.
+
+```asql
+from sales
+  pivot sum(amount) by category values ('A', 'B', 'C')
+```
+
+**Behavior by Dialect**:
+
+| Dialect | Static Pivot (with values) | Dynamic Pivot (without values) |
+|---------|---------------------------|-------------------------------|
+| DuckDB | ✅ Native PIVOT | ✅ Native PIVOT |
+| Snowflake | ✅ Native PIVOT | ✅ Native PIVOT (ANY ORDER BY) |
+| BigQuery | ✅ Native PIVOT | ❌ Error (values required) |
+| PostgreSQL | ✅ CASE/WHEN fallback | ❌ Error (values required) |
+| MySQL | ✅ CASE/WHEN fallback | ❌ Error (values required) |
+| SQLite | ✅ CASE/WHEN fallback | ❌ Error (values required) |
+| Redshift | ✅ CASE/WHEN fallback | ❌ Error (values required) |
+
+**Static Pivot** (explicit values):
+```asql
+from sales
+  pivot sum(amount) by category values ('A', 'B', 'C')
+```
+
+- For DuckDB/Snowflake/BigQuery: Generates native `PIVOT` syntax
+- For PostgreSQL/MySQL/SQLite: Generates `CASE WHEN` expressions
+
+**Dynamic Pivot** (database determines values at runtime):
+```asql
+from sales
+  pivot sum(amount) by category  -- No explicit values
+```
+
+- Only supported for DuckDB, Snowflake, and BigQuery
+- Other dialects require explicit values and will show a helpful error:
+  ```
+  ValueError: Dynamic pivot (without explicit values) is not supported for postgres.
+  Please specify values explicitly:
+    pivot sum(amount) by category values ('val1', 'val2', ...)
+  ```
+
+**Example Output for DuckDB**:
+```sql
+SELECT * FROM (PIVOT sales ON category IN ('A', 'B', 'C') USING SUM(amount)) AS __pivot__
+```
+
+**Example Output for PostgreSQL** (CASE/WHEN fallback):
+```sql
+SELECT SUM(CASE WHEN category = 'A' THEN amount END) AS A,
+       SUM(CASE WHEN category = 'B' THEN amount END) AS B,
+       SUM(CASE WHEN category = 'C' THEN amount END) AS C
+FROM sales
+```
+
+---
+
 ## Features with Known Edge Cases
 
 ### 2. Auto-Spine with GROUPING SETS / ROLLUP / CUBE
@@ -125,6 +184,8 @@ group by rollup(year(date), month(date)) (
 | Feature | BigQuery | Snowflake | DuckDB | PostgreSQL | MySQL | SQLite | Redshift |
 |---------|----------|-----------|--------|------------|-------|--------|----------|
 | Column operators (`except`, `rename`, `replace`) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Native PIVOT syntax | ✅ | ✅ | ✅ | ❌ (uses CASE/WHEN) | ❌ | ❌ | ❌ |
+| Dynamic pivot (no values) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Auto-spine (basic) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Auto-spine with ROLLUP/CUBE | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
 | `generate_series` for spines | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |

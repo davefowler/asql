@@ -58,12 +58,18 @@ class ASQLPreParser(
     ListComprehensionMixin,
     BucketMixin,
 ):
-    def __init__(self, text: str, settings: Optional["CompileSettings"] = None):
+    def __init__(
+        self,
+        text: str,
+        settings: Optional["CompileSettings"] = None,
+        dialect: Optional[str] = None,
+    ):
         self.text = text.strip()
         self.original = text
         self.pos = 0
         self.ctes: List[Tuple[str, str]] = []
         self.settings = settings  # Compile settings with schema for join inference
+        self.dialect = dialect  # Target SQL dialect for dialect-specific transformations
 
     def preparse(self) -> str:
         """Apply all transformations and return SQL-like text."""
