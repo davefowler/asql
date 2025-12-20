@@ -8,6 +8,8 @@ This document tracks features that have inconsistent behavior or limited support
 
 ### 1. Column Operators (`except`, `rename`, `replace`)
 
+**Tracking**: [Issue #80](https://github.com/davefowler/asql/issues/80) - Schema-aware fallback planned
+
 **Features**: 
 - `except col1, col2` - exclude columns from result
 - `rename old as new` - rename columns  
@@ -77,11 +79,49 @@ group by rollup(year(date), month(date)) (
 | Auto-spine (basic) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Auto-spine with ROLLUP/CUBE | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
 | `generate_series` for spines | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| Slice syntax `[1:5]` | 🐛 | 🐛 | ✅ | 🐛 | 🐛 | 🐛 | 🐛 |
 
 Legend:
 - ✅ Fully supported
 - ⚠️ Partial support / edge cases
 - ❌ Not supported
+- 🐛 Bug - documented but broken (see Known Bugs section)
+
+---
+
+## Known Bugs (Documented but Broken)
+
+These features are documented in the spec but have broken implementations for certain dialects.
+
+### 3. Slice Syntax `[start:end]` 🐛
+
+**Tracking**: [Issue #77](https://github.com/davefowler/asql/issues/77)
+
+**Feature**: Python-style string/array slicing
+
+```asql
+from users
+  select email[1:5] as prefix
+```
+
+**Current behavior**:
+
+| Dialect | Output | Works? |
+|---------|--------|--------|
+| DuckDB | `email[1 : 5]` | ✅ Native support |
+| PostgreSQL | `email[1 : 5]` | ❌ Invalid (Postgres uses `[]` for arrays only) |
+| Snowflake | `email[GET_PATH(1, '5')]` | ❌ Completely wrong |
+| BigQuery | `email[1 : 5]` | ❌ Invalid for strings |
+| MySQL | `email[1 : 5]` | ❌ Invalid syntax |
+
+**Fix planned**: Convert to `SUBSTRING()` in preparser, let SQLGlot handle dialect-specific output.
+
+**Workaround**: Use `SUBSTRING()` directly:
+
+```asql
+from users
+  select substring(email, 1, 5) as prefix
+```
 
 ---
 
@@ -100,7 +140,7 @@ Open an issue at: https://github.com/davefowler/asql/issues
 
 ## Future Improvements
 
-- [ ] Add compile-time warnings for features not supported by target dialect
-- [ ] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE`
+- [ ] Add compile-time warnings for features not supported by target dialect - [Issue #81](https://github.com/davefowler/asql/issues/81)
+- [ ] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE` - [Issue #80](https://github.com/davefowler/asql/issues/80)
 - [ ] Add comprehensive ROLLUP/CUBE testing for auto-spine
 - [ ] Document all dialect-specific SQL generation differences
