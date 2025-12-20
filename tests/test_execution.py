@@ -239,6 +239,185 @@ class TestDialectSyntax:
         # For other dialects, we document that it may fail (this is the bug)
 
 
+class TestListComprehensionExecution:
+    """Test list comprehension execution against real databases."""
+
+    def test_basic_list_comprehension(self, executor: Any) -> None:
+        """Test basic list comprehension transforms array elements."""
+        if executor.dialect != "duckdb":
+            pytest.skip("List comprehensions currently only tested with DuckDB")
+        
+        # Create table with array column using raw SQL (arrays need special syntax)
+        # Access the connection directly for DDL statements
+        if hasattr(executor, 'conn'):
+            executor.conn.execute("""
+                CREATE TABLE events (
+                    event_id INT,
+                    tags VARCHAR[]
+                )
+            """)
+            executor.conn.execute("""
+                INSERT INTO events VALUES
+                (1, ['tag1', 'tag2', 'tag3']),
+                (2, ['TAG4', 'tag5']),
+                (3, [])
+            """)
+        else:
+            pytest.skip("Executor doesn't support array columns")
+
+        sql = compile(
+            "from events select [lower(tag) for tag in tags] as normalized_tags",
+            dialect=executor.dialect
+        )
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        assert len(rows) == 3
+        # Check that tags are normalized to lowercase
+        normalized_tags = rows[0][0]  # First row, first column
+        assert normalized_tags == ['tag1', 'tag2', 'tag3']
+        
+        normalized_tags_2 = rows[1][0]
+        assert normalized_tags_2 == ['tag4', 'tag5']
+        
+        # Empty array should remain empty
+        normalized_tags_3 = rows[2][0]
+        assert normalized_tags_3 == []
+
+    def test_list_comprehension_with_filter(self, executor: Any) -> None:
+        """Test list comprehension with if condition filters elements."""
+        if executor.dialect != "duckdb":
+            pytest.skip("List comprehensions currently only tested with DuckDB")
+        
+        if hasattr(executor, 'conn'):
+            executor.conn.execute("""
+                CREATE TABLE data (
+                    id INT,
+                    numbers INT[]
+                )
+            """)
+            executor.conn.execute("""
+                INSERT INTO data VALUES
+                (1, [1, 2, 3, 4, 5]),
+                (2, [-1, 0, 1, 2]),
+                (3, [10, 20, 30])
+            """)
+        else:
+            pytest.skip("Executor doesn't support array columns")
+
+        sql = compile(
+            "from data select [x * 2 for x in numbers if x > 0] as doubled",
+            dialect=executor.dialect
+        )
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        assert len(rows) == 3
+        # First row: [1,2,3,4,5] -> [2,4,6,8,10] (all > 0)
+        assert rows[0][0] == [2, 4, 6, 8, 10]
+        # Second row: [-1,0,1,2] -> [2,4] (only 1 and 2 are > 0)
+        assert rows[1][0] == [2, 4]
+        # Third row: [10,20,30] -> [20,40,60] (all > 0)
+        assert rows[2][0] == [20, 40, 60]
+
+    def test_list_comprehension_with_function(self, executor: Any) -> None:
+        """Test list comprehension with function calls."""
+        if executor.dialect != "duckdb":
+            pytest.skip("List comprehensions currently only tested with DuckDB")
+        
+        if hasattr(executor, 'conn'):
+            executor.conn.execute("""
+                CREATE TABLE events (
+                    event_id INT,
+                    names VARCHAR[]
+                )
+            """)
+            executor.conn.execute("""
+                INSERT INTO events VALUES
+                (1, ['alice', 'bob']),
+                (2, ['charlie'])
+            """)
+        else:
+            pytest.skip("Executor doesn't support array columns")
+
+        sql = compile(
+            "from events select [upper(name) for name in names] as upper_names",
+            dialect=executor.dialect
+        )
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        assert len(rows) == 2
+        assert rows[0][0] == ['ALICE', 'BOB']
+        assert rows[1][0] == ['CHARLIE']
+
+    def test_list_comprehension_with_arithmetic(self, executor: Any) -> None:
+        """Test list comprehension with arithmetic operations."""
+        if executor.dialect != "duckdb":
+            pytest.skip("List comprehensions currently only tested with DuckDB")
+        
+        if hasattr(executor, 'conn'):
+            executor.conn.execute("""
+                CREATE TABLE data (
+                    id INT,
+                    values INT[]
+                )
+            """)
+            executor.conn.execute("""
+                INSERT INTO data VALUES
+                (1, [1, 2, 3]),
+                (2, [10, 20])
+            """)
+        else:
+            pytest.skip("Executor doesn't support array columns")
+
+        sql = compile(
+            "from data select [value + 10 for value in values] as incremented",
+            dialect=executor.dialect
+        )
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        assert len(rows) == 2
+        assert rows[0][0] == [11, 12, 13]
+        assert rows[1][0] == [20, 30]
+
+    def test_list_comprehension_with_multiple_columns(self, executor: Any) -> None:
+        """Test list comprehension alongside other SELECT expressions."""
+        if executor.dialect != "duckdb":
+            pytest.skip("List comprehensions currently only tested with DuckDB")
+        
+        if hasattr(executor, 'conn'):
+            executor.conn.execute("""
+                CREATE TABLE events (
+                    event_id INT,
+                    event_name VARCHAR,
+                    tags VARCHAR[]
+                )
+            """)
+            executor.conn.execute("""
+                INSERT INTO events VALUES
+                (1, 'Event1', ['tag1', 'tag2']),
+                (2, 'Event2', ['tag3'])
+            """)
+        else:
+            pytest.skip("Executor doesn't support array columns")
+
+        sql = compile(
+            """from events
+  select
+    event_id,
+    [lower(tag) for tag in tags] as normalized_tags,
+    event_name""",
+            dialect=executor.dialect
+        )
+        columns, rows = executor.execute_and_fetch_columns(sql)
+
+        assert len(rows) == 2
+        assert len(columns) == 3
+        assert columns == ['event_id', 'normalized_tags', 'event_name']
+        # Check first row
+        assert rows[0][0] == 1  # event_id
+        assert rows[0][1] == ['tag1', 'tag2']  # normalized_tags
+        assert rows[0][2] == 'Event1'  # event_name
+
+
 class TestExampleFiles:
     """Test that all example .asql files compile to valid SQL.
     
