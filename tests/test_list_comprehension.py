@@ -100,12 +100,13 @@ class TestListComprehensionDialects:
         assert_valid_sql(sql)
     
     def test_duckdb_dialect(self) -> None:
-        """Test list comprehensions compile to DuckDB."""
+        """Test list comprehensions compile to DuckDB native syntax."""
         asql = 'from events select [lower(tag) for tag in tags] as normalized'
         sql = compile(asql, dialect="duckdb")
         
-        # DuckDB supports native list comprehensions, but SQLGlot may transpile to ARRAY(SELECT ...)
-        assert_sql_contains(sql, "ARRAY", "SELECT", "LOWER", "tag", "FROM", "UNNEST", "tags")
+        # DuckDB uses native list comprehension syntax: [EXPR FOR VAR IN ARR]
+        assert_sql_contains(sql, "LOWER", "tag", "FOR", "tag", "IN", "tags")
+        assert "[" in sql and "]" in sql  # Should have brackets
         assert_valid_sql(sql)
     
     def test_snowflake_dialect_error(self) -> None:
