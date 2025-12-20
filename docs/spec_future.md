@@ -249,19 +249,13 @@ Open design questions:
 
 ---
 
-## `slugify(expr)` (Future Consideration)
+## `slugify(expr)` ✅ IMPLEMENTED
 
-ASQL may add a helper to convert strings to URL-friendly slugs:
+**Status**: Implemented in v0.3
 
-**Tracking**: [#64](https://github.com/davefowler/asql/issues/64)
+The `slugify(expr)` helper has been implemented. See `docs/spec.md` Section 4.10 for documentation.
 
-```asql
-select slugify(name) as slug
-```
-
-Open design questions:
-- dialect portability (regex replace differences)
-- unicode normalization behavior
+**Tracking**: [#64](https://github.com/davefowler/asql/issues/64) (closed)
 
 ---
 
