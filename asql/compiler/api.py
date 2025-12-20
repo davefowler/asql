@@ -19,6 +19,10 @@ from asql.compiler.inline_settings import (
 )
 from asql.compiler.auto_qualify import auto_qualify_columns
 from asql.compiler.auto_alias import apply_auto_aliasing
+from asql.compiler.list_comprehension import (
+    check_snowflake_list_comprehensions,
+    fix_duckdb_list_comprehensions,
+)
 
 
 def _validate_statement(stmt: exp.Expression, original_query: str) -> List[str]:
@@ -157,6 +161,12 @@ def compile(
                 )
             
             generated_sql = transformed_stmt.sql(dialect=sql_dialect, pretty=pretty)
+            
+            # Fix DuckDB list comprehensions (use native syntax)
+            generated_sql = fix_duckdb_list_comprehensions(generated_sql, dialect)
+            
+            # Check for Snowflake list comprehension issues
+            check_snowflake_list_comprehensions(generated_sql, dialect)
             
             # Add transpilation comments if enabled
             if final_settings.include_transpilation_comments and transformations_applied:
