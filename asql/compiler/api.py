@@ -19,6 +19,7 @@ from asql.compiler.inline_settings import (
 )
 from asql.compiler.auto_qualify import auto_qualify_columns
 from asql.compiler.auto_alias import apply_auto_aliasing
+from asql.compiler.alias_reuse import apply_alias_reuse
 
 
 def _validate_statement(stmt: exp.Expression, original_query: str) -> List[str]:
@@ -144,6 +145,9 @@ def compile(
 
             # Auto-qualify conflicting column names in joins
             transformed_stmt = auto_qualify_columns(transformed_stmt)
+
+            # Apply alias reuse (allow referencing earlier aliases in SELECT)
+            transformed_stmt = apply_alias_reuse(transformed_stmt, dialect)
 
             transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
             
