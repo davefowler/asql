@@ -164,15 +164,19 @@ def _is_duckdb_dialect(dialect: Optional[str]) -> bool:
     return dialect_lower == "duckdb"
 
 
-def _generate_cte_chain(
+def _generate_cte_chain_with_prefix(
     select: exp.Select,
     dependencies: Dict[str, Set[str]],
     alias_to_expr: Dict[str, exp.Expression],
+    cte_prefix: str,
 ) -> exp.Select:
-    """Generate CTE chain for non-DuckDB dialects.
+    """Generate CTE chain for non-DuckDB dialects with unique prefix.
     
     Creates a chain of CTEs where each CTE adds expressions that can be computed
     (all their dependencies are available). The final CTE applies WHERE/ORDER BY/etc.
+    
+    Args:
+        cte_prefix: Unique prefix for CTE names (e.g., "_alias0") to avoid conflicts
     """
     # Process expressions in order, grouping them by when they can be computed
     # Expressions can be computed when all their alias dependencies are available
@@ -236,9 +240,9 @@ def _generate_cte_chain(
         
         remaining_expressions = remaining_after
     
-    # Build CTE chain
+    # Build CTE chain with unique names
     ctes: List[exp.CTE] = []
-    base_cte_name = "_step0"
+    base_cte_name = f"{cte_prefix}_0"
     prev_cte_name = base_cte_name
     
     # First CTE: base query with first group of expressions
@@ -270,7 +274,7 @@ def _generate_cte_chain(
     
     # Subsequent CTEs: add expressions from remaining groups
     for step_num, expr_group in enumerate(expression_groups[1:], start=1):
-        step_name = f"_step{step_num}"
+        step_name = f"{cte_prefix}_{step_num}"
         
         # Build SELECT for this step: SELECT *, new_expressions FROM prev_step
         # Filter out bare column references (already in SELECT *)
@@ -342,31 +346,33 @@ def _generate_cte_chain(
     return final_select
 
 
-def apply_alias_reuse(
-    statement: exp.Expression,
-    dialect: Optional[str] = None,
-) -> exp.Expression:
-    """Apply alias reuse transformation.
+# Global counter for unique CTE names across multiple transformations
+_cte_counter: int = 0
+
+
+def _get_unique_cte_prefix() -> str:
+    """Get a unique prefix for CTE names to avoid conflicts."""
+    global _cte_counter
+    prefix = f"_alias{_cte_counter}"
+    _cte_counter += 1
+    return prefix
+
+
+def _transform_select_alias_reuse(
+    select: exp.Select,
+    dialect: Optional[str],
+    cte_prefix: str,
+) -> exp.Select:
+    """Transform a single SELECT statement for alias reuse.
     
-    For DuckDB: Emits as-is (native support)
-    For other dialects: Generates CTE chain
-    
-    Args:
-        statement: SQLGlot expression (typically a SELECT statement)
-        dialect: Target SQL dialect name
-        
-    Returns:
-        Modified statement with alias reuse applied (or original if no dependencies)
+    Returns the transformed SELECT with CTE chain if needed.
     """
-    if not isinstance(statement, exp.Select):
-        return statement
-    
     # Check if there are any alias dependencies
-    if not _has_alias_dependencies(statement):
-        return statement
+    if not _has_alias_dependencies(select):
+        return select
     
     # Build dependency graph
-    dependencies, alias_to_expr = _build_alias_dependency_graph(statement)
+    dependencies, alias_to_expr = _build_alias_dependency_graph(select)
     
     # Detect circular dependencies
     cycle = _detect_circular_dependencies(dependencies)
@@ -378,7 +384,48 @@ def apply_alias_reuse(
     
     # For DuckDB: emit as-is (native support)
     if _is_duckdb_dialect(dialect):
+        return select
+    
+    # For other dialects: generate CTE chain with unique prefix
+    return _generate_cte_chain_with_prefix(select, dependencies, alias_to_expr, cte_prefix)
+
+
+def apply_alias_reuse(
+    statement: exp.Expression,
+    dialect: Optional[str] = None,
+) -> exp.Expression:
+    """Apply alias reuse transformation.
+    
+    For DuckDB: Emits as-is (native support)
+    For other dialects: Generates CTE chain
+    
+    This function recursively processes CTEs to handle alias reuse
+    in nested queries (e.g., stash as).
+    
+    Args:
+        statement: SQLGlot expression (typically a SELECT statement)
+        dialect: Target SQL dialect name
+        
+    Returns:
+        Modified statement with alias reuse applied (or original if no dependencies)
+    """
+    if not isinstance(statement, exp.Select):
         return statement
     
-    # For other dialects: generate CTE chain
-    return _generate_cte_chain(statement, dependencies, alias_to_expr)
+    # First, recursively process any existing CTEs in the statement
+    with_clause = statement.args.get("with_")
+    if with_clause and hasattr(with_clause, "expressions"):
+        for cte in with_clause.expressions:
+            if isinstance(cte, exp.CTE) and isinstance(cte.this, exp.Select):
+                cte_select = cte.this
+                # Transform the CTE's SELECT if it has alias dependencies
+                if _has_alias_dependencies(cte_select):
+                    cte_prefix = _get_unique_cte_prefix()
+                    transformed = _transform_select_alias_reuse(cte_select, dialect, cte_prefix)
+                    # If transformation generated CTEs, we need to merge them
+                    # For now, replace the CTE's expression
+                    cte.set("this", transformed)
+    
+    # Now process the main SELECT
+    cte_prefix = _get_unique_cte_prefix()
+    return _transform_select_alias_reuse(statement, dialect, cte_prefix)
