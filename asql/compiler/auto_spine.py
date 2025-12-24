@@ -497,9 +497,6 @@ def _build_spine_cte_sql(
         use_data_bounds: For date spines, use data MIN/MAX instead of wide range
         data_cte_name: Name of the data CTE to reference for MIN/MAX bounds
     """
-    dialect_lower = dialect.lower() if dialect else ""
-    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
-    
     # Case 1: Explicit values from guarantee()
     if explicit_values:
         return _build_explicit_values_spine_sql(alias, explicit_values, dialect, include_null)

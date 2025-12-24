@@ -14,7 +14,6 @@ from asql.dialect_features import (
     Feature,
     check_feature,
     has_column_operators,
-    has_slice_syntax,
     get_dialect_display_name,
 )
 import warnings
@@ -83,18 +82,9 @@ def _validate_dialect_features(
                     f"See: https://asql.dev/docs/dialect-limitations#column-operators"
                 )
     
-    # 2. Check slice syntax (known bug #77)
-    if has_slice_syntax(original_query):
-        if not check_feature(Feature.SLICE_SYNTAX, dialect):
-            dialect_name = get_dialect_display_name(dialect)
-            warnings.warn(
-                ASQLDialectWarning(
-                    f"Slice syntax '[start:end]' has known issues for {dialect_name} (Issue #77).\n\n"
-                    f"The generated SQL may be invalid. Use SUBSTRING() instead:\n"
-                    f"  'select substring(name, 1, 5) as prefix'\n\n"
-                    f"See: https://asql.dev/docs/dialect-limitations#slice-syntax"
-                )
-            )
+    # 2. Slice syntax - no longer needs validation (Issue #77 fixed)
+    # The preparser now converts slice syntax to SUBSTRING/LEFT/RIGHT,
+    # which SQLGlot correctly transpiles to all dialects.
 
 
 def _validate_statement(stmt: exp.Expression, original_query: str) -> List[str]:
@@ -234,7 +224,7 @@ def compile(
             validation_errors = _validate_statement(transformed_stmt, asql_query)
             if validation_errors:
                 raise ASQLCompilationError(
-                    f"Invalid query generated:\n" + 
+                    "Invalid query generated:\n" + 
                     "\n".join(f"  - {e}" for e in validation_errors) +
                     f"\n\nOriginal query:\n{asql_query[:500]}"
                 )
@@ -258,6 +248,8 @@ def compile(
         return ";\n\n".join(sql_parts)
 
     except ASQLSyntaxError:
+        raise
+    except ASQLDialectError:
         raise
     except sqlglot.errors.ParseError as e:
         raise ASQLSyntaxError(f"ASQL syntax error: {e}") from e

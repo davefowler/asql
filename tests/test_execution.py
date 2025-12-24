@@ -460,7 +460,7 @@ class TestDialectSyntax:
         ), f"Invalid {executor.dialect} SQL: {sql}"
 
     def test_slice_syntax_validation(self, executor: Any) -> None:
-        """Test that slice syntax generates valid SQL (Issue #77)."""
+        """Test that slice syntax generates valid SQL (Issue #77 fixed)."""
         executor.create_table(
             "t",
             columns={"name": "VARCHAR"},
@@ -468,11 +468,10 @@ class TestDialectSyntax:
         )
 
         sql = compile("from t select name[1:5] as prefix", dialect=executor.dialect)
-        # Note: This may fail for non-DuckDB dialects, which is the bug we're testing for
+        # Issue #77 fixed: slice syntax now works for all dialects
+        # Preparser converts to SUBSTRING which SQLGlot transpiles correctly
         is_valid = executor.validate_syntax(sql)
-        if executor.dialect == "duckdb":
-            assert is_valid, f"Slice syntax should be valid for DuckDB: {sql}"
-        # For other dialects, we document that it may fail (this is the bug)
+        assert is_valid, f"Slice syntax should be valid for {executor.dialect}: {sql}"
 
     def test_alias_reuse_syntax_validation(self, executor: Any) -> None:
         """Test that alias reuse generates valid SQL syntax."""

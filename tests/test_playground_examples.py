@@ -41,10 +41,22 @@ DIALECTS = [
     "trino",
 ]
 
+# Dialects that don't support column operators (except, rename, replace)
+# These require EXCLUDE/EXCEPT syntax which only BigQuery, Snowflake, DuckDB support
+# TODO(Issue #80): Remove these skips when schema-aware column expansion fallback is implemented
+_NO_COLUMN_OPS_DIALECTS = ["trino", "mysql", "redshift", "sqlite", "postgres", "spark"]
+_COLUMN_OP_EXAMPLES = ["Exclude Columns", "Rename Columns", "Replace Column Values", "Combined Column Ops"]
+
 # Known dialect-specific limitations
 DIALECT_LIMITATIONS = {
     # "per...first by" uses QUALIFY which Trino doesn't support
     ("trino", "First Event per User"): "QUALIFY not supported in Trino",
+    # Column operators require EXCLUDE syntax - Issue #80 will add schema-aware fallback
+    **{
+        (dialect, example): f"Column operators not supported in {dialect}"
+        for dialect in _NO_COLUMN_OPS_DIALECTS
+        for example in _COLUMN_OP_EXAMPLES
+    },
 }
 
 
