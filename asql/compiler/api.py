@@ -249,6 +249,8 @@ def compile(
 
     except ASQLSyntaxError:
         raise
+    except ASQLDialectError:
+        raise
     except sqlglot.errors.ParseError as e:
         raise ASQLSyntaxError(f"ASQL syntax error: {e}") from e
     except Exception as e:
