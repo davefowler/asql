@@ -13,7 +13,6 @@ from typing import Dict, List, Optional, Set, Tuple
 from collections import defaultdict
 
 from sqlglot import exp
-from sqlglot.dialects import Dialect
 
 from asql.errors import ASQLCompilationError
 

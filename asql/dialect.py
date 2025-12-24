@@ -7,8 +7,7 @@ within SQLGlot's framework.
 Note: Some ASQL features require pre-parsing (see preparser.py).
 """
 
-from typing import Optional, List, Dict, Any
-import sqlglot
+from typing import Optional
 from sqlglot import exp
 from sqlglot.dialects.dialect import Dialect
 from sqlglot.parser import Parser
