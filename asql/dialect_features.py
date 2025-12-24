@@ -27,54 +27,54 @@ DIALECT_SUPPORT: Dict[str, Set[Feature]] = {
         Feature.AUTO_SPINE,
         Feature.AUTO_SPINE_ROLLUP,  # ⚠️ Partial support
         Feature.GENERATE_SERIES,
-        # Feature.SLICE_SYNTAX - 🐛 Buggy (Issue #77)
+        Feature.SLICE_SYNTAX,  # ✅ Converted to SUBSTRING by preparser
     },
     'snowflake': {
         Feature.COLUMN_EXCLUDE,
         Feature.AUTO_SPINE,
         Feature.AUTO_SPINE_ROLLUP,  # ⚠️ Partial support
         Feature.GENERATE_SERIES,
-        # Feature.SLICE_SYNTAX - 🐛 Buggy (Issue #77)
+        Feature.SLICE_SYNTAX,  # ✅ Converted to SUBSTRING by preparser
     },
     'duckdb': {
         Feature.COLUMN_EXCLUDE,
         Feature.AUTO_SPINE,
         Feature.AUTO_SPINE_ROLLUP,  # ⚠️ Partial support
         Feature.GENERATE_SERIES,
-        Feature.SLICE_SYNTAX,  # ✅ Fully supported
+        Feature.SLICE_SYNTAX,  # ✅ Fully supported (native + SUBSTRING)
     },
     'postgres': {
         Feature.AUTO_SPINE,
         Feature.AUTO_SPINE_ROLLUP,  # ⚠️ Partial support
         Feature.GENERATE_SERIES,
+        Feature.SLICE_SYNTAX,  # ✅ Converted to SUBSTRING by preparser
         # Feature.COLUMN_EXCLUDE - ❌ Not supported
-        # Feature.SLICE_SYNTAX - 🐛 Buggy (Issue #77)
     },
     'postgresql': {  # Alias for postgres
         Feature.AUTO_SPINE,
         Feature.AUTO_SPINE_ROLLUP,  # ⚠️ Partial support
         Feature.GENERATE_SERIES,
+        Feature.SLICE_SYNTAX,  # ✅ Converted to SUBSTRING by preparser
     },
     'mysql': {
         Feature.AUTO_SPINE,
         Feature.AUTO_SPINE_ROLLUP,  # ⚠️ Partial support
+        Feature.SLICE_SYNTAX,  # ✅ Converted to SUBSTRING by preparser
         # Feature.COLUMN_EXCLUDE - ❌ Not supported
         # Feature.GENERATE_SERIES - ❌ Not supported
-        # Feature.SLICE_SYNTAX - 🐛 Buggy (Issue #77)
     },
     'sqlite': {
-        # Very limited support
+        Feature.SLICE_SYNTAX,  # ✅ Converted to SUBSTRING by preparser
         # Feature.AUTO_SPINE - ❌ Not supported
         # Feature.COLUMN_EXCLUDE - ❌ Not supported
         # Feature.GENERATE_SERIES - ❌ Not supported
-        # Feature.SLICE_SYNTAX - 🐛 Buggy (Issue #77)
     },
     'redshift': {
         Feature.AUTO_SPINE,
         Feature.AUTO_SPINE_ROLLUP,  # ⚠️ Partial support
         Feature.GENERATE_SERIES,
+        Feature.SLICE_SYNTAX,  # ✅ Converted to SUBSTRING by preparser
         # Feature.COLUMN_EXCLUDE - ❌ Not supported
-        # Feature.SLICE_SYNTAX - 🐛 Buggy (Issue #77)
     },
 }
 

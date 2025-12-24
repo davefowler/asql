@@ -9,7 +9,7 @@ ASQL always accepts all valid syntaxes on input.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Dict, Any, List, Tuple, TYPE_CHECKING
+from typing import Literal, Optional, Dict, Any, TYPE_CHECKING
 from pathlib import Path
 import json
 
