@@ -224,7 +224,7 @@ def compile(
             validation_errors = _validate_statement(transformed_stmt, asql_query)
             if validation_errors:
                 raise ASQLCompilationError(
-                    f"Invalid query generated:\n" + 
+                    "Invalid query generated:\n" + 
                     "\n".join(f"  - {e}" for e in validation_errors) +
                     f"\n\nOriginal query:\n{asql_query[:500]}"
                 )
