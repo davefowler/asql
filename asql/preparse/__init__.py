@@ -1,12 +1,14 @@
 """ASQL pre-parser package."""
 
-import re
 from typing import List, Optional, TYPE_CHECKING
 
 from asql.preparse.preparser import ASQLPreParser, PreParseResult
 
 if TYPE_CHECKING:
     from asql.config import CompileSettings
+
+# Dialects that support native PIVOT syntax
+NATIVE_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake", "bigquery"})
 
 
 def _split_statements(text: str) -> List[str]:
@@ -98,12 +100,17 @@ def _split_statements(text: str) -> List[str]:
     return statements if statements else [text.strip()]
 
 
-def preparse_asql(text: str, settings: Optional["CompileSettings"] = None) -> str:
+def preparse_asql(
+    text: str,
+    settings: Optional["CompileSettings"] = None,
+    dialect: Optional[str] = None,
+) -> str:
     """Pre-parse ASQL to SQL-like syntax.
     
     Args:
         text: ASQL query text (can contain multiple statements separated by ; or blank lines)
         settings: Optional compile settings (includes schema for join inference)
+        dialect: Optional target SQL dialect (affects dialect-specific transformations like pivot)
         
     Returns:
         SQL-like text ready for SQLGlot parsing
@@ -118,12 +125,12 @@ def preparse_asql(text: str, settings: Optional["CompileSettings"] = None) -> st
     
     if len(statements) == 1:
         # Single statement - use original behavior
-        return ASQLPreParser(statements[0], settings=settings).preparse()
+        return ASQLPreParser(statements[0], settings=settings, dialect=dialect).preparse()
     
     # Multiple statements - preparse each independently
     preparsed_statements: List[str] = []
     for stmt in statements:
-        preparsed = ASQLPreParser(stmt, settings=settings).preparse()
+        preparsed = ASQLPreParser(stmt, settings=settings, dialect=dialect).preparse()
         # Strip trailing semicolons to avoid double semicolons when joining
         preparsed = preparsed.rstrip().rstrip(';').rstrip()
         preparsed_statements.append(preparsed)

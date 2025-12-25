@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from asql.errors import ASQLSyntaxError
 
@@ -63,8 +63,6 @@ class CohortMixin:
             return result
         
         # Extract components
-        segments_str = match.group(1).strip().rstrip(',')
-        segments = [s.strip() for s in segments_str.split(',')] if segments_str else []
         granularity = match.group(2).lower()  # month, week, or day
         cohort_col_ref = match.group(3)  # e.g., users.signup_date
         explicit_join_key = match.group(4)  # optional: on user_id

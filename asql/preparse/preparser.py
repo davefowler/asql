@@ -26,6 +26,7 @@ from asql.preparse.when import WhenMixin
 from asql.preparse.ternary import TernaryMixin
 from asql.preparse.list_comprehension import ListComprehensionMixin
 from asql.preparse.bucket import BucketMixin
+from asql.preparse.slice import SliceMixin
 
 if TYPE_CHECKING:
     from asql.config import CompileSettings
@@ -59,13 +60,20 @@ class ASQLPreParser(
     SlugifyMixin,
     ListComprehensionMixin,
     BucketMixin,
+    SliceMixin,
 ):
-    def __init__(self, text: str, settings: Optional["CompileSettings"] = None):
+    def __init__(
+        self,
+        text: str,
+        settings: Optional["CompileSettings"] = None,
+        dialect: Optional[str] = None,
+    ):
         self.text = text.strip()
         self.original = text
         self.pos = 0
         self.ctes: List[Tuple[str, str]] = []
         self.settings = settings  # Compile settings with schema for join inference
+        self.dialect = dialect  # Target SQL dialect for dialect-specific transformations
 
     def preparse(self) -> str:
         """Apply all transformations and return SQL-like text."""
@@ -112,6 +120,7 @@ class ASQLPreParser(
         result = self._transform_key_function(result)  # key(col1, col2, ...) surrogate key generation
         result = self._transform_slugify_function(result)  # slugify(expr) URL-friendly slug generation
         result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
+        result = self._transform_slice_syntax(result)  # email[1:5] → SUBSTRING(email, 1, 5)
         result = self._normalize_function_spaces(result)
         result = self._transform_equality_operators(result)
         

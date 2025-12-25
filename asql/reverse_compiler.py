@@ -356,7 +356,6 @@ def _select_to_asql(select_expr: exp.Select, style: "StyleConfig" = None) -> str
     # JOIN clauses
     joins = select_expr.args.get("joins", [])
     for join in joins:
-        join_type = join.kind or "inner"
         join_table = join.this
         join_table_name = join_table.this if isinstance(join_table, exp.Table) else str(join_table)
         
