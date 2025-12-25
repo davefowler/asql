@@ -1,6 +1,5 @@
 """ASQL pre-parser package."""
 
-import re
 from typing import List, Optional, TYPE_CHECKING
 
 from asql.preparse.preparser import ASQLPreParser, PreParseResult

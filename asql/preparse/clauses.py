@@ -787,7 +787,6 @@ class ClausesMixin:
                 string_literal = match.group(1)  # The matched string literal
                 
                 # Remove quotes and escape SQL special characters
-                quote_char = string_literal[0]
                 pattern_value = string_literal[1:-1]  # Remove quotes
                 # Escape single quotes for SQL (double them)
                 pattern_value = pattern_value.replace("'", "''")

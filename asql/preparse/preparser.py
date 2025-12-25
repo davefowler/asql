@@ -25,6 +25,7 @@ from asql.preparse.when import WhenMixin
 from asql.preparse.ternary import TernaryMixin
 from asql.preparse.list_comprehension import ListComprehensionMixin
 from asql.preparse.bucket import BucketMixin
+from asql.preparse.slice import SliceMixin
 
 if TYPE_CHECKING:
     from asql.config import CompileSettings
@@ -57,6 +58,7 @@ class ASQLPreParser(
     KeyMixin,
     ListComprehensionMixin,
     BucketMixin,
+    SliceMixin,
 ):
     def __init__(
         self,
@@ -115,6 +117,7 @@ class ASQLPreParser(
         result = self._transform_list_comprehensions(result)  # [expr for var in arr] to ARRAY(SELECT ...)
         result = self._transform_key_function(result)  # key(col1, col2, ...) surrogate key generation
         result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
+        result = self._transform_slice_syntax(result)  # email[1:5] → SUBSTRING(email, 1, 5)
         result = self._normalize_function_spaces(result)
         result = self._transform_equality_operators(result)
         

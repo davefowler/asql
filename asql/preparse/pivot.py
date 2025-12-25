@@ -81,7 +81,6 @@ class PivotMixin:
             return result
         
         table_ref = from_match.group(1).strip()
-        before_from = before_unpivot[:from_match.start()].strip()
         
         # Build UNION ALL query for unpivot
         # Each column becomes a row with (column_name, column_value)
