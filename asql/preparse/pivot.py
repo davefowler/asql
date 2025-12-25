@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import re
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from asql.config import CompileSettings
 
 # Dialects that support native PIVOT syntax
 NATIVE_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake", "bigquery"})
@@ -12,6 +15,41 @@ NATIVE_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake", "bigquery"})
 DYNAMIC_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake"})
 
 class PivotMixin:
+
+    def _get_pivot_values_from_schema(self, pivot_col: str, query_text: str) -> Optional[List[str]]:
+        """Get distinct values for a pivot column from the schema.
+        
+        Looks up the pivot column in the schema to find distinct_values.
+        Uses the source table from the query's FROM clause.
+        
+        Args:
+            pivot_col: Column name to pivot on
+            query_text: The full query text (to extract table name from FROM)
+            
+        Returns:
+            List of distinct values if found in schema, None otherwise
+        """
+        # Get settings from self (set by ASQLPreParser)
+        settings: Optional["CompileSettings"] = getattr(self, 'settings', None)
+        if not settings or not settings.schema:
+            return None
+        
+        schema = settings.schema
+        
+        # Extract table name from FROM clause
+        from_match = re.search(r'\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)', query_text, re.IGNORECASE)
+        if not from_match:
+            return None
+        
+        table_name = from_match.group(1).lower()
+        
+        # Look up table in schema
+        table = schema.get_table(table_name)
+        if not table:
+            return None
+        
+        # Get distinct values for the pivot column
+        return table.get_distinct_values(pivot_col)
 
     def _transform_explode(self, text: str) -> str:
         """
@@ -166,13 +204,29 @@ class PivotMixin:
                     result, match, value_expr, pivot_col, None, dialect_lower
                 )
             else:
-                # Raise a helpful error for dialects that don't support dynamic pivot
-                dialect_name = dialect_lower if dialect_lower else "this dialect"
-                raise ValueError(
-                    f"Dynamic pivot (without explicit values) is not supported for {dialect_name}. "
-                    f"Please specify values explicitly:\n"
-                    f"  pivot {value_expr} by {pivot_col} values ('val1', 'val2', ...)"
-                )
+                # Check if we can get distinct values from schema
+                schema_values = self._get_pivot_values_from_schema(pivot_col, result)
+                
+                if schema_values:
+                    # Use schema values for CASE/WHEN fallback
+                    if dialect_lower in NATIVE_PIVOT_DIALECTS:
+                        return self._generate_native_pivot(
+                            result, match, value_expr, pivot_col, schema_values, dialect_lower
+                        )
+                    else:
+                        return self._generate_case_when_pivot(
+                            result, match, value_expr, pivot_col, schema_values
+                        )
+                else:
+                    # Raise a helpful error with schema instructions
+                    dialect_name = dialect_lower if dialect_lower else "this dialect"
+                    raise ValueError(
+                        f"Dynamic pivot (without explicit values) is not supported for {dialect_name}.\n\n"
+                        f"Options:\n"
+                        f"  1. Add 'values' clause: pivot {value_expr} by {pivot_col} values ('val1', 'val2', ...)\n"
+                        f"  2. Provide schema with distinct_values for '{pivot_col}' column\n"
+                        f"  3. Use a dialect with native dynamic pivot: DuckDB, Snowflake"
+                    )
         
         return result
 

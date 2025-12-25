@@ -107,11 +107,11 @@ from sales
 |---------|---------------------------|-------------------------------|
 | DuckDB | ✅ Native PIVOT | ✅ Native PIVOT |
 | Snowflake | ✅ Native PIVOT | ✅ Native PIVOT (ANY ORDER BY) |
-| BigQuery | ✅ Native PIVOT | ❌ Error (values required) |
-| PostgreSQL | ✅ CASE/WHEN fallback | ❌ Error (values required) |
-| MySQL | ✅ CASE/WHEN fallback | ❌ Error (values required) |
-| SQLite | ✅ CASE/WHEN fallback | ❌ Error (values required) |
-| Redshift | ✅ CASE/WHEN fallback | ❌ Error (values required) |
+| BigQuery | ✅ Native PIVOT | ⚠️ Requires schema with distinct_values |
+| PostgreSQL | ✅ CASE/WHEN fallback | ⚠️ Requires schema with distinct_values |
+| MySQL | ✅ CASE/WHEN fallback | ⚠️ Requires schema with distinct_values |
+| SQLite | ✅ CASE/WHEN fallback | ⚠️ Requires schema with distinct_values |
+| Redshift | ✅ CASE/WHEN fallback | ⚠️ Requires schema with distinct_values |
 
 **Static Pivot** (explicit values):
 ```asql
@@ -128,13 +128,47 @@ from sales
   pivot sum(amount) by category  -- No explicit values
 ```
 
-- Only supported for DuckDB, Snowflake, and BigQuery
-- Other dialects require explicit values and will show a helpful error:
-  ```
-  ValueError: Dynamic pivot (without explicit values) is not supported for postgres.
-  Please specify values explicitly:
-    pivot sum(amount) by category values ('val1', 'val2', ...)
-  ```
+- **DuckDB/Snowflake**: ✅ Native runtime value discovery
+- **Other dialects**: ⚠️ Requires schema with `distinct_values` for the pivot column
+
+**Schema-Aware Dynamic Pivot** (Issue #102):
+
+When targeting dialects that don't support native dynamic pivot, you can provide schema metadata with `distinct_values` to enable dynamic pivot:
+
+```python
+from asql import compile
+from asql.config import CompileSettings
+from asql.schema import Schema
+
+# Define schema with distinct_values for the pivot column
+schema = Schema.from_dict({
+    "tables": {
+        "sales": {
+            "columns": ["id", "amount", "category"],
+            "category": {"distinct_values": ["A", "B", "C", "D"]}
+        }
+    }
+})
+settings = CompileSettings(schema=schema)
+
+# Now dynamic pivot works on PostgreSQL!
+result = compile(
+    "from sales pivot sum(amount) by category",
+    dialect="postgres",
+    settings=settings
+)
+# Generates: SELECT SUM(CASE WHEN category = 'A' THEN amount END) AS A, ...
+```
+
+**Error without schema**:
+```
+ValueError: Dynamic pivot (without explicit values) is not supported for postgres.
+
+Options:
+  1. Add 'values' clause: pivot sum(amount) by category values ('val1', 'val2', ...)
+  2. Provide schema with distinct_values for 'category' column
+  3. Use a dialect with native dynamic pivot: DuckDB, Snowflake
+```
 
 **Example Output for DuckDB**:
 ```sql
@@ -194,7 +228,7 @@ group by rollup(year(date), month(date)) (
 |---------|----------|-----------|--------|------------|-------|--------|----------|
 | Column operators (`except`, `rename`, `replace`) | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
 | Native PIVOT syntax | ✅ | ✅ | ✅ | ❌ (uses CASE/WHEN) | ❌ | ❌ | ❌ |
-| Dynamic pivot (no values) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Dynamic pivot (no values) | ⚠️ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
 | Auto-spine (basic) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Auto-spine with ROLLUP/CUBE | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
 | `generate_series` for spines | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
@@ -202,7 +236,7 @@ group by rollup(year(date), month(date)) (
 
 Legend:
 - ✅ Fully supported - No validation errors or warnings
-- ⚠️ Requires schema - Provide a schema to enable automatic column enumeration
+- ⚠️ Requires schema - Provide a schema with `distinct_values` to enable
 - ❌ Not supported - Raises `ASQLDialectError` or requires workaround
 
 ---
