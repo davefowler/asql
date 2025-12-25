@@ -205,16 +205,30 @@ class TestRecurseSyntaxVariants:
         assert "WITH RECURSIVE" in result
         assert "_level < 5" in result
 
-    def test_both_syntaxes_equivalent(self) -> None:
-        """Test that recurse() and recurse on produce same output."""
+    def test_all_syntaxes_equivalent(self) -> None:
+        """Test that all recurse syntax variants produce same output."""
         asql_parens = "from employees where id = 1 recurse(manager_id, 3)"
         asql_on = "from employees where id = 1 recurse on manager_id, 3"
+        asql_bare = "from employees where id = 1 recurse manager_id, 3"
         
         result_parens = preparse_asql(asql_parens)
         result_on = preparse_asql(asql_on)
+        result_bare = preparse_asql(asql_bare)
         
-        # Both should produce the same CTE structure
-        assert result_parens == result_on
+        # All should produce the same CTE structure
+        assert result_parens == result_on == result_bare
+
+    def test_recurse_bare_syntax(self) -> None:
+        """Test 'recurse column' syntax (no 'on' keyword)."""
+        asql = """
+        from employees
+          where id = 1
+          recurse manager_id
+        """
+        result = preparse_asql(asql)
+        
+        assert "WITH RECURSIVE" in result
+        assert "_level" in result
 
 
 class TestRecurseEdgeCases:

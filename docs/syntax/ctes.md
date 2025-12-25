@@ -224,18 +224,17 @@ from employees
 
 ### Syntax
 
-Two equivalent syntaxes are supported:
+Three equivalent syntaxes are supported:
 
 ```asql
 -- Function style
-from <table>
-  where <anchor_condition>
-  recurse(<fk_column> [, <max_depth>])
+recurse(<fk_column> [, <max_depth>])
 
--- Keyword style
-from <table>
-  where <anchor_condition>
-  recurse on <fk_column> [, <max_depth>]
+-- Keyword style (with 'on')
+recurse on <fk_column> [, <max_depth>]
+
+-- Bare style (shortest)
+recurse <fk_column> [, <max_depth>]
 ```
 
 - **`<fk_column>`** — The foreign key column to follow (e.g., `manager_id`, `parent_id`)
