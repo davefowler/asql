@@ -21,6 +21,7 @@ from asql.preparse.window import WindowMixin
 from asql.preparse.normalize import NormalizeMixin
 from asql.preparse.cohort import CohortMixin
 from asql.preparse.key import KeyMixin
+from asql.preparse.slugify import SlugifyMixin
 from asql.preparse.when import WhenMixin
 from asql.preparse.ternary import TernaryMixin
 from asql.preparse.list_comprehension import ListComprehensionMixin
@@ -56,6 +57,7 @@ class ASQLPreParser(
     TernaryMixin,
     WhenMixin,
     KeyMixin,
+    SlugifyMixin,
     ListComprehensionMixin,
     BucketMixin,
     SliceMixin,
@@ -116,6 +118,7 @@ class ASQLPreParser(
         result = self._transform_bucket_function(result)  # bucket() function to CASE WHEN
         result = self._transform_list_comprehensions(result)  # [expr for var in arr] to ARRAY(SELECT ...)
         result = self._transform_key_function(result)  # key(col1, col2, ...) surrogate key generation
+        result = self._transform_slugify_function(result)  # slugify(expr) URL-friendly slug generation
         result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
         result = self._transform_slice_syntax(result)  # email[1:5] → SUBSTRING(email, 1, 5)
         result = self._normalize_function_spaces(result)
