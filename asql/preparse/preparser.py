@@ -113,6 +113,7 @@ class ASQLPreParser(
         result = self._transform_star_column_override(result)  # select *, col as name → select * EXCEPT(name), col as name
         result = self._transform_recurse(result)  # Transform recurse() to recursive CTE (after star_column_override to avoid EXCEPT in CTE)
         result = self._transform_cohort_by(result)  # cohort by - transforms to CTEs and joins (after FROM-first)
+        result = self._transform_fill_functions(result)  # fill_forward, fill_backward
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
         result = self._transform_qualify_clause(result)  # qualify rn == 1
         result = self._transform_coalesce_operator(result)  # After FROM-first for proper structure
