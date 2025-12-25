@@ -33,6 +33,17 @@ from asql.compiler.list_comprehension import (
 )
 
 
+# Dialect aliases - map common aliases to SQLGlot's expected names
+_DIALECT_ALIASES = {
+    'postgresql': 'postgres',
+}
+
+
+def _normalize_dialect(dialect: str) -> str:
+    """Normalize dialect name to SQLGlot's expected format."""
+    return _DIALECT_ALIASES.get(dialect.lower(), dialect)
+
+
 def _validate_dialect_features(
     original_query: str,
     preparsed_query: str,
@@ -159,6 +170,10 @@ def compile(
 
         if not dialect:
             dialect = extract_dialect_from_comment(asql_query)
+        
+        # Normalize dialect aliases (e.g., 'postgresql' -> 'postgres')
+        if dialect:
+            dialect = _normalize_dialect(dialect)
 
         # Pass settings to preparser for schema-aware join inference
         preparsed = preparse_asql(asql_query, settings=base_settings)
