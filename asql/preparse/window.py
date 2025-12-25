@@ -7,7 +7,64 @@ from typing import Optional
 
 from asql.errors import ASQLSyntaxError
 
+
 class WindowMixin:
+
+    def _transform_fill_functions(self, text: str) -> str:
+        """
+        Transform fill_forward and fill_backward to window functions.
+        
+        fill_forward(value) over (partition by user_id order by timestamp) →
+            LAST_VALUE(value IGNORE NULLS) OVER (
+                PARTITION BY user_id 
+                ORDER BY timestamp 
+                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+            )
+        
+        fill_backward(value) over (partition by user_id order by timestamp) →
+            FIRST_VALUE(value IGNORE NULLS) OVER (
+                PARTITION BY user_id 
+                ORDER BY timestamp 
+                ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+            )
+        """
+        result = text
+        
+        # Pattern matches: fill_forward(expr) over (...)
+        # We need to capture the expression inside the function and the OVER clause
+        pattern = r'\b(fill_forward|fill_backward)\s*\(\s*([^)]+)\s*\)\s+over\s*\(([^)]*)\)'
+        
+        def transform_fill(match: re.Match) -> str:
+            func_name = match.group(1).lower()
+            expr = match.group(2).strip()
+            over_clause = match.group(3).strip()
+            
+            # Determine the SQL function and frame based on direction
+            if func_name == 'fill_forward':
+                sql_func = 'LAST_VALUE'
+                frame = 'ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW'
+            else:  # fill_backward
+                sql_func = 'FIRST_VALUE'
+                frame = 'ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING'
+            
+            # Check if the OVER clause already has a frame specification
+            has_frame = re.search(
+                r'\b(rows|range)\s+', over_clause, re.IGNORECASE
+            )
+            
+            if has_frame:
+                # If frame exists, just add IGNORE NULLS
+                return f"{sql_func}({expr} IGNORE NULLS) OVER ({over_clause})"
+            else:
+                # Add the appropriate frame
+                if over_clause:
+                    return f"{sql_func}({expr} IGNORE NULLS) OVER ({over_clause} {frame})"
+                else:
+                    return f"{sql_func}({expr} IGNORE NULLS) OVER ({frame})"
+        
+        result = re.sub(pattern, transform_fill, result, flags=re.IGNORECASE)
+        
+        return result
 
     def _transform_deduplicate_by(self, text: str) -> str:
         """
