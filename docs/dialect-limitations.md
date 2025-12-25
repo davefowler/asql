@@ -31,16 +31,9 @@ Options:
 See: https://asql.dev/docs/dialect-limitations#column-operators
 ```
 
-When using slice syntax `[1:5]` on PostgreSQL (known bug):
+~~When using slice syntax `[1:5]` on PostgreSQL (known bug - **FIXED in Issue #77**):~~
 
-```
-ASQLDialectWarning: Slice syntax '[start:end]' has known issues for PostgreSQL (Issue #77).
-
-The generated SQL may be invalid. Use SUBSTRING() instead:
-  'select substring(name, 1, 5) as prefix'
-
-See: https://asql.dev/docs/dialect-limitations#slice-syntax
-```
+Slice syntax now works correctly for all dialects. The preparser converts slice syntax to SUBSTRING/LEFT/RIGHT functions, which SQLGlot transpiles to dialect-specific syntax.
 
 ---
 
@@ -80,6 +73,65 @@ from users
 - Provide a schema to enable automatic column enumeration
 - List columns explicitly: `select id, name, email from users`
 - Use a dialect with native EXCEPT/EXCLUDE support: BigQuery, Snowflake, DuckDB
+
+---
+
+### 2. Pivot Syntax
+
+**Feature**: Transform row values into columns using the `pivot` keyword.
+
+```asql
+from sales
+  pivot sum(amount) by category values ('A', 'B', 'C')
+```
+
+**Behavior by Dialect**:
+
+| Dialect | Static Pivot (with values) | Dynamic Pivot (without values) |
+|---------|---------------------------|-------------------------------|
+| DuckDB | ✅ Native PIVOT | ✅ Native PIVOT |
+| Snowflake | ✅ Native PIVOT | ✅ Native PIVOT (ANY ORDER BY) |
+| BigQuery | ✅ Native PIVOT | ❌ Error (values required) |
+| PostgreSQL | ✅ CASE/WHEN fallback | ❌ Error (values required) |
+| MySQL | ✅ CASE/WHEN fallback | ❌ Error (values required) |
+| SQLite | ✅ CASE/WHEN fallback | ❌ Error (values required) |
+| Redshift | ✅ CASE/WHEN fallback | ❌ Error (values required) |
+
+**Static Pivot** (explicit values):
+```asql
+from sales
+  pivot sum(amount) by category values ('A', 'B', 'C')
+```
+
+- For DuckDB/Snowflake/BigQuery: Generates native `PIVOT` syntax
+- For PostgreSQL/MySQL/SQLite: Generates `CASE WHEN` expressions
+
+**Dynamic Pivot** (database determines values at runtime):
+```asql
+from sales
+  pivot sum(amount) by category  -- No explicit values
+```
+
+- Only supported for DuckDB, Snowflake, and BigQuery
+- Other dialects require explicit values and will show a helpful error:
+  ```
+  ValueError: Dynamic pivot (without explicit values) is not supported for postgres.
+  Please specify values explicitly:
+    pivot sum(amount) by category values ('val1', 'val2', ...)
+  ```
+
+**Example Output for DuckDB**:
+```sql
+SELECT * FROM (PIVOT sales ON category IN ('A', 'B', 'C') USING SUM(amount)) AS __pivot__
+```
+
+**Example Output for PostgreSQL** (CASE/WHEN fallback):
+```sql
+SELECT SUM(CASE WHEN category = 'A' THEN amount END) AS A,
+       SUM(CASE WHEN category = 'B' THEN amount END) AS B,
+       SUM(CASE WHEN category = 'C' THEN amount END) AS C
+FROM sales
+```
 
 ---
 
@@ -125,26 +177,25 @@ group by rollup(year(date), month(date)) (
 | Feature | BigQuery | Snowflake | DuckDB | PostgreSQL | MySQL | SQLite | Redshift |
 |---------|----------|-----------|--------|------------|-------|--------|----------|
 | Column operators (`except`, `rename`, `replace`) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Native PIVOT syntax | ✅ | ✅ | ✅ | ❌ (uses CASE/WHEN) | ❌ | ❌ | ❌ |
+| Dynamic pivot (no values) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Auto-spine (basic) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Auto-spine with ROLLUP/CUBE | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
 | `generate_series` for spines | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| Slice syntax `[1:5]` | 🐛 | 🐛 | ✅ | 🐛 | 🐛 | 🐛 | 🐛 |
+| Slice syntax `[1:5]` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Legend:
 - ✅ Fully supported - No validation errors or warnings
 - ⚠️ Partial support / edge cases - May raise `ASQLDialectWarning`
 - ❌ Not supported - Raises `ASQLDialectError` (unless schema enables fallback)
-- 🐛 Bug - Raises `ASQLDialectWarning` with issue link (see Known Bugs section)
 
 ---
 
-## Known Bugs (Documented but Broken)
+## Fixed Bugs
 
-These features are documented in the spec but have broken implementations for certain dialects.
+### 3. Slice Syntax `[start:end]` ✅ (Fixed in Issue #77)
 
-### 3. Slice Syntax `[start:end]` 🐛
-
-**Tracking**: [Issue #77](https://github.com/davefowler/asql/issues/77)
+**Tracking**: [Issue #77](https://github.com/davefowler/asql/issues/77) - **RESOLVED**
 
 **Feature**: Python-style string/array slicing
 
@@ -153,26 +204,24 @@ from users
   select email[1:5] as prefix
 ```
 
-**Current behavior**:
+**Implementation**: The preparser converts slice syntax to SUBSTRING/LEFT/RIGHT functions:
 
-| Dialect | Output | Works? |
-|---------|--------|--------|
-| DuckDB | `email[1 : 5]` | ✅ Native support |
-| PostgreSQL | `email[1 : 5]` | ❌ Invalid (Postgres uses `[]` for arrays only) |
-| Snowflake | `email[GET_PATH(1, '5')]` | ❌ Completely wrong |
-| BigQuery | `email[1 : 5]` | ❌ Invalid for strings |
-| MySQL | `email[1 : 5]` | ❌ Invalid syntax |
+| Slice Pattern | Converts To |
+|---------------|-------------|
+| `email[1:5]` | `SUBSTRING(email, 1, 5)` |
+| `email[1:]` | `SUBSTRING(email, 1)` |
+| `email[:5]` | `LEFT(email, 5)` |
+| `email[-5:]` | `RIGHT(email, 5)` |
 
-**Compile-time behavior**: Raises `ASQLDialectWarning` for all dialects except DuckDB (which has native support).
+SQLGlot then transpiles these functions to dialect-specific syntax:
 
-**Fix planned**: Convert to `SUBSTRING()` in preparser, let SQLGlot handle dialect-specific output.
-
-**Workaround**: Use `SUBSTRING()` directly:
-
-```asql
-from users
-  select substring(email, 1, 5) as prefix
-```
+| Dialect | Output |
+|---------|--------|
+| DuckDB | `SUBSTRING(email, 1, 5)` |
+| PostgreSQL | `SUBSTRING(email FROM 1 FOR 5)` |
+| Snowflake | `SUBSTRING(email, 1, 5)` |
+| BigQuery | `SUBSTRING(email, 1, 5)` |
+| MySQL | `SUBSTRING(email, 1, 5)` |
 
 ---
 

@@ -6,6 +6,12 @@
 - `./venv/bin/python script.py` (not just `python`)
 - The system Python has different package versions and WILL cause false test failures
 
+## ⚠️ CRITICAL: Linting with Ruff
+- **ALWAYS** run `./venv/bin/ruff check asql/` before finishing any PR or code changes
+- CI uses ruff to lint - Cursor's built-in linter (Pylance) does NOT catch unused imports/variables
+- Fix any ruff errors before committing. Most can be auto-fixed with `./venv/bin/ruff check asql/ --fix`
+- Common issues: unused imports, unused local variables, f-strings without placeholders
+
 ## Testing
 - use the venv
 - Write tests first (TDD approach)

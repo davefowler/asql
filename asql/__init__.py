@@ -28,7 +28,14 @@ from asql.preparser import preparse_asql, ASQLPreParser
 from asql.reverse_compiler import reverse_compile, detect_dialect
 from asql.config import ASQLConfig, StyleConfig, CompileSettings
 
-__version__ = "0.1.0"
+# Version is read from pyproject.toml via importlib.metadata
+# This ensures a single source of truth for the version
+try:
+    from importlib.metadata import version as _get_version
+    __version__ = _get_version("asql")
+except Exception:
+    # Fallback for when package is not installed (e.g., running from source without pip install -e)
+    __version__ = "0.1.0"
 
 
 def normalize(asql_query: str, config: ASQLConfig = None) -> str:
@@ -58,6 +65,9 @@ def normalize(asql_query: str, config: ASQLConfig = None) -> str:
 
 
 __all__ = [
+    # Version
+    "__version__",
+    
     # Main compilation functions
     "compile",
     "compile_to_ast",

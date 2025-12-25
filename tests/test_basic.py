@@ -9,7 +9,12 @@ def test_import() -> None:
     """Test that we can import the asql module."""
     import asql
     assert asql is not None
-    assert asql.__version__ == "0.1.0"
+    # Verify version is accessible and follows semver pattern (e.g., "0.1.0")
+    assert hasattr(asql, "__version__")
+    assert isinstance(asql.__version__, str)
+    # Check it looks like a semver version
+    version_parts = asql.__version__.split(".")
+    assert len(version_parts) >= 2, f"Version should be semver format: {asql.__version__}"
 
 
 def test_basic_compilation() -> None:

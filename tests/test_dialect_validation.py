@@ -108,58 +108,61 @@ class TestColumnOperatorsValidation:
 
 
 class TestSliceSyntaxValidation:
-    """Test validation for slice syntax [start:end]."""
+    """Test validation for slice syntax [start:end].
     
-    def test_slice_warns_on_postgres(self) -> None:
-        """Slice syntax should warn on PostgreSQL (known bug)."""
+    NOTE: Issue #77 fixed - slice syntax now works for all dialects.
+    The preparser converts slice syntax to SUBSTRING/LEFT/RIGHT, which
+    SQLGlot correctly transpiles to all dialects.
+    """
+    
+    @pytest.mark.parametrize('dialect', ['postgres', 'bigquery', 'snowflake', 'mysql'])
+    def test_slice_works_on_all_dialects(self, dialect: str) -> None:
+        """Slice syntax should work on all dialects (Issue #77 fixed)."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            compile('from users select name[1:5] as prefix', dialect='postgres')
+            sql = compile('from users select name[1:5] as prefix', dialect=dialect)
             
-            assert len(w) >= 1
-            # Find the dialect warning
-            dialect_warnings = [warning for warning in w if issubclass(warning.category, ASQLDialectWarning)]
-            assert len(dialect_warnings) >= 1
-            assert "slice" in str(dialect_warnings[0].message).lower() or "issue #77" in str(dialect_warnings[0].message).lower()
-    
-    def test_slice_warns_on_bigquery(self) -> None:
-        """Slice syntax should warn on BigQuery (known bug)."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            compile('from users select name[1:5] as prefix', dialect='bigquery')
+            # Should convert to SUBSTRING (or dialect equivalent)
+            assert 'SUBSTRING' in sql.upper(), f"Expected SUBSTRING in SQL for {dialect}: {sql}"
             
+            # Should not have dialect warnings for slice syntax
             dialect_warnings = [warning for warning in w if issubclass(warning.category, ASQLDialectWarning)]
-            assert len(dialect_warnings) >= 1
-    
-    def test_slice_warns_on_snowflake(self) -> None:
-        """Slice syntax should warn on Snowflake (known bug)."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            compile('from users select name[1:5] as prefix', dialect='snowflake')
-            
-            dialect_warnings = [warning for warning in w if issubclass(warning.category, ASQLDialectWarning)]
-            assert len(dialect_warnings) >= 1
+            slice_warnings = [warning for warning in dialect_warnings 
+                              if 'slice' in str(warning.message).lower() or '#77' in str(warning.message)]
+            assert len(slice_warnings) == 0, f"Unexpected slice warning for {dialect}"
     
     def test_slice_works_on_duckdb(self) -> None:
-        """Slice syntax should work on DuckDB (fully supported)."""
-        # DuckDB supports slice syntax natively, so no warning
+        """Slice syntax should work on DuckDB (natively supported + SUBSTRING)."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            compile('from users select name[1:5] as prefix', dialect='duckdb')
+            sql = compile('from users select name[1:5] as prefix', dialect='duckdb')
+            
+            # Should convert to SUBSTRING 
+            assert 'SUBSTRING' in sql.upper()
             
             # Should not have dialect warnings for DuckDB
             dialect_warnings = [warning for warning in w if issubclass(warning.category, ASQLDialectWarning)]
             assert len(dialect_warnings) == 0
     
-    def test_slice_warning_includes_workaround(self) -> None:
-        """Slice warning should include SUBSTRING() workaround."""
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            compile('from users select name[1:5] as prefix', dialect='postgres')
-            
-            dialect_warnings = [warning for warning in w if issubclass(warning.category, ASQLDialectWarning)]
-            if dialect_warnings:
-                assert 'substring' in str(dialect_warnings[0].message).lower()
+    def test_slice_generates_correct_sql_for_postgres(self) -> None:
+        """Slice syntax should generate correct PostgreSQL SUBSTRING syntax."""
+        sql = compile('from users select name[1:5] as prefix', dialect='postgres')
+        # PostgreSQL uses FROM ... FOR syntax
+        assert 'SUBSTRING(name FROM 1 FOR 5)' in sql
+    
+    def test_slice_edge_cases(self) -> None:
+        """Test various slice syntax patterns."""
+        # Slice from start (email[:5] → LEFT)
+        sql = compile('from users select email[:5] as prefix', dialect='postgres')
+        assert 'LEFT(email, 5)' in sql
+        
+        # Slice to end (email[1:] → SUBSTRING without length)
+        sql = compile('from users select email[1:] as suffix', dialect='postgres')
+        assert 'SUBSTRING(email FROM 1)' in sql
+        
+        # Negative slice (email[-5:] → RIGHT)
+        sql = compile('from users select email[-5:] as last_five', dialect='postgres')
+        assert 'RIGHT(email, 5)' in sql
 
 
 class TestDialectAliases:
@@ -201,13 +204,14 @@ class TestErrorMessages:
         error_msg = str(exc_info.value)
         assert 'except' in error_msg.lower() or 'column' in error_msg.lower()
     
-    def test_warning_includes_issue_number(self) -> None:
-        """Warning for known bugs should include issue number."""
+    def test_no_slice_warnings_after_fix(self) -> None:
+        """Slice syntax should no longer generate warnings (Issue #77 fixed)."""
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             compile('from users select name[1:5] as prefix', dialect='postgres')
             
             dialect_warnings = [warning for warning in w if issubclass(warning.category, ASQLDialectWarning)]
-            if dialect_warnings:
-                warning_msg = str(dialect_warnings[0].message)
-                assert '#77' in warning_msg or 'issue' in warning_msg.lower()
+            # No slice-related warnings should be generated
+            slice_warnings = [warning for warning in dialect_warnings
+                              if 'slice' in str(warning.message).lower() or '#77' in str(warning.message)]
+            assert len(slice_warnings) == 0, "Slice syntax should not generate warnings after fix"
