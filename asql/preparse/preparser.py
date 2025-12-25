@@ -27,6 +27,7 @@ from asql.preparse.ternary import TernaryMixin
 from asql.preparse.list_comprehension import ListComprehensionMixin
 from asql.preparse.bucket import BucketMixin
 from asql.preparse.slice import SliceMixin
+from asql.preparse.recurse import RecurseMixin
 
 if TYPE_CHECKING:
     from asql.config import CompileSettings
@@ -61,6 +62,7 @@ class ASQLPreParser(
     ListComprehensionMixin,
     BucketMixin,
     SliceMixin,
+    RecurseMixin,
 ):
     def __init__(
         self,
@@ -109,6 +111,7 @@ class ASQLPreParser(
         result = self._transform_pivot_marker(result)  # Expand __PIVOT_COLS__ markers after from_first
         result = self._transform_distinct_on(result)  # Move DISTINCT ON to after SELECT
         result = self._transform_star_column_override(result)  # select *, col as name → select * EXCEPT(name), col as name
+        result = self._transform_recurse(result)  # Transform recurse() to recursive CTE (after star_column_override to avoid EXCEPT in CTE)
         result = self._transform_cohort_by(result)  # cohort by - transforms to CTEs and joins (after FROM-first)
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
         result = self._transform_qualify_clause(result)  # qualify rn == 1

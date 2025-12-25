@@ -15,6 +15,13 @@ If you follow these conventions, ASQL infers relationships, defaults, and behavi
 
 ### The Convention
 
+**Core FK Rules:**
+
+1. **Single column FKs only** — ASQL infers relationships from single-column foreign keys
+2. **`_id` suffix is sacred** — Any column ending in `_id` is assumed to be a foreign key
+3. **Primary keys are `id`** — Target tables have a primary key column named `id`
+4. **Pattern: `{entity}_id`** — The FK `user_id` links to `users.id`
+
 Foreign keys follow the pattern: `{entity}_id` or `{alias}_{entity}_id`
 
 | FK Column | Inferred Alias | Target Table | Dot Traversal |
@@ -22,7 +29,9 @@ Foreign keys follow the pattern: `{entity}_id` or `{alias}_{entity}_id`
 | `user_id` | `user` | `users` | `.user.` |
 | `order_id` | `order` | `orders` | `.order.` |
 | `owner_user_id` | `owner` | `users` | `.owner.` |
-| `manager_id` | `manager` | `managers` or `users` | `.manager.` |
+| `manager_id` | `manager` | `employees` (self-ref) | `.manager.` |
+
+**Self-referential FKs** (like `manager_id` on `employees`) are detected automatically when the FK points back to the same table's `id`.
 
 ### How It Works
 
