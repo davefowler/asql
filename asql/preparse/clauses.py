@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
-from typing import List, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 from asql.preparse.registry import FUNCTION_ALIASES, FUNCTION_REGISTRY
+from asql.dialect_features import supports_column_exclude
 
 class ClausesMixin:
 
@@ -299,6 +300,129 @@ class ClausesMixin:
 
         return result
 
+    def _extract_table_name(self, text: str) -> Optional[str]:
+        """Extract the primary table name from a FROM clause.
+        
+        Handles various patterns:
+        - from users
+        - from public.users  
+        - from users as u
+        - from users u
+        
+        Returns:
+            Table name (without schema prefix) or None if not found
+        """
+        # Pattern: FROM [schema.]table [AS alias]
+        from_pattern = r'\bfrom\s+(?:[\w]+\.)?(\w+)(?:\s+(?:as\s+)?(\w+))?'
+        match = re.search(from_pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).lower()
+        return None
+    
+    def _get_table_columns(self, table_name: str) -> Optional[List[str]]:
+        """Get column names for a table from schema.
+        
+        Args:
+            table_name: Name of the table to look up
+            
+        Returns:
+            List of column names or None if table not found in schema
+        """
+        if not hasattr(self, 'settings') or self.settings is None:
+            return None
+        if self.settings.schema is None:
+            return None
+        
+        table = self.settings.schema.get_table(table_name)
+        if table is None:
+            return None
+        
+        return list(table.columns.keys())
+    
+    def _should_expand_columns(self) -> bool:
+        """Check if we should expand columns instead of using EXCEPT syntax.
+        
+        Returns True if:
+        1. Dialect doesn't support COLUMN_EXCLUDE (PostgreSQL, MySQL, SQLite, Redshift)
+        2. Schema is available to look up column names
+        """
+        if not hasattr(self, 'dialect') or self.dialect is None:
+            return False
+        
+        # If dialect supports EXCLUDE, no need to expand
+        if supports_column_exclude(self.dialect):
+            return False
+        
+        # Check if schema is available
+        if not hasattr(self, 'settings') or self.settings is None:
+            return False
+        if self.settings.schema is None:
+            return False
+        
+        return True
+    
+    def _build_explicit_column_list(
+        self,
+        table_name: str,
+        except_cols: List[str],
+        rename_mappings: List[Tuple[str, str]],
+        replace_exprs: List[Tuple[str, str]],
+    ) -> Optional[str]:
+        """Build an explicit column list for dialects without EXCLUDE support.
+        
+        Args:
+            table_name: Name of the source table
+            except_cols: Columns to exclude
+            rename_mappings: List of (old_name, new_name) tuples
+            replace_exprs: List of (column, expression) tuples
+            
+        Returns:
+            Comma-separated column list or None if table not in schema
+        """
+        all_columns = self._get_table_columns(table_name)
+        if all_columns is None:
+            return None
+        
+        # Build set of columns to exclude (case-insensitive)
+        # Note: Replace columns are added to except_cols by the parsing logic,
+        # but we handle them separately via replace_dict
+        excluded_set = {c.lower() for c in except_cols}
+        
+        # Build rename mapping (old -> new)
+        rename_dict = {old.lower(): new for old, new in rename_mappings}
+        
+        # Build replace expressions (col -> expr)
+        replace_dict = {col.lower(): expr for col, expr in replace_exprs}
+        
+        # Build the column list
+        select_parts = []
+        for col in all_columns:
+            col_lower = col.lower()
+            
+            # Replace expressions take priority - even if column is in except_cols
+            # (because replace adds columns to except_cols for EXCEPT syntax fallback)
+            if col_lower in replace_dict:
+                # Replaced column: expr AS col
+                select_parts.append(f"{replace_dict[col_lower]} AS {col}")
+            elif col_lower in rename_dict:
+                # Renamed column: col AS new_name
+                select_parts.append(f"{col} AS {rename_dict[col_lower]}")
+            elif col_lower in excluded_set:
+                # Skip excluded columns (only if not being replaced)
+                continue
+            else:
+                # Regular column
+                select_parts.append(col)
+        
+        # Add any renamed columns that weren't in the original columns
+        # (in case rename is adding a duplicate with a new name)
+        for old, new in rename_mappings:
+            if old.lower() not in {c.lower() for c in all_columns}:
+                # Old column not in table - just add as explicit rename
+                select_parts.append(f"{old} AS {new}")
+        
+        return ', '.join(select_parts) if select_parts else None
+    
     def _transform_column_operators(self, text: str) -> str:
         """
         Transform column operators: except, rename, replace.
@@ -306,6 +430,9 @@ class ClausesMixin:
         except col1, col2 → adds EXCEPT(col1, col2) to SELECT *
         rename old as new → transforms to: old AS new in SELECT
         replace col with expr → adds expr AS col and EXCEPT(col)
+        
+        For dialects without EXCLUDE/EXCEPT support (PostgreSQL, MySQL, SQLite, Redshift),
+        this method uses schema-aware column expansion to emit explicit column lists.
         
         These must run before _transform_from_first.
         """
@@ -382,12 +509,24 @@ class ClausesMixin:
         if not except_cols and not rename_mappings and not replace_exprs:
             return result
         
+        # Check if we should expand columns for dialects without EXCLUDE support
+        use_explicit_columns = self._should_expand_columns()
+        
+        # Extract table name for schema lookup
+        table_name = self._extract_table_name(result)
+        
+        # Try to build explicit column list if needed
+        explicit_select = None
+        if use_explicit_columns and table_name:
+            explicit_select = self._build_explicit_column_list(
+                table_name, except_cols, rename_mappings, replace_exprs
+            )
+        
         # Check if there's already a SELECT clause
         select_match = re.search(r'\bselect\s+', result, re.IGNORECASE)
         
         if select_match:
             # There's already a SELECT - need to modify it
-            # For now, add EXCEPT and expressions after the select columns
             select_pos = select_match.end()
             
             # Find what follows SELECT until FROM or other clause
@@ -400,60 +539,72 @@ class ClausesMixin:
                 select_clause = rest.strip()
                 after_select = ""
             
-            # Build new select clause
-            new_parts = []
-            
-            # Handle star with EXCEPT
-            if '*' in select_clause and except_cols:
-                # Replace * with * EXCEPT(...)
-                except_str = ', '.join(except_cols)
-                select_clause = re.sub(r'\*', f'* EXCEPT({except_str})', select_clause, count=1)
-            elif except_cols and '*' not in select_clause:
-                # No star but have except - need to add * EXCEPT
-                except_str = ', '.join(except_cols)
-                select_clause = f"* EXCEPT({except_str}), {select_clause}"
-            
-            new_parts.append(select_clause)
-            
-            # Add rename mappings (old AS new)
-            for old, new in rename_mappings:
-                new_parts.append(f"{old} AS {new}")
-            
-            # Add replace expressions (expr AS col)
-            for col, expr in replace_exprs:
-                new_parts.append(f"{expr} AS {col}")
-            
-            new_select_clause = ', '.join(p for p in new_parts if p)
-            result = result[:select_match.start()] + f"SELECT {new_select_clause} " + after_select
+            if explicit_select is not None and '*' in select_clause:
+                # Use explicit column expansion
+                # Replace * with our explicit column list
+                new_select_clause = re.sub(r'\*', explicit_select, select_clause, count=1)
+                result = result[:select_match.start()] + f"SELECT {new_select_clause} " + after_select
+            else:
+                # Use EXCEPT syntax (original behavior)
+                new_parts = []
+                
+                # Handle star with EXCEPT
+                if '*' in select_clause and except_cols:
+                    # Replace * with * EXCEPT(...)
+                    except_str = ', '.join(except_cols)
+                    select_clause = re.sub(r'\*', f'* EXCEPT({except_str})', select_clause, count=1)
+                elif except_cols and '*' not in select_clause:
+                    # No star but have except - need to add * EXCEPT
+                    except_str = ', '.join(except_cols)
+                    select_clause = f"* EXCEPT({except_str}), {select_clause}"
+                
+                new_parts.append(select_clause)
+                
+                # Add rename mappings (old AS new)
+                for old, new in rename_mappings:
+                    new_parts.append(f"{old} AS {new}")
+                
+                # Add replace expressions (expr AS col)
+                for col, expr in replace_exprs:
+                    new_parts.append(f"{expr} AS {col}")
+                
+                new_select_clause = ', '.join(p for p in new_parts if p)
+                result = result[:select_match.start()] + f"SELECT {new_select_clause} " + after_select
         else:
             # No SELECT yet - we're in from-first mode
-            # Build select parts that will be used after from-first transform
-            select_parts = []
-            
-            if except_cols:
-                except_str = ', '.join(except_cols)
-                select_parts.append(f"* EXCEPT({except_str})")
+            if explicit_select is not None:
+                # Use explicit column expansion
+                from_match = re.search(r'\bfrom\b', result, re.IGNORECASE)
+                if from_match:
+                    result = f"SELECT {explicit_select} " + result[from_match.start():]
             else:
-                select_parts.append("*")
-            
-            for old, new in rename_mappings:
-                select_parts.append(f"{old} AS {new}")
-                # If we have renames but no except, we need to except the original
-                if old not in except_cols:
-                    # Update the first part to include this in EXCEPT
-                    if "EXCEPT" in select_parts[0]:
-                        select_parts[0] = select_parts[0].replace(")", f", {old})")
-                    else:
-                        select_parts[0] = f"* EXCEPT({old})"
-            
-            for col, expr in replace_exprs:
-                select_parts.append(f"{expr} AS {col}")
-            
-            # Insert SELECT clause before FROM
-            from_match = re.search(r'\bfrom\b', result, re.IGNORECASE)
-            if from_match:
-                select_clause = ', '.join(select_parts)
-                result = f"SELECT {select_clause} " + result[from_match.start():]
+                # Use EXCEPT syntax (original behavior)
+                select_parts = []
+                
+                if except_cols:
+                    except_str = ', '.join(except_cols)
+                    select_parts.append(f"* EXCEPT({except_str})")
+                else:
+                    select_parts.append("*")
+                
+                for old, new in rename_mappings:
+                    select_parts.append(f"{old} AS {new}")
+                    # If we have renames but no except, we need to except the original
+                    if old not in except_cols:
+                        # Update the first part to include this in EXCEPT
+                        if "EXCEPT" in select_parts[0]:
+                            select_parts[0] = select_parts[0].replace(")", f", {old})")
+                        else:
+                            select_parts[0] = f"* EXCEPT({old})"
+                
+                for col, expr in replace_exprs:
+                    select_parts.append(f"{expr} AS {col}")
+                
+                # Insert SELECT clause before FROM
+                from_match = re.search(r'\bfrom\b', result, re.IGNORECASE)
+                if from_match:
+                    select_clause = ', '.join(select_parts)
+                    result = f"SELECT {select_clause} " + result[from_match.start():]
         
         return result
 
