@@ -29,6 +29,8 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
 | `df.sort_values('date', ascending=False)` | `order by -date` | Sort (- for desc) |
 | `df.head(10)` | `limit 10` | First N rows |
 | `df['col'].fillna(0)` | `col ?? 0` | Replace nulls |
+| `df['col'].ffill()` | `fill_forward(col) over (...)` | Forward fill NULLs |
+| `df['col'].bfill()` | `fill_backward(col) over (...)` | Backward fill NULLs |
 | `df.drop_duplicates(['id'])` | `per id first by -date` | Deduplicate |
 | `df.merge(other, on='id')` | `& other on id` | Join |
 | `pd.concat([df1, df2])` | `from union(df1, df2)` | Union tables |
@@ -193,6 +195,49 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     select *,
         prior(value) over (partition by user_id order by date) as prev_value
     ```
+
+---
+
+## Forward Fill / Backward Fill
+
+=== "Pandas"
+    ```python
+    # Forward fill - propagate last valid value forward
+    df['value'].ffill()
+    
+    # Backward fill - propagate next valid value backward
+    df['value'].bfill()
+    
+    # With groupby
+    df.groupby('user_id')['value'].ffill()
+    ```
+
+=== "ASQL"
+    ```asql
+    -- Forward fill
+    from events
+    select *,
+        fill_forward(value) over (order by timestamp) as value_filled
+
+    -- Backward fill
+    from events
+    select *,
+        fill_backward(value) over (order by timestamp) as value_filled
+
+    -- With partition (like groupby)
+    from events
+    select *,
+        fill_forward(value) over (partition by user_id order by timestamp) as value_filled
+    ```
+
+**How it works:**
+
+| row | value | fill_forward | fill_backward |
+|-----|-------|--------------|---------------|
+| 1   | 100   | 100          | 100           |
+| 2   | NULL  | 100 ← row 1  | 200 ← row 4   |
+| 3   | NULL  | 100 ← row 1  | 200 ← row 4   |
+| 4   | 200   | 200          | 200           |
 
 ---
 
