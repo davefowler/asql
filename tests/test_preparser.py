@@ -607,10 +607,14 @@ class TestPivot:
         assert "CASE WHEN" in result.upper()
     
     def test_pivot_without_values_raises(self):
-        """pivot without values raises helpful error."""
+        """pivot without values raises helpful error for non-native dialects."""
         import pytest
-        with pytest.raises(ValueError, match="pivot requires explicit values"):
+        # Dynamic pivot (without explicit values) is not supported for dialects without native PIVOT
+        with pytest.raises(ValueError, match="Dynamic pivot.*not supported"):
             preparse_asql("from sales pivot amount by category")
+        # Also test with explicit non-native dialect
+        with pytest.raises(ValueError, match="Dynamic pivot.*not supported.*postgres"):
+            preparse_asql("from sales pivot amount by category", dialect="postgres")
     
     def test_pivot_compiled(self):
         """pivot compiles correctly."""
@@ -619,6 +623,117 @@ class TestPivot:
         assert "SUM(CASE WHEN" in result.upper()
         assert "AS A" in result.upper()
         assert "AS B" in result.upper()
+
+
+class TestPivotDialects:
+    """Test dialect-specific pivot behavior."""
+    
+    def test_pivot_native_duckdb_with_values(self):
+        """DuckDB uses native PIVOT syntax with explicit values."""
+        from asql.compiler import compile
+        result = compile(
+            "from sales pivot sum(amount) by category values ('A', 'B')",
+            dialect="duckdb"
+        )
+        # DuckDB should use native PIVOT syntax
+        assert "PIVOT" in result.upper()
+        assert "ON category" in result.lower() or "on category" in result.lower()
+        assert "USING" in result.upper() or "SUM(amount)" in result.upper()
+    
+    def test_pivot_native_snowflake_with_values(self):
+        """Snowflake uses native PIVOT syntax with explicit values."""
+        from asql.compiler import compile
+        result = compile(
+            "from sales pivot sum(amount) by category values ('A', 'B')",
+            dialect="snowflake"
+        )
+        # Snowflake should use native PIVOT syntax
+        assert "PIVOT" in result.upper()
+        assert "FOR category" in result.lower() or "for category" in result.lower()
+    
+    def test_pivot_native_bigquery_with_values(self):
+        """BigQuery uses native PIVOT syntax with explicit values."""
+        from asql.compiler import compile
+        result = compile(
+            "from sales pivot sum(amount) by category values ('A', 'B')",
+            dialect="bigquery"
+        )
+        # BigQuery should use native PIVOT syntax
+        assert "PIVOT" in result.upper()
+        assert "FOR category" in result.lower() or "for category" in result.lower()
+    
+    def test_pivot_fallback_postgres(self):
+        """PostgreSQL uses CASE/WHEN fallback."""
+        from asql.compiler import compile
+        result = compile(
+            "from sales pivot sum(amount) by category values ('A', 'B')",
+            dialect="postgres"
+        )
+        # PostgreSQL should use CASE/WHEN fallback
+        assert "CASE WHEN" in result.upper()
+        assert "PIVOT" not in result.upper()
+    
+    def test_pivot_fallback_mysql(self):
+        """MySQL uses CASE/WHEN fallback."""
+        from asql.compiler import compile
+        result = compile(
+            "from sales pivot sum(amount) by category values ('A', 'B')",
+            dialect="mysql"
+        )
+        # MySQL should use CASE/WHEN fallback
+        assert "CASE WHEN" in result.upper()
+        assert "PIVOT" not in result.upper()
+    
+    def test_pivot_fallback_sqlite(self):
+        """SQLite uses CASE/WHEN fallback."""
+        from asql.compiler import compile
+        result = compile(
+            "from sales pivot sum(amount) by category values ('A', 'B')",
+            dialect="sqlite"
+        )
+        # SQLite should use CASE/WHEN fallback
+        assert "CASE WHEN" in result.upper()
+        assert "PIVOT" not in result.upper()
+    
+    def test_dynamic_pivot_duckdb(self):
+        """DuckDB supports dynamic pivot (without explicit values)."""
+        # Dynamic pivot should work for DuckDB
+        result = preparse_asql("from sales pivot sum(amount) by category", dialect="duckdb")
+        # Should generate native PIVOT syntax without IN clause
+        assert "PIVOT" in result.upper()
+        # Should not have explicit values list
+    
+    def test_dynamic_pivot_snowflake(self):
+        """Snowflake supports dynamic pivot (without explicit values)."""
+        # Dynamic pivot should work for Snowflake
+        result = preparse_asql("from sales pivot sum(amount) by category", dialect="snowflake")
+        # Should generate native PIVOT syntax
+        assert "PIVOT" in result.upper()
+    
+    def test_dynamic_pivot_error_bigquery(self):
+        """BigQuery raises error for dynamic pivot (requires explicit values)."""
+        import pytest
+        # BigQuery has native PIVOT but requires explicit values
+        with pytest.raises(ValueError, match="Dynamic pivot.*not supported.*bigquery"):
+            preparse_asql("from sales pivot sum(amount) by category", dialect="bigquery")
+    
+    def test_dynamic_pivot_error_postgres(self):
+        """PostgreSQL raises error for dynamic pivot."""
+        import pytest
+        with pytest.raises(ValueError, match="Dynamic pivot.*not supported.*postgres"):
+            preparse_asql("from sales pivot sum(amount) by category", dialect="postgres")
+    
+    def test_dynamic_pivot_error_mysql(self):
+        """MySQL raises error for dynamic pivot."""
+        import pytest
+        with pytest.raises(ValueError, match="Dynamic pivot.*not supported.*mysql"):
+            preparse_asql("from sales pivot sum(amount) by category", dialect="mysql")
+    
+    def test_dynamic_pivot_error_sqlite(self):
+        """SQLite raises error for dynamic pivot."""
+        import pytest
+        with pytest.raises(ValueError, match="Dynamic pivot.*not supported.*sqlite"):
+            preparse_asql("from sales pivot sum(amount) by category", dialect="sqlite")
 
 
 class TestSliceSyntax:
