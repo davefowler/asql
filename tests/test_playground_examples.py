@@ -44,16 +44,13 @@ DIALECTS = [
 # Dialects that don't support column operators (except, rename, replace)
 # These require EXCLUDE/EXCEPT syntax which only BigQuery, Snowflake, DuckDB support
 #
-# TODO(Issue #80): When schema-aware column expansion fallback is implemented:
-#   1. Remove these from DIALECT_LIMITATIONS
-#   2. Add tests that verify:
-#      - WITHOUT schema: compile() raises ASQLDialectError
-#      - WITH schema: compile() succeeds, expanding to explicit column list
-#   Example test:
-#     schema = Schema.from_dict({'tables': {'users': {'columns': ['id', 'name', 'email', 'password_hash']}}})
-#     settings = CompileSettings(schema=schema)
-#     result = compile('from users except password_hash', dialect='mysql', settings=settings)
-#     assert 'id' in result and 'name' in result and 'password_hash' not in result
+# NOTE (Issue #80 - IMPLEMENTED): Schema-aware column expansion fallback is now available!
+#   - WITHOUT schema: compile() raises ASQLDialectError (as expected)
+#   - WITH schema: compile() succeeds, expanding to explicit column list
+#   
+#   The playground examples don't have schema attached, so they still need to be skipped
+#   for dialects without native EXCLUDE support. See tests/test_column_operators_fallback.py
+#   for comprehensive tests of the schema-aware fallback feature.
 #
 _NO_COLUMN_OPS_DIALECTS = ["trino", "mysql", "redshift", "sqlite", "postgres", "spark"]
 _COLUMN_OP_EXAMPLES = ["Exclude Columns", "Rename Columns", "Replace Column Values", "Combined Column Ops"]

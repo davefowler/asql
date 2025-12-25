@@ -35,19 +35,29 @@ class TestColumnOperatorsValidation:
         with pytest.raises(ASQLDialectError, match="except.*not supported.*Redshift"):
             compile('from users except password', dialect='redshift')
     
-    def test_except_warns_on_postgres_with_schema(self) -> None:
-        """Except should warn (not error) on PostgreSQL with schema."""
+    def test_except_works_on_postgres_with_schema(self) -> None:
+        """Except should work on PostgreSQL with schema (Issue #80 fallback).
+        
+        When schema is provided, ASQL expands to explicit column list instead
+        of using EXCEPT syntax. No warning is needed since the fallback works.
+        """
         schema = Schema()
         schema.add_table(Table.from_column_list('users', ['id', 'name', 'password']))
         settings = CompileSettings(schema=schema)
         
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            sql = compile('from users except password', dialect='postgres', settings=settings)
-            
-            assert len(w) == 1
-            assert issubclass(w[0].category, ASQLDialectWarning)
-            assert "not natively supported" in str(w[0].message).lower()
+        # Should compile without error or warning
+        sql = compile('from users except password', dialect='postgres', settings=settings)
+        
+        # Should NOT contain EXCEPT syntax (PostgreSQL doesn't support it)
+        assert 'EXCEPT' not in sql.upper()
+        assert 'EXCLUDE' not in sql.upper()
+        
+        # Should contain the non-excluded columns
+        assert 'id' in sql.lower()
+        assert 'name' in sql.lower()
+        
+        # Should NOT contain the excluded column
+        assert 'password' not in sql.lower()
     
     def test_except_works_on_bigquery(self) -> None:
         """Except should work on BigQuery (supported dialect)."""

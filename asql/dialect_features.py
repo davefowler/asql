@@ -135,6 +135,24 @@ def has_slice_syntax(original_query: str) -> bool:
     return bool(re.search(pattern, original_query))
 
 
+def supports_column_exclude(dialect: Optional[str]) -> bool:
+    """Check if dialect supports EXCLUDE/EXCEPT column syntax.
+    
+    Some dialects (BigQuery, Snowflake, DuckDB) support native column
+    exclusion syntax like `SELECT * EXCEPT(col)` or `SELECT * EXCLUDE(col)`.
+    
+    For dialects without this support, ASQL can use schema-aware
+    column expansion as a fallback.
+    
+    Args:
+        dialect: SQL dialect name (e.g., 'postgres', 'bigquery')
+        
+    Returns:
+        True if dialect supports EXCLUDE/EXCEPT, False otherwise
+    """
+    return check_feature(Feature.COLUMN_EXCLUDE, dialect)
+
+
 def get_dialect_display_name(dialect: Optional[str]) -> str:
     """Get a user-friendly display name for a dialect.
     
