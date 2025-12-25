@@ -8,7 +8,7 @@ from sqlglot.dialects import Dialect
 
 from asql.config import CompileSettings
 from asql.dialect import register_asql_dialect
-from asql.errors import ASQLCompilationError, ASQLSyntaxError, ASQLDialectError, ASQLDialectWarning
+from asql.errors import ASQLCompilationError, ASQLSyntaxError, ASQLDialectError
 from asql.preparse import preparse_asql
 from asql.dialect_features import (
     Feature,
@@ -16,7 +16,6 @@ from asql.dialect_features import (
     has_column_operators,
     get_dialect_display_name,
 )
-import warnings
 from asql.compiler.auto_spine import _apply_auto_spine, _remove_guarantee_wrappers
 from asql.compiler.explode import process_explode_markers
 from asql.compiler.inline_settings import (
@@ -65,33 +64,28 @@ def _validate_dialect_features(
         return  # Can't validate without a dialect
     
     # 1. Check column operators (except, rename, replace)
+    # 
+    # When the preparser finds column operators and:
+    # - Schema is available: It expands to explicit column list (Issue #80)
+    # - Schema not available: It uses EXCEPT syntax
+    #
+    # We only need to validate/error when EXCEPT syntax is used on unsupported dialects.
+    # has_column_operators() checks for `* EXCEPT(...)` pattern in preparsed query.
     if has_column_operators(preparsed_query):
         if not check_feature(Feature.COLUMN_EXCLUDE, dialect):
             dialect_name = get_dialect_display_name(dialect)
-            schema_available = settings.schema is not None
-            
-            if schema_available:
-                # Schema can enable fallback (Issue #80) - warn but allow
-                warnings.warn(
-                    ASQLDialectWarning(
-                        f"Column operators ('except', 'rename', 'replace') are not natively supported "
-                        f"for {dialect_name}.\n\n"
-                        f"A schema is provided, so ASQL will attempt to expand columns automatically. "
-                        f"If this fails, use explicit SELECT: 'select col1, col2 from table'.\n\n"
-                        f"See: https://asql.dev/docs/dialect-limitations#column-operators"
-                    )
-                )
-            else:
-                # No schema - hard error
-                raise ASQLDialectError(
-                    f"Column operators ('except', 'rename', 'replace') are not supported for {dialect_name}.\n\n"
-                    f"The 'except' operator requires EXCEPT/EXCLUDE syntax which {dialect_name} doesn't support.\n\n"
-                    f"Options:\n"
-                    f"  1. Provide a schema to enable automatic column enumeration (see docs/schema.md)\n"
-                    f"  2. Use explicit SELECT: 'select id, name, email from users'\n"
-                    f"  3. Use a dialect with EXCLUDE support: BigQuery, Snowflake, DuckDB\n\n"
-                    f"See: https://asql.dev/docs/dialect-limitations#column-operators"
-                )
+            # If we get here, it means EXCEPT syntax is in the preparsed query
+            # but the dialect doesn't support it. This happens when no schema
+            # was provided (otherwise preparser would have expanded columns).
+            raise ASQLDialectError(
+                f"Column operators ('except', 'rename', 'replace') are not supported for {dialect_name}.\n\n"
+                f"The 'except' operator requires EXCEPT/EXCLUDE syntax which {dialect_name} doesn't support.\n\n"
+                f"Options:\n"
+                f"  1. Provide a schema to enable automatic column enumeration (see docs/schema.md)\n"
+                f"  2. Use explicit SELECT: 'select id, name, email from users'\n"
+                f"  3. Use a dialect with EXCLUDE support: BigQuery, Snowflake, DuckDB\n\n"
+                f"See: https://asql.dev/docs/dialect-limitations#column-operators"
+            )
     
     # 2. Slice syntax - no longer needs validation (Issue #77 fixed)
     # The preparser now converts slice syntax to SUBSTRING/LEFT/RIGHT,

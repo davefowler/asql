@@ -41,7 +41,7 @@ Slice syntax now works correctly for all dialects. The preparser converts slice 
 
 ### 1. Column Operators (`except`, `rename`, `replace`)
 
-**Tracking**: [Issue #80](https://github.com/davefowler/asql/issues/80) - Schema-aware fallback planned
+**Status**: ✅ Implemented (Issue #80)
 
 **Features**: 
 - `except col1, col2` - exclude columns from result
@@ -60,17 +60,33 @@ from users
 - BigQuery: `SELECT * EXCEPT(password, id, name), id AS user_id, upper(name) AS name FROM users` ✅
 - Snowflake: `SELECT * EXCLUDE(...), ... FROM users` ✅
 - DuckDB: `SELECT * EXCLUDE(...), ... FROM users` ✅
-- PostgreSQL: ❌ **Not supported** - no `EXCEPT`/`EXCLUDE` syntax
-- MySQL: ❌ **Not supported**
-- SQLite: ❌ **Not supported**
-- Redshift: ❌ **Not supported**
+- PostgreSQL: ⚠️ **Requires schema** - emits explicit column list
+- MySQL: ⚠️ **Requires schema** - emits explicit column list
+- SQLite: ⚠️ **Requires schema** - emits explicit column list
+- Redshift: ⚠️ **Requires schema** - emits explicit column list
 
 **Compile-time behavior**:
 - **Without schema**: Raises `ASQLDialectError` for unsupported dialects (PostgreSQL, MySQL, SQLite, Redshift)
-- **With schema**: Raises `ASQLDialectWarning` - ASQL attempts automatic column expansion (Issue #80)
+- **With schema**: ✅ **Works!** ASQL expands to explicit column list automatically
 
-**Workaround for unsupported dialects**: 
-- Provide a schema to enable automatic column enumeration
+**Example with schema** (PostgreSQL):
+```python
+from asql import compile
+from asql.config import CompileSettings
+from asql.schema import Schema
+
+schema = Schema.from_dict({
+    'tables': {
+        'users': {'columns': ['id', 'name', 'email', 'password_hash', 'created_at']}
+    }
+})
+settings = CompileSettings(schema=schema)
+result = compile('from users except password_hash', dialect='postgres', settings=settings)
+# Output: SELECT id, name, email, created_at FROM users
+```
+
+**Workaround for unsupported dialects** (if no schema is available): 
+- Provide a schema to enable automatic column enumeration (see example above)
 - List columns explicitly: `select id, name, email from users`
 - Use a dialect with native EXCEPT/EXCLUDE support: BigQuery, Snowflake, DuckDB
 
@@ -176,7 +192,7 @@ group by rollup(year(date), month(date)) (
 
 | Feature | BigQuery | Snowflake | DuckDB | PostgreSQL | MySQL | SQLite | Redshift |
 |---------|----------|-----------|--------|------------|-------|--------|----------|
-| Column operators (`except`, `rename`, `replace`) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Column operators (`except`, `rename`, `replace`) | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
 | Native PIVOT syntax | ✅ | ✅ | ✅ | ❌ (uses CASE/WHEN) | ❌ | ❌ | ❌ |
 | Dynamic pivot (no values) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Auto-spine (basic) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
@@ -186,8 +202,8 @@ group by rollup(year(date), month(date)) (
 
 Legend:
 - ✅ Fully supported - No validation errors or warnings
-- ⚠️ Partial support / edge cases - May raise `ASQLDialectWarning`
-- ❌ Not supported - Raises `ASQLDialectError` (unless schema enables fallback)
+- ⚠️ Requires schema - Provide a schema to enable automatic column enumeration
+- ❌ Not supported - Raises `ASQLDialectError` or requires workaround
 
 ---
 
@@ -241,6 +257,6 @@ Open an issue at: https://github.com/davefowler/asql/issues
 ## Future Improvements
 
 - [x] Add compile-time warnings for features not supported by target dialect - [Issue #81](https://github.com/davefowler/asql/issues/81) ✅
-- [ ] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE` - [Issue #80](https://github.com/davefowler/asql/issues/80)
+- [x] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE` - [Issue #80](https://github.com/davefowler/asql/issues/80) ✅
 - [ ] Add comprehensive ROLLUP/CUBE testing for auto-spine
 - [ ] Document all dialect-specific SQL generation differences
