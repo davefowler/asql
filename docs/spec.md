@@ -1729,7 +1729,67 @@ from use_this_later
 - ✅ **Natural flow**: Fits naturally into the pipeline syntax
 - ✅ **Better readability**: You end with the name and use it right after, so your eyes don't have to jump around
 
-**Note**: `stash as` is currently the only ASQL syntax that creates CTEs.
+**Note**: `stash as` and `recurse()` are the ASQL syntaxes that create CTEs.
+
+### 11.3 Recursive Queries with `recurse()`
+
+For hierarchical data (org charts, category trees, bill of materials), use `recurse()` to traverse self-referential relationships:
+
+```asql
+from employees
+  where id = 1
+  recurse(manager_id)
+```
+
+**Syntax:**
+```asql
+from <table>
+  where <anchor_condition>
+  recurse(<fk_column> [, <max_depth>])
+```
+
+- `<fk_column>` — The foreign key column to follow (e.g., `manager_id`, `parent_id`)
+- `<max_depth>` — Optional depth limit (defaults to 100 for safety)
+
+**Examples:**
+```asql
+-- Get 3 levels of reports only
+from employees
+  where id = 1
+  recurse(manager_id, 3)
+
+-- Get full category tree under 'electronics'
+from categories
+  where slug = 'electronics'
+  recurse(parent_id)
+```
+
+**Auto-generated `_level` column:**
+
+`recurse()` automatically adds a `_level` column tracking recursion depth (1 = anchor, 2 = first recursion level, etc.):
+
+```asql
+from employees
+  where id = 1
+  recurse(manager_id)
+  where _level <= 3
+  order by _level, name
+```
+
+**FK convention:** By convention, `recurse(manager_id)` auto-joins to the table's `id` column. This follows ASQL's FK naming convention.
+
+**Generated SQL:**
+```sql
+WITH RECURSIVE _recurse_employees AS (
+    SELECT *, 1 AS _level FROM employees WHERE id = 1
+    UNION ALL
+    SELECT e.*, _recurse_employees._level + 1
+    FROM employees e
+    JOIN _recurse_employees ON e.manager_id = _recurse_employees.id
+    WHERE _recurse_employees._level < 100
+)
+SELECT * FROM _recurse_employees
+```
 
 ---
 
