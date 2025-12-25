@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional
 
 # Dialects that support native PIVOT syntax
 NATIVE_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake", "bigquery"})

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from asql.errors import ASQLSyntaxError
 
