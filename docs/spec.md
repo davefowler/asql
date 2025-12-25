@@ -1741,11 +1741,13 @@ from employees
   recurse(manager_id)
 ```
 
-**Syntax:**
+**Syntax (two equivalent forms):**
 ```asql
-from <table>
-  where <anchor_condition>
-  recurse(<fk_column> [, <max_depth>])
+-- Function style
+recurse(<fk_column> [, <max_depth>])
+
+-- Keyword style  
+recurse on <fk_column> [, <max_depth>]
 ```
 
 - `<fk_column>` — The foreign key column to follow (e.g., `manager_id`, `parent_id`)

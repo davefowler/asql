@@ -177,6 +177,46 @@ class TestRecurseSemantics:
         assert "_level + 1" in result
 
 
+class TestRecurseSyntaxVariants:
+    """Test different syntax variants for recurse."""
+
+    def test_recurse_on_syntax(self) -> None:
+        """Test the 'recurse on column' syntax."""
+        asql = """
+        from employees
+          where id = 1
+          recurse on manager_id
+        """
+        result = preparse_asql(asql)
+        
+        assert "WITH RECURSIVE" in result
+        assert "_level" in result
+        assert "manager_id" in result
+
+    def test_recurse_on_with_max_depth(self) -> None:
+        """Test 'recurse on column, max_depth' syntax."""
+        asql = """
+        from employees
+          where id = 1
+          recurse on manager_id, 5
+        """
+        result = preparse_asql(asql)
+        
+        assert "WITH RECURSIVE" in result
+        assert "_level < 5" in result
+
+    def test_both_syntaxes_equivalent(self) -> None:
+        """Test that recurse() and recurse on produce same output."""
+        asql_parens = "from employees where id = 1 recurse(manager_id, 3)"
+        asql_on = "from employees where id = 1 recurse on manager_id, 3"
+        
+        result_parens = preparse_asql(asql_parens)
+        result_on = preparse_asql(asql_on)
+        
+        # Both should produce the same CTE structure
+        assert result_parens == result_on
+
+
 class TestRecurseEdgeCases:
     """Test edge cases and error handling."""
 

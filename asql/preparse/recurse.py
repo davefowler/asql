@@ -26,15 +26,26 @@ class RecurseMixin:
         """
         Transform recurse(fk_column [, max_depth]) to a recursive CTE.
         
+        Supports two syntaxes:
+        - recurse(manager_id)        -- function style
+        - recurse(manager_id, 5)     -- with max depth
+        - recurse on manager_id      -- keyword style
+        - recurse on manager_id, 5   -- with max depth
+        
         The recurse clause must follow a FROM...WHERE pattern.
         The WHERE clause becomes the anchor condition.
         The FK column is used to traverse the hierarchy.
         """
         result = text
         
-        # Pattern: recurse(fk_column) or recurse(fk_column, max_depth)
+        # Pattern 1: recurse(fk_column) or recurse(fk_column, max_depth)
         recurse_pattern = r'\brecurse\s*\(\s*(\w+)(?:\s*,\s*(\d+))?\s*\)'
         match = re.search(recurse_pattern, result, re.IGNORECASE)
+        
+        # Pattern 2: recurse on fk_column [, max_depth]
+        if not match:
+            recurse_on_pattern = r'\brecurse\s+on\s+(\w+)(?:\s*,\s*(\d+))?(?=\s|$)'
+            match = re.search(recurse_on_pattern, result, re.IGNORECASE)
         
         if not match:
             return result
