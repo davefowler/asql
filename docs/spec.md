@@ -901,6 +901,41 @@ from orders
   )
 ```
 
+#### fill_forward() / fill_backward() (NULL Propagation)
+
+Forward fill and backward fill propagate non-null values to fill NULL gaps, a common time series pattern:
+
+```asql
+# Forward fill - propagate last known value forward
+from events
+  select 
+    user_id,
+    timestamp,
+    fill_forward(value) over (partition by user_id order by timestamp) as value
+
+# Backward fill - propagate next known value backward
+from events
+  select 
+    user_id,
+    timestamp,
+    fill_backward(value) over (partition by user_id order by timestamp) as value
+```
+
+**Example use case:**
+
+| row | value | fill_forward | fill_backward |
+|-----|-------|--------------|---------------|
+| 1   | 100   | 100          | 100           |
+| 2   | NULL  | 100 ← row 1  | 200 ← row 4   |
+| 3   | NULL  | 100 ← row 1  | 200 ← row 4   |
+| 4   | 200   | 200          | 200           |
+
+**Compiles to:**
+- `fill_forward(col)` → `LAST_VALUE(col IGNORE NULLS) OVER (... ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`
+- `fill_backward(col)` → `FIRST_VALUE(col IGNORE NULLS) OVER (... ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)`
+
+**Dialect support:** Works with Snowflake, BigQuery, DuckDB (which support `IGNORE NULLS`). PostgreSQL may require a workaround as it doesn't support `IGNORE NULLS` directly.
+
 #### prior() / next() (Simplified LAG/LEAD)
 
 ```asql
@@ -955,6 +990,8 @@ from daily_sales
 | Get column value at max | `arg_max(col, sort_col)` |
 | Previous row value | `prior(col)` |
 | Next row value | `next(col)` |
+| Forward fill NULLs | `fill_forward(col) over (...)` |
+| Backward fill NULLs | `fill_backward(col) over (...)` |
 | Cumulative sum | `running_sum(col)` |
 | Cumulative average | `running_avg(col)` |
 | 7-day moving average | `rolling_avg(col, 7)` |

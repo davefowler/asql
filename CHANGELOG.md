@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Versioning infrastructure with single source of truth in `pyproject.toml`
 - CHANGELOG.md for tracking changes
+- `fill_forward()` and `fill_backward()` window functions for NULL propagation in time series data
 
 ## [0.1.0] - 2025-01-XX
 
