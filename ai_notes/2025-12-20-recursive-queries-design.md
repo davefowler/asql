@@ -1,7 +1,7 @@
 # Recursive Queries Design Document
 
 **Issue**: #11  
-**Status**: Design/Research  
+**Status**: Implementation  
 **Date**: December 20, 2025  
 **PR Title**: `asql: Recursive query syntax for hierarchical data traversal (#11)`  
 **Branch**: `issue-11-recursive-queries`
@@ -271,76 +271,65 @@ SELECT name, quantity, level FROM bom
 
 ---
 
-### 6. Recursion as a WHERE Filter?
+### 6. Chosen Syntax: Pipeline Step
 
-**Your insight**: Recursion is really answering "where this row is part of a tree rooted at X"
+**Decision**: Use `recurse(fk_column, max_depth)` as a pipeline step after WHERE.
 
 ```asql
--- Current thinking
 from employees
-  where id == 1
-  recurse through manager_id -> id
-
--- Your proposal: treat as WHERE condition
-from employees
-  where id == 1 or is_child_of(manager_id, 1)
-
--- Or:
-from employees
-  where in_tree(id, root: 1, via: manager_id)
+  where id = 1
+  recurse(manager_id, 5)
 ```
 
-**Analysis**:
+**Semantics:**
+- `where id = 1` — The anchor (starting point)
+- `recurse(manager_id)` — Expand via the FK, auto-joins to `id` by convention
+- `5` — Optional max depth (defaults to 100 for safety)
 
-This is a brilliant reframe! The recursive CTE is really just a fancy way to define set membership:
-- "Row R is in the result if R.id = 1 OR R's manager is in the result"
+**Why this approach:**
+- Clean separation of anchor (WHERE) and expansion (RECURSE)
+- Root automatically included (it's the anchor!)
+- No redundant conditions needed
+- Reads as a sequence: "start here, then expand"
+- FK auto-inference: `manager_id` → `employees.id` (self-ref detected via `_id` convention)
 
-**Potential Syntax Options**:
-
+**Example use cases:**
 ```asql
--- Option A: Explicit function-like
+-- Get CEO and all reports
 from employees
-  where in_tree(root: 1, via: manager_id -> id)
+  where id = 1
+  recurse(manager_id)
 
--- Option B: descendants_of / ancestors_of
+-- Get direct reports of CEO and THEIR reports (not CEO)
 from employees
-  where id == 1 or descendants_of(1, via: manager_id)
+  where manager_id = 1
+  recurse(manager_id, 3)
 
--- Option C: Using relationship name
-from employees
-  where id == 1 or children_of(1, through: .manager)
-
--- Option D: Tree membership operator
-from employees
-  where id in tree(1, via: manager_id)
-
--- Option E: Recursive where clause
-from employees
-  where recursive(id == 1, through: manager_id -> id)
+-- Get full category tree under 'electronics'
+from categories
+  where slug = 'electronics'
+  recurse(parent_id)
 ```
 
-**Pros of WHERE-based syntax**:
-- Conceptually accurate (it IS a filter on set membership)
-- Could combine with other WHERE conditions naturally
-- Fits the "filtering" mental model analysts have
+**Alternative syntax considered**: WHERE predicate style (see `docs/spec_future.md` for details).
 
-**Cons of WHERE-based syntax**:
-- Recursion is more than filtering - it also adds the `level` column
-- The traversal direction matters (up vs down the tree)
-- May be confusing: looks like a simple filter but generates complex SQL
+---
 
-**Recommendation**: 
-Keep `recurse through` as the primary syntax (makes the operation explicit), but consider adding helper predicates for common patterns:
+#### Auto-Generated Columns
 
+The `recurse()` function auto-generates a `_level` column tracking recursion depth:
+
+| Syntax | Generated Column |
+|--------|-----------------|
+| `recurse(manager_id)` | `_level` |
+
+The underscore prefix signals "system-generated". Users can filter or exclude it:
 ```asql
--- Primary syntax (explicit, generates CTE)
 from employees
-  where id == 1
-  recurse through manager_id -> id
-
--- Shorthand for "is this row in the tree?" (for filtering existing result sets)
-from all_employees
-  where in_subtree(root_id: 1, via: manager_id)
+  where id = 1
+  recurse(manager_id, 5)
+  where _level <= 3  -- Post-filter
+  select * except _level
 ```
 
 ---
@@ -385,31 +374,43 @@ from employees where id == 8
 
 ---
 
-## Syntax Proposal Summary
+## Final Syntax
 
 ### Primary Syntax
 
 ```asql
 from <table>
-  [where <base_condition>]
-  recurse through <from_col> -> <to_col> [(max_depth: N)]
+  [where <anchor_condition>]
+  recurse(<fk_column> [, <max_depth>])
   [select ...]
 ```
 
-### Alternative/Shorthand Syntaxes (Future)
+**Parameters:**
+- `<fk_column>` — The foreign key column to follow (must end in `_id` by convention)
+- `<max_depth>` — Optional, defaults to 100. Maximum recursion depth.
+
+**FK Auto-Resolution:**
+- `manager_id` on table `employees` → joins to `employees.id` (self-referential)
+- `parent_id` on table `categories` → joins to `categories.id` (self-referential)
+- If the FK doesn't follow `{table}_id` pattern, explicit syntax may be needed (future)
+
+### Examples
 
 ```asql
--- Using FK relationship name
+-- Get employee and all their reports (unlimited depth)
 from employees
-  where id == 1
-  recurse via .reports
+  where id = 1
+  recurse(manager_id)
 
--- Graph-like traversal
-from employees.id(1).reports*
-
--- As filter predicate
+-- Get 3 levels deep only
 from employees
-  where in_subtree(1, via: manager_id)
+  where id = 1
+  recurse(manager_id, 3)
+
+-- Get descendants of multiple roots
+from employees
+  where department = 'Engineering'
+  recurse(manager_id)
 ```
 
 ---
@@ -510,12 +511,16 @@ SQLGlot should handle most dialect differences, but:
 
 ---
 
-## Next Steps
+## Implementation Checklist
 
-1. Finalize primary syntax (`recurse through X -> Y`)
-2. Implement basic recursive CTE generation
-3. Add max_depth support
-4. Add level column generation
-5. Consider FK-based shorthand in future iteration
-6. Write comprehensive tests for edge cases
+- [x] Finalize syntax: `recurse(fk_column, max_depth)`
+- [ ] Add `recurse` clause detection in preparser
+- [ ] Extract FK column and max_depth parameters
+- [ ] Generate recursive CTE structure in compiler
+- [ ] Add `_level` column generation
+- [ ] Handle FK auto-resolution (self-referential detection)
+- [ ] Write tests for basic recursion
+- [ ] Write tests for max_depth limiting
+- [ ] Write tests for multiple roots
+- [ ] Document in spec.md
 
