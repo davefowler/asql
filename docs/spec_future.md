@@ -920,6 +920,58 @@ FROM orders
 
 ---
 
+## Recursive Query WHERE Predicate Syntax (Future Consideration)
+
+ASQL implements recursive queries using the `recurse(fk_column, max_depth)` pipeline step syntax. An alternative WHERE predicate style was considered and may be added as a shorthand in the future.
+
+**Tracking**: [#11](https://github.com/davefowler/asql/issues/11) (recursive queries feature)
+
+### Current Syntax (Implemented)
+
+```asql
+from employees
+  where id = 1
+  recurse(manager_id)
+```
+
+### Alternative: WHERE Predicate Style
+
+```asql
+from employees
+  where recurse(manager_id) = 1 or id = 1
+```
+
+**Semantics:**
+- `recurse(manager_id) = 1` — Rows where `manager_id = 1`, plus all descendants via `manager_id`
+- `or id = 1` — Include the root (id=1 itself)
+- The `= 1` is the anchor condition for `manager_id`
+
+**With explicit join (for non-standard FKs):**
+```asql
+from employees
+  where recurse(manager_id = id) = 1 or id = 1
+```
+
+### Pros
+- Feels like a filter (conceptually accurate - recursion IS set membership)
+- Works naturally with other WHERE conditions
+- Explicit about what the anchor condition is
+
+### Cons
+- Need to manually add `or id = 1` to include the root
+- `recurse(x) = 1` reads a bit awkwardly (function returning something that equals 1)
+- Less obvious that this generates a recursive CTE
+
+### Why Not Implemented Initially
+The pipeline step syntax (`recurse(manager_id)` after WHERE) was chosen for v1 because:
+1. Root is automatically included (no need for `or id = 1`)
+2. Clearer separation between anchor condition and recursion expansion
+3. More explicit about the operation being performed
+
+**Priority**: Low - Pipeline step syntax covers all use cases. This is syntactic sugar that may be added if users request it.
+
+---
+
 **See Also**:
 - `docs/spec.md` - Current specification of implemented features
 - GitHub issues - Work tracked as issues when prioritized
