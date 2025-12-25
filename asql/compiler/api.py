@@ -175,8 +175,9 @@ def compile(
         if dialect:
             dialect = _normalize_dialect(dialect)
 
-        # Pass settings to preparser for schema-aware join inference
-        preparsed = preparse_asql(asql_query, settings=base_settings)
+        # Pass settings and dialect to preparser for schema-aware join inference
+        # and dialect-specific transformations (e.g., native PIVOT for DuckDB/Snowflake/BigQuery)
+        preparsed = preparse_asql(asql_query, settings=base_settings, dialect=dialect)
         preparsed = process_explode_markers(preparsed, dialect)
 
         # Parse with the target dialect when possible, but fall back to generic parsing.
