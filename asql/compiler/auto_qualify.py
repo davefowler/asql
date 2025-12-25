@@ -124,9 +124,6 @@ def _qualify_unqualified_columns(select: exp.Select) -> None:
     if len(tables) < 2:
         return
     
-    # Get table names/aliases
-    table_refs = {alias if alias else name for name, alias in tables}
-    
     # Find unqualified column references in SELECT, WHERE, GROUP BY, ORDER BY, HAVING
     def qualify_column_if_needed(expr: exp.Expression) -> None:
         """Recursively qualify unqualified columns."""
