@@ -558,6 +558,32 @@ from products
 | `upper(str)` | Convert to uppercase | `upper(code)` |
 | `trim(str)` | Remove whitespace | `trim(input)` |
 | `length(str)` | String length | `length(name)` |
+| `slugify(str)` | Convert to URL-friendly slug | `slugify(title)` |
+
+#### Slugify Function
+
+The `slugify()` function converts strings to URL-friendly slugs, inspired by dbt_utils-style helpers:
+
+```asql
+from products
+  select slugify(name) as slug
+```
+
+**Behavior:**
+- Converts to lowercase
+- Replaces runs of non-alphanumeric characters with single hyphens
+- Trims leading/trailing hyphens
+- Returns NULL for NULL input
+
+**Examples:**
+```asql
+slugify('Hello World!')     -- → 'hello-world'
+slugify('Foo  --  Bar')     -- → 'foo-bar'
+slugify('---Test---')       -- → 'test'
+slugify('Product #123!')    -- → 'product-123'
+```
+
+**Cross-dialect support:** Uses `REGEXP_REPLACE()` which is supported in PostgreSQL, BigQuery, Snowflake, DuckDB, Trino, and Spark. MySQL does not support `REGEXP_REPLACE` in older versions.
 
 ### 4.11 Comparison Functions
 
