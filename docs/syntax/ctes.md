@@ -211,6 +211,115 @@ from users
 
 If you have more than 3-4 CTEs, consider whether the query should be split into separate queries or dbt models.
 
+## Recursive Queries with `recurse()`
+
+For hierarchical data (org charts, category trees, bill of materials), use `recurse()` to traverse self-referential relationships:
+
+```asql-play
+-- Get employee and all their reports
+from employees
+  where id = 1
+  recurse(manager_id)
+```
+
+### Syntax
+
+Three equivalent syntaxes are supported:
+
+```asql
+-- Function style
+recurse(<fk_column> [, <max_depth>])
+
+-- Keyword style (with 'on')
+recurse on <fk_column> [, <max_depth>]
+
+-- Bare style (shortest)
+recurse <fk_column> [, <max_depth>]
+```
+
+- **`<fk_column>`** — The foreign key column to follow (e.g., `manager_id`, `parent_id`)
+- **`<max_depth>`** — Optional depth limit (defaults to 100 for safety)
+
+### Examples
+
+```asql
+-- Get 3 levels of reports only
+from employees
+  where id = 1
+  recurse(manager_id, 3)
+
+-- Get full category tree under 'electronics'
+from categories
+  where slug = 'electronics'
+  recurse(parent_id)
+
+-- Multiple roots: all Engineering org trees
+from employees
+  where department = 'Engineering'
+  recurse(manager_id, 5)
+```
+
+### The `_level` Column
+
+`recurse()` automatically adds a `_level` column tracking recursion depth:
+
+| `_level` | Meaning |
+|----------|---------|
+| 1 | Anchor rows (matched by WHERE) |
+| 2 | First level of recursion |
+| 3 | Second level, etc. |
+
+Use it for filtering or display:
+
+```asql
+from employees
+  where id = 1
+  recurse(manager_id)
+  where _level <= 3          -- Only 3 levels deep
+  order by _level, name
+```
+
+### FK Convention
+
+By convention, `recurse(manager_id)` auto-joins to `id`:
+- `manager_id` → joins to `employees.id`
+- `parent_id` → joins to `categories.id`
+
+This follows ASQL's FK naming convention: columns ending in `_id` are foreign keys to the table's `id` column.
+
+### Generated SQL
+
+```asql
+from employees
+  where id = 1
+  recurse(manager_id, 5)
+```
+
+Generates:
+
+```sql
+WITH RECURSIVE _recurse_employees AS (
+    SELECT *, 1 AS _level FROM employees WHERE id = 1
+    UNION ALL
+    SELECT e.*, _recurse_employees._level + 1
+    FROM employees e
+    JOIN _recurse_employees ON e.manager_id = _recurse_employees.id
+    WHERE _recurse_employees._level < 5
+)
+SELECT * FROM _recurse_employees
+```
+
+### Dialect Support
+
+Recursive CTEs are supported by:
+- ✅ PostgreSQL
+- ✅ DuckDB
+- ✅ BigQuery
+- ✅ Snowflake
+- ✅ MySQL 8+
+- ✅ SQL Server
+- ❌ SQLite (limited support)
+
 ## Next Steps
 
 - **[Pipeline Basics](pipeline.md)** — Core pipeline syntax
