@@ -42,9 +42,9 @@ class RecurseMixin:
         recurse_pattern = r'\brecurse\s*\(\s*(\w+)(?:\s*,\s*(\d+))?\s*\)'
         match = re.search(recurse_pattern, result, re.IGNORECASE)
         
-        # Pattern 2: recurse on fk_column [, max_depth]
+        # Pattern 2: recurse [on] fk_column [, max_depth]  (keyword style, "on" is optional)
         if not match:
-            recurse_on_pattern = r'\brecurse\s+on\s+(\w+)(?:\s*,\s*(\d+))?(?=\s|$)'
+            recurse_on_pattern = r'\brecurse\s+(?:on\s+)?(\w+)(?:\s*,\s*(\d+))?(?=\s|$)'
             match = re.search(recurse_on_pattern, result, re.IGNORECASE)
         
         if not match:
