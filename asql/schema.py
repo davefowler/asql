@@ -65,6 +65,7 @@ class Column:
     name: str
     type: Optional[str] = None
     primary_key: bool = False
+    distinct_values: Optional[List[str]] = None  # For dynamic pivot support
     
     def __post_init__(self) -> None:
         # Normalize column name to lowercase for case-insensitive matching
@@ -89,6 +90,20 @@ class Table:
     def get_column(self, name: str) -> Optional[Column]:
         """Get a column by name (case-insensitive)."""
         return self.columns.get(name.lower())
+    
+    def get_distinct_values(self, column_name: str) -> Optional[List[str]]:
+        """Get distinct values for a column (for dynamic pivot support).
+        
+        Args:
+            column_name: Column name to look up
+            
+        Returns:
+            List of distinct values if available, None otherwise
+        """
+        col = self.get_column(column_name)
+        if col:
+            return col.distinct_values
+        return None
     
     def add_column(self, column: Column) -> None:
         """Add a column to the table."""
@@ -775,6 +790,25 @@ class Schema:
         
         Useful for programmatic schema definition.
         
+        Supports two schema formats for column metadata:
+        
+        Format 1 - Simple column list:
+        ```python
+        {"tables": {"users": {"columns": ["id", "name", "email"]}}}
+        ```
+        
+        Format 2 - Column metadata with distinct_values (for dynamic pivot):
+        ```python
+        {
+            "tables": {
+                "sales": {
+                    "columns": ["id", "amount", "category"],
+                    "category": {"distinct_values": ["A", "B", "C"]}
+                }
+            }
+        }
+        ```
+        
         Args:
             data: Dictionary with 'tables' and 'relationships' keys
             
@@ -792,7 +826,43 @@ class Schema:
             else:
                 columns = []
             
-            table = Table.from_column_list(table_name, columns)
+            # Create table and add columns
+            table = Table(name=table_name)
+            for col in columns:
+                if isinstance(col, str):
+                    col_name = col
+                    is_pk = col_name.lower() == "id"
+                    table.add_column(Column(name=col_name, primary_key=is_pk))
+                elif isinstance(col, dict):
+                    # Column dict format: {"name": "category", "distinct_values": [...]}
+                    col_name = col.get("name", "")
+                    if col_name:
+                        is_pk = col.get("primary_key", col_name.lower() == "id")
+                        table.add_column(Column(
+                            name=col_name,
+                            type=col.get("type"),
+                            primary_key=is_pk,
+                            distinct_values=col.get("distinct_values")
+                        ))
+            
+            # Check for per-column metadata as top-level keys
+            # Format: {"columns": [...], "category": {"distinct_values": [...]}}
+            if isinstance(table_info, dict):
+                for key, value in table_info.items():
+                    if key == "columns" or key == "relationships":
+                        continue
+                    if isinstance(value, dict) and "distinct_values" in value:
+                        # This is column metadata with distinct_values
+                        col = table.get_column(key)
+                        if col:
+                            col.distinct_values = value["distinct_values"]
+                        else:
+                            # Column not in columns list, add it
+                            table.add_column(Column(
+                                name=key,
+                                distinct_values=value["distinct_values"]
+                            ))
+            
             schema.add_table(table)
         
         # Load relationships
@@ -811,20 +881,23 @@ class Schema:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert schema to dictionary for serialization."""
+        tables_dict = {}
+        for name, table in self.tables.items():
+            table_dict: Dict[str, Any] = {
+                "columns": [
+                    {
+                        "name": col.name,
+                        "type": col.type,
+                        "primary_key": col.primary_key,
+                        **({"distinct_values": col.distinct_values} if col.distinct_values else {})
+                    }
+                    for col in table.columns.values()
+                ]
+            }
+            tables_dict[name] = table_dict
+        
         return {
-            "tables": {
-                name: {
-                    "columns": [
-                        {
-                            "name": col.name,
-                            "type": col.type,
-                            "primary_key": col.primary_key
-                        }
-                        for col in table.columns.values()
-                    ]
-                }
-                for name, table in self.tables.items()
-            },
+            "tables": tables_dict,
             "relationships": [
                 {
                     "from_table": rel.from_table,
