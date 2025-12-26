@@ -61,6 +61,10 @@ class WhenMixin:
             if prev_word == "case":
                 continue
             
+            # Skip if we're inside an existing SQL CASE block (between CASE and END)
+            if self._is_inside_case_block(result, start_pos):
+                continue
+            
             # Parse the when expression starting from this position
             case_expr, end_pos = self._parse_when_block(result, start_pos)
             
@@ -69,6 +73,58 @@ class WhenMixin:
                 result = result[:start_pos] + case_expr + result[end_pos:]
         
         return result
+
+    def _is_inside_case_block(self, text: str, pos: int) -> bool:
+        """
+        Check if position is inside an existing SQL CASE ... END block.
+        
+        We look for unmatched 'case' keywords before this position.
+        """
+        before = text[:pos].lower()
+        
+        # Count case and end keywords, respecting nesting
+        # We need to find if there's an unmatched 'case' before this 'when'
+        
+        # Simple approach: scan backwards from pos looking for case/end keywords
+        case_depth = 0
+        i = pos - 1
+        in_string = False
+        string_char: Optional[str] = None
+        
+        while i >= 0:
+            char = text[i]
+            
+            # Handle string boundaries (scanning backwards)
+            if char in ("'", '"'):
+                # Check if this is the end of a string or escaped
+                if not in_string:
+                    in_string = True
+                    string_char = char
+                elif char == string_char:
+                    in_string = False
+                    string_char = None
+            
+            if not in_string:
+                # Check for 'end' keyword
+                if i >= 2 and text[i-2:i+1].lower() == 'end':
+                    # Check it's a word boundary
+                    if (i - 3 < 0 or not text[i-3].isalnum() and text[i-3] != '_'):
+                        if i + 1 >= len(text) or (not text[i+1].isalnum() and text[i+1] != '_'):
+                            case_depth += 1  # Found an END, means we exited a CASE
+                
+                # Check for 'case' keyword
+                if i >= 3 and text[i-3:i+1].lower() == 'case':
+                    # Check it's a word boundary
+                    if (i - 4 < 0 or not text[i-4].isalnum() and text[i-4] != '_'):
+                        if i + 1 >= len(text) or (not text[i+1].isalnum() and text[i+1] != '_'):
+                            case_depth -= 1  # Found a CASE, means we entered a CASE
+                            if case_depth < 0:
+                                # We're inside an unmatched CASE block
+                                return True
+            
+            i -= 1
+        
+        return False
     
     def _parse_when_block(self, text: str, start_pos: int) -> Tuple[Optional[str], int]:
         """

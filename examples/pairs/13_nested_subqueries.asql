@@ -1,12 +1,12 @@
 -- Nested subqueries: Customers who ordered above average
 with avg_order_amount = from orders
-  where status = "completed" and order_date >= @2024-01-01
+  where status = 'completed' and order_date >= @2024-01-01
   select avg(total_amount) as avg_amount
 
 from customers
   & orders on customers.customer_id = orders.customer_id
   where orders.total_amount > (select avg_amount from avg_order_amount)
-    and orders.status = "completed"
+    and orders.status = 'completed'
   select 
     customers.customer_id,
     customers.customer_name,

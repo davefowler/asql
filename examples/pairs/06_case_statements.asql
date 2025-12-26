@@ -1,6 +1,6 @@
 -- Case statements: Customer segmentation
 with customer_stats = from customers
-  &? orders on customers.customer_id = orders.customer_id and orders.status = "completed"
+  &? orders on customers.customer_id = orders.customer_id and orders.status = 'completed'
   group by customers.customer_id, customers.customer_name (
     count(distinct orders.order_id) as total_orders,
     coalesce(sum(orders.total_amount), 0) as total_spent
@@ -13,15 +13,15 @@ from customer_stats
     total_orders,
     total_spent,
     case 
-      when total_spent >= 10000 then "VIP"
-      when total_spent >= 5000 then "Premium"
-      when total_spent >= 1000 then "Regular"
-      else "New"
+      when total_spent >= 10000 then 'VIP'
+      when total_spent >= 5000 then 'Premium'
+      when total_spent >= 1000 then 'Regular'
+      else 'New'
     end as customer_tier,
     case 
-      when total_orders >= 20 then "High Frequency"
-      when total_orders >= 10 then "Medium Frequency"
-      else "Low Frequency"
+      when total_orders >= 20 then 'High Frequency'
+      when total_orders >= 10 then 'Medium Frequency'
+      else 'Low Frequency'
     end as order_frequency
   order by -total_spent
 
