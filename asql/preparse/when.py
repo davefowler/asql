@@ -80,8 +80,6 @@ class WhenMixin:
         
         We look for unmatched 'case' keywords before this position.
         """
-        before = text[:pos].lower()
-        
         # Count case and end keywords, respecting nesting
         # We need to find if there's an unmatched 'case' before this 'when'
         
