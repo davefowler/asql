@@ -15,6 +15,9 @@ from asql.preparse.order import OrderMixin
 from asql.preparse.aggregates import AggregatesMixin
 from asql.preparse.dates import DatesMixin
 from asql.preparse.stash import StashMixin
+from asql.preparse.with_cte import WithCTEMixin
+from asql.preparse.union import UnionMixin
+from asql.preparse.multistatement import MultiStatementMixin
 from asql.preparse.clauses import ClausesMixin
 from asql.preparse.pivot import PivotMixin
 from asql.preparse.window import WindowMixin
@@ -50,6 +53,9 @@ class ASQLPreParser(
     AggregatesMixin,
     DatesMixin,
     StashMixin,
+    WithCTEMixin,
+    UnionMixin,
+    MultiStatementMixin,
     ClausesMixin,
     PivotMixin,
     WindowMixin,
@@ -86,6 +92,9 @@ class ASQLPreParser(
         
         # Apply transformations in order
         result = self._transform_set_statements(result)
+        result = self._transform_with_cte_syntax(result)  # Handle 'with name = from ...' CTEs early
+        result = self._transform_multi_statements(result)  # Handle multi-statement stash-as queries
+        result = self._transform_union_operations(result)  # Handle UNION/INTERSECT/EXCEPT early (splits and recurses)
         result = self._transform_pipeline(result)
         result = self._transform_join_operators(result)  # Early: transform join operators before other processing
         result = self._normalize_where_before_joins(result)  # Ensure WHEREs move after JOINs (pipeline semantics)
