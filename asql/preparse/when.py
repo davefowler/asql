@@ -186,8 +186,8 @@ class WhenMixin:
                 while pos < len(text) and text[pos] in ' \t\n':
                     pos += 1
                 
-                # Check if else value is a nested when expression
-                # e.g., "else when x > 0 then 'yes' else 'no'"
+                # Check if else value is a nested when expression or already-transformed CASE
+                # e.g., "else when x > 0 then 'yes' else 'no'" or "else CASE WHEN ..."
                 rest = text[pos:].lower().lstrip()
                 if rest.startswith('when'):
                     # Recursively parse the nested when block
@@ -197,6 +197,10 @@ class WhenMixin:
                     else:
                         # Fallback to parsing as expression
                         else_value, pos = self._parse_expression(text, pos)
+                elif rest.startswith('case'):
+                    # Already-transformed CASE expression (from earlier pass)
+                    # Parse the entire CASE...END block as the else value
+                    else_value, pos = self._parse_case_expression(text, pos)
                 else:
                     # Parse the else value as a regular expression
                     else_value, pos = self._parse_expression(text, pos)
@@ -626,3 +630,69 @@ class WhenMixin:
                     pos += 1
         
         return '(' + ', '.join(values) + ')', pos
+
+    def _parse_case_expression(self, text: str, start_pos: int) -> Tuple[Optional[str], int]:
+        """
+        Parse a complete CASE ... END expression.
+        
+        This is used when we encounter an already-transformed CASE expression
+        in the else clause of a when expression.
+        
+        Returns:
+            (case_expr, end_pos) or (None, start_pos) if parsing fails
+        """
+        pos = start_pos
+        
+        # Skip whitespace
+        while pos < len(text) and text[pos] in ' \t\n':
+            pos += 1
+        
+        # Check for CASE keyword
+        if not text[pos:pos+4].lower() == 'case':
+            return None, start_pos
+        
+        start = pos
+        case_depth = 0
+        in_string = False
+        string_char: Optional[str] = None
+        
+        while pos < len(text):
+            char = text[pos]
+            
+            # Handle strings
+            if char in ("'", '"'):
+                if not in_string:
+                    in_string = True
+                    string_char = char
+                elif char == string_char:
+                    in_string = False
+                    string_char = None
+                pos += 1
+                continue
+            
+            if in_string:
+                pos += 1
+                continue
+            
+            # Check for CASE keyword (including nested)
+            if text[pos:pos+4].lower() == 'case':
+                # Verify word boundary
+                if pos == 0 or not (text[pos-1].isalnum() or text[pos-1] == '_'):
+                    if pos + 4 >= len(text) or not (text[pos+4].isalnum() or text[pos+4] == '_'):
+                        case_depth += 1
+            
+            # Check for END keyword
+            if text[pos:pos+3].lower() == 'end':
+                # Verify word boundary
+                if pos == 0 or not (text[pos-1].isalnum() or text[pos-1] == '_'):
+                    if pos + 3 >= len(text) or not (text[pos+3].isalnum() or text[pos+3] == '_'):
+                        case_depth -= 1
+                        if case_depth == 0:
+                            # Found matching END
+                            pos += 3
+                            return text[start:pos], pos
+            
+            pos += 1
+        
+        # No matching END found
+        return None, start_pos
