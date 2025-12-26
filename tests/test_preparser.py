@@ -736,6 +736,249 @@ class TestPivotDialects:
             preparse_asql("from sales pivot sum(amount) by category", dialect="sqlite")
 
 
+class TestSchemaAwarePivot:
+    """Test schema-aware dynamic pivot (Issue #102)."""
+    
+    def test_dynamic_pivot_with_schema_postgres(self):
+        """PostgreSQL dynamic pivot works when schema provides distinct_values."""
+        from asql.compiler import compile
+        from asql.config import CompileSettings
+        from asql.schema import Schema
+        
+        schema = Schema.from_dict({
+            "tables": {
+                "sales": {
+                    "columns": ["id", "amount", "category"],
+                    "category": {"distinct_values": ["A", "B", "C"]}
+                }
+            }
+        })
+        settings = CompileSettings(schema=schema)
+        
+        result = compile(
+            "from sales pivot sum(amount) by category",
+            dialect="postgres",
+            settings=settings
+        )
+        
+        # Should use CASE/WHEN fallback with schema values
+        assert "CASE WHEN" in result.upper()
+        assert "category" in result.lower()
+        # Values from schema should be used
+        assert "= 'A'" in result or "= 'a'" in result.lower()
+        assert "= 'B'" in result or "= 'b'" in result.lower()
+        assert "= 'C'" in result or "= 'c'" in result.lower()
+    
+    def test_dynamic_pivot_with_schema_mysql(self):
+        """MySQL dynamic pivot works when schema provides distinct_values."""
+        from asql.compiler import compile
+        from asql.config import CompileSettings
+        from asql.schema import Schema
+        
+        schema = Schema.from_dict({
+            "tables": {
+                "sales": {
+                    "columns": ["id", "amount", "category"],
+                    "category": {"distinct_values": ["X", "Y"]}
+                }
+            }
+        })
+        settings = CompileSettings(schema=schema)
+        
+        result = compile(
+            "from sales pivot sum(amount) by category",
+            dialect="mysql",
+            settings=settings
+        )
+        
+        assert "CASE WHEN" in result.upper()
+        assert "= 'X'" in result or "= 'x'" in result.lower()
+        assert "= 'Y'" in result or "= 'y'" in result.lower()
+    
+    def test_dynamic_pivot_with_schema_sqlite(self):
+        """SQLite dynamic pivot works when schema provides distinct_values."""
+        from asql.compiler import compile
+        from asql.config import CompileSettings
+        from asql.schema import Schema
+        
+        schema = Schema.from_dict({
+            "tables": {
+                "sales": {
+                    "columns": ["id", "amount", "category"],
+                    "category": {"distinct_values": ["P", "Q", "R"]}
+                }
+            }
+        })
+        settings = CompileSettings(schema=schema)
+        
+        result = compile(
+            "from sales pivot sum(amount) by category",
+            dialect="sqlite",
+            settings=settings
+        )
+        
+        assert "CASE WHEN" in result.upper()
+        assert "= 'P'" in result or "= 'p'" in result.lower()
+        assert "= 'Q'" in result or "= 'q'" in result.lower()
+        assert "= 'R'" in result or "= 'r'" in result.lower()
+    
+    def test_dynamic_pivot_with_schema_bigquery(self):
+        """BigQuery dynamic pivot works when schema provides distinct_values."""
+        from asql.compiler import compile
+        from asql.config import CompileSettings
+        from asql.schema import Schema
+        
+        schema = Schema.from_dict({
+            "tables": {
+                "sales": {
+                    "columns": ["id", "amount", "category"],
+                    "category": {"distinct_values": ["cat1", "cat2"]}
+                }
+            }
+        })
+        settings = CompileSettings(schema=schema)
+        
+        result = compile(
+            "from sales pivot sum(amount) by category",
+            dialect="bigquery",
+            settings=settings
+        )
+        
+        # BigQuery uses native PIVOT when values are available
+        assert "PIVOT" in result.upper()
+        assert "cat1" in result.lower()
+        assert "cat2" in result.lower()
+    
+    def test_dynamic_pivot_error_without_schema(self):
+        """Error shows helpful message when schema not provided."""
+        import pytest
+        
+        with pytest.raises(ValueError) as exc_info:
+            preparse_asql("from sales pivot sum(amount) by category", dialect="postgres")
+        
+        error_msg = str(exc_info.value)
+        # Check for helpful options in error message
+        assert "values" in error_msg.lower()
+        assert "schema" in error_msg.lower()
+        assert "distinct_values" in error_msg or "distinct" in error_msg
+    
+    def test_dynamic_pivot_error_schema_without_distinct_values(self):
+        """Error when schema exists but column doesn't have distinct_values."""
+        import pytest
+        from asql.config import CompileSettings
+        from asql.schema import Schema
+        
+        # Schema without distinct_values for category
+        schema = Schema.from_dict({
+            "tables": {
+                "sales": {
+                    "columns": ["id", "amount", "category"]
+                }
+            }
+        })
+        settings = CompileSettings(schema=schema)
+        
+        with pytest.raises(ValueError) as exc_info:
+            preparse_asql("from sales pivot sum(amount) by category", dialect="postgres", settings=settings)
+        
+        error_msg = str(exc_info.value)
+        assert "distinct_values" in error_msg or "values" in error_msg.lower()
+    
+    def test_duckdb_still_uses_native_dynamic_pivot(self):
+        """DuckDB should use native dynamic pivot, not schema values."""
+        from asql.compiler import compile
+        from asql.config import CompileSettings
+        from asql.schema import Schema
+        
+        schema = Schema.from_dict({
+            "tables": {
+                "sales": {
+                    "columns": ["id", "amount", "category"],
+                    "category": {"distinct_values": ["A", "B", "C"]}
+                }
+            }
+        })
+        settings = CompileSettings(schema=schema)
+        
+        result = compile(
+            "from sales pivot sum(amount) by category",
+            dialect="duckdb",
+            settings=settings
+        )
+        
+        # Should use native PIVOT, not CASE/WHEN
+        assert "PIVOT" in result.upper()
+        assert "CASE WHEN" not in result.upper()
+    
+    def test_snowflake_still_uses_native_dynamic_pivot(self):
+        """Snowflake should use native dynamic pivot, not schema values."""
+        from asql.compiler import compile
+        from asql.config import CompileSettings
+        from asql.schema import Schema
+        
+        schema = Schema.from_dict({
+            "tables": {
+                "sales": {
+                    "columns": ["id", "amount", "category"],
+                    "category": {"distinct_values": ["A", "B", "C"]}
+                }
+            }
+        })
+        settings = CompileSettings(schema=schema)
+        
+        result = compile(
+            "from sales pivot sum(amount) by category",
+            dialect="snowflake",
+            settings=settings
+        )
+        
+        # Should use native PIVOT
+        assert "PIVOT" in result.upper()
+    
+    def test_schema_distinct_values_in_column_class(self):
+        """Column class properly stores distinct_values."""
+        from asql.schema import Column
+        
+        col = Column(name="status", distinct_values=["active", "inactive", "pending"])
+        assert col.distinct_values == ["active", "inactive", "pending"]
+        assert col.name == "status"
+    
+    def test_schema_from_dict_with_distinct_values(self):
+        """Schema.from_dict properly loads distinct_values."""
+        from asql.schema import Schema
+        
+        schema = Schema.from_dict({
+            "tables": {
+                "orders": {
+                    "columns": ["id", "status", "amount"],
+                    "status": {"distinct_values": ["pending", "shipped", "delivered"]}
+                }
+            }
+        })
+        
+        table = schema.get_table("orders")
+        assert table is not None
+        
+        values = table.get_distinct_values("status")
+        assert values == ["pending", "shipped", "delivered"]
+    
+    def test_schema_to_dict_includes_distinct_values(self):
+        """Schema.to_dict includes distinct_values in output."""
+        from asql.schema import Schema, Table, Column
+        
+        schema = Schema()
+        table = Table(name="products")
+        table.add_column(Column(name="id", primary_key=True))
+        table.add_column(Column(name="category", distinct_values=["electronics", "books"]))
+        schema.add_table(table)
+        
+        data = schema.to_dict()
+        
+        columns = data["tables"]["products"]["columns"]
+        category_col = next(c for c in columns if c["name"] == "category")
+        assert category_col["distinct_values"] == ["electronics", "books"]
+
+
 class TestSliceSyntax:
     """Test slice syntax transformation (Issue #77 fix)."""
     
