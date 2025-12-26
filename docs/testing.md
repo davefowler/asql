@@ -39,6 +39,7 @@ Execution tests run compiled SQL against real databases to verify correctness:
 | Database | Status | Notes |
 |----------|--------|-------|
 | **DuckDB** | ✅ Full execution testing | In-memory, fast, comprehensive |
+| **PostgreSQL** | ✅ Full execution testing | Requires local PostgreSQL server |
 
 ### Compilation Validated
 
@@ -58,7 +59,6 @@ These dialects have SQL generation tested via SQLGlot parsing:
 
 | Database | Status | Tracking |
 |----------|--------|----------|
-| PostgreSQL | 🔜 Planned | [#88](https://github.com/davefowler/asql/issues/88) |
 | All dialects syntax | 🔜 Planned | [#90](https://github.com/davefowler/asql/issues/90) |
 | BigQuery/Snowflake | 🔜 Planned | [#91](https://github.com/davefowler/asql/issues/91) |
 
@@ -97,6 +97,28 @@ All 20 example files in `examples/pairs/` are tested for:
 pip install -e ".[dev]"
 ```
 
+### Setting Up PostgreSQL (Optional)
+
+PostgreSQL tests are optional but recommended for full coverage. The easiest setup on macOS is [Postgres.app](https://postgresapp.com/):
+
+1. **Install Postgres.app** from [postgresapp.com](https://postgresapp.com/)
+2. **Start the server** by opening the app and clicking "Initialize"
+3. **Create a test database**:
+   ```bash
+   /Applications/Postgres.app/Contents/Versions/latest/bin/createdb test
+   ```
+4. **Set the connection URL**:
+   ```bash
+   export POSTGRES_URL="postgresql://localhost:5432/test"
+   ```
+
+Or add it to your `~/.zshrc` for persistence:
+```bash
+echo 'export POSTGRES_URL="postgresql://localhost:5432/test"' >> ~/.zshrc
+```
+
+The test suite auto-detects available databases. If PostgreSQL is configured, tests run against both DuckDB and PostgreSQL.
+
 ### Commands
 
 ```bash
@@ -126,7 +148,7 @@ ASQL uses an executor abstraction for database-agnostic testing:
 from asql.testing.executors import get_available_executors, EXECUTORS
 
 # Get available database executors
-executors = get_available_executors()  # ['duckdb']
+executors = get_available_executors()  # ['duckdb', 'postgres']
 
 # Each executor implements:
 class ExecutorBase:

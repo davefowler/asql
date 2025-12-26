@@ -1,18 +1,18 @@
 -- Funnel analysis: Conversion rates through stages
 with viewed = from page_views
-  where page == "product"
-  select count(distinct user_id) as users, "viewed" as stage
+  where page == 'product'
+  select count(distinct user_id) as users, 'viewed' as stage
 
 with added_to_cart = from cart_items
-  select count(distinct user_id) as users, "added_to_cart" as stage
+  select count(distinct user_id) as users, 'added_to_cart' as stage
 
 with started_checkout = from checkout_sessions
-  where status == "started"
-  select count(distinct user_id) as users, "started_checkout" as stage
+  where status == 'started'
+  select count(distinct user_id) as users, 'started_checkout' as stage
 
 with completed_purchase = from orders
-  where status == "completed"
-  select count(distinct user_id) as users, "completed_purchase" as stage
+  where status == 'completed'
+  select count(distinct user_id) as users, 'completed_purchase' as stage
 
 -- Note: Would need UNION ALL support and window functions for full implementation
 from viewed

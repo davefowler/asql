@@ -11,12 +11,43 @@ if TYPE_CHECKING:
 NATIVE_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake", "bigquery"})
 
 
+def _has_multi_statement_cte_pattern(text: str) -> bool:
+    """Check if text contains multi-statement CTE patterns that use blank lines.
+    
+    These patterns indicate that blank-line-separated statements should
+    be kept together for the preparser to handle:
+    - 'stash as <name>' - stash-based CTEs  
+    - 'with <name> = from' - with-equals CTEs
+    
+    IMPORTANT: Only applies when there are NO semicolons in the text.
+    Semicolons are explicit statement separators and take precedence.
+    """
+    import re
+    
+    # If there are semicolons, let the normal splitting handle it
+    # (semicolons are explicit statement separators)
+    if ';' in text:
+        return False
+    
+    # Check for 'stash as name' pattern
+    if re.search(r'\bstash\s+as\s+\w+', text, re.IGNORECASE):
+        return True
+    # Check for 'with name = from' pattern
+    if re.search(r'\bwith\s+\w+\s*=\s*from\b', text, re.IGNORECASE):
+        return True
+    return False
+
+
 def _split_statements(text: str) -> List[str]:
     """Split text into individual statements.
     
     Query separators:
     1. Semicolons (SQL standard): "from a; from b"
     2. Blank lines (ASQL natural): "from a\\n\\nfrom b"
+    
+    EXCEPTION: If text contains 'stash as <name>' patterns, we keep it as a
+    single statement and let the MultiStatementMixin handle it. This allows
+    multi-statement stash-based CTEs to work correctly.
     
     Valid statements can start with:
     - FROM (queries)
@@ -30,7 +61,13 @@ def _split_statements(text: str) -> List[str]:
         "from users\\n\\nfrom orders"  -> ["from users", "from orders"]
         "from users\\n  where x"       -> ["from users\\n  where x"] (no blank line)
         "SET x = 1"                    -> ["SET x = 1"] (standalone SET is valid)
+        "from a stash as x\\n\\nfrom x" -> kept as single statement for stash handling
     """
+    # If text contains multi-statement CTE patterns, keep it as a single statement
+    # so the preparser can handle CTEs and their references together
+    if _has_multi_statement_cte_pattern(text):
+        return [text.strip()]
+    
     depth = 0
     in_string: Optional[str] = None
     

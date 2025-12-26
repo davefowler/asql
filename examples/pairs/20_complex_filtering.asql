@@ -2,10 +2,10 @@
 from orders
   & customers on orders.customer_id = customers.customer_id
   &? order_items on orders.order_id = order_items.order_id
-  where orders.status = "completed"
+  where orders.status = 'completed'
     and orders.order_date >= @2024-01-01
     and orders.total_amount >= 100
-    and customers.country in ("US", "CA", "UK")
+    and customers.country in ('US', 'CA', 'UK')
     and exists (
       from order_items as oi2
       where oi2.order_id = orders.order_id 
