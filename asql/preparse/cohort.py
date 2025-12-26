@@ -6,6 +6,7 @@ import re
 from typing import Optional, TYPE_CHECKING
 
 from asql.errors import ASQLSyntaxError
+from asql.preparse.inference import infer_fk_column, infer_join_key_from_schema
 
 if TYPE_CHECKING:
     from asql.schema import Schema
@@ -15,6 +16,8 @@ class CohortMixin:
     def _infer_cohort_join_key(self, activity_table: str, cohort_table: str) -> str:
         """
         Infer the join key between activity and cohort tables.
+        
+        Uses the unified join inference system from asql.preparse.inference.
         
         Priority:
         1. Schema lookup (explicit relationships)
@@ -29,18 +32,17 @@ class CohortMixin:
         """
         # Try schema-based lookup first
         settings = getattr(self, 'settings', None)
+        schema: Optional["Schema"] = None
         if settings:
-            schema: Optional["Schema"] = getattr(settings, 'schema', None)
-            if schema:
-                # Look for relationship from activity_table to cohort_table
-                rel = schema.find_relationship(activity_table, cohort_table)
-                if rel:
-                    return rel.from_column
+            schema = getattr(settings, 'schema', None)
+        
+        # Use shared inference logic - schema first, then convention
+        join_key = infer_join_key_from_schema(activity_table, cohort_table, schema)
+        if join_key:
+            return join_key
         
         # Fall back to convention-based inference
-        # e.g., users → user_id, customers → customer_id
-        singular = cohort_table.rstrip('s') if cohort_table.endswith('s') else cohort_table
-        return f"{singular}_id"
+        return infer_fk_column(cohort_table)
 
     def _transform_cohort_by(self, text: str) -> str:
         """
