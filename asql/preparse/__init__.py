@@ -12,14 +12,23 @@ NATIVE_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake", "bigquery"})
 
 
 def _has_multi_statement_cte_pattern(text: str) -> bool:
-    """Check if text contains multi-statement CTE patterns.
+    """Check if text contains multi-statement CTE patterns that use blank lines.
     
     These patterns indicate that blank-line-separated statements should
     be kept together for the preparser to handle:
-    - 'stash as <name>' - stash-based CTEs
+    - 'stash as <name>' - stash-based CTEs  
     - 'with <name> = from' - with-equals CTEs
+    
+    IMPORTANT: Only applies when there are NO semicolons in the text.
+    Semicolons are explicit statement separators and take precedence.
     """
     import re
+    
+    # If there are semicolons, let the normal splitting handle it
+    # (semicolons are explicit statement separators)
+    if ';' in text:
+        return False
+    
     # Check for 'stash as name' pattern
     if re.search(r'\bstash\s+as\s+\w+', text, re.IGNORECASE):
         return True
