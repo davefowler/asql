@@ -221,6 +221,11 @@
             return "keyword";
         }
         
+        // Handle "from now" in relative date expressions (before "from" matches as keyword)
+        if (stream.match(/^from\s+now/i)) {
+            return "number";
+        }
+        
         // Handle identifiers and keywords
         if (stream.match(/^[a-zA-Z_][a-zA-Z0-9_]*/)) {
             const word = stream.current().toLowerCase();
