@@ -614,19 +614,32 @@ class ClausesMixin:
         
         from users where status == "active" where age >= 18
         → from users where status == "active" AND age >= 18
+        
+        Note: Does NOT combine WHERE clauses across set operation boundaries
+        (UNION, INTERSECT, EXCEPT).
         """
         result = text
         
         # Find all WHERE clauses and combine them
         # Pattern: where <condition1> where <condition2>
+        # The condition must NOT contain set operations (UNION, INTERSECT, EXCEPT)
         while True:
             # Find two consecutive WHERE clauses
+            # Use [^U]|U(?!NION)|[^I]|I(?!NTERSECT)|[^E]|E(?!XCEPT) to skip set ops
+            # Simpler: capture everything except keywords
             pattern = r'\bwhere\s+(.+?)\s+where\s+'
             match = re.search(pattern, result, re.IGNORECASE)
             if not match:
                 break
             
             first_condition = match.group(1).strip()
+            
+            # Check if first_condition contains set operators - if so, skip this match
+            if re.search(r'\b(union(\s+all)?|intersect|except)\b', first_condition, re.IGNORECASE):
+                # This "where...where" pattern crosses a set operation boundary
+                # We should not combine them
+                break
+            
             # Replace "where X where Y" with "where X AND Y"
             result = result[:match.start()] + f"where {first_condition} AND " + result[match.end():]
         

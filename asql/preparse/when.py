@@ -186,8 +186,20 @@ class WhenMixin:
                 while pos < len(text) and text[pos] in ' \t\n':
                     pos += 1
                 
-                # Parse the else value
-                else_value, pos = self._parse_expression(text, pos)
+                # Check if else value is a nested when expression
+                # e.g., "else when x > 0 then 'yes' else 'no'"
+                rest = text[pos:].lower().lstrip()
+                if rest.startswith('when'):
+                    # Recursively parse the nested when block
+                    nested_case, pos = self._parse_when_block(text, pos)
+                    if nested_case:
+                        else_value = nested_case
+                    else:
+                        # Fallback to parsing as expression
+                        else_value, pos = self._parse_expression(text, pos)
+                else:
+                    # Parse the else value as a regular expression
+                    else_value, pos = self._parse_expression(text, pos)
                 break
             
             # Check if there's another "when" branch (indented or on same line)
