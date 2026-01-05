@@ -430,21 +430,23 @@ COHORT_EXAMPLES: list[Example] = [
         "desc": "Track monthly active users by signup cohort",
         "query": """-- cohort by creates cohort analysis
 -- Groups users by when they started, tracks activity over time
+-- Join key (user_id) is inferred from the table name (users)
 from events
   group by month(event_date) (
     #(distinct user_id) as active  -- Distinct active users
   )
-  cohort by month(users.signup_date) on user_id"""
+  cohort by month(users.signup_date)"""
     },
     {
         "title": "Revenue Cohort",
         "desc": "Revenue by first purchase cohort",
         "query": """-- Track revenue by when customers first purchased
+-- Join key (customer_id) is inferred from the table name (customers)
 from orders
   group by month(order_date) (
     sum_total
   )
-  cohort by month(customers.first_order_date) on customer_id"""
+  cohort by month(customers.first_order_date)"""
     },
     {
         "title": "Weekly Cohorts",
@@ -454,7 +456,7 @@ from events
   group by week(event_date) (
     #(distinct user_id) as active
   )
-  cohort by week(users.signup_date) on user_id"""
+  cohort by week(users.signup_date)"""
     },
     {
         "title": "Segmented Cohorts",
@@ -465,7 +467,7 @@ from events
   group by month(event_date) (
     #(distinct user_id) as active
   )
-  cohort by users.channel, month(users.signup_date) on user_id"""
+  cohort by users.channel, month(users.signup_date)"""
     },
 ]
 
