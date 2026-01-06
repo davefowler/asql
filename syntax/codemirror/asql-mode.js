@@ -31,6 +31,7 @@
  *   - Multi-word keywords: group by, not in, is null, is not null, stash as
  * 
  * @version 1.1.0
+ * @license MIT
  */
 
 // Works with CodeMirror loaded via script tag or module system
@@ -219,11 +220,6 @@
         // Handle "stash as" as a single keyword
         if (stream.match(/^stash\s+as/i)) {
             return "keyword";
-        }
-        
-        // Handle "from now" in relative date expressions (before "from" matches as keyword)
-        if (stream.match(/^from\s+now/i)) {
-            return "number";
         }
         
         // Handle identifiers and keywords

@@ -111,21 +111,14 @@ if not activity_date_col:
 **Recommendation**: 🔴 **REMOVE** - Should error: "Cannot infer activity date column, please specify"
 **Test needed**: Yes - verify error when date column not found
 
-### 4.2 Join key inference ✅ UNIFIED
+### 4.2 Join key default (lines 60-61) ✅ FIXED
 ```python
-# Uses shared inference logic from asql.preparse.inference
-join_key = infer_join_key_from_schema(activity_table, cohort_table, schema)
-if join_key:
-    return join_key
-return infer_fk_column(cohort_table)
+else:
+    raise ASQLSyntaxError("Cohort analysis requires an explicit join key...")
 ```
-**What it does**: Infers join key from table name when cohort table is specified
-**Fix**: Now uses same inference logic as `joins.py` via shared `asql/preparse/inference.py` module
-**Behavior**: 
-- If `cohort by month(users.signup_date)` - infers `user_id` from `users` table name
-- If `cohort by month(signup_date) on user_id` - uses explicit join key
-- If `cohort by month(signup_date)` (no table, no on clause) - errors with helpful message
-**Recommendation**: 🟢 **KEEP** - Unified with auto-join system, convention-based inference is consistent
+**What it did**: Assumed 'user_id' if no explicit join key
+**Fix**: Now requires explicit `on <join_key>` syntax (e.g., `cohort by month(users.signup_date) on user_id`)
+**Recommendation**: 🔴 **REMOVED** - Now errors with helpful message
 
 ---
 
@@ -255,6 +248,7 @@ return None
 
 | Location | Issue | Decision needed |
 |----------|-------|-----------------|
+| cohort.py:61 | Join key defaults to 'user_id' | Convention vs explicit |
 | auto_alias.py:108-146 | Template vars use empty string | May be intentional |
 | reverse_compiler.py:722 | Unknown expr uses str(expr) | Passthrough vs error |
 
@@ -274,7 +268,7 @@ return None
 - [x] Fix count.py "shouldn't happen" fallback → Now raises ValueError (bug indicator)
 - [x] Fix cohort.py date column fallback → Now raises ASQLSyntaxError with helpful message
 - [x] Add tests for new error cases → 2 new tests in test_exception_handling.py
-- [x] Fix cohort.py join key default → Unified with auto-join system via `asql/preparse/inference.py`. Infers join key from table name (e.g., `users` → `user_id`). Explicit `on <join_key>` still supported for edge cases.
+- [x] Fix cohort.py join key default → Now requires explicit `on <join_key>` syntax
 - [x] Review template variable empty strings → **KEEP** - intentional for optional template parts, cleanup removes double underscores
 - [x] Review expression passthrough → **KEEP** - reasonable fallback for unsupported expressions, preserves original SQL
 - [x] Review auto_spine.py returns None → **DEAD CODE** - function `_build_spine_select_from_data` is exported but never used or tested

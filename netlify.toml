@@ -4,9 +4,9 @@
 
 [build.environment]
   PYTHON_VERSION = "3.11"
-  # Set PLAYGROUND_URL for the playground button in docs
+  # Set PLAYGROUND_URL to your Railway playground URL
   # This will be replaced in docs during build
-  PLAYGROUND_URL = "https://play.analyticsql.com"
+  PLAYGROUND_URL = "https://asql-playground.railway.app"
 
 # Basic Auth Edge Function
 # To disable this and use Netlify's built-in password protection instead,

@@ -1,6 +1,6 @@
 -- User segmentation: RFM analysis
 with customer_rfm = from customers
-  &? orders on customers.customer_id = orders.customer_id and orders.status = 'completed'
+  &? orders on customers.customer_id = orders.customer_id and orders.status = "completed"
   group by customers.customer_id, customers.customer_name (
     max(orders.order_date) as last_order_date,
     count(distinct orders.order_id) as frequency,
@@ -16,22 +16,22 @@ from customer_rfm
     monetary_value,
     days_since_last_order,
     case 
-      when days_since_last_order <= 30 then 'Active'
-      when days_since_last_order <= 90 then 'At Risk'
-      when days_since_last_order <= 180 then 'Churned'
-      else 'Lost'
+      when days_since_last_order <= 30 then "Active"
+      when days_since_last_order <= 90 then "At Risk"
+      when days_since_last_order <= 180 then "Churned"
+      else "Lost"
     end as recency_segment,
     case 
-      when frequency >= 10 then 'High'
-      when frequency >= 5 then 'Medium'
-      when frequency >= 1 then 'Low'
-      else 'None'
+      when frequency >= 10 then "High"
+      when frequency >= 5 then "Medium"
+      when frequency >= 1 then "Low"
+      else "None"
     end as frequency_segment,
     case 
-      when monetary_value >= 5000 then 'High'
-      when monetary_value >= 1000 then 'Medium'
-      when monetary_value >= 100 then 'Low'
-      else 'None'
+      when monetary_value >= 5000 then "High"
+      when monetary_value >= 1000 then "Medium"
+      when monetary_value >= 100 then "Low"
+      else "None"
     end as monetary_segment
   order by -monetary_value
 

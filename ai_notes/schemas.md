@@ -275,3 +275,5 @@ config = ASQLConfig(schema=schema)
 - `asql/config.py` - `invent_join_keys` setting
 - `tests/test_join.py` - Join tests (explicit only)
 
+
+

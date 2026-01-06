@@ -1,17 +1,17 @@
 -- Union: Combined sales from multiple sources
 -- Note: ASQL may need explicit UNION support
 from online_orders
-  where status == 'completed'
+  where status == "completed"
   select 
-    'online' as source,
+    "online" as source,
     order_date,
     amount,
     customer_id
 union all
 from retail_sales
-  where status == 'completed'
+  where status == "completed"
   select 
-    'retail' as source,
+    "retail" as source,
     sale_date as order_date,
     total_amount as amount,
     customer_id
