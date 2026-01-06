@@ -119,10 +119,6 @@ Contributions welcome! Please see the main [ASQL repository](https://github.com/
 - **Language Specification**: See `docs/spec.md` in the main repository
 - **Documentation**: See `docs/` directory in the main repository
 
-## License
-
-MIT License - see LICENSE file in the main repository.
-
 ## Changelog
 
 ### 0.1.0

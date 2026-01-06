@@ -31,7 +31,6 @@
  *   - Multi-word keywords: group by, not in, is null, is not null, stash as
  * 
  * @version 1.1.0
- * @license MIT
  */
 
 // Works with CodeMirror loaded via script tag or module system
