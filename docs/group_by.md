@@ -84,8 +84,11 @@ ASQL automatically generates a "spine" of all expected values and fills in zeros
 | Column Type | Spine Source |
 |-------------|--------------|
 | Date truncation (`month()`, `year()`, `week()`) | Inferred from WHERE clause date range |
-| Non-date columns | DISTINCT values from the source data |
+| Non-date columns | DISTINCT values from **filtered** source data |
+| `guarantee(col, [...])` | Explicit list of values you specify |
 | Multiple columns | Cross-join of all combinations |
+
+**Note:** For non-date columns, the spine respects your WHERE clause. If you filter to `region = 'North America'`, only that region appears in results. Use `guarantee()` to force specific values to appear regardless of filters. See [Guaranteed Groups](concepts/guaranteed-groups.md#how-filters-affect-categorical-spines) for details.
 
 ### The `??` Operator
 
