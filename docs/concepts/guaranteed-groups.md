@@ -71,7 +71,7 @@ All months from January to June will appear.
 
 ### Non-Date Columns
 
-For non-date columns, ASQL uses DISTINCT values from the source data:
+For non-date columns, ASQL uses DISTINCT values from the **filtered** source data:
 
 ```asql-play
 from orders
@@ -81,6 +81,46 @@ from orders
 ```
 
 If your data has orders with status "pending", "shipped", and "delivered", all three will appear even if one has zero orders in the filtered period.
+
+### How Filters Affect Categorical Spines
+
+**Important:** WHERE filters are applied when generating the spine for categorical columns. The spine is built from:
+
+```sql
+SELECT DISTINCT column FROM source_table WHERE <your filters>
+```
+
+This means if you filter your data, only values matching that filter will appear in the spine:
+
+```asql
+from orders
+  where region = 'North America'
+  group by region (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+This will **only show North America**—not Europe, Asia, or other regions—because the spine is generated from the filtered data.
+
+**This is usually what you want!** When you filter to North America, you typically want results only for North America. The spine ensures you see all North American sub-categories (if grouping by something like `state`), but it respects your top-level filter.
+
+**Want all regions to appear (even with filtered data)?** Use `guarantee()`:
+
+```asql
+from orders
+  where region = 'North America'
+  group by guarantee(region, ['North America', 'Europe', 'Asia', 'South America']) (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+Now all four regions appear—North America with actual data, the others with zero revenue.
+
+| Scenario | Result |
+|----------|--------|
+| `group by region` with `where region = 'NA'` | Only NA appears |
+| `group by region` (no filter) | All regions in data appear |
+| `group by guarantee(region, [...])` | All listed values appear |
 
 ### Multiple GROUP BY Columns
 
