@@ -2,7 +2,7 @@
 with product_revenue = from products
   & order_items on products.product_id = order_items.product_id
   & orders on order_items.order_id = orders.order_id
-  where orders.status = 'completed' and orders.order_date >= @2024-01-01
+  where orders.status = "completed" and orders.order_date >= @2024-01-01
   group by products.product_id, products.product_name, products.category (
     sum(order_items.quantity * order_items.price) as total_revenue,
     count(distinct orders.order_id) as order_count

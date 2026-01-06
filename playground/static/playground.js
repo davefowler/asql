@@ -1008,3 +1008,5 @@ document.addEventListener('DOMContentLoaded', function() {
     
     checkASQLMode();
 });
+
+

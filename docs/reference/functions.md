@@ -289,26 +289,6 @@ Value where another column is minimum.
 arg_min(order_id, order_date)           -- order_id at min order_date
 ```
 
-### fill_forward
-
-Propagate last non-null value forward (forward fill).
-
-```asql
-fill_forward(value) over (partition by user_id order by timestamp)
-```
-
-Compiles to `LAST_VALUE(value IGNORE NULLS) OVER (...)`.
-
-### fill_backward
-
-Propagate next non-null value backward (backward fill).
-
-```asql
-fill_backward(value) over (partition by user_id order by timestamp)
-```
-
-Compiles to `FIRST_VALUE(value IGNORE NULLS) OVER (...)`.
-
 ### row_number
 
 Standard SQL window function.

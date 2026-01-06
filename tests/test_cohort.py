@@ -2,18 +2,15 @@
 
 import re
 
+import pytest
 from asql import compile
 
 
 def test_basic_cohort():
-    """Test basic cohort by syntax.
-    
-    The 'on' clause is optional when the table name is specified (e.g., users.signup_date).
-    The join key is inferred from the table name using convention: users -> user_id.
-    """
+    """Test basic cohort by syntax."""
     query = """from events
 group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)"""
+cohort by month(users.signup_date) on user_id"""
     
     sql = compile(query)
     sql_lower = sql.lower()
@@ -43,19 +40,13 @@ cohort by month(users.signup_date)"""
     # Check ORDER BY
     assert "ORDER BY" in sql.upper(), "Should have ORDER BY"
     assert "cohort_month" in sql_lower and "period" in sql_lower, "ORDER BY should include cohort_month and period"
-    
-    # Verify the inferred join key is used
-    assert "user_id" in sql_lower, "Should infer user_id as join key from users table"
 
 
 def test_cohort_revenue():
-    """Test revenue cohort analysis.
-    
-    Join key is inferred: customers -> customer_id.
-    """
+    """Test revenue cohort analysis."""
     query = """from orders
 group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date)"""
+cohort by month(customers.first_order_date) on customer_id"""
     
     sql = compile(query)
     sql_lower = sql.lower()
@@ -70,19 +61,13 @@ cohort by month(customers.first_order_date)"""
     
     # Check revenue is included
     assert "revenue" in sql_lower, "Should include revenue in results"
-    
-    # Verify the inferred join key is used
-    assert "customer_id" in sql_lower, "Should infer customer_id as join key from customers table"
 
 
 def test_cohort_weekly():
-    """Test weekly cohort granularity.
-    
-    Join key is inferred: users -> user_id.
-    """
+    """Test weekly cohort granularity."""
     query = """from events
 group by week(event_date) (count(distinct user_id) as active)
-cohort by week(users.signup_date)"""
+cohort by week(users.signup_date) on user_id"""
     
     sql = compile(query)
     sql_lower = sql.lower()
@@ -97,13 +82,7 @@ cohort by week(users.signup_date)"""
 
 
 def test_cohort_with_explicit_join():
-    """Test cohort with explicit join key.
-    
-    When 'on <join_key>' is provided, it takes precedence over inference.
-    This is useful when:
-    - Table names don't follow conventions (e.g., 'member' table with 'member_id')
-    - The inferred key is not what the user wants
-    """
+    """Test cohort with explicit join key."""
     query = """from orders
 group by month(order_date) (sum(total) as revenue)
 cohort by month(customers.first_order_date) on customer_id"""
@@ -123,13 +102,10 @@ cohort by month(customers.first_order_date) on customer_id"""
 
 
 def test_cohort_period_calculation():
-    """Test that period is calculated correctly.
-    
-    Join key is inferred: users -> user_id.
-    """
+    """Test that period is calculated correctly."""
     query = """from events
 group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)"""
+cohort by month(users.signup_date) on user_id"""
     
     sql = compile(query)
     sql_lower = sql.lower()
@@ -145,13 +121,10 @@ cohort by month(users.signup_date)"""
 
 
 def test_cohort_auto_order_by():
-    """Test that cohort automatically adds ORDER BY.
-    
-    Join key is inferred: users -> user_id.
-    """
+    """Test that cohort automatically adds ORDER BY."""
     query = """from events
 group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)"""
+cohort by month(users.signup_date) on user_id"""
     
     sql = compile(query)
     sql_upper = sql.upper()

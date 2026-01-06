@@ -19,7 +19,7 @@ from campaigns
   &? first_touch on campaigns.campaign_id = first_touch.campaign_id
   &? last_touch on campaigns.campaign_id = last_touch.campaign_id
   &? orders on (orders.customer_id = first_touch.customer_id or orders.customer_id = last_touch.customer_id)
-    and orders.status = 'completed'
+    and orders.status = "completed"
   group by campaigns.campaign_id, campaigns.campaign_name (
     count(distinct first_touch.customer_id) as first_touch_customers,
     count(distinct last_touch.customer_id) as last_touch_customers,

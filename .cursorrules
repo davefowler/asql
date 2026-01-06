@@ -6,12 +6,6 @@
 - `./venv/bin/python script.py` (not just `python`)
 - The system Python has different package versions and WILL cause false test failures
 
-## ⚠️ CRITICAL: Linting with Ruff
-- **ALWAYS** run `./venv/bin/ruff check asql/` before finishing any PR or code changes
-- CI uses ruff to lint - Cursor's built-in linter (Pylance) does NOT catch unused imports/variables
-- Fix any ruff errors before committing. Most can be auto-fixed with `./venv/bin/ruff check asql/ --fix`
-- Common issues: unused imports, unused local variables, f-strings without placeholders
-
 ## Testing
 - use the venv
 - Write tests first (TDD approach)
@@ -46,27 +40,14 @@
 - **Design docs and research** should use descriptive names without dates (they go in `archive/designs/` or `archive/research/`)
 
 
-## ⚠️ CRITICAL: Issue/PR Linking for Auto-Close
-
-GitHub only auto-closes issues when a **commit message** contains "Fixes #<number>".
-
-### For Cursor Agents implementing an issue:
-1. **Check the issue first**: `gh issue view <number>` to get the PR title and branch name
-2. **Use the exact branch name** from the issue (e.g., `issue-64-slugify-helper`)
-3. **Include "Fixes #<number>" in the FINAL commit message** before the PR is merged
-   - Example: `git commit -m "feat: Add slugify function\n\nFixes #64"`
-4. **Set the PR title** to match the issue's specified format (e.g., `asql: add slugify(expr) helper (#64)`)
-
-### Why this matters:
-- PRs with random branch names like `cursor/slugify-helper-existence-1a74` don't link to issues
-- Commit messages without "Fixes #64" don't auto-close issues
-- This creates manual cleanup work
-
-### For creating new issues:
-- Use `scripts/create_github_issue.sh` to ensure correct format
-- Issue body should include:
-  - PR Title: `<product>: <description> (#<issue-number>)`
-  - Branch: `issue-<issue-number>-<short-slug>`
-  - Close behavior: `Fixes #<issue-number>`
+## Issues / PR naming (to avoid duplicates)
+- When creating a GH issue, include an explicit PR title and branch name in the issue body:
+  - PR Title: "<product>: <description> (#<issue-number>)"
+  - Branch: "issue-<issue-number>-<short-slug>"
+- Prefer using `scripts/create_github_issue.sh` so the PR title + branch format is always correct.
+- When starting an agent via    @cursor-opus-4-5, repeat the PR title + branch name in the @cursor-opus-4-5 comment and require the agent to use them verbatim.
+- PR titles MUST include the issue number "(#123)".
+- Branch names MUST include the issue number "issue-123-...".
+- Commits must use "Fixes #<issue-number>" (exact phrase) so GitHub auto-closes the issue.
 
 

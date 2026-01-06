@@ -4,44 +4,11 @@ This document tracks features that have inconsistent behavior or limited support
 
 ---
 
-## Compile-Time Validation
-
-ASQL now validates feature support at compile time, catching unsupported feature + dialect combinations before generating invalid SQL.
-
-### Error Behavior
-
-- **❌ Not supported** → Raises `ASQLDialectError` with helpful error message
-- **⚠️ Partial support** → May raise `ASQLDialectWarning` for edge cases
-- **🐛 Known bug** → Raises `ASQLDialectWarning` with issue link
-
-### Example Error Messages
-
-When using `except` on PostgreSQL without a schema:
-
-```
-ASQLDialectError: Column operators ('except', 'rename', 'replace') are not supported for PostgreSQL.
-
-The 'except' operator requires EXCEPT/EXCLUDE syntax which PostgreSQL doesn't support.
-
-Options:
-  1. Provide a schema to enable automatic column enumeration (see docs/schema.md)
-  2. Use explicit SELECT: 'select id, name, email from users'
-  3. Use a dialect with EXCLUDE support: BigQuery, Snowflake, DuckDB
-
-See: https://asql.dev/docs/dialect-limitations#column-operators
-```
-
-~~When using slice syntax `[1:5]` on PostgreSQL (known bug - **FIXED in Issue #77**):~~
-
-Slice syntax now works correctly for all dialects. The preparser converts slice syntax to SUBSTRING/LEFT/RIGHT functions, which SQLGlot transpiles to dialect-specific syntax.
-
----
-
 ## Features with Limited Dialect Support
 
 ### 1. Column Operators (`except`, `rename`, `replace`)
 
-**Status**: ✅ Implemented (Issue #80)
+**Tracking**: [Issue #80](https://github.com/davefowler/asql/issues/80) - Schema-aware fallback planned
 
 **Features**: 
 - `except col1, col2` - exclude columns from result
@@ -60,128 +27,12 @@ from users
 - BigQuery: `SELECT * EXCEPT(password, id, name), id AS user_id, upper(name) AS name FROM users` ✅
 - Snowflake: `SELECT * EXCLUDE(...), ... FROM users` ✅
 - DuckDB: `SELECT * EXCLUDE(...), ... FROM users` ✅
-- PostgreSQL: ⚠️ **Requires schema** - emits explicit column list
-- MySQL: ⚠️ **Requires schema** - emits explicit column list
-- SQLite: ⚠️ **Requires schema** - emits explicit column list
-- Redshift: ⚠️ **Requires schema** - emits explicit column list
+- PostgreSQL: ❌ **Not supported** - no `EXCEPT`/`EXCLUDE` syntax
+- MySQL: ❌ **Not supported**
+- SQLite: ❌ **Not supported**
+- Redshift: ❌ **Not supported**
 
-**Compile-time behavior**:
-- **Without schema**: Raises `ASQLDialectError` for unsupported dialects (PostgreSQL, MySQL, SQLite, Redshift)
-- **With schema**: ✅ **Works!** ASQL expands to explicit column list automatically
-
-**Example with schema** (PostgreSQL):
-```python
-from asql import compile
-from asql.config import CompileSettings
-from asql.schema import Schema
-
-schema = Schema.from_dict({
-    'tables': {
-        'users': {'columns': ['id', 'name', 'email', 'password_hash', 'created_at']}
-    }
-})
-settings = CompileSettings(schema=schema)
-result = compile('from users except password_hash', dialect='postgres', settings=settings)
-# Output: SELECT id, name, email, created_at FROM users
-```
-
-**Workaround for unsupported dialects** (if no schema is available): 
-- Provide a schema to enable automatic column enumeration (see example above)
-- List columns explicitly: `select id, name, email from users`
-- Use a dialect with native EXCEPT/EXCLUDE support: BigQuery, Snowflake, DuckDB
-
----
-
-### 2. Pivot Syntax
-
-**Feature**: Transform row values into columns using the `pivot` keyword.
-
-```asql
-from sales
-  pivot sum(amount) by category values ('A', 'B', 'C')
-```
-
-**Behavior by Dialect**:
-
-| Dialect | Static Pivot (with values) | Dynamic Pivot (without values) |
-|---------|---------------------------|-------------------------------|
-| DuckDB | ✅ Native PIVOT | ✅ Native PIVOT |
-| Snowflake | ✅ Native PIVOT | ✅ Native PIVOT (ANY ORDER BY) |
-| BigQuery | ✅ Native PIVOT | ⚠️ Requires schema with distinct_values |
-| PostgreSQL | ✅ CASE/WHEN fallback | ⚠️ Requires schema with distinct_values |
-| MySQL | ✅ CASE/WHEN fallback | ⚠️ Requires schema with distinct_values |
-| SQLite | ✅ CASE/WHEN fallback | ⚠️ Requires schema with distinct_values |
-| Redshift | ✅ CASE/WHEN fallback | ⚠️ Requires schema with distinct_values |
-
-**Static Pivot** (explicit values):
-```asql
-from sales
-  pivot sum(amount) by category values ('A', 'B', 'C')
-```
-
-- For DuckDB/Snowflake/BigQuery: Generates native `PIVOT` syntax
-- For PostgreSQL/MySQL/SQLite: Generates `CASE WHEN` expressions
-
-**Dynamic Pivot** (database determines values at runtime):
-```asql
-from sales
-  pivot sum(amount) by category  -- No explicit values
-```
-
-- **DuckDB/Snowflake**: ✅ Native runtime value discovery
-- **Other dialects**: ⚠️ Requires schema with `distinct_values` for the pivot column
-
-**Schema-Aware Dynamic Pivot** (Issue #102):
-
-When targeting dialects that don't support native dynamic pivot, you can provide schema metadata with `distinct_values` to enable dynamic pivot:
-
-```python
-from asql import compile
-from asql.config import CompileSettings
-from asql.schema import Schema
-
-# Define schema with distinct_values for the pivot column
-schema = Schema.from_dict({
-    "tables": {
-        "sales": {
-            "columns": ["id", "amount", "category"],
-            "category": {"distinct_values": ["A", "B", "C", "D"]}
-        }
-    }
-})
-settings = CompileSettings(schema=schema)
-
-# Now dynamic pivot works on PostgreSQL!
-result = compile(
-    "from sales pivot sum(amount) by category",
-    dialect="postgres",
-    settings=settings
-)
-# Generates: SELECT SUM(CASE WHEN category = 'A' THEN amount END) AS A, ...
-```
-
-**Error without schema**:
-```
-ValueError: Dynamic pivot (without explicit values) is not supported for postgres.
-
-Options:
-  1. Add 'values' clause: pivot sum(amount) by category values ('val1', 'val2', ...)
-  2. Provide schema with distinct_values for 'category' column
-  3. Use a dialect with native dynamic pivot: DuckDB, Snowflake
-```
-
-**Example Output for DuckDB**:
-```sql
-SELECT * FROM (PIVOT sales ON category IN ('A', 'B', 'C') USING SUM(amount)) AS __pivot__
-```
-
-**Example Output for PostgreSQL** (CASE/WHEN fallback):
-```sql
-SELECT SUM(CASE WHEN category = 'A' THEN amount END) AS A,
-       SUM(CASE WHEN category = 'B' THEN amount END) AS B,
-       SUM(CASE WHEN category = 'C' THEN amount END) AS C
-FROM sales
-```
+**Workaround for unsupported dialects**: List columns explicitly instead of using `*`.
 
 ---
 
@@ -208,8 +59,6 @@ group by rollup(year(date), month(date)) (
 
 **Current behavior**: Auto-spine attempts to handle ROLLUP/CUBE by including NULL in spines and filtering invalid patterns, but this is not fully tested with all edge cases.
 
-**Compile-time behavior**: No validation errors or warnings (edge cases are handled at runtime).
-
 **Workaround**: Disable auto-spine for queries using GROUPING SETS:
 
 ```asql
@@ -226,26 +75,27 @@ group by rollup(year(date), month(date)) (
 
 | Feature | BigQuery | Snowflake | DuckDB | PostgreSQL | MySQL | SQLite | Redshift |
 |---------|----------|-----------|--------|------------|-------|--------|----------|
-| Column operators (`except`, `rename`, `replace`) | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
-| Native PIVOT syntax | ✅ | ✅ | ✅ | ❌ (uses CASE/WHEN) | ❌ | ❌ | ❌ |
-| Dynamic pivot (no values) | ⚠️ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| Column operators (`except`, `rename`, `replace`) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Auto-spine (basic) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
 | Auto-spine with ROLLUP/CUBE | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
 | `generate_series` for spines | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
-| Slice syntax `[1:5]` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Slice syntax `[1:5]` | 🐛 | 🐛 | ✅ | 🐛 | 🐛 | 🐛 | 🐛 |
 
 Legend:
-- ✅ Fully supported - No validation errors or warnings
-- ⚠️ Requires schema - Provide a schema with `distinct_values` to enable
-- ❌ Not supported - Raises `ASQLDialectError` or requires workaround
+- ✅ Fully supported
+- ⚠️ Partial support / edge cases
+- ❌ Not supported
+- 🐛 Bug - documented but broken (see Known Bugs section)
 
 ---
 
-## Fixed Bugs
+## Known Bugs (Documented but Broken)
 
-### 3. Slice Syntax `[start:end]` ✅ (Fixed in Issue #77)
+These features are documented in the spec but have broken implementations for certain dialects.
 
-**Tracking**: [Issue #77](https://github.com/davefowler/asql/issues/77) - **RESOLVED**
+### 3. Slice Syntax `[start:end]` 🐛
+
+**Tracking**: [Issue #77](https://github.com/davefowler/asql/issues/77)
 
 **Feature**: Python-style string/array slicing
 
@@ -254,24 +104,24 @@ from users
   select email[1:5] as prefix
 ```
 
-**Implementation**: The preparser converts slice syntax to SUBSTRING/LEFT/RIGHT functions:
+**Current behavior**:
 
-| Slice Pattern | Converts To |
-|---------------|-------------|
-| `email[1:5]` | `SUBSTRING(email, 1, 5)` |
-| `email[1:]` | `SUBSTRING(email, 1)` |
-| `email[:5]` | `LEFT(email, 5)` |
-| `email[-5:]` | `RIGHT(email, 5)` |
+| Dialect | Output | Works? |
+|---------|--------|--------|
+| DuckDB | `email[1 : 5]` | ✅ Native support |
+| PostgreSQL | `email[1 : 5]` | ❌ Invalid (Postgres uses `[]` for arrays only) |
+| Snowflake | `email[GET_PATH(1, '5')]` | ❌ Completely wrong |
+| BigQuery | `email[1 : 5]` | ❌ Invalid for strings |
+| MySQL | `email[1 : 5]` | ❌ Invalid syntax |
 
-SQLGlot then transpiles these functions to dialect-specific syntax:
+**Fix planned**: Convert to `SUBSTRING()` in preparser, let SQLGlot handle dialect-specific output.
 
-| Dialect | Output |
-|---------|--------|
-| DuckDB | `SUBSTRING(email, 1, 5)` |
-| PostgreSQL | `SUBSTRING(email FROM 1 FOR 5)` |
-| Snowflake | `SUBSTRING(email, 1, 5)` |
-| BigQuery | `SUBSTRING(email, 1, 5)` |
-| MySQL | `SUBSTRING(email, 1, 5)` |
+**Workaround**: Use `SUBSTRING()` directly:
+
+```asql
+from users
+  select substring(email, 1, 5) as prefix
+```
 
 ---
 
@@ -290,7 +140,7 @@ Open an issue at: https://github.com/davefowler/asql/issues
 
 ## Future Improvements
 
-- [x] Add compile-time warnings for features not supported by target dialect - [Issue #81](https://github.com/davefowler/asql/issues/81) ✅
-- [x] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE` - [Issue #80](https://github.com/davefowler/asql/issues/80) ✅
+- [ ] Add compile-time warnings for features not supported by target dialect - [Issue #81](https://github.com/davefowler/asql/issues/81)
+- [ ] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE` - [Issue #80](https://github.com/davefowler/asql/issues/80)
 - [ ] Add comprehensive ROLLUP/CUBE testing for auto-spine
 - [ ] Document all dialect-specific SQL generation differences

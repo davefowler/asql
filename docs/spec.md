@@ -558,32 +558,6 @@ from products
 | `upper(str)` | Convert to uppercase | `upper(code)` |
 | `trim(str)` | Remove whitespace | `trim(input)` |
 | `length(str)` | String length | `length(name)` |
-| `slugify(str)` | Convert to URL-friendly slug | `slugify(title)` |
-
-#### Slugify Function
-
-The `slugify()` function converts strings to URL-friendly slugs, inspired by dbt_utils-style helpers:
-
-```asql
-from products
-  select slugify(name) as slug
-```
-
-**Behavior:**
-- Converts to lowercase
-- Replaces runs of non-alphanumeric characters with single hyphens
-- Trims leading/trailing hyphens
-- Returns NULL for NULL input
-
-**Examples:**
-```asql
-slugify('Hello World!')     -- → 'hello-world'
-slugify('Foo  --  Bar')     -- → 'foo-bar'
-slugify('---Test---')       -- → 'test'
-slugify('Product #123!')    -- → 'product-123'
-```
-
-**Cross-dialect support:** Uses `REGEXP_REPLACE()` which is supported in PostgreSQL, BigQuery, Snowflake, DuckDB, Trino, and Spark. MySQL does not support `REGEXP_REPLACE` in older versions.
 
 ### 4.11 Comparison Functions
 
@@ -901,41 +875,6 @@ from orders
   )
 ```
 
-#### fill_forward() / fill_backward() (NULL Propagation)
-
-Forward fill and backward fill propagate non-null values to fill NULL gaps, a common time series pattern:
-
-```asql
-# Forward fill - propagate last known value forward
-from events
-  select 
-    user_id,
-    timestamp,
-    fill_forward(value) over (partition by user_id order by timestamp) as value
-
-# Backward fill - propagate next known value backward
-from events
-  select 
-    user_id,
-    timestamp,
-    fill_backward(value) over (partition by user_id order by timestamp) as value
-```
-
-**Example use case:**
-
-| row | value | fill_forward | fill_backward |
-|-----|-------|--------------|---------------|
-| 1   | 100   | 100          | 100           |
-| 2   | NULL  | 100 ← row 1  | 200 ← row 4   |
-| 3   | NULL  | 100 ← row 1  | 200 ← row 4   |
-| 4   | 200   | 200          | 200           |
-
-**Compiles to:**
-- `fill_forward(col)` → `LAST_VALUE(col IGNORE NULLS) OVER (... ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`
-- `fill_backward(col)` → `FIRST_VALUE(col IGNORE NULLS) OVER (... ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)`
-
-**Dialect support:** Works with Snowflake, BigQuery, DuckDB (which support `IGNORE NULLS`). PostgreSQL may require a workaround as it doesn't support `IGNORE NULLS` directly.
-
 #### prior() / next() (Simplified LAG/LEAD)
 
 ```asql
@@ -990,8 +929,6 @@ from daily_sales
 | Get column value at max | `arg_max(col, sort_col)` |
 | Previous row value | `prior(col)` |
 | Next row value | `next(col)` |
-| Forward fill NULLs | `fill_forward(col) over (...)` |
-| Backward fill NULLs | `fill_backward(col) over (...)` |
 | Cumulative sum | `running_sum(col)` |
 | Cumulative average | `running_avg(col)` |
 | 7-day moving average | `rolling_avg(col, 7)` |
@@ -1766,67 +1703,7 @@ from use_this_later
 - ✅ **Natural flow**: Fits naturally into the pipeline syntax
 - ✅ **Better readability**: You end with the name and use it right after, so your eyes don't have to jump around
 
-**Note**: `stash as` and `recurse()` are the ASQL syntaxes that create CTEs.
-
-### 11.3 Recursive Queries with `recurse()`
-
-For hierarchical data (org charts, category trees, bill of materials), use `recurse()` to traverse self-referential relationships:
-
-```asql
-from employees
-  where id = 1
-  recurse(manager_id)
-```
-
-**Syntax (three equivalent forms):**
-```asql
-recurse(<fk_column> [, <max_depth>])   -- Function style
-recurse on <fk_column> [, <max_depth>] -- Keyword style
-recurse <fk_column> [, <max_depth>]    -- Bare style
-```
-
-- `<fk_column>` — The foreign key column to follow (e.g., `manager_id`, `parent_id`)
-- `<max_depth>` — Optional depth limit (defaults to 100 for safety)
-
-**Examples:**
-```asql
--- Get 3 levels of reports only
-from employees
-  where id = 1
-  recurse(manager_id, 3)
-
--- Get full category tree under 'electronics'
-from categories
-  where slug = 'electronics'
-  recurse(parent_id)
-```
-
-**Auto-generated `_level` column:**
-
-`recurse()` automatically adds a `_level` column tracking recursion depth (1 = anchor, 2 = first recursion level, etc.):
-
-```asql
-from employees
-  where id = 1
-  recurse(manager_id)
-  where _level <= 3
-  order by _level, name
-```
-
-**FK convention:** By convention, `recurse(manager_id)` auto-joins to the table's `id` column. This follows ASQL's FK naming convention.
-
-**Generated SQL:**
-```sql
-WITH RECURSIVE _recurse_employees AS (
-    SELECT *, 1 AS _level FROM employees WHERE id = 1
-    UNION ALL
-    SELECT e.*, _recurse_employees._level + 1
-    FROM employees e
-    JOIN _recurse_employees ON e.manager_id = _recurse_employees.id
-    WHERE _recurse_employees._level < 100
-)
-SELECT * FROM _recurse_employees
-```
+**Note**: `stash as` is currently the only ASQL syntax that creates CTEs.
 
 ---
 
