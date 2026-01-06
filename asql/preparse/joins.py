@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
+
+from asql.preparse.inference import infer_fk_column
 
 if TYPE_CHECKING:
     from asql.schema import Schema
@@ -192,15 +194,15 @@ class JoinsMixin:
         """
         Invent join condition using naming conventions.
         
+        Uses shared inference logic from asql.preparse.inference.
         Assumes {singular_table}_id -> {table}.id convention.
         
         Examples:
         - orders, users -> orders.user_id = users.id
         - users, orders -> users.id = orders.user_id (reverse)
         """
-        # Try: from_table has {to_singular}_id column
-        to_singular = to_table.rstrip('s') if to_table.endswith('s') else to_table
-        fk_col = f"{to_singular}_id"
+        # Use shared FK column inference
+        fk_col = infer_fk_column(to_table)
         return f"{from_table}.{fk_col} = {to_ref}.id"
 
     def _replace_cross_join(self, text: str) -> str:

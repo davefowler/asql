@@ -6,7 +6,7 @@ auto-aliasing for ASQL function calls.
 
 from __future__ import annotations
 
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, Any
 import re
 
 from jinja2 import Environment

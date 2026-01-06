@@ -3,9 +3,53 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from asql.config import CompileSettings
+
+# Dialects that support native PIVOT syntax
+NATIVE_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake", "bigquery"})
+
+# Dialects that support dynamic PIVOT (without explicit values)
+DYNAMIC_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake"})
 
 class PivotMixin:
+
+    def _get_pivot_values_from_schema(self, pivot_col: str, query_text: str) -> Optional[List[str]]:
+        """Get distinct values for a pivot column from the schema.
+        
+        Looks up the pivot column in the schema to find distinct_values.
+        Uses the source table from the query's FROM clause.
+        
+        Args:
+            pivot_col: Column name to pivot on
+            query_text: The full query text (to extract table name from FROM)
+            
+        Returns:
+            List of distinct values if found in schema, None otherwise
+        """
+        # Get settings from self (set by ASQLPreParser)
+        settings: Optional["CompileSettings"] = getattr(self, 'settings', None)
+        if not settings or not settings.schema:
+            return None
+        
+        schema = settings.schema
+        
+        # Extract table name from FROM clause
+        from_match = re.search(r'\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)', query_text, re.IGNORECASE)
+        if not from_match:
+            return None
+        
+        table_name = from_match.group(1).lower()
+        
+        # Look up table in schema
+        table = schema.get_table(table_name)
+        if not table:
+            return None
+        
+        # Get distinct values for the pivot column
+        return table.get_distinct_values(pivot_col)
 
     def _transform_explode(self, text: str) -> str:
         """
@@ -75,7 +119,6 @@ class PivotMixin:
             return result
         
         table_ref = from_match.group(1).strip()
-        before_from = before_unpivot[:from_match.start()].strip()
         
         # Build UNION ALL query for unpivot
         # Each column becomes a row with (column_name, column_value)
@@ -95,21 +138,25 @@ class PivotMixin:
 
     def _transform_pivot(self, text: str) -> str:
         """
-        Transform ASQL pivot clause to SQL with CASE/GROUP BY.
+        Transform ASQL pivot clause to SQL.
         
         Syntax:
         pivot value by category values ('A', 'B', 'C')  -- static with explicit values
         pivot sum(value) by category values ('A', 'B')  -- with aggregation
+        pivot sum(value) by category                    -- dynamic (native PIVOT dialects only)
         
-        For static pivots (known values), this generates CASE expressions that work
-        across all SQL dialects.
+        For dialects with native PIVOT support (DuckDB, Snowflake, BigQuery):
+        - Emits native PIVOT syntax for both static and dynamic pivots
+        - Dynamic pivots (without explicit values) let the database determine columns at runtime
         
-        Note: Dynamic pivot (values from subquery) is not supported in pure SQL
-        compilation, as it requires knowing all pivot values at compile time to generate
-        individual CASE expressions. For dynamic pivoting, use warehouse-specific PIVOT
-        operators (e.g., Snowflake's PIVOT) or raw SQL.
+        For dialects without native PIVOT (PostgreSQL, MySQL, SQLite):
+        - Emits CASE/WHEN expressions for static pivots
+        - Raises helpful error for dynamic pivots (values are required)
         """
         result = text
+        dialect = getattr(self, 'dialect', None)
+        dialect_lower = (dialect or "").lower()
+        supports_native_pivot = dialect_lower in NATIVE_PIVOT_DIALECTS
         
         # Pattern 1: pivot value by category values ('A', 'B', 'C')
         # With explicit values list
@@ -130,53 +177,211 @@ class PivotMixin:
                 # Couldn't parse values, return unchanged
                 return result
             
-            # Check if value_expr is an aggregate function
-            is_aggregate = bool(re.match(r'(sum|avg|count|min|max|total|average)\s*\(', value_expr, re.IGNORECASE))
-            
-            # Generate CASE expressions for each pivot value
-            case_exprs = []
-            for val in values:
-                # Sanitize the value to make it a valid column name
-                col_name = re.sub(r'[^a-zA-Z0-9_]', '_', val)
-                if is_aggregate:
-                    # Wrap aggregate around CASE
-                    agg_func = value_expr.split('(')[0].strip()
-                    inner_col = re.search(r'\(([^)]+)\)', value_expr).group(1)
-                    case_exprs.append(
-                        f"{agg_func}(CASE WHEN {pivot_col} = '{val}' THEN {inner_col} END) AS {col_name}"
-                    )
-                else:
-                    case_exprs.append(
-                        f"MAX(CASE WHEN {pivot_col} = '{val}' THEN {value_expr} END) AS {col_name}"
-                    )
-            
-            pivot_sql = ", ".join(case_exprs)
-            
-            # Replace pivot clause with marker - the CASE expressions will be added
-            # We use a marker that _transform_from_first will handle
-            before_pivot = result[:match.start()]
-            after_pivot = result[match.end():]
-            
-            # Store the pivot expressions in a special marker format
-            # The from_first transform will pick this up and add to SELECT
-            result = f"{before_pivot}__PIVOT_COLS__({pivot_sql})__{after_pivot}"
-            
-            return result
+            if supports_native_pivot:
+                # Generate native PIVOT syntax
+                return self._generate_native_pivot(
+                    result, match, value_expr, pivot_col, values, dialect_lower
+                )
+            else:
+                # Generate CASE/WHEN expressions (fallback for unsupported dialects)
+                return self._generate_case_when_pivot(
+                    result, match, value_expr, pivot_col, values
+                )
         
-        # Pattern 2: pivot value by category (no values specified)
-        # Leave a helpful error message
+        # Pattern 2: pivot value by category (no values specified - dynamic pivot)
         pattern_basic = r'\bpivot\s+([a-zA-Z_][a-zA-Z0-9_]*(?:\s*\([^)]*\))?)\s+by\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
         
         match = re.search(pattern_basic, result, re.IGNORECASE)
         if match:
-            # Raise a helpful error
             value_expr = match.group(1).strip()
             pivot_col = match.group(2).strip()
-            raise ValueError(
-                f"pivot requires explicit values. Use: pivot {value_expr} by {pivot_col} values ('val1', 'val2', ...)"
-            )
+            
+            supports_dynamic_pivot = dialect_lower in DYNAMIC_PIVOT_DIALECTS
+            
+            if supports_dynamic_pivot:
+                # Dynamic pivot - use native PIVOT without explicit values
+                return self._generate_native_pivot(
+                    result, match, value_expr, pivot_col, None, dialect_lower
+                )
+            else:
+                # Check if we can get distinct values from schema
+                schema_values = self._get_pivot_values_from_schema(pivot_col, result)
+                
+                if schema_values:
+                    # Use schema values for CASE/WHEN fallback
+                    if dialect_lower in NATIVE_PIVOT_DIALECTS:
+                        return self._generate_native_pivot(
+                            result, match, value_expr, pivot_col, schema_values, dialect_lower
+                        )
+                    else:
+                        return self._generate_case_when_pivot(
+                            result, match, value_expr, pivot_col, schema_values
+                        )
+                else:
+                    # Raise a helpful error with schema instructions
+                    dialect_name = dialect_lower if dialect_lower else "this dialect"
+                    raise ValueError(
+                        f"Dynamic pivot (without explicit values) is not supported for {dialect_name}.\n\n"
+                        f"Options:\n"
+                        f"  1. Add 'values' clause: pivot {value_expr} by {pivot_col} values ('val1', 'val2', ...)\n"
+                        f"  2. Provide schema with distinct_values for '{pivot_col}' column\n"
+                        f"  3. Use a dialect with native dynamic pivot: DuckDB, Snowflake"
+                    )
         
         return result
+
+    def _generate_native_pivot(
+        self,
+        text: str,
+        match: re.Match,
+        value_expr: str,
+        pivot_col: str,
+        values: Optional[List[str]],
+        dialect: str,
+    ) -> str:
+        """Generate native PIVOT syntax for supported dialects.
+        
+        Args:
+            text: Full query text
+            match: Regex match object for the pivot clause
+            value_expr: Value expression (e.g., 'amount' or 'sum(amount)')
+            pivot_col: Column to pivot on
+            values: List of explicit values, or None for dynamic pivot
+            dialect: Target dialect (duckdb, snowflake, bigquery)
+            
+        Returns:
+            Query with native PIVOT syntax
+        """
+        before_pivot = text[:match.start()].strip()
+        after_pivot = text[match.end():].strip()
+        
+        # Check if value_expr is an aggregate function
+        agg_match = re.match(r'(sum|avg|count|min|max|total|average)\s*\(([^)]+)\)', value_expr, re.IGNORECASE)
+        if agg_match:
+            agg_func = agg_match.group(1).upper()
+            inner_col = agg_match.group(2).strip()
+            agg_expr = f"{agg_func}({inner_col})"
+        else:
+            # Default to SUM for non-aggregate expressions
+            agg_expr = f"SUM({value_expr})"
+        
+        # Build the values IN clause if explicit values provided
+        if values:
+            values_in = ", ".join(f"'{v}'" for v in values)
+            in_clause = f" IN ({values_in})"
+        else:
+            in_clause = ""  # Dynamic pivot - no explicit values
+        
+        if dialect == "duckdb":
+            # DuckDB uses: PIVOT ... ON col [IN values] USING agg
+            # We need to find the source table and wrap appropriately
+            # DuckDB PIVOT is a table expression, so we wrap the query
+            
+            # Extract table from "from <table>"
+            from_match = re.search(r'\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)', before_pivot, re.IGNORECASE)
+            if from_match:
+                table_name = from_match.group(1)
+                # Remove the FROM clause from before_pivot as PIVOT replaces it
+                before_from = before_pivot[:from_match.start()].strip()
+                
+                # DuckDB PIVOT syntax: PIVOT table ON col [IN (values)] USING agg
+                pivot_clause = f"PIVOT {table_name} ON {pivot_col}{in_clause} USING {agg_expr}"
+                
+                # If there's a SELECT before, we need to wrap
+                if before_from:
+                    result = f"{before_from} FROM ({pivot_clause}) AS __pivot__ {after_pivot}"
+                else:
+                    # Handle GROUP BY if present
+                    group_match = re.search(r'\bgroup\s+by\s+([a-zA-Z_][a-zA-Z0-9_,\s]*)', after_pivot, re.IGNORECASE)
+                    if group_match:
+                        group_cols = group_match.group(1).strip()
+                        after_group = after_pivot[group_match.end():].strip()
+                        result = f"SELECT * FROM (PIVOT {table_name} ON {pivot_col}{in_clause} USING {agg_expr} GROUP BY {group_cols}) AS __pivot__ {after_group}"
+                    else:
+                        result = f"SELECT * FROM ({pivot_clause}) AS __pivot__ {after_pivot}"
+                return result
+            
+        elif dialect in ("snowflake", "bigquery"):
+            # Snowflake/BigQuery use: SELECT * FROM table PIVOT (agg FOR col IN (values))
+            # For dynamic pivot (no values), use: PIVOT (agg FOR col IN (SELECT DISTINCT col FROM table))
+            from_match = re.search(r'\bfrom\s+([a-zA-Z_][a-zA-Z0-9_]*)', before_pivot, re.IGNORECASE)
+            if from_match:
+                table_name = from_match.group(1)
+                before_from = before_pivot[:from_match.start()].strip()
+                
+                if values:
+                    pivot_clause = f"PIVOT ({agg_expr} FOR {pivot_col} IN ({values_in}))"
+                else:
+                    # Dynamic pivot - Snowflake/BigQuery can handle this
+                    # For Snowflake: PIVOT (agg FOR col IN (ANY ORDER BY col))
+                    # For BigQuery: No built-in dynamic pivot, but we try standard syntax
+                    if dialect == "snowflake":
+                        pivot_clause = f"PIVOT ({agg_expr} FOR {pivot_col} IN (ANY ORDER BY {pivot_col}))"
+                    else:  # bigquery
+                        # BigQuery doesn't support dynamic PIVOT directly
+                        # We'll still emit the syntax and let SQLGlot handle it
+                        pivot_clause = f"PIVOT ({agg_expr} FOR {pivot_col})"
+                
+                # Build the full query
+                if before_from:
+                    result = f"{before_from} FROM {table_name} {pivot_clause} {after_pivot}"
+                else:
+                    result = f"SELECT * FROM {table_name} {pivot_clause} {after_pivot}"
+                return result
+        
+        # Fallback: return unchanged
+        return text
+
+    def _generate_case_when_pivot(
+        self,
+        text: str,
+        match: re.Match,
+        value_expr: str,
+        pivot_col: str,
+        values: List[str],
+    ) -> str:
+        """Generate CASE/WHEN expressions for dialects without native PIVOT.
+        
+        Args:
+            text: Full query text
+            match: Regex match object for the pivot clause
+            value_expr: Value expression (e.g., 'amount' or 'sum(amount)')
+            pivot_col: Column to pivot on
+            values: List of explicit values to pivot
+            
+        Returns:
+            Query with CASE/WHEN expressions
+        """
+        # Check if value_expr is an aggregate function
+        is_aggregate = bool(re.match(r'(sum|avg|count|min|max|total|average)\s*\(', value_expr, re.IGNORECASE))
+        
+        # Generate CASE expressions for each pivot value
+        case_exprs = []
+        for val in values:
+            # Sanitize the value to make it a valid column name
+            col_name = re.sub(r'[^a-zA-Z0-9_]', '_', val)
+            if is_aggregate:
+                # Wrap aggregate around CASE
+                agg_func = value_expr.split('(')[0].strip()
+                inner_col = re.search(r'\(([^)]+)\)', value_expr).group(1)
+                case_exprs.append(
+                    f"{agg_func}(CASE WHEN {pivot_col} = '{val}' THEN {inner_col} END) AS {col_name}"
+                )
+            else:
+                case_exprs.append(
+                    f"MAX(CASE WHEN {pivot_col} = '{val}' THEN {value_expr} END) AS {col_name}"
+                )
+        
+        pivot_sql = ", ".join(case_exprs)
+        
+        # Replace pivot clause with marker - the CASE expressions will be added
+        # We use a marker that _transform_from_first will handle
+        before_pivot = text[:match.start()]
+        after_pivot = text[match.end():]
+        
+        # Store the pivot expressions in a special marker format
+        # The from_first transform will pick this up and add to SELECT
+        return f"{before_pivot}__PIVOT_COLS__({pivot_sql})__{after_pivot}"
 
     def _transform_pivot_marker(self, text: str) -> str:
         """

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Set, Tuple
 
 from asql.preparse.registry import FUNCTION_ALIASES
 

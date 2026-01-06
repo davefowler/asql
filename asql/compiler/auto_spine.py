@@ -497,9 +497,6 @@ def _build_spine_cte_sql(
         use_data_bounds: For date spines, use data MIN/MAX instead of wide range
         data_cte_name: Name of the data CTE to reference for MIN/MAX bounds
     """
-    dialect_lower = dialect.lower() if dialect else ""
-    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
-    
     # Case 1: Explicit values from guarantee()
     if explicit_values:
         return _build_explicit_values_spine_sql(alias, explicit_values, dialect, include_null)
@@ -953,10 +950,31 @@ def _apply_auto_spine(
     include_comments = settings.include_transpilation_comments if settings else False
     cte_comments: dict[str, str] = {}
 
+    # Extract existing CTEs from the data statement to avoid nested WITH clauses
+    # We need to prepend these CTEs to the spine CTEs
+    existing_ctes: List[str] = []
+    if hasattr(data_stmt, 'ctes') and data_stmt.ctes:
+        for cte in data_stmt.ctes:
+            cte_alias = cte.alias
+            cte_sql = cte.this.sql(dialect=dialect)
+            existing_ctes.append(f"{cte_alias} AS ({cte_sql})")
+            if include_comments and cte.this.comments:
+                # Preserve any comments from original CTEs
+                cte_comments[cte_alias] = cte.this.comments[0]
+        # Remove CTEs from data_stmt to avoid nested WITH when generating SQL
+        # Note: The key is 'with_' (with underscore) not 'with'
+        data_stmt_no_ctes = data_stmt.copy()
+        data_stmt_no_ctes.args.pop('with_', None)
+    else:
+        data_stmt_no_ctes = data_stmt
+
+    # Add existing CTEs first - they may be referenced by the data statement
+    cte_parts.extend(existing_ctes)
+
     # When any spine needs data bounds, the data CTE must come FIRST
     # (because the spine references MIN/MAX from the data CTE)
     if any_spine_needs_data_bounds:
-        cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
+        cte_parts.append(f"{data_cte_name} AS ({data_stmt_no_ctes.sql(dialect=dialect)})")
         if include_comments:
             cte_comments[data_cte_name] = "Original aggregation query - data CTE defined first for MIN/MAX bounds"
 
@@ -973,7 +991,7 @@ def _apply_auto_spine(
     
     # If data CTE wasn't added first, add it now (normal case)
     if not any_spine_needs_data_bounds:
-        cte_parts.append(f"{data_cte_name} AS ({data_stmt.sql(dialect=dialect)})")
+        cte_parts.append(f"{data_cte_name} AS ({data_stmt_no_ctes.sql(dialect=dialect)})")
         if include_comments:
             cte_comments[data_cte_name] = "Original aggregation query"
 
