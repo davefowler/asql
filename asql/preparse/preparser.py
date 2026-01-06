@@ -23,6 +23,14 @@ from asql.preparse.cohort import CohortMixin
 from asql.preparse.key import KeyMixin
 from asql.preparse.when import WhenMixin
 from asql.preparse.ternary import TernaryMixin
+from asql.preparse.with_cte import WithCTEMixin
+from asql.preparse.union import UnionMixin
+from asql.preparse.multistatement import MultiStatementMixin
+from asql.preparse.slugify import SlugifyMixin
+from asql.preparse.list_comprehension import ListComprehensionMixin
+from asql.preparse.bucket import BucketMixin
+from asql.preparse.slice import SliceMixin
+from asql.preparse.recurse import RecurseMixin
 
 if TYPE_CHECKING:
     from asql.config import CompileSettings
@@ -53,13 +61,27 @@ class ASQLPreParser(
     TernaryMixin,
     WhenMixin,
     KeyMixin,
+    WithCTEMixin,
+    UnionMixin,
+    MultiStatementMixin,
+    SlugifyMixin,
+    ListComprehensionMixin,
+    BucketMixin,
+    SliceMixin,
+    RecurseMixin,
 ):
-    def __init__(self, text: str, settings: Optional["CompileSettings"] = None):
+    def __init__(
+        self,
+        text: str,
+        settings: Optional["CompileSettings"] = None,
+        dialect: Optional[str] = None,
+    ):
         self.text = text.strip()
         self.original = text
         self.pos = 0
         self.ctes: List[Tuple[str, str]] = []
         self.settings = settings  # Compile settings with schema for join inference
+        self.dialect = dialect  # Target SQL dialect for dialect-specific transformations
 
     def preparse(self) -> str:
         """Apply all transformations and return SQL-like text."""
@@ -70,6 +92,9 @@ class ASQLPreParser(
         
         # Apply transformations in order
         result = self._transform_set_statements(result)
+        result = self._transform_with_cte_syntax(result)  # Handle 'with name = from ...' CTEs early
+        result = self._transform_multi_statements(result)  # Handle multi-statement stash-as queries
+        result = self._transform_union_operations(result)  # Handle UNION/INTERSECT/EXCEPT early (splits and recurses)
         result = self._transform_pipeline(result)
         result = self._transform_join_operators(result)  # Early: transform join operators before other processing
         result = self._normalize_where_before_joins(result)  # Ensure WHEREs move after JOINs (pipeline semantics)
@@ -95,12 +120,18 @@ class ASQLPreParser(
         result = self._transform_pivot_marker(result)  # Expand __PIVOT_COLS__ markers after from_first
         result = self._transform_distinct_on(result)  # Move DISTINCT ON to after SELECT
         result = self._transform_star_column_override(result)  # select *, col as name → select * EXCEPT(name), col as name
+        result = self._transform_recurse(result)  # Transform recurse() to recursive CTE (after star_column_override to avoid EXCEPT in CTE)
         result = self._transform_cohort_by(result)  # cohort by - transforms to CTEs and joins (after FROM-first)
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
+        result = self._transform_fill_functions(result)  # fill_forward, fill_backward
         result = self._transform_qualify_clause(result)  # qualify rn == 1
         result = self._transform_coalesce_operator(result)  # After FROM-first for proper structure
         result = self._transform_ternary_expressions(result)  # ternary ? : expressions to CASE WHEN
         result = self._transform_when_expressions(result)  # when expressions to CASE WHEN
+        result = self._transform_bucket_function(result)  # bucket() function to CASE WHEN
+        result = self._transform_list_comprehensions(result)  # [expr for var in arr] to ARRAY(SELECT ...)
+        result = self._transform_slugify_function(result)  # slugify(expr) URL-friendly slug generation
+        result = self._transform_slice_syntax(result)  # email[1:5] → SUBSTRING(email, 1, 5)
         result = self._transform_key_function(result)  # key(col1, col2, ...) surrogate key generation
         result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
         result = self._normalize_function_spaces(result)

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import re
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Optional
 
 class PipelineMixin:
 
@@ -47,6 +46,14 @@ class PipelineMixin:
                 elif char == ')':
                     depth -= 1
                 elif char == '|' and depth == 0:
+                    # Check for || (SQL string concatenation) - don't split on it
+                    if i + 1 < len(text) and text[i + 1] == '|':
+                        # This is ||, keep both pipes together
+                        current.append(char)
+                        current.append(text[i + 1])
+                        i += 2
+                        continue
+                    # Single | is pipeline operator - split here
                     segments.append(''.join(current))
                     current = []
                     i += 1

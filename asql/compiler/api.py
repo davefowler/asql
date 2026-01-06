@@ -8,8 +8,14 @@ from sqlglot.dialects import Dialect
 
 from asql.config import CompileSettings
 from asql.dialect import register_asql_dialect
-from asql.errors import ASQLCompilationError, ASQLSyntaxError
+from asql.errors import ASQLCompilationError, ASQLSyntaxError, ASQLDialectError
 from asql.preparse import preparse_asql
+from asql.dialect_features import (
+    Feature,
+    check_feature,
+    has_column_operators,
+    get_dialect_display_name,
+)
 from asql.compiler.auto_spine import _apply_auto_spine, _remove_guarantee_wrappers
 from asql.compiler.explode import process_explode_markers
 from asql.compiler.inline_settings import (
@@ -19,6 +25,71 @@ from asql.compiler.inline_settings import (
 )
 from asql.compiler.auto_qualify import auto_qualify_columns
 from asql.compiler.auto_alias import apply_auto_aliasing
+from asql.compiler.alias_reuse import apply_alias_reuse
+from asql.compiler.list_comprehension import (
+    check_snowflake_list_comprehensions,
+    fix_duckdb_list_comprehensions,
+)
+
+
+# Dialect aliases - map common aliases to SQLGlot's expected names
+_DIALECT_ALIASES = {
+    'postgresql': 'postgres',
+}
+
+
+def _normalize_dialect(dialect: str) -> str:
+    """Normalize dialect name to SQLGlot's expected format."""
+    return _DIALECT_ALIASES.get(dialect.lower(), dialect)
+
+
+def _validate_dialect_features(
+    original_query: str,
+    preparsed_query: str,
+    dialect: Optional[str],
+    settings: CompileSettings,
+) -> None:
+    """Validate that features used in the query are supported by the target dialect.
+    
+    Raises ASQLDialectError for unsupported features without workarounds.
+    Raises ASQLDialectWarning for features with known issues or partial support.
+    
+    Args:
+        original_query: Original ASQL query string
+        preparsed_query: Pre-parsed SQL-like query string
+        dialect: Target SQL dialect
+        settings: Compile settings (for schema availability check)
+    """
+    if not dialect:
+        return  # Can't validate without a dialect
+    
+    # 1. Check column operators (except, rename, replace)
+    # 
+    # When the preparser finds column operators and:
+    # - Schema is available: It expands to explicit column list (Issue #80)
+    # - Schema not available: It uses EXCEPT syntax
+    #
+    # We only need to validate/error when EXCEPT syntax is used on unsupported dialects.
+    # has_column_operators() checks for `* EXCEPT(...)` pattern in preparsed query.
+    if has_column_operators(preparsed_query):
+        if not check_feature(Feature.COLUMN_EXCLUDE, dialect):
+            dialect_name = get_dialect_display_name(dialect)
+            # If we get here, it means EXCEPT syntax is in the preparsed query
+            # but the dialect doesn't support it. This happens when no schema
+            # was provided (otherwise preparser would have expanded columns).
+            raise ASQLDialectError(
+                f"Column operators ('except', 'rename', 'replace') are not supported for {dialect_name}.\n\n"
+                f"The 'except' operator requires EXCEPT/EXCLUDE syntax which {dialect_name} doesn't support.\n\n"
+                f"Options:\n"
+                f"  1. Provide a schema to enable automatic column enumeration (see docs/schema.md)\n"
+                f"  2. Use explicit SELECT: 'select id, name, email from users'\n"
+                f"  3. Use a dialect with EXCLUDE support: BigQuery, Snowflake, DuckDB\n\n"
+                f"See: https://asql.dev/docs/dialect-limitations#column-operators"
+            )
+    
+    # 2. Slice syntax - no longer needs validation (Issue #77 fixed)
+    # The preparser now converts slice syntax to SUBSTRING/LEFT/RIGHT,
+    # which SQLGlot correctly transpiles to all dialects.
 
 
 def _validate_statement(stmt: exp.Expression, original_query: str) -> List[str]:
@@ -93,9 +164,14 @@ def compile(
 
         if not dialect:
             dialect = extract_dialect_from_comment(asql_query)
+        
+        # Normalize dialect aliases (e.g., 'postgresql' -> 'postgres')
+        if dialect:
+            dialect = _normalize_dialect(dialect)
 
-        # Pass settings to preparser for schema-aware join inference
-        preparsed = preparse_asql(asql_query, settings=base_settings)
+        # Pass settings and dialect to preparser for schema-aware join inference
+        # and dialect-specific transformations (e.g., native PIVOT for DuckDB/Snowflake/BigQuery)
+        preparsed = preparse_asql(asql_query, settings=base_settings, dialect=dialect)
         preparsed = process_explode_markers(preparsed, dialect)
 
         # Parse with the target dialect when possible, but fall back to generic parsing.
@@ -126,6 +202,10 @@ def compile(
             raise ASQLSyntaxError("No valid queries found (only SET statements)")
 
         sql_dialect = Dialect.get_or_raise(dialect) if dialect else None
+        
+        # Validate dialect feature support
+        _validate_dialect_features(asql_query, preparsed, dialect, final_settings)
+        
         sql_parts = []
 
         for stmt in query_statements:
@@ -145,19 +225,28 @@ def compile(
             # Auto-qualify conflicting column names in joins
             transformed_stmt = auto_qualify_columns(transformed_stmt)
 
+            # Apply alias reuse (allow referencing earlier aliases in SELECT)
+            transformed_stmt = apply_alias_reuse(transformed_stmt, dialect)
+
             transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
             
             # Validate the compiled statement for semantic errors
             validation_errors = _validate_statement(transformed_stmt, asql_query)
             if validation_errors:
                 raise ASQLCompilationError(
-                    f"Invalid query generated:\n" + 
+                    "Invalid query generated:\n" + 
                     "\n".join(f"  - {e}" for e in validation_errors) +
                     f"\n\nOriginal query:\n{asql_query[:500]}"
                 )
             
             generated_sql = transformed_stmt.sql(dialect=sql_dialect, pretty=pretty)
-            
+
+            # Fix DuckDB list comprehensions (use native syntax)
+            generated_sql = fix_duckdb_list_comprehensions(generated_sql, dialect)
+
+            # Check for Snowflake list comprehension issues
+            check_snowflake_list_comprehensions(generated_sql, dialect)
+
             # Add transpilation comments if enabled
             if final_settings.include_transpilation_comments and transformations_applied:
                 generated_sql = _add_transpilation_comments(
@@ -169,6 +258,8 @@ def compile(
         return ";\n\n".join(sql_parts)
 
     except ASQLSyntaxError:
+        raise
+    except ASQLDialectError:
         raise
     except sqlglot.errors.ParseError as e:
         raise ASQLSyntaxError(f"ASQL syntax error: {e}") from e
