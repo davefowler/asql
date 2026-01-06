@@ -291,9 +291,6 @@ Contributions are welcome! Please:
 3. Update documentation as needed
 4. Run tests before submitting
 
-## License
-
-MIT License
 
 ## Status
 
