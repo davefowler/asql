@@ -85,7 +85,29 @@ Analytics and data modeling require complete data. When groups and ranges are gu
 - [Spines and Performance](guaranteed-groups.md#spines-and-performance) — detailed performance analysis
 - [Aggregations](../syntax/aggregations.md) — OVER EVERY syntax
 
-### 6. Code Comments Over Catalogues
+### 6. Concise Over Verbose
+
+Redundant explicitness isn't clarity—it's noise. When `user_id` obviously points to `users.id`, forcing you to write it out adds nothing but error surface. ASQL optimizes for the reader: the query shows *what's unique about this analysis*, not boilerplate that's true of every query.
+
+**Examples of noise ASQL eliminates:**
+
+| SQL Boilerplate | ASQL |
+|-----------------|------|
+| `ON orders.user_id = users.id` | `& users` or `& users on user_id` |
+| `SELECT region, SUM(amount) ... GROUP BY region` | `group by region (sum(amount))` |
+| `SUM(amount) AS sum_amount` | `sum_amount` (auto-alias from expression) |
+| `users.name, users.email, users.id` | `name, email, id` (auto-qualification) |
+| Subqueries to reference computed columns | Pipeline handles it |
+
+Every character should carry meaning. If the computer can infer it, you shouldn't have to type it.
+
+#### Related Features
+
+- [Auto-aliasing](../reference/auto-aliasing.md) — automatic column naming
+- [Joins](../syntax/joins.md) — implicit and shorthand join syntax
+- [Aggregations](../syntax/aggregations.md) — inline grouping syntax
+
+### 7. Code Comments Over Catalogues
 
 Software engineering learned this decades ago: external documentation rots. The wiki says one thing, the code does another, and nobody knows which is right. Data teams are still catching up. When comments live in the query, they travel with it—versioned, reviewed, and maintained together.
 

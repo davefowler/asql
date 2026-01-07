@@ -73,6 +73,19 @@ ASQL doesn't force you to rewrite everything. You can:
 
 ---
 
+## ✂️ Concise Over Verbose
+
+Redundant explicitness isn't clarity—it's noise. SQL makes you repeat yourself constantly:
+
+- Join keys you could infer from column names
+- GROUP BY columns already listed in SELECT
+- Aliases that just repeat the expression
+- Table prefixes when only one table has that column
+
+ASQL eliminates this boilerplate. Every character should carry meaning. If the computer can infer it, you shouldn't have to type it. Less code means fewer typos, faster reading, and clearer intent.
+
+---
+
 ## 📖 Self-Documenting
 
 Good code should be readable without comments. ASQL aims for queries that explain themselves:

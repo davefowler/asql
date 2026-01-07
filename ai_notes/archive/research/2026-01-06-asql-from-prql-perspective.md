@@ -62,16 +62,18 @@ join departments (==department_id)
 
 ASQL:
 ```asql
+-- Both syntaxes work:
 from employees & departments on department_id
+from employees join departments on department_id
 ```
 
-**Analysis**: They use symbolic operators (`&`, `&?`, `?&`, `*`) for join types. It's compact but arguably less readable. The `?` marks nullable sides:
-- `&` = INNER
-- `&?` = LEFT (right side nullable)
-- `?&` = RIGHT
-- `?&?` = FULL OUTER
+**Analysis**: They support both symbolic operators (`&`, `&?`, `?&`, `*`) and traditional SQL keywords (`join`, `left join`, etc.). The `?` marks nullable sides:
+- `&` / `join` = INNER
+- `&?` / `left join` = LEFT (right side nullable)
+- `?&` / `right join` = RIGHT
+- `?&?` / `full outer join` = FULL OUTER
 
-This is clever but not intuitive to newcomers.
+The FK column shorthand (`on department_id` expanding to `ON employees.department_id = departments.id`) works with both styles.
 
 ### Aggregation
 
@@ -116,9 +118,13 @@ ASQL:
 3. Infers target `users` table (pluralized)
 4. Creates LEFT JOIN automatically
 
-**Our take**: This is magic that will fail mysteriously when conventions aren't followed. But for teams with good modeling standards (dbt users), it's a productivity win.
+**Our take**: When conventions aren't followed, this either:
+1. Fails explicitly with a clear error asking for an explicit key, or
+2. In the extremely rare case of a mis-named FK (e.g., `user_id` not pointing to users), produces wrong results—but a human reading the schema would make the same mistake.
 
-**Should we adopt?** Maybe. It's against our "explicit > implicit" philosophy, but the convenience is real.
+For teams with good modeling standards (dbt users), this is a significant productivity win.
+
+**Philosophy**: This aligns with our "Concise Over Verbose" value—redundant explicitness isn't clarity, it's noise. When `user_id` obviously points to `users.id`, forcing you to write it adds nothing but error surface.
 
 ### 3.2 Guaranteed Groups (Auto-Spine)
 
@@ -257,12 +263,15 @@ ASQL conflates things. Their `group by ... ()` combines grouping and aggregation
 **ASQL probably should exist**, but for a different reason than they claim.
 
 ASQL's value isn't the syntax—it's the **analytics-specific features**:
-- Guaranteed groups
-- Cohort analysis
-- Date conveniences
-- Convention-based inference
+- **Guaranteed groups** — Automatic gap-filling for time series (huge for dashboards)
+- **Cohort analysis** — Built-in syntax for a notoriously complex pattern
+- **Date conveniences** — `7 days ago`, `+ 14 days`, cross-dialect normalization
+- **Convention-based inference** — `user_id` auto-joins, `created_at` auto-sorts
+- **Window shortcuts** — `per customer first by -date` for deduplication
 
 These address real pain points in analytics workflows that we don't prioritize. We focus on "better programming language for data"; they focus on "better analytics language."
+
+> **Key insight**: ASQL isn't trying to be a better PRQL. It's trying to be **SQL with analytics superpowers**. The pipeline syntax is just a vehicle for the analytics features.
 
 ---
 

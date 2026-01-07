@@ -7,17 +7,30 @@
 
 ## Executive Summary
 
-ASQL and PRQL share the same fundamental insight—SQL's syntax order doesn't match execution order—but **diverge in design values and priorities**. While superficially similar (both are pipelined SQL alternatives), they make different tradeoffs:
+ASQL and PRQL share pipeline-first syntax, but **solve different problems**:
+
+- **PRQL** = "A better programming language for data" (orthogonal primitives, composability, abstraction)
+- **ASQL** = "SQL with analytics superpowers" (built-in analytics features, familiar vocabulary)
+
+The syntax similarity is superficial. The **real differentiation** is ASQL's analytics-specific features:
+
+| ASQL Feature | What it solves | PRQL equivalent |
+|--------------|----------------|-----------------|
+| **Guaranteed groups** | Time series gap-filling for dashboards | None (DIY) |
+| **Cohort analysis** | Complex retention queries in 3 lines | None (DIY) |
+| **`per X first by`** | Deduplication in 1 line | `group X (sort ... \| take 1)` |
+| **`7 days ago`** | Relative dates | Function calls |
+| **Convention inference** | Auto-join on `user_id` | Explicit specification |
+| **Cross-dialect dates** | `month(x)` works everywhere | Dialect-specific |
 
 | Aspect | PRQL | ASQL |
 |--------|------|------|
-| **Core principles** | Pipelined, Simple, Open, Extensible, Analytical | Pipeline-first, Familiar, Conventional, Portable, Complete |
-| **Vocabulary** | New verbs (`filter`, `derive`, `take`) | SQL verbs (`where`, `select`, `limit`) |
-| **Abstraction** | Variables (`let`) and functions (`func`) | Conventions and inference |
-| **Philosophy** | Orthogonal primitives, composable | Convention over configuration |
-| **Learning curve** | Learn new vocabulary | Transfer SQL knowledge |
+| **Core goal** | Better language primitives | Analytics-specific tooling |
+| **Vocabulary** | New verbs (`filter`, `derive`) | SQL verbs (`where`, `select`) |
+| **Power source** | Abstraction (`let`, `func`) | Built-in analytics features |
+| **Target user** | Developers, data engineers | Analysts, analytics engineers |
 
-**Verdict**: ASQL is **not** "PRQL with different syntax." The design values justify its existence as a distinct approach.
+**Verdict**: ASQL is **not** "PRQL with different syntax." It's a different product category—analytics tooling vs. language design.
 
 ---
 
