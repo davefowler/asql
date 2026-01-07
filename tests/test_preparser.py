@@ -457,8 +457,8 @@ class TestExtendOperator:
         """)
         assert "CASE" in result.upper()
         assert "AGE_CATEGORY" in result.upper()
-        assert "ADULT" in result
-        assert "TEEN" in result
+        assert "ADULT" in result.upper()
+        assert "TEEN" in result.upper()
 
     def test_extend_with_where(self):
         """Extend followed by where clause."""

@@ -30,7 +30,15 @@ class UnionMixin:
         
         # Pattern to match set operators on their own line or inline
         # This matches: UNION, UNION ALL, INTERSECT, EXCEPT
-        set_op_pattern = r'\b(union\s+all|union|intersect|except)\b'
+        # 
+        # IMPORTANT: For EXCEPT, we need to distinguish between:
+        # 1. SQL EXCEPT (set operation) - followed by a query (select/from/with/(...)
+        # 2. ASQL 'except' (column exclusion) - followed by column names
+        #
+        # The SQL EXCEPT must be followed by whitespace and then:
+        # - SELECT, FROM, WITH (query start keywords)
+        # - ( for a parenthesized subquery
+        set_op_pattern = r'\b(union\s+all|union|intersect|except)(?=\s+(?:select|from|with|\())\b'
         
         # Find all set operation keywords (case-insensitive)
         matches = list(re.finditer(set_op_pattern, result, re.IGNORECASE))
