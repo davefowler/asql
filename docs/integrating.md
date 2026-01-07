@@ -176,56 +176,58 @@ for query in queries:
 
 ### Integration with dbt
 
-Analytic SQL can be integrated into dbt workflows in several ways:
+We're building **dbt-asql** — a native dbt integration that lets you write `.asql` model files without any wrappers.
 
-#### Option 1: Pre-compile ASQL to SQL
+#### dbt-asql (Coming Soon)
 
-Create a dbt macro that compiles ASQL queries:
+> ⚠️ **In Development** — Not yet published to PyPI
 
-```python
-# macros/asql_compile.sql
-{% macro asql_compile(asql_query, dialect=target.type) %}
-  {{ return(run_query("SELECT asql_compile('" + asql_query + "', '" + dialect + "')")) }}
-{% endmacro %}
+With dbt-asql, you can write dbt models directly in ASQL:
+
+```asql
+-- models/marts/revenue.asql
+SET materialized = incremental;
+SET unique_key = id;
+
+from stg_orders
+  where status = 'completed'
+  where created_at > {{ start_date || @2024-01-01 }}
+  {% if is_incremental() %}
+    where created_at > (select max(created_at) from {{ this }})
+  {% endif %}
+  group by region, month(created_at) (
+    sum(amount) as revenue,
+    # as order_count
+  )
+  order by -revenue
 ```
 
-Then use it in dbt models:
+**Features:**
+- **No wrappers** — Use `.asql` file extension, no `{% asql %}` tags
+- **Auto `ref()` detection** — Just use table names, dbt-asql finds model dependencies  
+- **Simplified variables** — `{{ start_date }}` instead of `{{ var('start_date') }}`
+- **Native config** — `SET materialized = table;` instead of `{{ config(...) }}`
 
-```sql
--- models/active_users.sql
-{{ asql_compile("""
-from users
-where status == 'active'
-group by country ( # as total_users )
-""", dialect=target.type) }}
-```
+See the [dbt-asql README](https://github.com/definite-app/asql/tree/main/integrations/dbt-asql) for more details.
 
-#### Option 2: Python Script Pre-processing
+#### Manual Integration Options
 
-Use a Python script to compile ASQL files before dbt runs:
+Until dbt-asql is released, you can integrate ASQL manually:
+
+**Option 1: Python Pre-processing**
 
 ```python
 # scripts/compile_asql.py
-import os
 from pathlib import Path
 from asql import compile
 
 def compile_asql_files():
     """Compile .asql files to .sql files for dbt."""
-    asql_dir = Path("models/asql")
-    sql_dir = Path("models/compiled")
-    
-    for asql_file in asql_dir.glob("*.asql"):
-        with open(asql_file) as f:
-            asql_query = f.read()
-        
-        # Compile to SQL
+    for asql_file in Path("models").rglob("*.asql"):
+        asql_query = asql_file.read_text()
         sql = compile(asql_query, dialect="postgres")
-        
-        # Write to compiled directory
-        sql_file = sql_dir / (asql_file.stem + ".sql")
-        with open(sql_file, "w") as f:
-            f.write(sql)
+        sql_file = asql_file.with_suffix(".sql")
+        sql_file.write_text(sql)
 
 if __name__ == "__main__":
     compile_asql_files()
@@ -236,9 +238,7 @@ Run before dbt:
 python scripts/compile_asql.py && dbt run
 ```
 
-#### Option 3: dbt Python Model
-
-Use dbt's Python models to compile ASQL dynamically:
+**Option 2: dbt Python Model**
 
 ```python
 # models/active_users.py
@@ -246,16 +246,12 @@ def model(dbt, session):
     from asql import compile
     
     asql_query = """
-    from {{ ref('users') }}
+    from users
     where status == 'active'
     group by country ( # as total_users )
     """
     
-    # Replace dbt refs with actual table names
-    asql_query = asql_query.replace("{{ ref('users') }}", "users")
-    
     sql = compile(asql_query, dialect=dbt.config.get('target_type', 'postgres'))
-    
     return session.sql(sql)
 ```
 

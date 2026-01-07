@@ -28,6 +28,7 @@ Whether you're learning ASQL, debugging a query, or exploring new features, the 
 
 - **[Style Guide](../style_guide.md)** — Best practices and conventions for writing ASQL queries
 - **[Design Principles](../design.md)** — The philosophy and decisions behind ASQL's design
+- **[Syntax Decisions](syntax-decisions.md)** — Why ASQL chose specific syntax, alternatives considered, and rationale
 
 ## Integration & Architecture
 
