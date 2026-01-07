@@ -26,7 +26,7 @@
  *   - Operators: ==, !=, <=, >=, <, >, +, -, *, /, %, || (null coalescing), :: (type casting)
  *   - Strings: Single and double quoted strings
  *   - Numbers: Integers and floats
- *   - Comments: # to end of line
+ *   - Comments: -- to end of line (SQL-style)
  *   - Special ASQL syntax: # (count shorthand), -column (descending order), col::TYPE (type casting)
  *   - Multi-word keywords: group by, not in, is null, is not null, stash as
  * 
@@ -74,24 +74,58 @@
 
   try {
     CodeMirror.defineMode("asql", function(config, parserConfig) {
-    // Keywords
+    // Keywords - comprehensive list from spec.md
     const keywords = {
+        // Core pipeline operators
         "from": true, "where": true, "select": true, "project": true,
         "group": true, "by": true, "order": true,
         "take": true, "limit": true, "join": true, "with": true,
-        "let": true, "as": true, "on": true, "desc": true, "asc": true,
-        "descending": true, "ascending": true, "store": true, "stash": true,
+        // Sorting
+        "desc": true, "asc": true, "descending": true, "ascending": true,
+        // Logical operators
         "and": true, "or": true, "not": true, "is": true, "in": true,
-        "if": true, "set": true
+        "between": true, "like": true, "ilike": true,
+        // Conditionals
+        "if": true, "when": true, "then": true, "else": true, "otherwise": true,
+        // CTEs and variables
+        "stash": true, "as": true, "let": true, "set": true, "store": true,
+        // Column operators
+        "except": true, "rename": true, "replace": true,
+        // Pivot/Unpivot
+        "pivot": true, "unpivot": true, "explode": true, "into": true, "values": true,
+        // Window functions
+        "per": true, "first": true, "last": true, "number": true, "rank": true, "dense": true,
+        // Aggregation modifiers
+        "distinct": true, "of": true, "total": true,
+        // String matching
+        "contains": true, "icontains": true, "starts": true, "istarts": true,
+        "ends": true, "iends": true, "matches": true,
+        // Cohort analysis
+        "cohort": true,
+        // Deduplication
+        "deduplicate": true,
+        // Sampling
+        "sample": true
     };
     
     // Functions
     const functions = {
+        // Aggregation functions
         "sum": true, "avg": true, "average": true, "count": true,
-        "min": true, "max": true, "month": true, "year": true,
-        "day": true, "date": true, "upper": true, "lower": true,
-        "trim": true, "concat": true, "substring": true, "length": true,
-        "date_trunc": true, "date_format": true
+        "min": true, "max": true,
+        // Date/time functions
+        "month": true, "year": true, "day": true, "week": true, "quarter": true, "hour": true,
+        "date": true, "date_trunc": true, "date_format": true, "now": true,
+        "day_of_week": true, "day_of_month": true, "day_of_year": true,
+        "week_of_year": true, "month_of_year": true, "quarter_of_year": true,
+        // String functions
+        "upper": true, "lower": true, "trim": true, "concat": true,
+        "substring": true, "length": true, "string_agg": true,
+        // Window functions
+        "prior": true, "next": true, "running_sum": true, "running_avg": true, "running_count": true,
+        "rolling_avg": true, "rolling_sum": true, "arg_max": true, "arg_min": true, "row_number": true,
+        // Other
+        "coalesce": true, "nullif": true, "greatest": true, "least": true, "key": true
     };
     
     // Booleans and null
@@ -103,10 +137,16 @@
         // Handle whitespace
         if (stream.eatSpace()) return null;
         
-        // Handle comments (# to end of line)
-        if (stream.match(/^#/)) {
+        // Handle comments (-- to end of line, SQL-style)
+        if (stream.match(/^--/)) {
             stream.skipToEnd();
             return "comment";
+        }
+        
+        // Handle count shorthand (#) - must be before other operators
+        // # alone = COUNT(*), # col = COUNT(col), # distinct col = COUNT(DISTINCT col)
+        if (stream.match(/^#/)) {
+            return "keyword";
         }
         
         // Handle strings (double quotes)
@@ -131,14 +171,19 @@
             return "operator";
         }
         
-        // Handle null coalescing operator (||)
-        if (stream.match(/^\|\|/)) {
+        // Handle null coalescing operator (??)
+        if (stream.match(/^\?\?/)) {
             return "operator";
         }
         
         // Handle type casting operator (::)
         if (stream.match(/^::/)) {
             return "operator";
+        }
+        
+        // Handle date literals (@2024-01-01)
+        if (stream.match(/^@\d{4}-\d{2}-\d{2}/)) {
+            return "number";
         }
         
         // Handle arithmetic operators
@@ -149,11 +194,6 @@
         // Handle single pipeline operator (|)
         if (stream.match(/^\|/)) {
             return "operator";
-        }
-        
-        // Handle count shorthand (#)
-        if (stream.match(/^#/)) {
-            return "keyword";
         }
         
         // Handle descending order prefix (-identifier)
@@ -237,7 +277,7 @@
             return state.tokenize(stream, state);
         },
         
-        lineComment: "#",
+        lineComment: "--",
         fold: "indent"
     };
 });

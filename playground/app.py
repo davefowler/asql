@@ -1,0 +1,520 @@
+"""ASQL Interactive Playground - FastAPI application."""
+
+import os
+import re
+from pathlib import Path
+
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from asql import compile
+from asql.errors import ASQLSyntaxError, ASQLCompilationError
+from asql.reverse_compiler import reverse_compile, detect_dialect
+from asql.config import ASQLConfig, StyleConfig, CompileSettings
+
+from .jinja_utils import strip_jinja_templates
+from .examples import (
+    ASQL_EXAMPLES,
+    PIPELINE_EXAMPLES,
+    COHORT_EXAMPLES,
+    SAMPLING_EXAMPLES,
+    RESHAPING_EXAMPLES,
+    COLUMN_OPERATOR_EXAMPLES,
+    COUNT_INFERENCE_EXAMPLES,
+    SYNTAX_STYLES_EXAMPLES,
+    SQL_EXAMPLES,
+    get_all_examples,
+)
+
+
+app = FastAPI(title="ASQL Playground", version="1.0.0")
+
+# Mount static files
+SYNTAX_DIR = Path(__file__).parent.parent / "syntax"
+STATIC_DIR = Path(__file__).parent / "static"
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+# Mount static files
+if STATIC_DIR.exists():
+    app.mount("/static/playground", StaticFiles(directory=str(STATIC_DIR)), name="playground_static")
+
+if SYNTAX_DIR.exists():
+    app.mount("/static/syntax", StaticFiles(directory=str(SYNTAX_DIR)), name="syntax")
+
+
+# --- Pydantic Models ---
+
+class CompileRequest(BaseModel):
+    asql: str
+    dialect: str = ""
+    settings: dict = {}  # CompileSettings overrides
+
+
+class ReverseCompileRequest(BaseModel):
+    sql: str
+    source_dialect: str = ""
+    settings: dict = {}  # StyleConfig overrides
+
+
+class DetectDialectRequest(BaseModel):
+    sql: str
+
+
+class NormalizeRequest(BaseModel):
+    asql: str
+    style: dict = {}
+
+
+# --- Routes ---
+
+def _normalize_base_url(url: str) -> str:
+    """Normalize a base URL (no trailing slash)."""
+    return url.strip().rstrip("/")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index() -> HTMLResponse:
+    """Render the playground interface."""
+    template_path = TEMPLATES_DIR / "index.html"
+    if template_path.exists():
+        content = template_path.read_text()
+
+        docs_url = _normalize_base_url(os.environ.get("DOCS_URL", "https://analyticsql.com"))
+        playground_url = _normalize_base_url(os.environ.get("PLAYGROUND_URL", "https://play.analyticsql.com"))
+        content = content.replace("__DOCS_URL__", docs_url)
+        content = content.replace("__PLAYGROUND_URL__", playground_url)
+        
+        # Inject examples data directly into the template
+        import json
+        examples_data = {
+            "asql": ASQL_EXAMPLES,
+            "pipeline": PIPELINE_EXAMPLES,
+            "cohort": COHORT_EXAMPLES,
+            "sampling": SAMPLING_EXAMPLES,
+            "reshaping": RESHAPING_EXAMPLES,
+            "column_operators": COLUMN_OPERATOR_EXAMPLES,
+            "count_inference": COUNT_INFERENCE_EXAMPLES,
+            "syntax_styles": SYNTAX_STYLES_EXAMPLES,
+            "sql": SQL_EXAMPLES,
+        }
+        examples_json = json.dumps(examples_data)
+        
+        # Escape </script> to prevent breaking HTML parser
+        # Use \u003c instead of < in the closing script tag
+        examples_json = examples_json.replace("</script>", r"<\/script>")
+        examples_json = examples_json.replace("</Script>", r"<\/Script>")
+        examples_json = examples_json.replace("</SCRIPT>", r"<\/SCRIPT>")
+        
+        # Replace the placeholder with actual data
+        content = content.replace(
+            '/* EXAMPLES_DATA_PLACEHOLDER */ {}',
+            examples_json
+        )
+        
+        return HTMLResponse(content=content)
+    return HTMLResponse(content="<h1>Template not found</h1>", status_code=500)
+
+
+@app.post("/api/compile")
+async def api_compile(request: CompileRequest) -> dict:
+    """API endpoint to compile ASQL to SQL."""
+    try:
+        if not request.asql.strip():
+            return {"error": "Empty ASQL query"}
+        
+        # Build compile settings from request
+        compile_settings = None
+        if request.settings:
+            compile_settings = CompileSettings.from_dict(request.settings)
+        
+        sql = compile(
+            request.asql,
+            dialect=request.dialect if request.dialect else None,
+            pretty=True,
+            settings=compile_settings
+        )
+        return {"sql": sql}
+        
+    except ASQLSyntaxError as e:
+        return {"error": f"Syntax Error: {str(e)}"}
+    except ASQLCompilationError as e:
+        return {"error": f"Compilation Error: {str(e)}"}
+    except Exception as e:
+        return {"error": f"Error: {str(e)}"}
+
+
+@app.post("/api/reverse-compile")
+async def api_reverse_compile(request: ReverseCompileRequest) -> dict:
+    """API endpoint to compile SQL to ASQL."""
+    try:
+        if not request.sql.strip():
+            return {"error": "Empty SQL query"}
+        
+        # Build style config from request settings
+        config = None
+        if request.settings:
+            style = StyleConfig.from_dict(request.settings)
+            config = ASQLConfig(style=style)
+        
+        asql = reverse_compile(
+            request.sql,
+            source_dialect=request.source_dialect if request.source_dialect else None,
+            config=config
+        )
+        return {"asql": asql}
+        
+    except ASQLCompilationError as e:
+        error_msg = str(e)
+        # Clean up error messages - remove ANSI escape codes
+        error_msg = re.sub(r'\x1b\[[0-9;]*m', '', error_msg)
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        return {"error": f"Compilation Error: {error_msg}"}
+    except Exception as e:
+        error_msg = str(e)
+        error_msg = re.sub(r'\x1b\[[0-9;]*m', '', error_msg)
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        return {"error": f"Error: {error_msg}"}
+
+
+@app.post("/api/detect-dialect")
+async def api_detect_dialect(request: DetectDialectRequest) -> dict:
+    """API endpoint to detect SQL dialect."""
+    try:
+        if not request.sql.strip():
+            return {"dialect": None}
+        
+        dialect = detect_dialect(request.sql)
+        return {"dialect": dialect}
+    except Exception as e:
+        return {"dialect": None, "error": str(e)}
+
+
+@app.post("/api/normalize")
+async def api_normalize(request: NormalizeRequest) -> dict:
+    """Normalize ASQL to configured style."""
+    try:
+        if not request.asql.strip():
+            return {"error": "Empty ASQL query"}
+        
+        style_config = request.style
+        style = StyleConfig(
+            equality=style_config.get('equality', 'single'),
+            count=style_config.get('count', 'hash'),
+            coalesce=style_config.get('coalesce', 'operator'),
+            descending=style_config.get('descending', 'prefix'),
+            cast=style_config.get('cast', 'double_colon'),
+            quotes=style_config.get('quotes', 'double'),
+            week_start=style_config.get('week_start', 'monday'),
+            squash_empty_ctes=style_config.get('squash_empty_ctes', True),
+        )
+        config = ASQLConfig(style=style)
+        
+        # Compile to SQL then reverse compile to normalized ASQL
+        sql = compile(request.asql, pretty=True)
+        normalized = reverse_compile(sql, config=config)
+        
+        return {"normalized": normalized}
+        
+    except ASQLSyntaxError as e:
+        return {"error": f"Syntax Error: {str(e)}"}
+    except ASQLCompilationError as e:
+        return {"error": f"Compilation Error: {str(e)}"}
+    except Exception as e:
+        return {"error": f"Error: {str(e)}"}
+
+
+@app.get("/api/settings-schema")
+async def api_settings_schema() -> dict:
+    """Get the settings schema for the playground settings modal."""
+    return {
+        "compile": {
+            "title": "Compile Settings",
+            "description": "Settings that affect how ASQL is compiled to SQL",
+            "fields": [
+                {
+                    "name": "auto_spine",
+                    "label": "Auto Spine",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Automatically add gap-filling for date truncations in GROUP BY"
+                },
+                {
+                    "name": "week_start",
+                    "label": "Week Start",
+                    "type": "select",
+                    "options": ["monday", "sunday"],
+                    "default": "monday",
+                    "description": "Which day the week() function starts on"
+                },
+                {
+                    "name": "relative_date_type",
+                    "label": "Relative Date Type",
+                    "type": "select",
+                    "options": ["timestamp", "date"],
+                    "default": "timestamp",
+                    "description": "What type '7 days ago' compiles to"
+                },
+                {
+                    "name": "invent_join_keys",
+                    "label": "Invent Join Keys",
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Infer join keys using {table}_id convention when no schema is available"
+                },
+                {
+                    "name": "passthrough_comments",
+                    "label": "Passthrough Comments",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Preserve ASQL source comments in the generated SQL output"
+                },
+                {
+                    "name": "include_transpilation_comments",
+                    "label": "Transpilation Comments",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Add explanatory comments about ASQL transformations (auto-spine, cohort, etc.)"
+                }
+            ]
+        },
+        "style": {
+            "title": "Style Settings",
+            "description": "Settings that affect ASQL output style (for SQL → ASQL)",
+            "fields": [
+                {
+                    "name": "equality",
+                    "label": "Equality Operator",
+                    "type": "select",
+                    "options": [
+                        {"value": "single", "label": "= (SQL style)"},
+                        {"value": "double", "label": "== (Python style)"}
+                    ],
+                    "default": "single",
+                    "description": "Which equality operator to use"
+                },
+                {
+                    "name": "count",
+                    "label": "Count Notation",
+                    "type": "select",
+                    "options": [
+                        {"value": "hash", "label": "# (shorthand)"},
+                        {"value": "function", "label": "count(*) (function)"}
+                    ],
+                    "default": "hash",
+                    "description": "How to write count expressions"
+                },
+                {
+                    "name": "coalesce",
+                    "label": "Null Coalescing",
+                    "type": "select",
+                    "options": [
+                        {"value": "operator", "label": "?? (operator)"},
+                        {"value": "function", "label": "coalesce() (function)"}
+                    ],
+                    "default": "operator",
+                    "description": "How to write null coalescing"
+                },
+                {
+                    "name": "descending",
+                    "label": "Descending Order",
+                    "type": "select",
+                    "options": [
+                        {"value": "prefix", "label": "-col (prefix)"},
+                        {"value": "suffix", "label": "col DESC (suffix)"}
+                    ],
+                    "default": "prefix",
+                    "description": "How to write descending order"
+                },
+                {
+                    "name": "cast",
+                    "label": "Type Casting",
+                    "type": "select",
+                    "options": [
+                        {"value": "double_colon", "label": ":: (PostgreSQL)"},
+                        {"value": "function", "label": "CAST() (SQL standard)"}
+                    ],
+                    "default": "double_colon",
+                    "description": "How to write type casts"
+                },
+                {
+                    "name": "quotes",
+                    "label": "String Quotes",
+                    "type": "select",
+                    "options": [
+                        {"value": "double", "label": "\"double\""},
+                        {"value": "single", "label": "'single'"}
+                    ],
+                    "default": "double",
+                    "description": "Which quote style to use for strings"
+                },
+                {
+                    "name": "function_shorthand",
+                    "label": "Function Shorthand",
+                    "type": "select",
+                    "options": [
+                        {"value": "underscore", "label": "sum_amount (underscore)"},
+                        {"value": "space", "label": "sum amount (space)"},
+                        {"value": "parens", "label": "sum(amount) (parens)"}
+                    ],
+                    "default": "underscore",
+                    "description": "How to write function shorthands"
+                }
+            ]
+        }
+    }
+
+
+@app.get("/api/examples")
+async def api_examples() -> dict:
+    """Get all ASQL examples organized by category."""
+    return {
+        "asql": ASQL_EXAMPLES,
+        "pipeline": PIPELINE_EXAMPLES,
+        "cohort": COHORT_EXAMPLES,
+        "sampling": SAMPLING_EXAMPLES,
+        "reshaping": RESHAPING_EXAMPLES,
+        "column_operators": COLUMN_OPERATOR_EXAMPLES,
+        "count_inference": COUNT_INFERENCE_EXAMPLES,
+        "syntax_styles": SYNTAX_STYLES_EXAMPLES,
+    }
+
+
+@app.get("/api/sql-examples")
+async def api_sql_examples() -> list:
+    """API endpoint to get SQL translation examples."""
+    return SQL_EXAMPLES
+
+
+@app.get("/api/fivetran-examples")
+async def api_fivetran_examples() -> list:
+    """API endpoint to get Fivetran dbt examples."""
+    examples = []
+    
+    # Try multiple possible paths for the examples directory
+    possible_paths = [
+        Path(__file__).parent.parent / 'examples' / 'real',
+        Path('examples') / 'real',
+        Path(os.getcwd()) / 'examples' / 'real',
+    ]
+    
+    real_examples_dir = None
+    for path in possible_paths:
+        if path.exists() and path.is_dir():
+            real_examples_dir = path
+            break
+    
+    if not real_examples_dir or not real_examples_dir.exists():
+        return examples
+    
+    sql_files = sorted(real_examples_dir.glob('dbt_*.sql'))
+    
+    for sql_file in sql_files:
+        try:
+            content = sql_file.read_text()
+            
+            # Skip files that are too small or contain errors
+            if len(content) < 100 or "404: Not Found" in content:
+                continue
+            
+            # Parse metadata from header comments
+            source = None
+            model = None
+            dialect = "snowflake"
+            
+            for line in content.split('\n')[:10]:
+                if line.startswith('-- Source:'):
+                    source = line.replace('-- Source:', '').strip()
+                elif line.startswith('-- Model:'):
+                    model = line.replace('-- Model:', '').strip()
+                elif line.startswith('-- Dialect:'):
+                    dialect = line.replace('-- Dialect:', '').strip().lower()
+            
+            # Generate title from filename
+            filename = sql_file.stem
+            filename_dialect = None
+            for d in ['snowflake', 'bigquery', 'postgres', 'redshift', 'mysql']:
+                if filename.endswith('_' + d):
+                    filename_dialect = d
+                    break
+            
+            name_base = filename.replace('dbt_', '')
+            if filename_dialect:
+                name_base = name_base.replace('_' + filename_dialect, '')
+            name_parts = name_base.split('_')
+            
+            repo = name_parts[0] if name_parts else 'unknown'
+            repo_display = repo.replace('_', ' ').title()
+            model_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else name_parts[0] if name_parts else 'model'
+            model_name = model_name.replace('__', ' ').replace('_', ' ').title()
+            
+            title = f"{repo_display}: {model_name}"
+            desc = f"Real query from {repo_display} dbt package"
+            if model:
+                desc += f" ({model})"
+            
+            final_dialect = filename_dialect or dialect
+            dialect_map = {
+                'snowflake': 'snowflake',
+                'bigquery': 'bigquery',
+                'postgres': 'postgres',
+                'redshift': 'redshift'
+            }
+            sql_dialect = dialect_map.get(final_dialect.lower(), 'snowflake')
+            
+            cleaned_content = strip_jinja_templates(content)
+            
+            examples.append({
+                "title": title,
+                "desc": desc,
+                "language": sql_dialect,
+                "toLanguage": "asql",
+                "query": cleaned_content
+            })
+        except Exception as e:
+            import sys
+            print(f"Warning: Could not load example {sql_file}: {e}", file=sys.stderr)
+            continue
+    
+    return examples
+
+
+@app.get("/api/debug/examples-path")
+async def api_debug_examples_path() -> dict:
+    """Debug endpoint to check examples directory access."""
+    debug_info = {
+        'current_working_directory': os.getcwd(),
+        'playground_file': __file__,
+        'playground_dir': str(Path(__file__).parent),
+        'possible_paths': [],
+        'found_path': None,
+        'examples_count': 0
+    }
+    
+    possible_paths = [
+        Path(__file__).parent.parent / 'examples' / 'real',
+        Path('examples') / 'real',
+        Path(os.getcwd()) / 'examples' / 'real',
+    ]
+    
+    for path in possible_paths:
+        path_str = str(path)
+        exists = path.exists()
+        is_dir = path.is_dir() if exists else False
+        file_count = len(list(path.glob('*.sql'))) if exists and is_dir else 0
+        
+        debug_info['possible_paths'].append({
+            'path': path_str,
+            'exists': exists,
+            'is_dir': is_dir,
+            'file_count': file_count
+        })
+        
+        if exists and is_dir and not debug_info['found_path']:
+            debug_info['found_path'] = path_str
+            debug_info['examples_count'] = file_count
+    
+    return debug_info

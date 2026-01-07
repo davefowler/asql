@@ -1,8 +1,11 @@
 """Tests for PostgreSQL-style casting (::) in ASQL."""
 
 import pytest
+import sqlglot
+from sqlglot import exp
 from asql import compile
 from asql.reverse_compiler import reverse_compile
+from tests.fixtures import assert_valid_sql, assert_sql_contains
 
 
 class TestCastOperator:
@@ -12,9 +15,17 @@ class TestCastOperator:
         """Test simple cast to TIMESTAMP."""
         asql = "from fields select _fivetran_synced::TIMESTAMP as _fivetran_synced"
         sql = compile(asql)
-        assert "CAST" in sql.upper() or "::" in sql
-        assert "_fivetran_synced" in sql.lower()
-        assert "TIMESTAMP" in sql.upper()
+        
+        assert_sql_contains(sql, "_fivetran_synced", "TIMESTAMP")
+        assert_valid_sql(sql)
+        
+        # Verify CAST structure
+        parsed = sqlglot.parse_one(sql)
+        select = parsed.find(exp.Select)
+        assert select is not None
+        cast_expr = select.find(exp.Cast)
+        assert cast_expr is not None, "CAST expression not found in SELECT"
+        assert "TIMESTAMP" in cast_expr.sql().upper()
     
     def test_cast_to_date(self) -> None:
         """Test cast to DATE."""
@@ -56,9 +67,18 @@ class TestCastOperator:
         """Test chained casts (right-associative)."""
         asql = "from fields select value::FLOAT::INT as int_value"
         sql = compile(asql)
-        # Should have nested casts
-        assert "CAST" in sql.upper() or "INT" in sql.upper()
-        assert "value" in sql.lower()
+        
+        assert_sql_contains(sql, "value", "INT", "int_value")
+        assert_valid_sql(sql)
+        
+        # Verify nested CAST structure
+        parsed = sqlglot.parse_one(sql)
+        select = parsed.find(exp.Select)
+        assert select is not None
+        cast_expr = select.find(exp.Cast)
+        assert cast_expr is not None, "CAST expression not found"
+        # Should have INT in the outer cast
+        assert "INT" in cast_expr.sql().upper()
     
     def test_cast_in_select_list(self) -> None:
         """Test cast in SELECT list with multiple columns."""
@@ -77,9 +97,15 @@ class TestCastReverse:
         """Test CAST(... AS TIMESTAMP) converts to ::TIMESTAMP."""
         sql = "SELECT CAST(_fivetran_synced AS TIMESTAMP) AS _fivetran_synced FROM fields"
         asql = reverse_compile(sql)
-        assert "::" in asql
+        
+        assert "::" in asql, f"Expected :: operator in reverse-compiled ASQL: {asql}"
         assert "_fivetran_synced" in asql.lower()
         assert "TIMESTAMP" in asql.upper()
+        
+        # Round-trip test: compile back to SQL
+        round_trip_sql = compile(asql)
+        assert_valid_sql(round_trip_sql)
+        assert_sql_contains(round_trip_sql, "_fivetran_synced", "TIMESTAMP")
     
     def test_cast_to_double_colon_date(self) -> None:
         """Test CAST(... AS DATE) converts to ::DATE."""
@@ -109,10 +135,16 @@ class TestCastReverse:
         """Test CAST in WHERE clause converts correctly."""
         sql = "SELECT * FROM orders WHERE CAST(created_at AS DATE) = '2024-01-01'"
         asql = reverse_compile(sql)
-        assert "::" in asql
+        
+        assert "::" in asql, f"Expected :: operator in reverse-compiled ASQL: {asql}"
         assert "created_at" in asql.lower()
         assert "DATE" in asql.upper()
         assert "where" in asql.lower()
+        
+        # Round-trip test: compile back to SQL
+        round_trip_sql = compile(asql)
+        assert_valid_sql(round_trip_sql)
+        assert_sql_contains(round_trip_sql, "created_at", "DATE", "WHERE")
     
     def test_cast_with_alias_reverse(self) -> None:
         """Test CAST with alias converts correctly."""

@@ -116,9 +116,10 @@ Contributions welcome! Please see the main [ASQL repository](https://github.com/
 ## Related Tools
 
 - **ASQL Compiler**: [asql Python package](https://github.com/asql-lang/asql)
-- **Language Specification**: See `SPEC.md` in the main repository
+- **Language Specification**: See `docs/spec.md` in the main repository
 - **Documentation**: See `docs/` directory in the main repository
 
+## Changelog
 
 ### 0.1.0
 - Initial release

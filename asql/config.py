@@ -1,14 +1,158 @@
 """ASQL Configuration System.
 
-This module provides the configuration system for ASQL style preferences.
-Config affects OUTPUT style (reverse_compile, normalize), not input parsing.
+This module provides the configuration system for ASQL:
+1. StyleConfig: Output style preferences (reverse_compile, normalize)
+2. CompileSettings: Compilation behavior settings (affects generated SQL)
+3. ASQLConfig: Complete configuration combining both
+
 ASQL always accepts all valid syntaxes on input.
 """
 
 from dataclasses import dataclass, field
-from typing import Literal, Optional, Dict, Any
+from typing import Literal, Optional, Dict, Any, TYPE_CHECKING
 from pathlib import Path
 import json
+
+if TYPE_CHECKING:
+    from asql.schema import Schema
+
+
+# Registry of known compile settings for SET statement parsing
+KNOWN_COMPILE_SETTINGS = {
+    'auto_spine',
+    'week_start', 
+    'relative_date_type',
+    'dialect',
+    # Auto-alias settings
+    'alias_template',
+    'alias_prefixes',
+    'alias_templates',
+    # Join key inference - used for docs/playground examples that don't have real schemas
+    'invent_join_keys',
+    # Comment settings
+    'include_transpilation_comments',
+    'passthrough_comments',
+}
+
+
+@dataclass
+class CompileSettings:
+    """Compilation behavior settings that affect generated SQL.
+    
+    These settings control how ASQL is compiled to SQL:
+    - Can be set in asql.config.yaml
+    - Can be overridden inline via SET statements
+    
+    Example inline usage:
+        SET auto_spine = false;
+        SET week_start = 'sunday';
+        
+        from orders
+        group by week(created_at) as w (sum(amount) as revenue)
+    """
+    
+    # Auto-spine: automatically add gap-filling for date truncations in GROUP BY
+    # When True, date columns in GROUP BY will include all dates in the range
+    # This ensures charts have no gaps and all periods appear even with zero values
+    auto_spine: bool = True  # Default on - filter out zeros if you don't want them
+    
+    # Week start day: affects week() function output
+    week_start: Literal["monday", "sunday"] = "monday"
+    
+    # Relative date type: what "7 days ago" compiles to
+    # "timestamp" -> CURRENT_TIMESTAMP - INTERVAL '7 days'
+    # "date" -> CURRENT_DATE - INTERVAL '7 days'  
+    relative_date_type: Literal["timestamp", "date"] = "timestamp"
+    
+    # Auto-aliasing configuration (Phase 1: Prefixes)
+    # Dictionary mapping function names to their alias prefixes
+    # Example: {"sum": "sum", "count": "num", "avg": "avg"}
+    alias_prefixes: Dict[str, str] = field(default_factory=dict)
+    
+    # Auto-aliasing configuration (Phase 2: Templates)
+    # Default template for all functions (Jinja2 format)
+    # Example: "{prefix}_{col}" -> "sum_amount" for sum(amount)
+    alias_template: Optional[str] = None
+    
+    # Function-specific templates (override default template)
+    # Example: {"count": "{prefix}", "arg_max": "{prefix}_{arg1}_{arg2}"}
+    alias_templates: Dict[str, str] = field(default_factory=dict)
+    
+    # Invent join keys: when True, infer join keys using {table}_id convention
+    # when no schema information is available. Useful for docs/playground examples.
+    # When False (default), raises an error if join key cannot be determined from schema.
+    invent_join_keys: bool = False
+    
+    # Schema: provides table/column metadata and relationships for join inference.
+    # Can be loaded from dbt schema.yml, asql_schema.yml, or database introspection.
+    # When provided, enables smart join inference without explicit ON clauses.
+    schema: Optional["Schema"] = None
+    
+    # Include transpilation comments: when True, adds explanatory SQL comments
+    # describing ASQL transformations (auto-spine, cohort, etc.) in the generated SQL.
+    # This helps users understand the generated SQL structure.
+    include_transpilation_comments: bool = True
+    
+    # Passthrough comments: when True (default), preserves source ASQL comments
+    # in the generated SQL output. When False, strips all source comments.
+    passthrough_comments: bool = True
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        result = {
+            "auto_spine": self.auto_spine,
+            "week_start": self.week_start,
+            "relative_date_type": self.relative_date_type,
+            "invent_join_keys": self.invent_join_keys,
+            "include_transpilation_comments": self.include_transpilation_comments,
+            "passthrough_comments": self.passthrough_comments,
+        }
+        if self.alias_prefixes:
+            result["alias_prefixes"] = self.alias_prefixes
+        if self.alias_template:
+            result["alias_template"] = self.alias_template
+        if self.alias_templates:
+            result["alias_templates"] = self.alias_templates
+        # Note: schema is not serialized to dict (it's a complex object)
+        # Use Schema.to_dict() separately if needed
+        return result
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "CompileSettings":
+        """Create from dictionary."""
+        valid_fields = {f.name for f in cls.__dataclass_fields__.values()}
+        filtered = {k: v for k, v in data.items() if k in valid_fields}
+        return cls(**filtered)
+    
+    def merge_with(self, overrides: "CompileSettings") -> "CompileSettings":
+        """Create new settings with overrides applied.
+        
+        Non-default values in overrides take precedence.
+        """
+        result = CompileSettings()
+        defaults = CompileSettings()
+        
+        for field_name in self.__dataclass_fields__:
+            base_value = getattr(self, field_name)
+            override_value = getattr(overrides, field_name)
+            default_value = getattr(defaults, field_name)
+            
+            # Special handling for dictionaries (merge them)
+            if isinstance(base_value, dict) and isinstance(override_value, dict):
+                merged = base_value.copy()
+                merged.update(override_value)
+                setattr(result, field_name, merged)
+            # Use override if it differs from default, otherwise use base
+            elif override_value != default_value:
+                setattr(result, field_name, override_value)
+            else:
+                setattr(result, field_name, base_value)
+        
+        return result
+
+
+# Default compile settings instance
+DEFAULT_COMPILE_SETTINGS = CompileSettings()
 
 
 @dataclass
@@ -46,9 +190,6 @@ class StyleConfig:
     # Week start day for week() function
     week_start: Literal["monday", "sunday"] = "monday"
     
-    # Sort keyword: order by or sort
-    sort_keyword: Literal["order_by", "sort"] = "order_by"
-    
     # CTE handling: squash pass-through CTEs like "from table stash as name"
     # When True, removes CTEs that are just SELECT * FROM table with no transforms
     squash_empty_ctes: bool = True
@@ -57,6 +198,10 @@ class StyleConfig:
     # When True, keeps this pattern even if squash_empty_ctes is True
     # Only applies to empty CTEs - non-empty CTEs are never squashed
     keep_final_empty_cte: bool = False
+    
+    # Function shorthand: underscore (sum_amount), space (sum amount), or parens (sum(amount))
+    # Default is "underscore" for declarative continuity - what you write matches the output column name
+    function_shorthand: Literal["underscore", "space", "parens"] = "underscore"
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -69,9 +214,9 @@ class StyleConfig:
             "cast": self.cast,
             "quotes": self.quotes,
             "week_start": self.week_start,
-            "sort_keyword": self.sort_keyword,
             "squash_empty_ctes": self.squash_empty_ctes,
             "keep_final_empty_cte": self.keep_final_empty_cte,
+            "function_shorthand": self.function_shorthand,
         }
     
     @classmethod
@@ -96,7 +241,8 @@ class ASQLConfig:
         # Custom config
         config = ASQLConfig(
             dialect="bigquery",
-            style=StyleConfig(equality="single", count="function")
+            style=StyleConfig(equality="single", count="function"),
+            compile=CompileSettings(auto_spine=True)
         )
     """
     
@@ -106,8 +252,11 @@ class ASQLConfig:
     # Target SQL dialect for compile()
     dialect: str = "snowflake"
     
-    # Style configuration
+    # Style configuration (affects ASQL output in reverse_compile)
     style: StyleConfig = field(default_factory=StyleConfig)
+    
+    # Compile settings (affects SQL generation)
+    compile: CompileSettings = field(default_factory=CompileSettings)
     
     @classmethod
     def load(cls, path: Optional[Path] = None) -> "ASQLConfig":
@@ -144,18 +293,16 @@ class ASQLConfig:
     @classmethod
     def _load_from_file(cls, path: Path) -> "ASQLConfig":
         """Load config from a file."""
-        try:
-            import yaml
+        if path.suffix == ".json":
             with open(path) as f:
-                data = yaml.safe_load(f)
-            return cls.from_dict(data or {})
-        except ImportError:
-            # YAML not available, try JSON
-            if path.suffix == ".json":
-                with open(path) as f:
-                    data = json.load(f)
-                return cls.from_dict(data)
-            raise ImportError("PyYAML required to load YAML config files")
+                data = json.load(f)
+            return cls.from_dict(data)
+        
+        # YAML files require PyYAML
+        import yaml
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        return cls.from_dict(data or {})
     
     @classmethod
     def from_preset(cls, preset: str) -> "ASQLConfig":
@@ -195,7 +342,6 @@ class ASQLConfig:
                 descending="prefix",
                 cast="double_colon",
                 quotes="double",
-                sort_keyword="order_by",
             )
         )
     
@@ -211,7 +357,6 @@ class ASQLConfig:
                 descending="suffix",
                 cast="function",
                 quotes="single",
-                sort_keyword="order_by",
             )
         )
     
@@ -227,7 +372,6 @@ class ASQLConfig:
                 descending="prefix",
                 cast="double_colon",
                 quotes="double",
-                sort_keyword="sort",
             )
         )
     
@@ -247,6 +391,27 @@ class ASQLConfig:
                 if hasattr(config.style, key):
                     setattr(config.style, key, value)
         
+        # Override compile settings if provided
+        if "compile" in data and isinstance(data["compile"], dict):
+            compile_data = data["compile"]
+            for key, value in compile_data.items():
+                if hasattr(config.compile, key):
+                    # Handle nested alias_prefixes and alias_templates dictionaries
+                    if key == "alias_prefixes" and isinstance(value, dict):
+                        config.compile.alias_prefixes.update(value)
+                    elif key == "alias_templates" and isinstance(value, dict):
+                        config.compile.alias_templates.update(value)
+                    else:
+                        setattr(config.compile, key, value)
+                # Handle flat format: sum_alias_prefix, count_alias_prefix, etc.
+                elif key.endswith("_alias_prefix") and isinstance(value, str):
+                    func_name = key[:-13]  # Remove "_alias_prefix" suffix
+                    config.compile.alias_prefixes[func_name] = value
+                # Handle function-specific templates: count_alias_template, etc.
+                elif key.endswith("_alias_template") and isinstance(value, str):
+                    func_name = key[:-15]  # Remove "_alias_template" suffix
+                    config.compile.alias_templates[func_name] = value
+        
         return config
     
     def to_dict(self) -> Dict[str, Any]:
@@ -255,8 +420,12 @@ class ASQLConfig:
             "preset": self.preset,
             "dialect": self.dialect,
             "style": self.style.to_dict(),
+            "compile": self.compile.to_dict(),
         }
 
 
 # Default config instance
 DEFAULT_CONFIG = ASQLConfig()
+
+# Re-export for convenience
+DEFAULT_COMPILE_SETTINGS = CompileSettings()

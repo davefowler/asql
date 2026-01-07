@@ -16,7 +16,7 @@
 - **JOIN** - Inner, left, right, outer joins with `on` conditions
 
 ### Expressions & Operators
-- **Comparison**: `==`, `=`, `!=`, `<>`, `<`, `>`, `<=`, `>=`
+- **Comparison**: `=` (preferred), `==` (also works), `!=`, `<>`, `<`, `>`, `<=`, `>=`
 - **NULL checks**: `is null`, `is not null`
 - **Logical**: `and`, `or`, `not`
 - **Membership**: `in`, `not in`
@@ -50,10 +50,11 @@
 - **first() / last()**: `first(col order by x)`
 - **arg_max() / arg_min()**: ClickHouse-style aggregates
 
-### Variables & CTEs
-- **set**: `set active_users = from users where is_active`
-- **with**: `with active_users = from users where is_active`
+### CTEs
 - **stash as**: `... stash as cte_name` for mid-pipeline CTEs
+
+### Compile Settings
+- **SET**: `SET auto_spine = true` for inline configuration
 
 ### Utility Functions
 - **safe_divide()**: Returns NULL on divide-by-zero
@@ -79,16 +80,18 @@
 
 ## ❌ Not Yet Implemented (Planned in Spec)
 
-These features are documented in `SPEC.md` but not yet implemented:
+These features are documented as future/planned work in `docs/spec_future.md` (or marked “Not implemented yet” in `docs/spec.md`):
 
-### String Matching (Section 4.5)
-- `contains "pattern"`
-- `starts with "pattern"`
-- `ends with "pattern"`
-- `matches "regex"`
-- `ignore case` modifier
+### String Matching (Section 4.5) ✅ Implemented
+- `contains "pattern"` ✅
+- `icontains "pattern"` ✅
+- `starts with "pattern"` ✅
+- `istarts with "pattern"` ✅
+- `ends with "pattern"` ✅
+- `iends with "pattern"` ✅
+- `matches "pattern"` ✅ (LIKE syntax, not regex)
 
-**Workaround**: Use SQL `LIKE` syntax directly.
+**See**: `docs/spec.md` section 4.5 for full documentation.
 
 ### Conditional Expressions (Section 4.7)
 - `when status is "active" then 1 otherwise 0`
@@ -109,31 +112,26 @@ These features are documented in `SPEC.md` but not yet implemented:
 
 **Workaround**: Use explicit `join` with `on` condition.
 
-### Column Operators (Section 13.1)
-- `except email, phone` - exclude columns
-- `rename id as user_id` - rename columns
-- `prefix user_` - prefix column names
+### Column Operators (Section 13.1) ✅
+- `except email, phone` - exclude columns ✅
+- `rename id as user_id` - rename columns ✅
+- `replace name with upper(name)` - replace column values ✅
+- Column override via `select *, expr as col` ✅
 
-**Workaround**: Explicitly list columns in `select`.
+**Dialect note**: Uses SQL's `EXCEPT`/`EXCLUDE` syntax (BigQuery, Snowflake, DuckDB). Other dialects will error at runtime.
 
 ### Deduplicate Operator (Section 13.2)
 - `deduplicate by user_id order by -created_at`
 
 **Workaround**: Use `per group first by -col` instead.
 
-### Pivot/Unpivot (Section 13.3)
-- `pivot amount by category`
-- `unpivot jan, feb, mar into month, value`
+### ~~Pivot/Unpivot (Section 13.3)~~ ✅ Implemented!
+- ✅ `pivot sum(amount) by category values ('A', 'B', 'C')` - static pivot with explicit values
+- ✅ `pivot sum(amount) by category values (from sales select distinct category)` - dynamic pivot with subquery
+- ✅ `unpivot jan, feb, mar into month, value` - columns to rows
+- ✅ `explode tags as tag` - array to rows (not in spec yet, but implemented)
 
-**Workaround**: Write SQL pivot queries directly.
-
-### Fill / Gap Filling (Section 13.4)
-- `fill month` - auto-fill time series gaps
-- `fill month with {revenue: 0}`
-
-**Workaround**: Join with a date spine manually.
-
-### Safe Cast (Section 13.8)
+### Safe Cast (Section 13.7)
 - `value::integer?` - returns NULL on cast failure
 
 **Workaround**: Use database-specific `TRY_CAST` or `SAFE_CAST`.
@@ -158,7 +156,7 @@ compile("from users group by country ( # as total_users, avg(age) as avg_age )")
 # → SELECT country, COUNT(*) AS total_users, AVG(age) AS avg_age FROM users GROUP BY country
 
 # JOIN (& for INNER, &? for LEFT, ?& for RIGHT, ?&? for FULL, * for CROSS)
-compile("from orders & users on orders.user_id == users.id")
+compile("from orders & users on orders.user_id = users.id")
 # → SELECT * FROM orders JOIN users ON orders.user_id = users.id
 
 # COALESCE with ??
@@ -194,6 +192,14 @@ compile('set active = from users where status == "active" from active group by c
 - Dialect-specific SQL generation
 - Real-world query patterns
 
+## Dialect Limitations
+
+Some ASQL features have limited support across SQL dialects. See [Dialect Limitations](dialect-limitations.md) for details on:
+
+- Column override with `select *` (BigQuery, Snowflake, DuckDB only)
+- Auto-spine edge cases with ROLLUP/CUBE
+- Dialect-specific SQL generation differences
+
 ## Next Steps
 
-See `SPEC.md` for planned features and `ai_notes/` for implementation notes.
+See `docs/spec_future.md` for planned features.

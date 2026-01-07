@@ -19,7 +19,7 @@ Examples use MkDocs Material's tabbed code blocks to show ASQL compiled to multi
 
 ````markdown
 === "ASQL"
-    ```asql
+    ```asql-play
     from users
     ```
 

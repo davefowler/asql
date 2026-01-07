@@ -1,6 +1,21 @@
 # ASQL for SQL Users
 
-If you're already comfortable with SQL, ASQL is SQL with better ergonomics. Here's what changes:
+If you’re already comfortable with SQL, you’re going to be productive in ASQL immediately.
+ASQL is designed by (and for) people who live in SQL every day, and many of its features are directly inspired by common SQL patterns—just expressed with friendlier syntax.
+
+ASQL is still “real SQL” (it compiles to your warehouse dialect), but it’s designed to read like a clean transformation pipeline instead of a nested, back-and-forth SQL statement.
+
+## What will feel familiar
+
+- **The core building blocks**: filters, projections, joins, grouping, ordering, limits.
+- **SQL expressions**: arithmetic, comparisons, boolean logic, functions.
+- **The end result**: a query your warehouse can optimize and execute.
+
+## What’s different (in a good way)
+
+- **Top-to-bottom pipelines**: start with `from ...`, then apply transforms line-by-line.
+- **Less ceremony**: fewer CTEs, fewer “select lists as the control plane”, fewer giant macro helpers.
+- **Ergonomic shortcuts**: things like `??`, `-col` for descending, and `per ...` for common window patterns.
 
 ## Key Differences
 
@@ -12,8 +27,20 @@ If you're already comfortable with SQL, ASQL is SQL with better ergonomics. Here
 | `COALESCE(a, b)` | `a ?? b` | Modern null coalescing |
 | `CAST(x AS int)` | `x::int` | Postgres-style casting |
 | CTEs everywhere | Pipeline + comments | Often no CTEs needed |
+| Manual aliases everywhere | Auto-aliasing | `sum(amount)` → `sum_amount` automatically |
 
 ---
+
+## Your first ASQL query (5 minutes)
+
+If you can write:
+
+1) `FROM table`
+2) add a `WHERE`
+3) add a `GROUP BY`
+4) add an `ORDER BY`
+
+…then you can write ASQL. The main “reversal” is that you start with the dataset and then refine it.
 
 ## The Pipeline Difference
 
@@ -33,7 +60,7 @@ If you're already comfortable with SQL, ASQL is SQL with better ergonomics. Here
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     where status = 'completed'
     where created_at >= @2024-01-01
@@ -100,7 +127,7 @@ If you're already comfortable with SQL, ASQL is SQL with better ergonomics. Here
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select id,
         when amount
@@ -197,18 +224,20 @@ If you're already comfortable with SQL, ASQL is SQL with better ergonomics. Here
     where is_active
     & orders on users.id = orders.user_id
     group by users.id, users.name (
-        count(*) as order_count
+        # as order_count
     )
     where order_count > 5
     order by -order_count
 
-    -- Or use set/stash for reusable parts
-    set active_users = from users where is_active
+    -- Or use stash for reusable parts
+    from users
+    where is_active
+    stash as active_users
 
     from active_users
     & orders on active_users.id = orders.user_id
     group by active_users.id, active_users.name (
-        count(*) as order_count
+        # as order_count
     )
     where order_count > 5
     order by -order_count
@@ -308,13 +337,64 @@ If you're already comfortable with SQL, ASQL is SQL with better ergonomics. Here
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     group by region (
         sum(amount) as total,
-        count(*) as count,
+        # as count,
         count(distinct customer_id) as unique_customers
     )
     ```
 
 The parentheses after `group by` contain the aggregations - clearer than mixing them in SELECT.
+
+---
+
+## Auto-Aliasing: No More Manual Column Names
+
+One of SQL's biggest annoyances: every function needs an explicit alias or you get unusable column names.
+
+=== "SQL"
+    ```sql
+    -- Without aliases, you get useless names
+    SELECT 
+        SUM(amount),     -- Column name: "sum" or "SUM(amount)" or "f0_"
+        AVG(amount),     -- Column name: "avg" or "AVG(amount)" or "f1_"
+        COUNT(*)         -- Column name: "count" or "COUNT(*)" or "f2_"
+    FROM orders
+    GROUP BY region
+    -- Can't reference these in ORDER BY without aliases!
+
+    -- Must add aliases everywhere:
+    SELECT 
+        SUM(amount) AS sum_amount,
+        AVG(amount) AS avg_amount,
+        COUNT(*) AS num
+    FROM orders
+    GROUP BY region
+    ORDER BY sum_amount DESC
+    ```
+
+=== "ASQL"
+    ```asql-play
+    from orders
+    group by region (
+        sum(amount),     -- Auto-alias: sum_amount
+        avg(amount),     -- Auto-alias: avg_amount
+        count(*)         -- Auto-alias: num
+    )
+    order by -sum_amount  -- Just works!
+    ```
+
+ASQL generates meaningful column names automatically:
+
+| Function | Auto-Generated Name |
+|----------|---------------------|
+| `sum(amount)` | `sum_amount` |
+| `avg(price)` | `avg_price` |
+| `count(*)` / `#` | `num` |
+| `month(created_at)` | `month_created_at` |
+| `count(distinct user_id)` | `num_distinct_user_id` |
+
+See the [Auto-Aliasing Reference](../reference/auto-aliasing.md) for the complete mapping table and configuration options.
+

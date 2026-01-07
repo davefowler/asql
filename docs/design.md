@@ -91,6 +91,22 @@ The output is always standard SQL. There is no lock-in.
 
 ---
 
+## 📖 Self-Documenting
+
+Good code should be readable without comments. ASQL aims for queries that explain themselves:
+
+```asql-play
+from orders
+  where created_at > 7 days ago
+  group by month(created_at) ( sum(amount) as revenue )
+  order by -revenue
+  limit 10
+```
+
+Compare that to the equivalent SQL and you'll see why readability matters.
+
+---
+
 ## Learn More
 
 - [Quick Start](quick_start.md) — Learn the basics in 5 minutes

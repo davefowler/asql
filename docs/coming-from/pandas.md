@@ -1,6 +1,24 @@
 # ASQL for pandas Users
 
-If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chaining approach. The key difference: ASQL compiles to SQL and runs at warehouse scale, while pandas runs in memory.
+If you’re coming from pandas, ASQL should feel immediately familiar: you build a result by chaining small, readable steps.
+
+The big difference is execution model: **ASQL compiles to SQL and runs in your warehouse**, so you get the scalability of SQL with a workflow that feels a lot like a well-written pandas pipeline.
+
+## What will feel familiar
+
+- **Chaining**: each line is a “next transform”, like `df[...]`, `.assign(...)`, `.groupby(...)`, `.merge(...)`.
+- **Column expressions**: write derived columns as expressions (no extra boilerplate).
+- **Groupby mental model**: `group by ... (aggregations...)` mirrors `groupby().agg(...)`.
+- **Common helpers baked in**: `fillna`-style defaults (`??`), dedupe patterns (`per ... first by`), pivot/melt (`pivot`/`unpivot`).
+
+## A quick way to translate pandas → ASQL
+
+- **Start** with `from <table>`
+- **Filters** become `where ...`
+- **assign / mutate** becomes `select *, <expr> as new_col`
+- **groupby/agg** becomes `group by ... ( ... )`
+- **merge** becomes `&` / `&?` joins
+- **sort/head** becomes `order by ...` then `limit ...`
 
 ## Quick Reference
 
@@ -27,7 +45,7 @@ If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chai
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     where status = 'active'
     where amount > 100
@@ -48,11 +66,11 @@ If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chai
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     group by region (
         sum(amount) as total_amount,
-        count(*) as order_count,
+        # as order_count,
         count(distinct customer_id) as unique_customers
     )
     ```
@@ -69,7 +87,7 @@ If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chai
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select *,
         price * quantity as total,
@@ -186,9 +204,9 @@ If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chai
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
-    group by status (count(*) as count)
+    group by status ( # as count )
     order by -count
     ```
 
@@ -238,9 +256,9 @@ If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chai
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
-    pivot sum(amount) by category
+    pivot sum(amount) by category values ('Electronics', 'Clothing', 'Home')
     ```
 
 ---
@@ -258,7 +276,7 @@ If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chai
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from monthly_data
     unpivot jan, feb, mar into month, value
     ```
@@ -283,7 +301,7 @@ If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chai
     ```asql
     from orders
     select *,
-        when amount > 1000 then 'high' else 'low' as tier
+        amount > 1000 ? 'high' : 'low' as tier
 
     -- Multiple conditions
     select *,
@@ -307,7 +325,7 @@ If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chai
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select *,
         year(date) as year,
@@ -315,3 +333,4 @@ If you're coming from pandas, ASQL will feel familiar - both use a pipeline/chai
         day of week date as day_of_week,
         days_since_date as days_ago
     ```
+

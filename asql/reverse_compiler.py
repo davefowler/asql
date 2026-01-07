@@ -4,12 +4,33 @@ import re
 from typing import Optional, List, TYPE_CHECKING
 import sqlglot
 from sqlglot import exp
-from sqlglot.dialects import Dialect
+from sqlglot.dialects import Dialect, Dialects
 
 from asql.errors import ASQLCompilationError
 
 if TYPE_CHECKING:
     from asql.config import ASQLConfig, StyleConfig
+
+
+def _get_dialect_names() -> List[str]:
+    """Get all available dialect names from sqlglot, with common ones first.
+    
+    Returns dialect names sorted with common/popular dialects first for
+    faster detection in typical use cases.
+    """
+    # Common dialects to prioritize (these are tried first)
+    priority_dialects = ['snowflake', 'bigquery', 'postgres', 'redshift', 'mysql', 'spark', 'duckdb']
+    
+    # Get all dialect names from the Dialects enum
+    all_dialects = [d.value for d in Dialects if d.value]  # Skip empty string (DIALECT)
+    
+    # Return priority dialects first, then the rest (avoiding duplicates)
+    result = priority_dialects.copy()
+    for d in all_dialects:
+        if d not in result:
+            result.append(d)
+    
+    return result
 
 
 def detect_dialect(sql_query: str) -> Optional[str]:
@@ -29,39 +50,37 @@ def detect_dialect(sql_query: str) -> Optional[str]:
     if "{{" in sql_query or "{%" in sql_query:
         return None
     
-    try:
-        # Try parsing with different dialects and see which one works best
-        dialects_to_try = ['bigquery', 'redshift', 'postgres', 'mysql', 'snowflake', 'spark']
-        
-        best_dialect = None
-        best_score = 0
-        
-        for dialect_name in dialects_to_try:
-            try:
-                dialect = Dialect.get_or_raise(dialect_name)
-                parsed = sqlglot.parse(sql_query, dialect=dialect)
-                if parsed:
-                    # Simple heuristic: if it parses without errors, it might be this dialect
-                    # We could add more sophisticated detection here
-                    score = len(parsed)
-                    if score > best_score:
-                        best_score = score
-                        best_dialect = dialect_name
-            except Exception:
-                continue
-        
-        # Also try generic parsing
+    # Try parsing with different dialects and see which one works best
+    dialects_to_try = _get_dialect_names()
+    
+    best_dialect = None
+    best_score = 0
+    
+    for dialect_name in dialects_to_try:
         try:
-            parsed = sqlglot.parse(sql_query)
-            if parsed and not best_dialect:
-                # If generic parsing works, return None (unknown/ansi)
-                return None
-        except Exception:
-            pass
-        
-        return best_dialect
-    except Exception:
-        return None
+            dialect = Dialect.get_or_raise(dialect_name)
+            parsed = sqlglot.parse(sql_query, dialect=dialect)
+            if parsed:
+                # Simple heuristic: if it parses without errors, it might be this dialect
+                # We could add more sophisticated detection here
+                score = len(parsed)
+                if score > best_score:
+                    best_score = score
+                    best_dialect = dialect_name
+        except sqlglot.errors.ParseError:
+            # This dialect can't parse the query, try the next one
+            continue
+    
+    # Also try generic parsing
+    try:
+        parsed = sqlglot.parse(sql_query)
+        if parsed and not best_dialect:
+            # If generic parsing works, return None (unknown/ansi)
+            return None
+    except sqlglot.errors.ParseError:
+        pass
+    
+    return best_dialect
 
 
 def reverse_compile(
@@ -115,8 +134,10 @@ def reverse_compile(
         dialects_to_try = []
         if source_dialect:
             dialects_to_try.append(source_dialect)
-        # Add common dialects as fallbacks
-        dialects_to_try.extend(['snowflake', 'bigquery', 'postgres', 'redshift', 'mysql', 'spark'])
+        # Add all known dialects as fallbacks (common ones first)
+        for d in _get_dialect_names():
+            if d not in dialects_to_try:
+                dialects_to_try.append(d)
         
         for dialect_name in dialects_to_try:
             try:
@@ -254,60 +275,53 @@ def _select_to_asql(select_expr: exp.Select, style: "StyleConfig" = None) -> str
         ctes = []
         cte_list = []  # Keep track of (cte_name, cte_asql, is_empty) tuples
         
-        # Handle case where expressions might not be available
-        try:
-            # Try to get expressions from the with clause
-            if hasattr(with_clause, 'expressions') and with_clause.expressions:
-                for cte in with_clause.expressions:
-                    # Handle CTE alias - could be Identifier or string
-                    if cte.alias:
-                        if isinstance(cte.alias, exp.Identifier):
-                            cte_name = cte.alias.this
-                        elif isinstance(cte.alias, str):
-                            cte_name = cte.alias
-                        else:
-                            cte_name = str(cte.alias)
+        # Process CTE expressions
+        if hasattr(with_clause, 'expressions') and with_clause.expressions:
+            for cte in with_clause.expressions:
+                # Handle CTE alias - could be Identifier or string
+                if cte.alias:
+                    if isinstance(cte.alias, exp.Identifier):
+                        cte_name = cte.alias.this
+                    elif isinstance(cte.alias, str):
+                        cte_name = cte.alias
                     else:
-                        cte_name = None
-                    
-                    if cte_name and isinstance(cte.this, exp.Select):
-                        is_empty = _is_empty_cte(cte.this)
-                        source_table = _get_cte_source_table(cte.this) if is_empty else None
-                        
-                        # Track empty CTEs for potential inlining
-                        if is_empty and source_table:
-                            empty_cte_map[cte_name] = source_table
-                        
-                        try:
-                            cte_asql = _select_to_asql(cte.this, style)
-                            cte_list.append((cte_name, cte_asql, is_empty))
-                        except ASQLCompilationError as cte_error:
-                            # If a CTE can't be converted, include as comment
-                            cte_sql = str(cte.this)
-                            cte_list.append((cte_name, f"-- CTE '{cte_name}' could not be converted: {cte_error}\n-- Original: {cte_sql[:100]}...", False))
+                        cte_name = str(cte.alias)
+                else:
+                    cte_name = None
                 
-                # Apply squash_empty_ctes logic
-                total_ctes = len(cte_list)
-                for idx, (cte_name, cte_asql, is_empty) in enumerate(cte_list):
-                    is_last = (idx == total_ctes - 1)
+                if cte_name and isinstance(cte.this, exp.Select):
+                    is_empty = _is_empty_cte(cte.this)
+                    source_table = _get_cte_source_table(cte.this) if is_empty else None
                     
-                    # Determine if we should include this CTE
-                    should_include = True
-                    if style.squash_empty_ctes and is_empty:
-                        # Squash empty CTEs by default
-                        if is_last and style.keep_final_empty_cte:
-                            # But keep the final empty one if keep_final_empty_cte is True
-                            should_include = True
-                        else:
-                            should_include = False
+                    # Track empty CTEs for potential inlining
+                    if is_empty and source_table:
+                        empty_cte_map[cte_name] = source_table
                     
-                    if should_include:
-                        ctes.append(f"{cte_asql}\nstash as {cte_name}")
-                        
-        except (AttributeError, TypeError) as e:
-            # If we can't parse CTEs, skip them and continue with the main query
-            # This allows the query to still be converted even if CTE parsing fails
-            pass
+                    try:
+                        cte_asql = _select_to_asql(cte.this, style)
+                        cte_list.append((cte_name, cte_asql, is_empty))
+                    except ASQLCompilationError as cte_error:
+                        # If a CTE can't be converted, include as comment
+                        cte_sql = str(cte.this)
+                        cte_list.append((cte_name, f"-- CTE '{cte_name}' could not be converted: {cte_error}\n-- Original: {cte_sql[:100]}...", False))
+            
+            # Apply squash_empty_ctes logic
+            total_ctes = len(cte_list)
+            for idx, (cte_name, cte_asql, is_empty) in enumerate(cte_list):
+                is_last = (idx == total_ctes - 1)
+                
+                # Determine if we should include this CTE
+                should_include = True
+                if style.squash_empty_ctes and is_empty:
+                    # Squash empty CTEs by default
+                    if is_last and style.keep_final_empty_cte:
+                        # But keep the final empty one if keep_final_empty_cte is True
+                        should_include = True
+                    else:
+                        should_include = False
+                
+                if should_include:
+                    ctes.append(f"{cte_asql}\nstash as {cte_name}")
         
         if ctes:
             parts.extend(ctes)
@@ -342,7 +356,6 @@ def _select_to_asql(select_expr: exp.Select, style: "StyleConfig" = None) -> str
     # JOIN clauses
     joins = select_expr.args.get("joins", [])
     for join in joins:
-        join_type = join.kind or "inner"
         join_table = join.this
         join_table_name = join_table.this if isinstance(join_table, exp.Table) else str(join_table)
         
@@ -424,9 +437,7 @@ def _select_to_asql(select_expr: exp.Select, style: "StyleConfig" = None) -> str
             else:
                 order_parts.append(expr_str)
         
-        # Use sort_keyword from style
-        sort_kw = "sort" if style.sort_keyword == "sort" else "order by"
-        parts.append(f"{sort_kw} {', '.join(order_parts)}")
+        parts.append(f"order by {', '.join(order_parts)}")
     
     # LIMIT clause
     limit_expr = select_expr.args.get("limit")
@@ -442,15 +453,17 @@ def _select_to_asql(select_expr: exp.Select, style: "StyleConfig" = None) -> str
             else:
                 limit_value = _expression_to_asql(limit_value_expr, style)
         elif limit_expr.expressions:
-            # Fallback: try expressions list
+            # Try expressions list
             limit_value_expr = limit_expr.expressions[0]
             if isinstance(limit_value_expr, exp.Literal):
                 limit_value = str(limit_value_expr.this)
             else:
                 limit_value = _expression_to_asql(limit_value_expr, style)
+        elif limit_expr.this:
+            # Try the 'this' attribute directly
+            limit_value = str(limit_expr.this)
         else:
-            # Last fallback
-            limit_value = str(limit_expr.this) if limit_expr.this else "10"
+            raise ASQLCompilationError(f"Cannot determine LIMIT value from expression: {limit_expr}")
         parts.append(f"limit {limit_value}")
     
     return "\n".join(parts)
@@ -583,8 +596,8 @@ def _expression_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> st
                 return f"{expr_str}::{type_name}"
             else:
                 return f"cast({expr_str} as {type_name})"
-        # Fallback if type not found
-        return f"{expr_str}::UNKNOWN"
+        # Cast without a target type is malformed
+        raise ASQLCompilationError(f"Cast expression missing target type: {expr}")
     
     elif isinstance(expr, (exp.Count, exp.Sum, exp.Avg, exp.Min, exp.Max)):
         return _aggregation_to_asql(expr, style)
@@ -688,6 +701,9 @@ def _expression_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> st
                     else:
                         type_name = str(to_type)
                 
+                if type_name == "UNKNOWN":
+                    raise ASQLCompilationError(f"CAST function missing target type: {expr}")
+                
                 if style.cast == "double_colon":
                     return f"{cast_expr_str}::{type_name}"
                 else:
@@ -698,17 +714,39 @@ def _expression_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> st
         return f"{func_name}({args})"
     
     elif hasattr(expr, 'sql_name') and hasattr(expr, 'expressions'):
-        # Try to handle as function if it has sql_name and expressions
-        try:
-            func_name = expr.sql_name()
-            args = ", ".join(_expression_to_asql(arg, style) for arg in expr.expressions) if expr.expressions else ""
-            return f"{func_name}({args})"
-        except Exception:
-            pass
+        # Handle as function if it has sql_name and expressions
+        func_name = expr.sql_name()
+        args = ", ".join(_expression_to_asql(arg, style) for arg in expr.expressions) if expr.expressions else ""
+        return f"{func_name}({args})"
     
+    # Fallback: use SQL representation
+    return str(expr)
+
+
+def _format_function_shorthand(func_name: str, col: str, style: "StyleConfig") -> str:
+    """Format a function call according to the function_shorthand style setting.
+    
+    Args:
+        func_name: Function name (e.g., "sum", "avg")
+        col: Column name or expression
+        style: StyleConfig instance
+    
+    Returns:
+        Formatted function call string:
+        - "parens" → sum(amount)
+        - "underscore" → sum_amount
+        - "space" → sum amount
+    """
+    shorthand = style.function_shorthand
+    
+    if shorthand == "parens":
+        return f"{func_name}({col})"
+    elif shorthand == "underscore":
+        return f"{func_name}_{col}"
+    elif shorthand == "space":
+        return f"{func_name} {col}"
     else:
-        # Fallback: use SQL representation
-        return str(expr)
+        raise ValueError(f"Unknown function_shorthand style: {shorthand!r}. Must be 'parens', 'underscore', or 'space'.")
 
 
 def _aggregation_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> str:
@@ -734,27 +772,43 @@ def _aggregation_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> s
         return "#" if style.count == "hash" else "count(*)"
     
     elif isinstance(expr, exp.Sum):
-        if expr.expressions:
+        # SQLGlot stores the argument in expr.this, not expr.expressions
+        if expr.this:
+            col = _expression_to_asql(expr.this, style)
+            return _format_function_shorthand("sum", col, style)
+        elif expr.expressions:
             col = _expression_to_asql(expr.expressions[0], style)
-            return f"sum({col})"
+            return _format_function_shorthand("sum", col, style)
         return "sum()"
     
     elif isinstance(expr, exp.Avg):
-        if expr.expressions:
+        # SQLGlot stores the argument in expr.this, not expr.expressions
+        if expr.this:
+            col = _expression_to_asql(expr.this, style)
+            return _format_function_shorthand("avg", col, style)
+        elif expr.expressions:
             col = _expression_to_asql(expr.expressions[0], style)
-            return f"avg({col})"
+            return _format_function_shorthand("avg", col, style)
         return "avg()"
     
     elif isinstance(expr, exp.Min):
-        if expr.expressions:
+        # SQLGlot stores the argument in expr.this, not expr.expressions
+        if expr.this:
+            col = _expression_to_asql(expr.this, style)
+            return _format_function_shorthand("min", col, style)
+        elif expr.expressions:
             col = _expression_to_asql(expr.expressions[0], style)
-            return f"min({col})"
+            return _format_function_shorthand("min", col, style)
         return "min()"
     
     elif isinstance(expr, exp.Max):
-        if expr.expressions:
+        # SQLGlot stores the argument in expr.this, not expr.expressions
+        if expr.this:
+            col = _expression_to_asql(expr.this, style)
+            return _format_function_shorthand("max", col, style)
+        elif expr.expressions:
             col = _expression_to_asql(expr.expressions[0], style)
-            return f"max({col})"
+            return _format_function_shorthand("max", col, style)
         return "max()"
     
     elif isinstance(expr, exp.Alias):

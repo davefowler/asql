@@ -3,6 +3,16 @@ site_description: A modern, pipeline-based query language designed for analytics
 site_author: Analytic SQL Contributors
 site_url: https://analyticsql.com
 
+# Exclude internal/notes pages from build (often contain WIP syntax).
+exclude_docs: |
+  github_issues_to_create.md
+  unimplemented_features.md
+  spec_future.md
+  status.md
+  playground.md
+  style_analysis.md
+  README.md
+
 # Repository
 repo_name: asql
 repo_url: https://github.com/davefowler/asql
@@ -16,18 +26,25 @@ theme:
   name: material
   palette:
     scheme: default
-    primary: blue
-    accent: blue
+    primary: custom
+    accent: custom
   features:
-    - navigation.sections
-    - navigation.expand
-    - navigation.top
+    - navigation.sections       # Render section headers in sidebar
+    - navigation.indexes        # Make section headers link to index pages
+    - navigation.top            # Back-to-top button
+    - navigation.instant        # Faster page loads
+    - navigation.tracking       # URL updates as you scroll
     - search.suggest
     - search.highlight
     - content.code.annotate
     - content.code.copy
+  logo: static/logo.svg
   icon:
     repo: fontawesome/brands/github
+
+# Watch additional directories for hot reload
+watch:
+  - docs/static  # Watch docs/static/ for CSS/JS changes
 
 # Custom CSS and JavaScript
 extra_css:
@@ -44,6 +61,7 @@ extra_javascript:
 # Extensions
 markdown_extensions:
   - pymdownx.highlight:
+      use_pygments: false  # Disable server-side highlighting - use highlight.js instead
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
@@ -68,27 +86,63 @@ markdown_extensions:
   - md_in_html
   - toc:
       permalink: true
+      toc_depth: 2  # Only show H1 and H2 headings in TOC
 
 # Plugins
 plugins:
   - search
+  - macros:
+      module_name: docs/macros
+      render_by_default: false  # Don't process {{ }} as Jinja2 - only use hooks
+      show_split_pane: false  # Set to true to enable compiled SQL pane (default: false, saves build time)
   # - minify:
   #     minify_html: true
 
 # Navigation
+# With navigation.indexes, use index.md directly for clickable section headers
 nav:
-  - Home: index.md
-  - Design Principles: design.md
-  - Language Specification: spec.md
-  - Syntax: quick_start.md
-  - Coming from...:
-    - Overview: coming-from/index.md
+  - Home:
+    - index.md
+    - Quick Start: quick_start.md
+    - Tutorial: tutorial.md
+    - Examples: examples.md
+  - Syntax:
+    - syntax/index.md
+    - Pipeline Basics: syntax/pipeline.md
+    - Expressions & Operators: syntax/expressions.md
+    - Aggregations: syntax/aggregations.md
+    - Joins: syntax/joins.md
+    - Dates & Time: syntax/dates.md
+    - Window Functions: syntax/window-functions.md
+    - CTEs & Variables: syntax/ctes.md
+    - Cohorts: syntax/cohorts.md
+    - Sampling: syntax/sampling.md
+    - Pivot, Unpivot & Explode: syntax/pivot-unpivot.md
+  - Concepts:
+    - concepts/index.md
+    - Pipeline Semantics: concepts/pipelines.md
+    - Guaranteed Groups: concepts/guaranteed-groups.md
+    - Convention Over Configuration: concepts/conventions.md
+    - Function Shorthand: concepts/shorthand.md
+  - Reference:
+    - reference/index.md
+    - Functions: reference/functions.md
+    - Operators: reference/operators.md
+    - Keywords: reference/keywords.md
+    - Dialect Limitations: dialect-limitations.md
+    - Full Specification: spec.md
+  - Coming From:
+    - coming-from/index.md
     - pandas: coming-from/pandas.md
     - dbt: coming-from/dbt.md
     - R / dplyr: coming-from/r.md
     - SQL: coming-from/sql.md
-  - Window Functions: window_functions.md
-  - Examples: examples.md
-  - Integrating: integrating.md
-  - Architecture: architecture.md
+  - Learn More:
+    - learn-more/index.md
+    - Grouping Guide: group_by.md
+    - Window Functions Deep Dive: window_functions.md
+    - Style Guide: style_guide.md
+    - Design Principles: design.md
+    - Integrating ASQL: integrating.md
+    - Architecture: architecture.md
 

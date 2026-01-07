@@ -2,7 +2,7 @@
 
 /* WIP Warning Banner */
 .wip-banner {
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
     color: #1a1a1a;
     text-align: center;
     padding: 10px 20px;
@@ -27,72 +27,97 @@
     margin-right: 8px;
 }
 
-/* Override Material theme colors to use blue */
+/* ASQL Color Variables */
 :root {
-    --md-primary-fg-color: #306bea;
-    --md-primary-fg-color--light: #5a8bef;
-    --md-primary-fg-color--dark: #2255c4;
-    --md-accent-fg-color: #306bea;
+    --asql-red: #c53030;
+    --asql-red-light: #e57373;
+    --asql-red-dark: #9b1c1c;
 }
 
-[data-md-color-scheme="default"] {
-    --md-primary-fg-color: #306bea;
-    --md-accent-fg-color: #306bea;
+/* Override Material theme colors to use red - MUST be after Material's CSS */
+/* Use !important and high specificity to override Material's CSS */
+html:root {
+    --md-primary-fg-color: var(--asql-red) !important;
+    --md-primary-fg-color--light: var(--asql-red-light) !important;
+    --md-primary-fg-color--dark: var(--asql-red-dark) !important;
+    --md-accent-fg-color: var(--asql-red) !important;
 }
 
-[data-md-color-scheme="slate"] {
-    --md-primary-fg-color: #306bea;
-    --md-accent-fg-color: #306bea;
+html[data-md-color-scheme="default"] {
+    --md-primary-fg-color: var(--asql-red) !important;
+    --md-accent-fg-color: var(--asql-red) !important;
 }
 
-/* Header styling */
+html[data-md-color-scheme="slate"] {
+    --md-primary-fg-color: var(--asql-red) !important;
+    --md-accent-fg-color: var(--asql-red) !important;
+}
+
+/* Header styling - use high specificity */
+body .md-header,
 .md-header {
-    background-color: #306bea !important;
+    background-color: var(--asql-red) !important;
+    background: var(--asql-red) !important;
+}
+
+/* Sidebar and navigation styles removed - let Material theme handle them */
+
+/* Hide navigation sections that don't contain an active link */
+.md-nav:not(:has(.md-nav__link--active)) {
+    display: none !important;
+}
+
+/* Always show nav when parent section item is active (e.g., when on section index page) */
+/* This overrides the above rule for active sections */
+.md-nav__item--active.md-nav__item--section > .md-nav {
+    display: block !important;
+}
+
+.md-header__title {
+    color: white !important;
+}
+
+/* Logo styling - align database icon with text baseline, allow search icon to descend */
+.md-header__button.md-logo {
+    padding-top: 6px; /* Add upper padding */
+    margin-right: 10px; /* Add space between logo and text */
+    display: inline-flex;
+    align-items: baseline; /* Align with text baseline */
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+    height: 1.3em; /* Taller to accommodate descender */
+    width: auto;
+    vertical-align: baseline;
+    margin-bottom: -0.15em; /* Pull up so database icon sits on baseline */
+}
+
+.md-header__button {
+    color: white !important;
+}
+
+.md-header__button:hover {
+    color: white !important;
+    opacity: 0.8;
 }
 
 /* Inline code color */
 .md-typeset code {
-    color: #306bea;
+    color: var(--asql-red);
 }
 
 .md-typeset a code {
-    color: #306bea;
+    color: var(--asql-red);
 }
 
 /* Links */
 .md-typeset a {
-    color: #306bea;
+    color: var(--asql-red);
 }
 
 .md-typeset a:hover {
-    color: #2255c4;
-}
-
-/* Table of contents - right sidebar (light mode) */
-[data-md-color-scheme="default"] .md-sidebar--secondary .md-nav__link {
-    color: #333 !important;
-}
-
-.md-sidebar--secondary .md-nav__link:hover {
-    color: #306bea !important;
-}
-
-.md-sidebar--secondary .md-nav__link--active {
-    color: #306bea !important;
-}
-
-/* Navigation sidebar - left (light mode) */
-[data-md-color-scheme="default"] .md-nav__link {
-    color: #333;
-}
-
-.md-nav__link:hover {
-    color: #306bea;
-}
-
-.md-nav__item--active > .md-nav__link {
-    color: #306bea;
-    font-weight: 600;
+    color: var(--asql-red-dark);
 }
 
 /* Code blocks - light mode */
@@ -109,8 +134,17 @@
     background: #f6f8fa;
 }
 
-[data-md-color-scheme="default"] .highlight .hljs {
+[data-md-color-scheme="default"] .highlight .hljs,
+[data-md-color-scheme="default"] .hljs {
     background: #f6f8fa !important;
+    color: #24292e !important;
+}
+
+/* Ensure syntax highlighting is applied */
+[data-md-color-scheme="default"] pre code.hljs,
+[data-md-color-scheme="default"] code.hljs {
+    background: #f6f8fa !important;
+    color: #24292e !important;
 }
 
 /* Code blocks - dark mode */
@@ -128,24 +162,30 @@
     color: #89b4fa;
 }
 
-[data-md-color-scheme="slate"] .highlight .hljs {
+[data-md-color-scheme="slate"] .highlight .hljs,
+[data-md-color-scheme="slate"] .hljs {
     background: #1e1e2e !important;
+    color: #cdd6f4 !important;
 }
 
-/* Copy button visibility */
-[data-md-color-scheme="default"] .md-typeset .highlight .md-clipboard,
-[data-md-color-scheme="default"] .md-clipboard {
-    color: #666 !important;
+/* Ensure syntax highlighting is applied */
+[data-md-color-scheme="slate"] pre code.hljs,
+[data-md-color-scheme="slate"] code.hljs {
+    background: #1e1e2e !important;
+    color: #cdd6f4 !important;
 }
 
-[data-md-color-scheme="slate"] .md-typeset .highlight .md-clipboard,
-[data-md-color-scheme="slate"] .md-clipboard {
-    color: #a6adc8 !important;
+/* Copy button colors */
+[data-md-color-scheme="default"] .md-code__button {
+    color: #666;
 }
 
-.md-typeset .highlight .md-clipboard:hover,
-.md-clipboard:hover {
-    color: #306bea !important;
+[data-md-color-scheme="slate"] .md-code__button {
+    color: #a6adc8;
+}
+
+.md-code__button:hover {
+    color: var(--asql-red);
 }
 
 /* Admonitions */
@@ -165,34 +205,100 @@
 }
 
 .md-typeset .tabbed-labels > label:hover {
-    color: #306bea;
+    color: var(--asql-red);
 }
 
 .md-typeset .tabbed-set > input:checked + label {
-    color: #306bea;
-    border-color: #306bea;
+    color: var(--asql-red);
+    border-color: var(--asql-red);
+}
+
+/* Top navigation tabs styling */
+.md-tabs {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+    background-color: #fafafa;
+}
+
+.md-tabs__link {
+    color: #666;
+    font-weight: 500;
+    padding: 0.6rem 1rem;
+    transition: all 0.2s;
+}
+
+.md-tabs__link:hover {
+    color: var(--asql-red);
+    background-color: rgba(197, 48, 48, 0.05);
+}
+
+.md-tabs__link--active {
+    color: var(--asql-red);
+    border-bottom: 2px solid var(--asql-red);
+    font-weight: 600;
 }
 
 /* Playground button in header */
 .playground-btn {
-    display: inline-flex;
+    display: inline-flex !important;
     align-items: center;
     gap: 6px;
     padding: 6px 14px;
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.15) !important;
     color: white !important;
     border-radius: 4px;
     font-weight: 500;
     font-size: 13px;
     text-decoration: none !important;
-    margin-left: 24px;
+    margin-left: 16px;
+    margin-right: 16px;
     transition: all 0.2s;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    white-space: nowrap;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+    opacity: 1 !important;
+    visibility: visible !important;
 }
 
 .playground-btn:hover {
-    background: rgba(255, 255, 255, 0.25);
-    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.25) !important;
+    border-color: rgba(255, 255, 255, 0.5) !important;
+    color: white !important;
+}
+
+/* Ensure proper spacing in header to prevent overlap */
+.md-header__inner {
+    gap: 16px;
+}
+
+/* Ensure search box has proper spacing and doesn't overlap */
+.md-header__inner > .md-search {
+    margin-left: auto;
+}
+
+/* Ensure title container has proper spacing */
+.md-header__topic {
+    margin-right: 0;
+}
+
+/* Make header title/brand a clear link to root */
+.md-header__title,
+.md-header__topic {
+    cursor: pointer;
+}
+
+.md-header__title a,
+.md-header__topic a {
+    color: white !important;
+    text-decoration: none;
+    transition: opacity 0.2s;
+}
+
+.md-header__title a:hover,
+.md-header__topic a:hover {
+    opacity: 0.8;
+    text-decoration: none;
 }
 
 .playground-btn svg {
@@ -289,4 +395,461 @@
 
 [data-md-color-scheme="slate"] .hljs-function {
     color: #89b4fa !important;
+}
+
+/* ========================================
+   ASQL Dialect Tabs
+   ======================================== */
+
+.asql-code-block {
+    position: relative;
+    margin: 1rem 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .asql-code-block {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Dialect tabs container */
+.dialect-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    background: #f0f0f0;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+[data-md-color-scheme="slate"] .dialect-tabs {
+    background: #313244;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Tab button */
+.tab-btn {
+    background: transparent;
+    border: none;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #666;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.tab-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #333;
+}
+
+[data-md-color-scheme="slate"] .tab-btn {
+    color: #a6adc8;
+}
+
+[data-md-color-scheme="slate"] .tab-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #cdd6f4;
+}
+
+/* Active tab */
+.tab-btn.active {
+    background: var(--asql-red);
+    color: white !important;
+}
+
+.tab-btn.active:hover {
+    background: var(--asql-red-dark);
+}
+
+/* More dialects button */
+.tab-btn.more-tab {
+    font-weight: bold;
+    min-width: 32px;
+}
+
+/* Code content area */
+.asql-code-block .code-content {
+    position: relative;
+}
+
+.asql-code-block .code-content pre {
+    margin: 0 !important;
+    border-radius: 0 !important;
+}
+
+.asql-code-block .code-content code {
+    display: block;
+    padding: 1rem !important;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow-x: auto;
+}
+
+/* More dialects dropdown menu */
+.more-dialects-menu {
+    display: none;
+    position: absolute;
+    background: white;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    min-width: 150px;
+    padding: 4px 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.more-dialects-menu.show {
+    display: block;
+}
+
+/* Ensure parent containers don't clip the menu */
+.asql-code-block {
+    overflow: visible !important;
+}
+
+.dialect-tabs {
+    overflow: visible !important;
+}
+
+[data-md-color-scheme="slate"] .more-dialects-menu {
+    background: #1e1e2e;
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.more-dialects-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 16px;
+    background: none;
+    border: none;
+    font-size: 13px;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+
+.more-dialects-menu button:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+[data-md-color-scheme="slate"] .more-dialects-menu button {
+    color: #cdd6f4;
+}
+
+[data-md-color-scheme="slate"] .more-dialects-menu button:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Play button for opening in playground */
+.play-button {
+    position: absolute;
+    top: 8px;
+    right: 42px;  /* Position left of the copy button */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+    opacity: 0;
+    text-decoration: none !important;
+    z-index: 10;
+}
+
+.asql-code-block:hover .play-button {
+    opacity: 1;
+}
+
+.play-button:hover {
+    background: var(--asql-red);
+    color: white;
+}
+
+[data-md-color-scheme="slate"] .play-button {
+    background: rgba(255, 255, 255, 0.1);
+    color: #a6adc8;
+}
+
+[data-md-color-scheme="slate"] .play-button:hover {
+    background: var(--asql-red);
+    color: white;
+}
+
+/* ========================================
+   ASQL Mini Playground (Split Pane)
+   ======================================== */
+
+/* Mini playground should keep rounded-corner clipping */
+.asql-code-block.asql-mini-playground {
+    overflow: hidden !important;
+}
+
+.asql-mini-playground .asql-mp-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+
+@media screen and (max-width: 767px) {
+    .asql-mini-playground .asql-mp-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.asql-mini-playground .asql-mp-pane {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.asql-mini-playground .asql-mp-pane + .asql-mp-pane {
+    border-left: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-pane + .asql-mp-pane {
+    border-left-color: rgba(255, 255, 255, 0.08);
+}
+
+.asql-mini-playground .asql-mp-pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    font-size: 12px;
+    min-height: 32px; /* Match height with left pane header */
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-pane-header {
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.asql-mini-playground .asql-mp-pane-title {
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.75);
+    letter-spacing: 0.02em;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-pane-title {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.asql-mini-playground .asql-mp-pane-title-muted {
+    font-weight: 500;
+    opacity: 0.7;
+}
+
+.asql-mini-playground pre {
+    margin: 0 !important;
+    border-radius: 0 !important;
+}
+
+.asql-mini-playground code {
+    display: block;
+    padding: 1rem !important;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow: visible;
+}
+
+/* Inline play button in the ASQL header (right aligned) */
+.asql-mini-playground .asql-mp-play-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    text-decoration: none !important;
+    background: transparent;
+    border: none;
+    padding: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.asql-mini-playground .asql-mp-play-label {
+    display: none;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--asql-red);
+    line-height: 1;
+}
+
+.asql-mini-playground .asql-mp-play-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--asql-red);
+    background: transparent;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.asql-mini-playground .asql-mp-play-button:hover {
+    background: transparent;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-play-button {
+    color: var(--asql-red-light);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-play-button:hover {
+    background: transparent;
+}
+
+/* Show "Playground" label only on hover */
+.asql-mini-playground .asql-mp-play-button:hover .asql-mp-play-label {
+    display: inline;
+}
+
+/* Hover state: icon becomes red circle with white glyph */
+.asql-mini-playground .asql-mp-play-button:hover .asql-mp-play-icon {
+    background: var(--asql-red);
+    color: white;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-play-label {
+    color: var(--asql-red-light);
+}
+
+/* Subtle dialect dropdown */
+.asql-mini-playground .asql-mp-to-select {
+    font-size: 12px;
+    padding: 0;
+    border-radius: 0;
+    border: none;
+    background: transparent;
+    color: rgba(0, 0, 0, 0.75);
+    outline: none;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+}
+
+.asql-mini-playground .asql-mp-to-select:focus {
+    color: rgba(0, 0, 0, 0.9);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-select {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-select:focus {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+/* Right header should be left-aligned and tight */
+.asql-mini-playground .asql-mp-pane-right .asql-mp-pane-header {
+    justify-content: flex-start;
+    padding-left: 8px; /* Add padding to align with left pane header */
+}
+
+.asql-mini-playground .asql-mp-to-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center; /* Center align vertically */
+    padding: 2px 14px 2px 6px; /* a little touch target + caret room */
+    line-height: 1.1;
+    border-radius: 6px;
+    height: 100%; /* Fill header height */
+}
+
+/* Subtle hover affordance without a white pill */
+.asql-mini-playground .asql-mp-to-wrap:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-wrap:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* "Caret under it" - chevron style (CSS-based for better rendering) */
+.asql-mini-playground .asql-mp-to-wrap::after {
+    content: "";
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+    border-top: 4px solid rgba(0, 0, 0, 0.55);
+    opacity: 0.65;
+    pointer-events: none;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-to-wrap::after {
+    border-top-color: rgba(255, 255, 255, 0.65);
+}
+
+/* Copy buttons - transparent background, only show on hover (like GitHub/ChatGPT) */
+.md-code__nav {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+.md-code__button {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+/* Show copy button when hovering over code block */
+.highlight:hover .md-code__button,
+pre:hover .md-code__button,
+.asql-mini-playground:hover .md-code__button,
+.asql-code-block:hover .md-code__button,
+.asql-mini-playground .asql-mp-pane:hover .md-code__button {
+    opacity: 1;
+}
+
+/* Keep button visible when hovering over it */
+.md-code__button:hover {
+    opacity: 1;
+    background: transparent;
+}
+
+/* Make panes feel full-height and avoid white gutters */
+.asql-mini-playground .asql-mp-pane pre {
+    flex: 1;
+    background: #f6f8fa;
+    overflow: auto;
+}
+
+[data-md-color-scheme="slate"] .asql-mini-playground .asql-mp-pane pre {
+    background: #1e1e2e;
+}
+
+/* Make code fill pane height so horizontal scrollbar sits at bottom */
+.asql-mini-playground .asql-mp-pane pre code {
+    min-height: 100%;
+}
+
+/* Word-wrapping for the "To" (SQL) pane to avoid one-line overflow */
+.asql-mini-playground .asql-mp-pane-right pre code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }

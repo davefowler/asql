@@ -1,6 +1,21 @@
 # ASQL for R / dplyr Users
 
-If you're coming from R's tidyverse, ASQL's pipeline approach will feel natural. Both emphasize readable, chainable transformations.
+If you’re coming from the tidyverse, ASQL is aiming for the same feeling: readable, chainable transformations that emphasize intent.
+
+ASQL compiles to SQL (so it runs in your warehouse), but its day-to-day ergonomics borrow from “verb-first” workflows like dplyr.
+
+## What will feel familiar
+
+- **Pipelines**: each line reads like the next `%>%` step.
+- **Verbs**: `where` ≈ `filter`, `select` ≈ `select`, `group by (...)` ≈ `group_by() %>% summarize()`.
+- **Mutate-style derivations**: add columns via `select *, ... as new_col`.
+- **Common tidy patterns**: distinct/dedupe, case_when-style conditionals, pivot longer/wider.
+
+## ASQL is a pipe you can read top-to-bottom
+
+In dplyr you usually start with a data frame; in ASQL you start with a table:
+
+- `orders %>% ...` becomes `from orders` then your transforms underneath.
 
 ## Quick Reference
 
@@ -27,7 +42,7 @@ If you're coming from R's tidyverse, ASQL's pipeline approach will feel natural.
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     where status = 'active'
     where amount > 100
@@ -74,11 +89,11 @@ If you're coming from R's tidyverse, ASQL's pipeline approach will feel natural.
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
-    group by region, month(date) as month (
+    group by region, month(date) (
         sum(amount) as revenue,
-        count(*) as orders,
+        # as orders,
         count(distinct customer_id) as customers
     )
     ```
@@ -94,7 +109,7 @@ If you're coming from R's tidyverse, ASQL's pipeline approach will feel natural.
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     order by -date, customer_id
     ```
@@ -142,7 +157,7 @@ If you're coming from R's tidyverse, ASQL's pipeline approach will feel natural.
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select *,
         when amount
@@ -217,7 +232,7 @@ If you're coming from R's tidyverse, ASQL's pipeline approach will feel natural.
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     per customer_id first by -date
     ```
@@ -236,7 +251,7 @@ If you're coming from R's tidyverse, ASQL's pipeline approach will feel natural.
     ```
 
 === "ASQL"
-    ```asql
+    ```asql-play
     from orders
     select *,
         amount ?? 0 as amount,
@@ -275,3 +290,4 @@ If you're coming from R's tidyverse, ASQL's pipeline approach will feel natural.
     from sales
     pivot amount by category
     ```
+

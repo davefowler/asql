@@ -7,8 +7,7 @@ within SQLGlot's framework.
 Note: Some ASQL features require pre-parsing (see preparser.py).
 """
 
-from typing import Optional, List, Dict, Any
-import sqlglot
+from typing import Optional
 from sqlglot import exp
 from sqlglot.dialects.dialect import Dialect
 from sqlglot.parser import Parser
@@ -210,11 +209,7 @@ class ASQL(Dialect):
 # This allows using dialect="asql" in parse_one() and sql() methods
 def register_asql_dialect() -> None:
     """Register the ASQL dialect with SQLGlot."""
-    # Check if already registered
-    try:
-        Dialect.get_or_raise("asql")
-    except ValueError:
-        # Not registered, register it
+    if "asql" not in Dialect._classes:
         Dialect["asql"] = ASQL
 
 

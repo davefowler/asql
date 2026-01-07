@@ -99,42 +99,17 @@ The ASQL documentation is served via a web server that includes:
 
 ### Serving the Documentation
 
-#### Option 1: Start Both Docs and Playground (Recommended)
-
 ```bash
-# Install dependencies (includes Flask, markdown, and requests)
+# Install dependencies
 pip install -e ".[docs,playground]"
 
-# Start both servers at once
-python start_servers.py
+# Start both MkDocs and Playground
+./serve.sh
 ```
 
 This starts:
-- **Documentation Server**: http://localhost:5000
+- **Documentation (MkDocs)**: http://localhost:8000
 - **Playground**: http://localhost:5001
-
-The playground is embedded in the docs at http://localhost:5000/playground and accessible standalone at http://localhost:5001.
-
-#### Option 2: Start Servers Separately
-
-```bash
-# Terminal 1: Start documentation server
-python docs_server.py
-# Opens at http://localhost:5000
-
-# Terminal 2: Start playground (required for embedded playground)
-python playground.py
-# Opens at http://localhost:5001
-```
-
-#### Option 3: Using Docker
-
-```bash
-# Start both services with Docker Compose
-docker-compose up
-
-# Access at http://localhost:5000 (docs) and http://localhost:5001 (playground)
-```
 
 ### Documentation Features
 
@@ -149,7 +124,7 @@ docker-compose up
 - 📚 [Comprehensive Examples](docs/examples.md) - Extensive examples with SQL output
 - 🎮 [Interactive Playground](docs/playground.md) - Try ASQL in your browser
 - 🏗️ [Architecture](ARCHITECTURE.md) - System design and implementation details
-- 📋 [Language Specification](SPEC.md) - Complete ASQL syntax reference
+- 📋 [Language Specification](docs/spec.md) - Complete ASQL syntax reference
 
 ## Interactive Playground
 
@@ -158,16 +133,13 @@ Try ASQL in your browser! The playground lets you write ASQL queries and see the
 ### Start the Playground
 
 ```bash
-# Install playground dependencies
-pip install -e ".[playground]"
-
-# Run the playground
-python playground.py
+# Start docs + playground (recommended)
+./serve.sh
 ```
 
-Then open http://localhost:5000 in your browser.
+Then open http://localhost:5001 in your browser.
 
-**Note**: The playground requires Flask. Install it with `pip install -e ".[playground]"` or `pip install flask`.
+**Note**: The playground runs on FastAPI + Uvicorn.
 
 The playground features:
 - ✨ Real-time ASQL → SQL compilation
@@ -275,13 +247,13 @@ from users limit 10
 pip install -e ".[dev]"
 
 # Run tests
-pytest
+./venv/bin/pytest tests/
 
 # Run tests with coverage
-pytest --cov=asql --cov-report=html
+./venv/bin/pytest tests/ --cov=asql --cov-report=html
 
 # Run specific test file
-pytest tests/test_compiler.py
+./venv/bin/pytest tests/test_compiler.py
 ```
 
 ## Project Structure
@@ -296,7 +268,7 @@ asql/
 ├── tests/             # Test suite
 ├── examples/          # Example queries
 ├── docs/              # Documentation
-├── playground.py      # Interactive web playground
+├── playground/        # Interactive web playground (FastAPI)
 └── pyproject.toml     # Project configuration
 ```
 

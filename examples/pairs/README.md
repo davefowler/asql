@@ -58,5 +58,5 @@ These examples can be used for:
 
 - Some ASQL examples may include comments indicating features that need implementation
 - Examples are designed to be educational and may be simplified from production queries
-- All examples follow ASQL syntax conventions as specified in `SPEC.md`
+- All examples follow ASQL syntax conventions as specified in `docs/spec.md`
 

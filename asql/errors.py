@@ -37,3 +37,13 @@ class ASQLResolutionError(ASQLError):
     """Error during schema resolution."""
     pass
 
+
+class ASQLDialectError(ASQLError):
+    """Error when using a feature not supported by the target dialect."""
+    pass
+
+
+class ASQLDialectWarning(UserWarning):
+    """Warning when using a feature with known issues or partial support for a dialect."""
+    pass
+

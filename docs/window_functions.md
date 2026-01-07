@@ -2,6 +2,8 @@
 
 Window functions are incredibly powerful for analytics, but SQL's syntax for them is notoriously verbose. ASQL provides simplified syntax for common window function patterns.
 
+> **See Also:** [Detailed Window Functions Guide](syntax/window-functions.md) for comprehensive documentation.
+
 ---
 
 ## The Problem with SQL Window Functions
@@ -116,7 +118,7 @@ This compiles to native `QUALIFY` for databases that support it (BigQuery, Snowf
 
 For PostgreSQL-style deduplication:
 
-```asql
+```asql-play
 from orders
   distinct on (customer_id)
   order by customer_id, -order_date
@@ -309,7 +311,7 @@ from orders
 # Pattern 2: Using QUALIFY
 from orders
   select *, row_number() over (partition by customer_id order by -order_date) as rn
-  qualify rn == 1
+  qualify rn = 1
 
 # Pattern 3: Using DISTINCT ON (PostgreSQL-style)
 from orders
@@ -369,3 +371,12 @@ from employees
     rank() over (partition by department order by -salary) as salary_rank
   qualify salary_rank <= 3  -- Top 3 in each department
 ```
+
+---
+
+## Next Steps
+
+- **[Detailed Window Functions](syntax/window-functions.md)** — Comprehensive window function documentation
+- **[Aggregations](syntax/aggregations.md)** — GROUP BY with window functions
+- **[Examples](examples.md)** — More real-world patterns
+- **[Functions Reference](reference/functions.md)** — All window functions

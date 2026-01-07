@@ -16,7 +16,7 @@ from asql import compile
 # Basic query
 asql_query = """
 from users
-where status == "active"
+where status = "active"
 group by country ( # as total_users )
 order by -total_users
 limit 10
@@ -63,9 +63,9 @@ from users
 where status == 'active'
 """, dialect="postgres")
 
-# Multiple queries (creates CTEs)
+# Query with CTE using stash as
 multi_query = """
-with active_users = from users where status == 'active';
+from users where status == 'active' stash as active_users
 from active_users group by country ( # as total )
 """
 
@@ -625,6 +625,6 @@ pipeline.close()
 ## Next Steps
 
 - Check out the [Language Specification](spec.md) for complete syntax reference
-- See [Examples](EXAMPLES.md) for more query patterns
+- See [Examples](examples.md) for more query patterns
 - Review [Architecture](architecture.md) for implementation details
 
