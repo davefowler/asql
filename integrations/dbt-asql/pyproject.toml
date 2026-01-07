@@ -41,6 +41,9 @@ Homepage = "https://analyticsql.com"
 Repository = "https://github.com/definite-app/asql"
 Documentation = "https://analyticsql.com/integrations/dbt"
 
+[project.scripts]
+dbt-asql = "dbt_asql.cli:main"
+
 [project.entry-points."dbt.plugins"]
 asql = "dbt_asql:Plugin"
 
