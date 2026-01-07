@@ -239,28 +239,28 @@ ASQL uses the `??` operator for COALESCE (nullish coalescing), providing a clean
 
 **Syntax:**
 ```asql
-# Operator form (preferred)
+-- Operator form (preferred)
 column ?? default_value
 
-# Chained (multiple fallbacks)
+-- Chained (multiple fallbacks)
 column ?? fallback1 ?? fallback2 ?? "default"
 
-# Function form (also accepted)
+-- Function form (also accepted)
 coalesce(column, default_value)
 ```
 
 **Examples:**
 ```asql
-# Handle NULL values
+-- Handle NULL values
 from users select name ?? "Unknown" as display_name
 
-# Multiple fallbacks
+-- Multiple fallbacks
 from products select price ?? sale_price ?? 0 as final_price
 
-# In WHERE clauses
+-- In WHERE clauses
 from users where not (is_deleted ?? false)
 
-# With boolean logic
+-- With boolean logic
 from orders where (status ?? "pending") = "completed"
 ```
 
@@ -293,7 +293,7 @@ from orders
     amount > 1000 ? "high" : "low" as tier,
     status = "active" ? 1 : 0 as is_active
 
-# With expressions
+-- With expressions
 from users
   select
     age >= 18 ? "adult" : "minor" as age_group,
@@ -405,23 +405,23 @@ expression::type_name
 
 **Examples:**
 ```asql
-# Cast to timestamp
+-- Cast to timestamp
 from fields
   select _fivetran_synced::TIMESTAMP as _fivetran_synced
 
-# Cast to date
+-- Cast to date
 from events
   select created_at::DATE as date_day
 
-# Cast to integer
+-- Cast to integer
 from products
   select price::INT as price_int
 
-# Cast to string
+-- Cast to string
 from users
   select id::VARCHAR as user_id_str
 
-# Cast in WHERE clauses
+-- Cast in WHERE clauses
 from orders
   where created_at::DATE = @2024-01-01
 ```
@@ -693,18 +693,18 @@ ASQL automatically generates meaningful column names when functions are used wit
 The `#` symbol is a shortcut for counting. When followed by a table name, it infers the primary key and performs a distinct count.
 
 ```asql
-# Basic count syntaxes
-#                    -- COUNT(*)
-# *                  -- COUNT(*) (explicit row count)
+-- Basic count syntaxes
+--                    -- COUNT(*)
+-- *                  -- COUNT(*) (explicit row count)
 #(col)               -- COUNT(col)
 #(distinct col)      -- COUNT(DISTINCT col)
 
-# Table name → distinct count with inferred primary key
-# users              -- COUNT(DISTINCT user_id)
-# of users           -- COUNT(DISTINCT user_id)
-# orders             -- COUNT(DISTINCT order_id)
+-- Table name → distinct count with inferred primary key
+-- users              -- COUNT(DISTINCT user_id)
+-- of users           -- COUNT(DISTINCT user_id)
+-- orders             -- COUNT(DISTINCT order_id)
 
-# In select statements
+-- In select statements
 from Users
   select #, birthday
   -- Returns: COUNT(*) as #, birthday
@@ -726,17 +726,17 @@ from Users
 `sum` and `total` are interchangeable (both compile to `SUM()`):
 
 ```asql
-# Standard syntax
+-- Standard syntax
 sum(amount) as revenue
 total(amount) as revenue
 
-# Natural language syntax
+-- Natural language syntax
 Sum of amount as revenue
 Total of amount as revenue
 Sum amount as revenue
 Total amount as revenue
 
-# In group by
+-- In group by
 from sales
   group by region (
     total amount as revenue
@@ -748,17 +748,17 @@ from sales
 Multiple natural language forms for averages:
 
 ```asql
-# Standard syntax
+-- Standard syntax
 avg(Users.age) as avg_age
 average(Users.age) as avg_age
 
-# Natural language syntax
+-- Natural language syntax
 Avg Users.age as avg_age
 Average of Users.age as avg_age
 Average Users.age as avg_age
 Avg of Users.age as avg_age
 
-# With expressions
+-- With expressions
 Avg(Users.age + 3) as adjusted_age
 Average of Users.age + 3 as adjusted_age
 ```
@@ -768,14 +768,14 @@ Average of Users.age + 3 as adjusted_age
 ASQL encourages natural language expressions. The `of` keyword can replace parentheses, making queries read like questions:
 
 ```asql
-# Instead of: count(*) from Users where country = 'US'
-# of Users where country = "US"
+-- Instead of: count(*) from Users where country = 'US'
+-- of Users where country = "US"
 
-# Instead of: sum(amount) from sales
-# Sum of amount from sales
+-- Instead of: sum(amount) from sales
+-- Sum of amount from sales
 
-# Instead of: avg(age) from users group by country
-# Average of Users.age by country
+-- Instead of: avg(age) from users group by country
+-- Average of Users.age by country
 ```
 
 This makes ASQL queries feel like asking questions rather than writing code.
@@ -822,24 +822,24 @@ Or without partition (whole table):
 
 **Examples:**
 ```asql
-# DEDUPLICATION: Keep most recent order per customer
+-- DEDUPLICATION: Keep most recent order per customer
 from orders
   per customer_id first by -order_date
 
-# ADD ROW NUMBER: Number orders per customer (most recent = 1)
+-- ADD ROW NUMBER: Number orders per customer (most recent = 1)
 from orders
   per customer_id number by -order_date
-# Result: adds `row_num` column
+-- Result: adds `row_num` column
 
-# ADD RANK: Rank employees by salary within department
+-- ADD RANK: Rank employees by salary within department
 from employees
   per department rank by -salary
-# Result: adds `rank` column
+-- Result: adds `rank` column
 
-# NO PARTITION: Number all rows
+-- NO PARTITION: Number all rows
 from events
   number by -timestamp
-# Result: adds `row_num` to all rows, ordered by timestamp desc
+-- Result: adds `row_num` to all rows, ordered by timestamp desc
 ```
 
 **Reading the syntax naturally:**
@@ -969,7 +969,7 @@ from sales
 For very simple queries, natural language syntax can be used:
 
 ```asql
-# of Users by country
+-- of Users by country
 Sum of revenue by region, month
 Avg Users.age by country
 ```
@@ -1766,11 +1766,11 @@ These operators manipulate column sets without needing to list every column.
 Exclude specific columns from the result:
 
 ```asql
-# Exclude sensitive columns
+-- Exclude sensitive columns
 from users
   except email, phone, ssn
 
-# After a join, exclude from specific tables
+-- After a join, exclude from specific tables
 from users
   & orders on users.id = orders.user_id
   except users.password_hash, orders.internal_notes
@@ -1786,7 +1786,7 @@ Rename columns inline:
 from users
   rename id as user_id, name as user_name
 
-# Rename with table prefix after join
+-- Rename with table prefix after join
 from users
   & orders on users.id = orders.user_id
   rename users.id as user_id
@@ -1802,11 +1802,11 @@ Replace column values with new expressions:
 from users
   replace name with upper(name)
 
-# Chained replacements (comma-separated)
+-- Chained replacements (comma-separated)
 from users
   replace name with upper(name), email with lower(email), salary with round(salary, 2)
 
-# Or separate statements
+-- Or separate statements
 from users
   replace name with upper(name)
   replace email with lower(email)
@@ -1849,11 +1849,11 @@ Transform row values into columns.
 When you know the pivot values at compile time, specify them explicitly:
 
 ```asql
-# Pivot with explicit values
+-- Pivot with explicit values
 from sales
   pivot sum(amount) by category values ("Electronics", "Clothing", "Food")
 
-# Non-aggregate pivot (uses MAX)
+-- Non-aggregate pivot (uses MAX)
 from sales
   pivot amount by category values ("A", "B", "C")
 ```
@@ -1876,11 +1876,11 @@ from monthly_metrics
 Expand array-typed columns into multiple rows:
 
 ```asql
-# Explode array column
+-- Explode array column
 from posts
   explode tags as tag
 
-# Split string and explode
+-- Split string and explode
 from posts
   explode split(tags_csv, ',') as tag
 ```
@@ -2196,14 +2196,14 @@ from users
 **ASQL is case-safe by design.** This means you can use capital letters in column and table names without wrapping them in quotes obsessively. However, table/column names must still match the actual database names (case-insensitively).
 
 ```asql
-# You can write queries using any case style
+-- You can write queries using any case style
 from Users
   select firstName, createdAt, user_id
   where status = "active"
 
-# ASQL resolves case-insensitively to actual database names
-# If database has: users table, first_name column, created_at column
-# ASQL matches them correctly without requiring exact case
+-- ASQL resolves case-insensitively to actual database names
+-- If database has: users table, first_name column, created_at column
+-- ASQL matches them correctly without requiring exact case
 ```
 
 **Important clarification**: 
@@ -2231,16 +2231,16 @@ ASQL normalizes identifiers internally while preserving the original case for SQ
 
 **Example:**
 ```asql
-# You write:
+-- You write:
 from Users
   select firstName, createdAt
 
-# ASQL resolves (case-insensitive):
-# - Users → users (if that's the actual table name)
-# - firstName → first_name (if that's the actual column)
-# - createdAt → created_at (if that's the actual column)
+-- ASQL resolves (case-insensitive):
+-- - Users → users (if that's the actual table name)
+-- - firstName → first_name (if that's the actual column)
+-- - createdAt → created_at (if that's the actual column)
 
-# Generated SQL uses actual database names:
+-- Generated SQL uses actual database names:
 SELECT first_name, created_at FROM users
 ```
 
@@ -2364,7 +2364,7 @@ from sessions
 ### Example 4: Natural Language Aggregates
 
 ```asql
-# of Users by country
+-- of Users by country
 Sum of revenue by region
 Avg Users.age by country
 ```

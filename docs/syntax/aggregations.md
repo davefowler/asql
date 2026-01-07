@@ -42,9 +42,9 @@ from users
 When followed by a table name, `#` automatically infers the primary key and counts distinct values:
 
 ```asql
-# users            -- COUNT(DISTINCT user_id)
-# of users         -- COUNT(DISTINCT user_id)
-# orders           -- COUNT(DISTINCT order_id)
+-- users            -- COUNT(DISTINCT user_id)
+-- of users         -- COUNT(DISTINCT user_id)
+-- orders           -- COUNT(DISTINCT order_id)
 ```
 
 **Important distinction**:
@@ -60,7 +60,7 @@ This uses convention: the table name (singular form) + `_id` is assumed to be th
 Use `# *` when you explicitly want row count (not distinct):
 
 ```asql
-# *                -- COUNT(*) explicitly
+-- *                -- COUNT(*) explicitly
 ```
 
 ### Count Shorthand Reference
