@@ -13,6 +13,7 @@ let samplingExamples = [];
 let dataReshapingExamples = [];
 let columnOperatorExamples = [];
 let countInferenceExamples = [];
+let syntaxStylesExamples = [];
 let sqlExamples = [];
 
 // Settings state
@@ -68,6 +69,7 @@ window.initializeExamplesData = function(data) {
     dataReshapingExamples = data.reshaping || [];
     columnOperatorExamples = data.column_operators || [];
     countInferenceExamples = data.count_inference || [];
+    syntaxStylesExamples = data.syntax_styles || [];
     sqlExamples = data.sql || [];
 };
 
@@ -683,15 +685,28 @@ function createExampleSection(container, title, description, examples, options =
             closeExamplesModal();
             inputEditor.setValue(example.query);
             
+            const fromSelect = document.getElementById('from-dialect');
+            const toSelect = document.getElementById('to-dialect');
+            
             if (example.dialect || options.fromDialect) {
-                document.getElementById('from-dialect').value = example.dialect || options.fromDialect || '';
+                // SQL example with a specific dialect - set direction to SQL -> ASQL
+                fromSelect.value = example.dialect || options.fromDialect || '';
+                toSelect.value = 'asql';
             } else if (options.ensureAsql) {
-                if (document.getElementById('from-dialect').value !== 'asql') {
-                    document.getElementById('from-dialect').value = 'asql';
+                // ASQL example - set direction to ASQL -> SQL
+                fromSelect.value = 'asql';
+                // If to-dialect is currently ASQL, change it to a SQL dialect
+                if (toSelect.value === 'asql') {
+                    toSelect.value = 'snowflake';
                 }
             }
+            
+            // Allow explicit toLanguage/toDialect override
             if (example.toLanguage) {
-                document.getElementById('to-dialect').value = example.toLanguage;
+                toSelect.value = example.toLanguage;
+            }
+            if (options.toDialect) {
+                toSelect.value = options.toDialect;
             }
             
             updateUITitles();
@@ -710,42 +725,47 @@ function loadExamples() {
     
     try {
         container.innerHTML = '';
-        const currentMode = getCurrentMode();
         
-        if (currentMode === 'asql-to-sql' || currentMode === 'asql-to-asql') {
-            createExampleSection(container, 'Basic Examples',
-                'Basic ASQL queries that showcase the language syntax.',
-                asqlExamples, { ensureAsql: true });
-            
-            createExampleSection(container, 'ASQL Pipeline Examples',
-                'Complex queries that showcase pipeline features and generate multiple CTEs.',
-                asqlPipelineExamples, { ensureAsql: true });
-            
-            createExampleSection(container, 'Cohort Analysis Examples',
-                'Cohort analysis patterns using first(), running_sum(), prior(), and other window functions.',
-                cohortExamples, { ensureAsql: true });
-            
-            createExampleSection(container, 'Sampling Examples',
-                'Random sampling for data exploration.',
-                samplingExamples, { ensureAsql: true });
-            
-            createExampleSection(container, 'Data Reshaping Examples',
-                'Pivot, unpivot, and explode operations for reshaping data.',
-                dataReshapingExamples, { ensureAsql: true });
-            
-            createExampleSection(container, 'Column Operator Examples',
-                'Except, rename, and replace operators for column manipulation.',
-                columnOperatorExamples, { ensureAsql: true });
-            
-            createExampleSection(container, 'Smart Count Examples',
-                'The # shorthand with table names infers primary keys.',
-                countInferenceExamples, { ensureAsql: true });
-        } else {
-            const examplesDiv = createExampleSection(container, 'SQL Translation Examples', null, sqlExamples);
-            if (sqlExamples.length === 0) {
-                examplesDiv.innerHTML = '<p style="color: #666; padding: 20px;">SQL examples will be loaded...</p>';
-                loadSQLExamples();
-            }
+        // Always show all ASQL examples - they will set direction to ASQL -> SQL when clicked
+        createExampleSection(container, 'Basic Examples',
+            'Basic ASQL queries that showcase the language syntax.',
+            asqlExamples, { ensureAsql: true });
+        
+        createExampleSection(container, 'ASQL Pipeline Examples',
+            'Complex queries that showcase pipeline features and generate multiple CTEs.',
+            asqlPipelineExamples, { ensureAsql: true });
+        
+        createExampleSection(container, 'Cohort Analysis Examples',
+            'Cohort analysis patterns using first(), running_sum(), prior(), and other window functions.',
+            cohortExamples, { ensureAsql: true });
+        
+        createExampleSection(container, 'Sampling Examples',
+            'Random sampling for data exploration.',
+            samplingExamples, { ensureAsql: true });
+        
+        createExampleSection(container, 'Data Reshaping Examples',
+            'Pivot, unpivot, and explode operations for reshaping data.',
+            dataReshapingExamples, { ensureAsql: true });
+        
+        createExampleSection(container, 'Column Operator Examples',
+            'Except, rename, and replace operators for column manipulation.',
+            columnOperatorExamples, { ensureAsql: true });
+        
+        createExampleSection(container, 'Smart Count Examples',
+            'The # shorthand with table names infers primary keys.',
+            countInferenceExamples, { ensureAsql: true });
+        
+        createExampleSection(container, 'Syntax Styles Examples',
+            'Different syntax styles and shorthand options in ASQL.',
+            syntaxStylesExamples, { ensureAsql: true });
+        
+        // Always show SQL examples too - they will set direction to SQL -> ASQL when clicked
+        const examplesDiv = createExampleSection(container, 'SQL Translation Examples',
+            'SQL queries that can be translated to ASQL.',
+            sqlExamples, { toDialect: 'asql' });
+        if (sqlExamples.length === 0) {
+            examplesDiv.innerHTML = '<p style="color: #666; padding: 20px;">SQL examples will be loaded...</p>';
+            loadSQLExamples();
         }
         
         loadFivetranExamples();
@@ -807,10 +827,9 @@ async function loadFivetranExamples() {
                 btn.onclick = () => {
                     closeExamplesModal();
                     inputEditor.setValue(example.query);
-                    document.getElementById('from-dialect').value = example.language || '';
-                    if (example.toLanguage) {
-                        document.getElementById('to-dialect').value = example.toLanguage;
-                    }
+                    // Fivetran examples are SQL -> ASQL translations
+                    document.getElementById('from-dialect').value = example.language || 'snowflake';
+                    document.getElementById('to-dialect').value = example.toLanguage || 'asql';
                     updateUITitles();
                     translateQuery();
                 };
@@ -989,3 +1008,5 @@ document.addEventListener('DOMContentLoaded', function() {
     
     checkASQLMode();
 });
+
+

@@ -25,20 +25,20 @@ class UnionMixin:
         
         Note: This transform must run BEFORE other transformations because
         we need to detect the boundary between queries.
+        
+        IMPORTANT: EXCEPT here is the SQL set operation (query1 EXCEPT query2),
+        NOT the ASQL column exclusion operator (from t except col1, col2).
+        We distinguish them by checking what follows:
+        - SQL EXCEPT: followed by a query (from, select, with, or parenthesis)
+        - ASQL except: followed by column names
         """
         result = text.strip()
         
         # Pattern to match set operators on their own line or inline
-        # This matches: UNION, UNION ALL, INTERSECT, EXCEPT
-        # 
-        # IMPORTANT: For EXCEPT, we need to distinguish between:
-        # 1. SQL EXCEPT (set operation) - followed by a query (select/from/with/(...)
-        # 2. ASQL 'except' (column exclusion) - followed by column names
-        #
-        # The SQL EXCEPT must be followed by whitespace and then:
-        # - SELECT, FROM, WITH (query start keywords)
-        # - ( for a parenthesized subquery
-        set_op_pattern = r'\b(union\s+all|union|intersect|except)(?=\s+(?:select|from|with|\())\b'
+        # This matches: UNION, UNION ALL, INTERSECT
+        # For EXCEPT, we require it to be followed by a query start (from, select, with, or '(')
+        # to distinguish it from the ASQL column exclusion operator
+        set_op_pattern = r'\b(union\s+all|union|intersect)\b|\b(except)\b(?=\s*(?:from|select|with|\())'
         
         # Find all set operation keywords (case-insensitive)
         matches = list(re.finditer(set_op_pattern, result, re.IGNORECASE))
@@ -52,7 +52,8 @@ class UnionMixin:
         
         for match in matches:
             query_before = result[last_end:match.start()].strip()
-            set_op = match.group(1).upper()
+            # Pattern has two groups: group(1) for union/intersect, group(2) for except
+            set_op = (match.group(1) or match.group(2)).upper()
             
             if query_before:
                 parts.append((query_before, set_op))

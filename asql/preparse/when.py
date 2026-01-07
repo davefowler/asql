@@ -61,10 +61,6 @@ class WhenMixin:
             if prev_word == "case":
                 continue
             
-            # Skip if we're inside an existing SQL CASE block (between CASE and END)
-            if self._is_inside_case_block(result, start_pos):
-                continue
-            
             # Parse the when expression starting from this position
             case_expr, end_pos = self._parse_when_block(result, start_pos)
             
@@ -73,56 +69,6 @@ class WhenMixin:
                 result = result[:start_pos] + case_expr + result[end_pos:]
         
         return result
-
-    def _is_inside_case_block(self, text: str, pos: int) -> bool:
-        """
-        Check if position is inside an existing SQL CASE ... END block.
-        
-        We look for unmatched 'case' keywords before this position.
-        """
-        # Count case and end keywords, respecting nesting
-        # We need to find if there's an unmatched 'case' before this 'when'
-        
-        # Simple approach: scan backwards from pos looking for case/end keywords
-        case_depth = 0
-        i = pos - 1
-        in_string = False
-        string_char: Optional[str] = None
-        
-        while i >= 0:
-            char = text[i]
-            
-            # Handle string boundaries (scanning backwards)
-            if char in ("'", '"'):
-                # Check if this is the end of a string or escaped
-                if not in_string:
-                    in_string = True
-                    string_char = char
-                elif char == string_char:
-                    in_string = False
-                    string_char = None
-            
-            if not in_string:
-                # Check for 'end' keyword
-                if i >= 2 and text[i-2:i+1].lower() == 'end':
-                    # Check it's a word boundary
-                    if (i - 3 < 0 or not text[i-3].isalnum() and text[i-3] != '_'):
-                        if i + 1 >= len(text) or (not text[i+1].isalnum() and text[i+1] != '_'):
-                            case_depth += 1  # Found an END, means we exited a CASE
-                
-                # Check for 'case' keyword
-                if i >= 3 and text[i-3:i+1].lower() == 'case':
-                    # Check it's a word boundary
-                    if (i - 4 < 0 or not text[i-4].isalnum() and text[i-4] != '_'):
-                        if i + 1 >= len(text) or (not text[i+1].isalnum() and text[i+1] != '_'):
-                            case_depth -= 1  # Found a CASE, means we entered a CASE
-                            if case_depth < 0:
-                                # We're inside an unmatched CASE block
-                                return True
-            
-            i -= 1
-        
-        return False
     
     def _parse_when_block(self, text: str, start_pos: int) -> Tuple[Optional[str], int]:
         """
@@ -186,24 +132,8 @@ class WhenMixin:
                 while pos < len(text) and text[pos] in ' \t\n':
                     pos += 1
                 
-                # Check if else value is a nested when expression or already-transformed CASE
-                # e.g., "else when x > 0 then 'yes' else 'no'" or "else CASE WHEN ..."
-                rest = text[pos:].lower().lstrip()
-                if rest.startswith('when'):
-                    # Recursively parse the nested when block
-                    nested_case, pos = self._parse_when_block(text, pos)
-                    if nested_case:
-                        else_value = nested_case
-                    else:
-                        # Fallback to parsing as expression
-                        else_value, pos = self._parse_expression(text, pos)
-                elif rest.startswith('case'):
-                    # Already-transformed CASE expression (from earlier pass)
-                    # Parse the entire CASE...END block as the else value
-                    else_value, pos = self._parse_case_expression(text, pos)
-                else:
-                    # Parse the else value as a regular expression
-                    else_value, pos = self._parse_expression(text, pos)
+                # Parse the else value
+                else_value, pos = self._parse_expression(text, pos)
                 break
             
             # Check if there's another "when" branch (indented or on same line)
@@ -630,69 +560,3 @@ class WhenMixin:
                     pos += 1
         
         return '(' + ', '.join(values) + ')', pos
-
-    def _parse_case_expression(self, text: str, start_pos: int) -> Tuple[Optional[str], int]:
-        """
-        Parse a complete CASE ... END expression.
-        
-        This is used when we encounter an already-transformed CASE expression
-        in the else clause of a when expression.
-        
-        Returns:
-            (case_expr, end_pos) or (None, start_pos) if parsing fails
-        """
-        pos = start_pos
-        
-        # Skip whitespace
-        while pos < len(text) and text[pos] in ' \t\n':
-            pos += 1
-        
-        # Check for CASE keyword
-        if not text[pos:pos+4].lower() == 'case':
-            return None, start_pos
-        
-        start = pos
-        case_depth = 0
-        in_string = False
-        string_char: Optional[str] = None
-        
-        while pos < len(text):
-            char = text[pos]
-            
-            # Handle strings
-            if char in ("'", '"'):
-                if not in_string:
-                    in_string = True
-                    string_char = char
-                elif char == string_char:
-                    in_string = False
-                    string_char = None
-                pos += 1
-                continue
-            
-            if in_string:
-                pos += 1
-                continue
-            
-            # Check for CASE keyword (including nested)
-            if text[pos:pos+4].lower() == 'case':
-                # Verify word boundary
-                if pos == 0 or not (text[pos-1].isalnum() or text[pos-1] == '_'):
-                    if pos + 4 >= len(text) or not (text[pos+4].isalnum() or text[pos+4] == '_'):
-                        case_depth += 1
-            
-            # Check for END keyword
-            if text[pos:pos+3].lower() == 'end':
-                # Verify word boundary
-                if pos == 0 or not (text[pos-1].isalnum() or text[pos-1] == '_'):
-                    if pos + 3 >= len(text) or not (text[pos+3].isalnum() or text[pos+3] == '_'):
-                        case_depth -= 1
-                        if case_depth == 0:
-                            # Found matching END
-                            pos += 3
-                            return text[start:pos], pos
-            
-            pos += 1
-        
-        # No matching END found
-        return None, start_pos

@@ -1,6 +1,6 @@
 -- Window functions: Running totals and rankings
 from orders
-  where status == 'completed'
+  where status == "completed"
   select 
     order_id,
     customer_id,

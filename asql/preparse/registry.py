@@ -8,9 +8,6 @@ FUNCTION_REGISTRY: Set[str] = {
     # Single-word aggregate functions
     'sum', 'avg', 'average', 'total', 'count', 'min', 'max',
     
-    # Binning/discretization function
-    'bucket',
-    
     # Date truncation functions
     'year', 'month', 'week', 'day', 'hour', 'minute', 'second', 'quarter',
     

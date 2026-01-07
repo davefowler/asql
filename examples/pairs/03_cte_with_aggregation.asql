@@ -1,10 +1,10 @@
 -- CTE: Active users by country with their order totals
 from users
-  where status = 'active' and last_login_date >= current_date - interval '30 days'
+  where status = "active" and last_login_date >= current_date - interval "30 days"
   stash as active_users
 
 from orders
-  where status = 'completed'
+  where status = "completed"
   group by customer_id (
     count(*) as order_count,
     sum(total_amount) as lifetime_value

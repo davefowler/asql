@@ -2,9 +2,9 @@
 -- Note: ASQL string functions may need implementation
 from users
   where email is not null
-  group by substring(email from position('@' in email) + 1) as email_domain (
+  group by substring(email from position("@" in email) + 1) as email_domain (
     count(*) as user_count,
-    count(case when status == 'active' then 1 end) as active_users,
+    count(case when status == "active" then 1 end) as active_users,
     count(case when verified == true then 1 end) as verified_users
   )
   where user_count >= 10

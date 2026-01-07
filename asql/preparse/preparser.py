@@ -15,9 +15,6 @@ from asql.preparse.order import OrderMixin
 from asql.preparse.aggregates import AggregatesMixin
 from asql.preparse.dates import DatesMixin
 from asql.preparse.stash import StashMixin
-from asql.preparse.with_cte import WithCTEMixin
-from asql.preparse.union import UnionMixin
-from asql.preparse.multistatement import MultiStatementMixin
 from asql.preparse.clauses import ClausesMixin
 from asql.preparse.extend import ExtendMixin
 from asql.preparse.pivot import PivotMixin
@@ -25,9 +22,12 @@ from asql.preparse.window import WindowMixin
 from asql.preparse.normalize import NormalizeMixin
 from asql.preparse.cohort import CohortMixin
 from asql.preparse.key import KeyMixin
-from asql.preparse.slugify import SlugifyMixin
 from asql.preparse.when import WhenMixin
 from asql.preparse.ternary import TernaryMixin
+from asql.preparse.with_cte import WithCTEMixin
+from asql.preparse.union import UnionMixin
+from asql.preparse.multistatement import MultiStatementMixin
+from asql.preparse.slugify import SlugifyMixin
 from asql.preparse.list_comprehension import ListComprehensionMixin
 from asql.preparse.bucket import BucketMixin
 from asql.preparse.slice import SliceMixin
@@ -54,9 +54,6 @@ class ASQLPreParser(
     AggregatesMixin,
     DatesMixin,
     StashMixin,
-    WithCTEMixin,
-    UnionMixin,
-    MultiStatementMixin,
     ClausesMixin,
     ExtendMixin,
     PivotMixin,
@@ -66,6 +63,9 @@ class ASQLPreParser(
     TernaryMixin,
     WhenMixin,
     KeyMixin,
+    WithCTEMixin,
+    UnionMixin,
+    MultiStatementMixin,
     SlugifyMixin,
     ListComprehensionMixin,
     BucketMixin,
@@ -125,18 +125,18 @@ class ASQLPreParser(
         result = self._transform_star_column_override(result)  # select *, col as name → select * EXCEPT(name), col as name
         result = self._transform_recurse(result)  # Transform recurse() to recursive CTE (after star_column_override to avoid EXCEPT in CTE)
         result = self._transform_cohort_by(result)  # cohort by - transforms to CTEs and joins (after FROM-first)
-        result = self._transform_fill_functions(result)  # fill_forward, fill_backward
         result = self._transform_window_functions(result)  # prior, next, running_*, rolling_*
+        result = self._transform_fill_functions(result)  # fill_forward, fill_backward
         result = self._transform_qualify_clause(result)  # qualify rn == 1
         result = self._transform_coalesce_operator(result)  # After FROM-first for proper structure
         result = self._transform_ternary_expressions(result)  # ternary ? : expressions to CASE WHEN
         result = self._transform_when_expressions(result)  # when expressions to CASE WHEN
         result = self._transform_bucket_function(result)  # bucket() function to CASE WHEN
         result = self._transform_list_comprehensions(result)  # [expr for var in arr] to ARRAY(SELECT ...)
-        result = self._transform_key_function(result)  # key(col1, col2, ...) surrogate key generation
         result = self._transform_slugify_function(result)  # slugify(expr) URL-friendly slug generation
-        result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
         result = self._transform_slice_syntax(result)  # email[1:5] → SUBSTRING(email, 1, 5)
+        result = self._transform_key_function(result)  # key(col1, col2, ...) surrogate key generation
+        result = self._transform_sample_clause(result)  # sample N, sample N%, sample N per col
         result = self._normalize_function_spaces(result)
         result = self._transform_equality_operators(result)
         

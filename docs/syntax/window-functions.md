@@ -97,39 +97,6 @@ from scores
   dense rank by -score
 ```
 
-## `fill_forward()` and `fill_backward()` (NULL Propagation)
-
-Forward fill and backward fill propagate non-null values to fill NULL gaps—a common time series pattern:
-
-```asql
-# Forward fill - propagate last known value forward
-from events
-  select 
-    user_id,
-    timestamp,
-    fill_forward(value) over (partition by user_id order by timestamp) as value
-
-# Backward fill - propagate next known value backward
-from events
-  select 
-    user_id,
-    timestamp,
-    fill_backward(value) over (partition by user_id order by timestamp) as value
-```
-
-**How it works:**
-
-| row | value | fill_forward | fill_backward |
-|-----|-------|--------------|---------------|
-| 1   | 100   | 100          | 100           |
-| 2   | NULL  | 100 ← row 1  | 200 ← row 4   |
-| 3   | NULL  | 100 ← row 1  | 200 ← row 4   |
-| 4   | 200   | 200          | 200           |
-
-This is the SQL equivalent of pandas' `ffill()` and `bfill()` methods.
-
-**Dialect support:** Works with Snowflake, BigQuery, DuckDB (which support `IGNORE NULLS`). PostgreSQL may require a workaround.
-
 ## `prior()` and `next()` (LAG/LEAD)
 
 Access previous or next row values:
@@ -295,8 +262,6 @@ from sales
 | Get column value at max | `arg_max(col, sort_col)` |
 | Previous row value | `prior(col)` |
 | Next row value | `next(col)` |
-| Forward fill NULLs | `fill_forward(col) over (...)` |
-| Backward fill NULLs | `fill_backward(col) over (...)` |
 | Cumulative sum | `running_sum(col)` |
 | Cumulative average | `running_avg(col)` |
 | 7-day moving average | `rolling_avg(col, 7)` |
