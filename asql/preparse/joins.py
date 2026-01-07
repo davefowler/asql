@@ -70,6 +70,9 @@ class JoinsMixin:
         # Cross join should have a table name after it
         result = self._replace_cross_join(result)
         
+        # Expand FK column shorthand in traditional JOIN syntax
+        result = self._expand_traditional_join_fk_shorthand(result, from_table)
+        
         return result
 
     def _replace_join_operator(
@@ -109,6 +112,7 @@ class JoinsMixin:
             r'(?=\s*(?:' +
             r'(?:\?\s*&\s*\?|\&\s*\?|\?\s*&|(?<!\?)&(?!\?|&)|\*)' +  # Next join operator
             r'|\bwhere\b|\bgroup\b|\border\b|\blimit\b|\bselect\b|\bstash\b|\bhaving\b|\bqualify\b' +  # Clause keywords
+            r'|(?:(?:left|right|inner|cross|full(?:\s+outer)?)\s+)?join\b' +  # SQL JOIN keywords (already transformed)
             r'|$))'  # End of string
         )
         
@@ -128,6 +132,11 @@ class JoinsMixin:
                 inferred_condition = self._infer_join_condition(from_table, table_name, alias)
                 if inferred_condition:
                     condition = inferred_condition
+            elif condition and from_table:
+                # Check if condition is a single FK column shorthand
+                expanded = self._expand_fk_shorthand(condition.strip(), from_table, table_name, alias)
+                if expanded:
+                    condition = expanded
             
             if condition:
                 parts.append(f'ON {condition.strip()}')
@@ -204,6 +213,104 @@ class JoinsMixin:
         # Use shared FK column inference
         fk_col = infer_fk_column(to_table)
         return f"{from_table}.{fk_col} = {to_ref}.id"
+
+    def _expand_fk_shorthand(
+        self,
+        condition: str,
+        from_table: str,
+        to_table: str,
+        to_alias: Optional[str] = None
+    ) -> Optional[str]:
+        """
+        Expand a single FK column name to a full join condition.
+        
+        If the condition is a single identifier (no dots, operators, etc.),
+        treat it as an FK column shorthand and expand to full equality.
+        
+        Examples:
+            owner_id, accounts, users -> accounts.owner_id = users.id
+            customer_id, orders, customers -> orders.customer_id = customers.id
+            
+        Args:
+            condition: The ON clause content (potentially just a column name)
+            from_table: The source table (FROM clause)
+            to_table: The target table (being joined)
+            to_alias: Optional alias for the target table
+            
+        Returns:
+            Expanded condition if shorthand detected, None otherwise (use original)
+        """
+        # Pattern for a single identifier (FK column name)
+        # Must be just letters, numbers, underscores - no dots, operators, spaces with operators
+        single_ident_pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
+        
+        if not re.match(single_ident_pattern, condition):
+            # Not a single identifier - contains dots, operators, etc.
+            # Fall back to original behavior (passthrough)
+            return None
+        
+        # It's a single column name - expand to full condition
+        fk_column = condition
+        to_ref = to_alias or to_table
+        
+        # FK column is on the from_table, pointing to to_table.id
+        return f"{from_table}.{fk_column} = {to_ref}.id"
+
+    def _expand_traditional_join_fk_shorthand(
+        self,
+        text: str,
+        from_table: Optional[str]
+    ) -> str:
+        """
+        Expand FK column shorthand in traditional JOIN syntax.
+        
+        Handles patterns like:
+        - from accounts JOIN users ON owner_id
+        - from accounts LEFT JOIN users AS u ON created_by_id
+        
+        Expands single-column ON clauses to full equality conditions.
+        """
+        if not from_table:
+            return text
+        
+        # Pattern for traditional JOIN with optional type and alias
+        # Captures: join_type, table_name, alias, condition
+        pattern = (
+            r'\b((?:left|right|inner|cross|full(?:\s+outer)?)\s+)?join\s+'
+            r'([a-zA-Z_][a-zA-Z0-9_]*)'
+            r'(?:\s+as\s+([a-zA-Z_][a-zA-Z0-9_]*))?'
+            r'\s+on\s+([a-zA-Z_][a-zA-Z0-9_]*)'
+            r'(?=\s*(?:'
+            r'\b(?:left|right|inner|cross|full)\b|\bjoin\b'
+            r'|\bwhere\b|\bgroup\b|\border\b|\blimit\b|\bselect\b|\bstash\b|\bhaving\b|\bqualify\b'
+            r'|$))'
+        )
+        
+        def replace_match(match: re.Match) -> str:
+            join_type = match.group(1) or ''
+            table_name = match.group(2)
+            alias = match.group(3)
+            condition = match.group(4)
+            
+            # Check if condition is a single identifier (FK column shorthand)
+            single_ident_pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
+            if not re.match(single_ident_pattern, condition):
+                # Not a single identifier, return unchanged
+                return match.group(0)
+            
+            # Expand to full condition
+            to_ref = alias or table_name
+            expanded_condition = f"{from_table}.{condition} = {to_ref}.id"
+            
+            # Rebuild the join clause
+            parts = [f'{join_type}JOIN', table_name]
+            if alias:
+                parts.append(f'AS {alias}')
+            parts.append(f'ON {expanded_condition}')
+            
+            return ' '.join(parts)
+        
+        return re.sub(pattern, replace_match, text, flags=re.IGNORECASE)
 
     def _replace_cross_join(self, text: str) -> str:
         """

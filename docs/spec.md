@@ -1079,7 +1079,42 @@ from opportunities &? users as owner
 
 ### 7.4 Explicit Join Conditions
 
-When automatic FK inference isn't desired or possible, specify the join condition with `on`:
+ASQL offers three levels of explicitness for join conditions:
+
+#### Fully Inferred Joins
+
+When tables follow FK naming conventions (`{table}_id`), ASQL can infer the join condition:
+
+```asql
+-- ASQL infers: orders.user_id = users.id
+from orders & users
+```
+
+#### FK Column Shorthand
+
+When a table has multiple FKs to the same target table, specify which FK column to use:
+
+```asql
+-- accounts has both owner_id and created_by_id pointing to users
+from accounts &? users on owner_id
+-- → FROM accounts LEFT JOIN users ON accounts.owner_id = users.id
+
+-- Works in either direction
+from users & accounts on owner_id
+-- → FROM users JOIN accounts ON accounts.owner_id = users.id
+
+-- With aliases
+from accounts &? users as owner on owner_id
+-- → FROM accounts LEFT JOIN users AS owner ON accounts.owner_id = owner.id
+```
+
+The FK column shorthand assumes:
+- The FK column is on the "from" table (left side)
+- The FK points to `id` on the target table
+
+#### Fully Explicit Conditions
+
+For non-standard relationships, specify the complete condition:
 
 ```asql
 from opportunities &? owners on opportunities.owner_id = owners.id
@@ -1088,6 +1123,9 @@ from opportunities &? owners on opportunities.owner_id = owners.id
 -- With alias
 from opportunities &? users as owner on opportunities.owner_id = owner.id
   select opportunities.amount, owner.name
+
+-- Complex conditions
+from orders & users on orders.customer_id = users.id and users.active = true
 ```
 
 ### 7.5 Dot Notation for FK Traversal
