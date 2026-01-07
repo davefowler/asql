@@ -2,6 +2,8 @@
 
 One of ASQL's most powerful features is **guaranteed groups**: when you group data, ASQL ensures all expected dimension values appear in results—even if they have no data.
 
+This feature embodies the **[Completeness Over Fast Queries](index.md#5-completeness-over-fast-queries)** design value.
+
 ## The Problem
 
 SQL doesn't guarantee your grouped results are complete. If a dimension value has no data, it simply won't appear:

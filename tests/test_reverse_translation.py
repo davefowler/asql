@@ -193,3 +193,119 @@ def test_detect_dialect_with_jinja() -> None:
     """
     dialect = detect_dialect(sql_with_jinja)
     assert dialect is None
+
+
+# =============================================================================
+# Tests for ignore_aliases feature
+# =============================================================================
+
+
+def test_ignore_aliases_default_off() -> None:
+    """Test that ignore_aliases is off by default (aliases are preserved)."""
+    from asql.config import ASQLConfig, StyleConfig
+    
+    sql = """
+    SELECT country, COUNT(*) AS user_count
+    FROM users
+    GROUP BY country
+    """
+    # Default config should preserve aliases
+    asql = reverse_compile(sql)
+    assert "as user_count" in asql.lower()
+
+
+def test_ignore_aliases_strips_column_aliases() -> None:
+    """Test that ignore_aliases=True strips column aliases."""
+    from asql.config import ASQLConfig, StyleConfig
+    
+    sql = """
+    SELECT country, COUNT(*) AS user_count
+    FROM users
+    GROUP BY country
+    """
+    config = ASQLConfig(style=StyleConfig(ignore_aliases=True))
+    asql = reverse_compile(sql, config=config)
+    
+    # Should not have "as user_count"
+    assert "as user_count" not in asql.lower()
+    # Should still have the count function
+    assert "#" in asql or "count" in asql.lower()
+
+
+def test_ignore_aliases_strips_aggregation_aliases() -> None:
+    """Test that ignore_aliases=True strips aggregation aliases."""
+    from asql.config import ASQLConfig, StyleConfig
+    
+    sql = """
+    SELECT region,
+           SUM(amount) AS total_revenue,
+           AVG(amount) AS avg_order
+    FROM sales
+    GROUP BY region
+    """
+    config = ASQLConfig(style=StyleConfig(ignore_aliases=True))
+    asql = reverse_compile(sql, config=config)
+    
+    # Should not have aliases
+    assert "as total_revenue" not in asql.lower()
+    assert "as avg_order" not in asql.lower()
+    # Should still have aggregations
+    assert "sum" in asql.lower()
+    assert "avg" in asql.lower()
+
+
+def test_ignore_aliases_preserves_when_false() -> None:
+    """Test that ignore_aliases=False preserves all aliases."""
+    from asql.config import ASQLConfig, StyleConfig
+    
+    sql = """
+    SELECT region, SUM(amount) AS revenue
+    FROM sales
+    GROUP BY region
+    """
+    config = ASQLConfig(style=StyleConfig(ignore_aliases=False))
+    asql = reverse_compile(sql, config=config)
+    
+    # Should have the alias
+    assert "as revenue" in asql.lower()
+
+
+def test_ignore_aliases_with_select_expressions() -> None:
+    """Test ignore_aliases with SELECT expressions (non-aggregations)."""
+    from asql.config import ASQLConfig, StyleConfig
+    
+    sql = """
+    SELECT user_id AS id, email AS contact
+    FROM users
+    """
+    config = ASQLConfig(style=StyleConfig(ignore_aliases=True))
+    asql = reverse_compile(sql, config=config)
+    
+    # Should not have aliases
+    assert "as id" not in asql.lower()
+    assert "as contact" not in asql.lower()
+
+
+def test_ignore_aliases_style_config_to_dict() -> None:
+    """Test that ignore_aliases is included in StyleConfig.to_dict()."""
+    from asql.config import StyleConfig
+    
+    # Default (False)
+    style = StyleConfig()
+    assert "ignore_aliases" in style.to_dict()
+    assert style.to_dict()["ignore_aliases"] is False
+    
+    # Enabled
+    style_enabled = StyleConfig(ignore_aliases=True)
+    assert style_enabled.to_dict()["ignore_aliases"] is True
+
+
+def test_ignore_aliases_from_dict() -> None:
+    """Test that ignore_aliases can be set via from_dict()."""
+    from asql.config import StyleConfig
+    
+    style = StyleConfig.from_dict({"ignore_aliases": True})
+    assert style.ignore_aliases is True
+    
+    style_default = StyleConfig.from_dict({})
+    assert style_default.ignore_aliases is False

@@ -143,6 +143,7 @@ nav:
     - Window Functions Deep Dive: window_functions.md
     - Style Guide: style_guide.md
     - Design Principles: design.md
+    - Syntax Decisions: learn-more/syntax-decisions.md
     - Integrating ASQL: integrating.md
     - Architecture: architecture.md
 
