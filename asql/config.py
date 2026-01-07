@@ -203,6 +203,11 @@ class StyleConfig:
     # Default is "underscore" for declarative continuity - what you write matches the output column name
     function_shorthand: Literal["underscore", "space", "parens"] = "underscore"
     
+    # Ignore aliases: when True, strips all column aliases from reverse-compiled ASQL
+    # This lets ASQL's auto-naming generate clean output without explicit aliases
+    # Useful for playground/examples where we want to showcase ASQL's brevity
+    ignore_aliases: bool = False
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -217,6 +222,7 @@ class StyleConfig:
             "squash_empty_ctes": self.squash_empty_ctes,
             "keep_final_empty_cte": self.keep_final_empty_cte,
             "function_shorthand": self.function_shorthand,
+            "ignore_aliases": self.ignore_aliases,
         }
     
     @classmethod

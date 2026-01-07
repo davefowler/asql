@@ -570,6 +570,9 @@ def _expression_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> st
     
     elif isinstance(expr, exp.Alias):
         expr_str = _expression_to_asql(expr.this, style)
+        # If ignore_aliases is True, strip the alias and return just the expression
+        if style.ignore_aliases:
+            return expr_str
         alias = expr.alias.this if isinstance(expr.alias, exp.Identifier) else str(expr.alias)
         return f"{expr_str} as {alias}"
     
@@ -814,6 +817,9 @@ def _aggregation_to_asql(expr: exp.Expression, style: "StyleConfig" = None) -> s
     elif isinstance(expr, exp.Alias):
         # Handle aliased aggregations
         agg_str = _aggregation_to_asql(expr.this, style)
+        # If ignore_aliases is True, strip the alias and return just the aggregation
+        if style.ignore_aliases:
+            return agg_str
         alias = expr.alias.this if isinstance(expr.alias, exp.Identifier) else str(expr.alias)
         return f"{agg_str} as {alias}"
     

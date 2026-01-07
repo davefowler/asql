@@ -153,10 +153,12 @@ async def api_reverse_compile(request: ReverseCompileRequest) -> dict:
             return {"error": "Empty SQL query"}
         
         # Build style config from request settings
-        config = None
+        # Default to ignore_aliases=True for playground (cleaner ASQL output)
+        settings_dict = {"ignore_aliases": True}
         if request.settings:
-            style = StyleConfig.from_dict(request.settings)
-            config = ASQLConfig(style=style)
+            settings_dict.update(request.settings)
+        style = StyleConfig.from_dict(settings_dict)
+        config = ASQLConfig(style=style)
         
         asql = reverse_compile(
             request.sql,
@@ -362,6 +364,13 @@ async def api_settings_schema() -> dict:
                     ],
                     "default": "underscore",
                     "description": "How to write function shorthands"
+                },
+                {
+                    "name": "ignore_aliases",
+                    "label": "Ignore Aliases",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Strip column aliases from output (lets ASQL's auto-naming generate clean output)"
                 }
             ]
         }
