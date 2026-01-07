@@ -94,9 +94,11 @@ There are two distinct "fill" operations in data analysis - ASQL handles them di
 | **Gap Fill** | Adds missing ROWS to time series | Jan, Mar, Apr → Jan, **Feb**, Mar, Apr | **auto_spine** (automatic) |
 | **Forward Fill** | Fills NULL VALUES with previous value | [100, NULL, NULL] → [100, 100, 100] | Not yet implemented |
 
-These are fundamentally different:
-- **Gap fill** = generate missing date rows, add them to the result
-- **Forward fill** = propagate values within existing rows
+These are fundamentally different operations.
+
+📄 **For detailed analysis of gap filling, spines, the `guarantee()` proposal, continuous vs. discrete columns, and when to spine vs. not, see [spines.md](../designs/spines.md).**
+
+**Summary of recommendations:**
 
 **ASQL auto_spine (gap filling) - IMPLEMENTED:**
 
@@ -346,10 +348,10 @@ The current `fill month with {revenue: 0}` becomes unnecessary - you just use `g
 
 | Current Name | What It Does | Proposed Name |
 |--------------|--------------|---------------|
-| `fill month` | Add missing date ROWS | `guarantee(month(...))` in GROUP BY |
+| `fill month` | Add missing date ROWS (spining) | `guarantee(month(...))` in GROUP BY |
 | (new) | Propagate VALUES forward | `carry forward` or `prior_nonnull()` |
 
-#### Proposed Enhancement Options
+#### Proposed Enhancement Options for Forward Fill
 
 **Option A: `carry forward` / `carry backward` commands**
 ```asql
