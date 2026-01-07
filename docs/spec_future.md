@@ -149,7 +149,7 @@ For very simple exploratory queries, you can omit the `from` clause and infer it
 **Tracking**: [#40](https://github.com/davefowler/asql/issues/40)
 
 ```asql
-# of Users by country
+-- of Users by country
 Sum of revenue by region
 Avg Users.age by country
 ```
@@ -683,19 +683,19 @@ SELECT COLUMNS(c -> c LIKE '%_amount')::INT FROM payments;
 ### Proposed ASQL Syntax
 
 ```asql
-# Select columns matching a pattern
+-- Select columns matching a pattern
 from quarterly_data
   select columns matching 'sales_*'
 
-# With alias grouping
+-- With alias grouping
 from events
   select columns matching '*_at' as timestamps
 
-# Apply transformations to matching columns
+-- Apply transformations to matching columns
 from dirty_data
   select columns matching 'amount_*' :: decimal(10,2)
 
-# Exclude pattern (inverse matching)
+-- Exclude pattern (inverse matching)
 from users
   select * except columns matching '*_internal'
 ```
@@ -761,7 +761,7 @@ ASQL would accept pipe syntax operators as **aliases** for existing ASQL feature
 The `|>` operator would be accepted and effectively ignored (ASQL already uses newlines or `|` for pipelining).
 
 ```asql
-# These would be equivalent:
+-- These would be equivalent:
 from orders |> where status = 'active' |> select id, total
 
 from orders
@@ -776,11 +776,11 @@ from orders
 Pipe syntax uses `DROP` to remove columns. ASQL would accept `drop` as an alias for `except`.
 
 ```asql
-# Pipe syntax style
+-- Pipe syntax style
 from users
   drop ssn, internal_notes
 
-# Current ASQL style (remains valid)
+-- Current ASQL style (remains valid)
 from users
   except ssn, internal_notes
 ```
@@ -794,14 +794,14 @@ from users
 Pipe syntax uses `AGGREGATE ... GROUP BY`. ASQL would accept this as alternative to inline `group by (agg)` syntax.
 
 ```asql
-# Pipe syntax style
+-- Pipe syntax style
 from orders
   aggregate 
     sum(total) as revenue,
     count(*) as order_count
   group by region
 
-# Current ASQL style (remains valid)
+-- Current ASQL style (remains valid)
 from orders
   group by region (
     sum(total) as revenue,
@@ -822,7 +822,7 @@ from sales
   extend revenue - cost as profit
   extend profit / revenue as margin
 
-# Equivalent to (but cleaner than):
+-- Equivalent to (but cleaner than):
 from sales
   select *, revenue - cost as profit
   select *, profit / revenue as margin
@@ -850,13 +850,13 @@ Pipe syntax uses `SET col = expr` to modify existing columns. ASQL intentionally
 3. **Semantic clarity**: `replace` makes it clear you're replacing a column's definition
 
 ```asql
-# ASQL's existing syntax (preferred)
+-- ASQL's existing syntax (preferred)
 from products
   replace price with price * 1.10
 
-# NOT adding:
-# from products
-#   set price = price * 1.10  -- Rejected: too similar to UPDATE semantics
+-- NOT adding:
+-- from products
+--   set price = price * 1.10  -- Rejected: too similar to UPDATE semantics
 ```
 
 ### Compatibility Matrix
@@ -883,7 +883,7 @@ from products
 When targeting BigQuery or Spark, ASQL could optionally emit native pipe syntax for better readability of generated SQL.
 
 ```asql
-# Input
+-- Input
 from orders
   where status = 'completed'
   except internal_notes

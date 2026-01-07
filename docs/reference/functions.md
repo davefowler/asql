@@ -12,7 +12,7 @@ Count rows or non-null values.
 count(*)                    -- Count all rows
 count(column)               -- Count non-null values
 count(distinct column)      -- Count distinct values
-#                           -- Shorthand for count(*)
+--                           -- Shorthand for count(*)
 #(column)                   -- Shorthand for count(column)
 ```
 

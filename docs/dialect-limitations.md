@@ -45,7 +45,7 @@ from users
 **Issue**: Auto-spine may produce unexpected results with advanced grouping operations:
 
 ```asql
-# This may not work correctly
+-- This may not work correctly
 from sales
 group by rollup(year(date), month(date)) (
   sum(amount) ?? 0 as revenue

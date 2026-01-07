@@ -313,15 +313,15 @@ select
 Get the first/last row per group with the `per` command:
 
 ```asql
-# Most recent order per customer
+-- Most recent order per customer
 from orders
 per customer_id first by -order_date
 
-# Add row numbers per customer
+-- Add row numbers per customer
 from orders
 per customer_id number by -order_date
 
-# Rank employees by salary within department
+-- Rank employees by salary within department
 from employees
 per department rank by -salary
 ```

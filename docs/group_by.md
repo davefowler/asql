@@ -96,7 +96,7 @@ Use `??` (null coalesce) to specify the default value for missing data:
 
 ```asql
 sum(amount) ?? 0 as revenue      -- zeros for missing
-# ?? 0 as orders          -- zeros for missing
+-- ?? 0 as orders          -- zeros for missing
 avg(price) ?? null as avg_price  -- null for missing (explicit)
 ```
 
