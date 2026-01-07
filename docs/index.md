@@ -1,73 +1,191 @@
-# ASQL: A Pipeline Syntax for Analytic SQL
+# ASQL: SQL with Analytics Built In
 
-Analytic SQL (ASQL) is a query language that transpiles to SQL. It reorders SQL's syntax to flow top-to-bottom (like a pipeline) and adds shorthand for common analytics patterns. Think of it like CoffeeScript for SQL—you write ASQL, it outputs standard SQL for any dialect.
+Analytic SQL (ASQL) is a query language designed for analytics work. It adds **built-in analytics features** that SQL lacks—guaranteed complete results, cohort analysis, cross-dialect date handling—and uses a pipeline syntax that flows top-to-bottom.
+
+Think of it as SQL with analytics superpowers. Write ASQL, get standard SQL for any dialect.
 
 **Status**: Experimental. [GitHub](https://github.com/davefowler/asql)
 
 ---
 
-## Why?
+## The Problem with SQL for Analytics
 
-SQL's syntax was designed in the 1970s for interactive terminal use. It works, but the execution order doesn't match the written order:
+SQL was designed in the 1970s for **transactional systems**—banking, inventory, order processing. It answers "what happened?" based on rows that exist. This works great for OLTP.
+
+But **analytics is different**. When you're building dashboards, tracking trends, or calculating month-over-month metrics, SQL's design causes real problems:
+
+### Missing Data Points
 
 ```sql
-SELECT region, SUM(amount)     -- 5. finally, what columns
-FROM sales                      -- 1. start here
-WHERE year = 2024               -- 2. filter
-GROUP BY region                 -- 3. aggregate
-HAVING SUM(amount) > 1000       -- 4. filter again
-ORDER BY 2 DESC                 -- 6. sort
-LIMIT 10;                       -- 7. limit
+SELECT month, SUM(amount) as revenue
+FROM orders
+GROUP BY month;
 ```
 
-This inside-out structure makes complex queries harder to read and write. You end up with CTEs mainly to linearize the logic.
+| month | revenue |
+|-------|---------|
+| Jan   | 1000    |
+| Feb   | 1500    |
+| Mar   | 800     |
+| Jun   | 1200    |
 
-Many tools address this: notebooks let you build queries step-by-step, pandas chains transformations with method syntax, dbt macros abstract common patterns, PRQL and Kusto offer pipeline syntax. ASQL takes learnings from all of these—a pipeline syntax that transpiles to any SQL dialect.
+April and May are missing. Your chart line jumps. Your MoM calculation uses the wrong prior month. Your dashboard looks broken.
+
+Every analytics team builds workarounds: date dimension tables, calendar CTEs, CROSS JOINs, post-processing in Python. It's tedious and error-prone.
+
+### Date Dialect Chaos
+
+```sql
+-- PostgreSQL
+SELECT DATE_TRUNC('month', created_at) FROM orders;
+
+-- BigQuery  
+SELECT DATE_TRUNC(created_at, MONTH) FROM orders;
+
+-- MySQL
+SELECT DATE_FORMAT(created_at, '%Y-%m-01') FROM orders;
+```
+
+Same operation, different syntax per database. Copy-paste between dialects breaks.
+
+### Window Function Verbosity
+
+Getting the most recent order per customer—a common analytics pattern:
+
+```sql
+SELECT * FROM (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY customer_id ORDER BY order_date DESC
+    ) as rn
+    FROM orders
+) sub WHERE rn = 1;
+```
+
+This should be one line.
 
 ---
 
-## Pipelined SQL
+## ASQL's Analytics Features
 
-ASQL queries read top-to-bottom in execution order. This matters most for transformation and modeling work—dbt models, ELT pipelines, analytics views—where queries are written once and read many times. Linear flow makes code review, debugging, and refactoring significantly easier.
+ASQL builds solutions to these problems **into the language**.
+
+### Guaranteed Complete Results
+
+ASQL automatically fills gaps in your grouped data:
+
+```asql-play
+from orders
+  group by month(order_date) (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+| month | revenue |
+|-------|---------|
+| Jan   | 1000    |
+| Feb   | 1500    |
+| Mar   | 800     |
+| Apr   | 0       |
+| May   | 0       |
+| Jun   | 1200    |
+
+No dimension tables. No CTEs. No post-processing. ASQL ensures all expected time periods appear in your results—analytically correct by default.
+
+See [Guaranteed Groups](concepts/guaranteed-groups.md) for details.
+
+### Cross-Dialect Date Handling
+
+Write once, run on any database:
+
+```asql
+where created_at > 7 days ago
+where due_date < 30 days from now
+select order_date + 14 days as delivery_date
+```
+
+| Operation | PostgreSQL | BigQuery | ASQL |
+|-----------|------------|----------|------|
+| Truncate to month | `DATE_TRUNC('month', d)` | `DATE_TRUNC(d, MONTH)` | `month(d)` |
+| Add days | `d + INTERVAL '7 days'` | `DATE_ADD(d, INTERVAL 7 DAY)` | `d + 7 days` |
+| Date literal | `DATE '2024-01-01'` | `DATE '2024-01-01'` | `@2024-01-01` |
+
+ASQL compiles to the correct syntax for your target database.
+
+### One-Line Window Patterns
+
+Common analytics operations become single lines:
+
+```asql-play
+-- Most recent order per customer
+from orders
+  per customer_id first by -order_date
+
+-- Previous period comparison
+from monthly_sales
+  select month, revenue, prior(revenue) as prev_revenue
+
+-- Running totals
+from daily_sales
+  select date, revenue, running_sum(revenue) as cumulative
+```
+
+| ASQL | SQL Equivalent |
+|------|---------------|
+| `per X first by -date` | `ROW_NUMBER() OVER (PARTITION BY X ORDER BY date DESC) = 1` |
+| `prior(col)` | `LAG(col, 1) OVER (...)` |
+| `next(col)` | `LEAD(col, 1) OVER (...)` |
+| `running_sum(col)` | `SUM(col) OVER (ROWS UNBOUNDED PRECEDING)` |
+| `rolling_avg(col, 7)` | `AVG(col) OVER (ROWS 6 PRECEDING)` |
+
+### Convention-Based Inference
+
+ASQL infers relationships from naming patterns:
+
+```asql-play
+-- Auto-joins on user_id → users.id
+from orders
+  & users
+  select orders.*, users.name
+
+-- FK shorthand: department_id matches departments.id
+from employees
+  join departments on department_id
+```
+
+When your tables follow standard naming conventions (`user_id` → `users.id`), ASQL figures out the join conditions. No more typing the obvious.
+
+---
+
+## Pipeline Syntax
+
+ASQL queries flow top-to-bottom in execution order:
 
 ```asql-play
 from sales
   where year(date) = 2024
   group by region ( sum(amount) as revenue )
-  having revenue > 1000
+  where revenue > 1000
   order by -revenue
   limit 10
 ```
 
-The transformation is mechanical: `from` first, operations in order, and the compiler adds `SELECT` clauses as needed.
-
-### CTEs vs Pipelines
-
-In SQL, you often use CTEs to keep queries readable:
+Compare to SQL's inside-out structure:
 
 ```sql
-WITH active_users AS (
-    SELECT * FROM users WHERE is_active = true
-),
-by_country AS (
-    SELECT country, COUNT(*) as total
-    FROM active_users
-    GROUP BY country
-)
-SELECT * FROM by_country ORDER BY total DESC LIMIT 10;
+SELECT region, SUM(amount) as revenue  -- 5th
+FROM sales                              -- 1st
+WHERE YEAR(date) = 2024                 -- 2nd
+GROUP BY region                         -- 3rd
+HAVING SUM(amount) > 1000               -- 4th
+ORDER BY revenue DESC                   -- 6th
+LIMIT 10;                               -- 7th
 ```
 
-In ASQL, the pipeline handles this:
+This matters most for analytics work—dbt models, ELT pipelines, dashboards—where queries are written once and read many times. Linear flow makes code review, debugging, and refactoring significantly easier.
 
-```asql-play
-from users
-  where is_active
-  group by country ( # as total )
-  order by -total
-  limit 10
-```
+### CTEs When You Need Them
 
-When you actually need to reuse intermediate results, use `stash as` to create a reusable CTE:
+When you need to reuse intermediate results, use `stash as`:
 
 ```asql-play
 from users
@@ -83,21 +201,18 @@ from users
 
 ASQL adds shorthand for patterns that are verbose in SQL.
 
-### Count and Sort
+### Count
 
 ```asql
 #                    -- COUNT(*)
-# users              -- COUNT(DISTINCT user_id) - infers primary key
+# users              -- COUNT(DISTINCT user_id)
 #(distinct user_id)  -- COUNT(DISTINCT user_id) - explicit
-order by -revenue    -- ORDER BY revenue DESC
 ```
 
-### Date Truncation
+### Descending Sort
 
 ```asql
-year(created_at)     -- EXTRACT(YEAR FROM created_at) or DATE_TRUNC, depending on dialect
-month(created_at)
-week(created_at)
+order by -revenue    -- ORDER BY revenue DESC
 ```
 
 ### Natural Aggregates
@@ -111,83 +226,6 @@ sum_amount
 ```
 
 All produce a column named `sum_amount`.
-
-### Date Arithmetic
-
-```asql
-where created_at > 7 days ago
-where due_date < 30 days from now
-select order_date + 14 days as delivery
-```
-
----
-
-## Window Functions
-
-Window functions are one of SQL's most powerful features, but the syntax can be verbose. ASQL aims to make common patterns more intuitive with clearer structure and helper functions for the majority of use cases.
-
-### First/Last Per Group
-
-Getting the most recent order per customer is a common pattern:
-
-**SQL:**
-```sql
-SELECT * FROM (
-    SELECT *, ROW_NUMBER() OVER (
-        PARTITION BY customer_id ORDER BY order_date DESC
-    ) as rn
-    FROM orders
-) sub WHERE rn = 1;
-```
-
-**ASQL:**
-```asql-play
-from orders
-  per customer_id first by -order_date
-```
-
-### Previous/Next Row
-
-**SQL:**
-```sql
-SELECT month, revenue,
-    LAG(revenue, 1) OVER (ORDER BY month) as prev_revenue
-FROM monthly_sales;
-```
-
-**ASQL:**
-```asql-play
-from monthly_sales
-  select month, revenue, prior(revenue) as prev_revenue
-  order by month
-```
-
-### Running Totals
-
-**SQL:**
-```sql
-SELECT date, revenue,
-    SUM(revenue) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING) as cumulative
-FROM daily_sales;
-```
-
-**ASQL:**
-```asql-play
-from daily_sales
-  select date, revenue, running_sum(revenue) as cumulative
-  order by date
-```
-
-### Reference
-
-| ASQL | SQL Equivalent |
-|------|---------------|
-| `per ... first by` | ROW_NUMBER() OVER (...) = 1 |
-| `per ... number by` | ROW_NUMBER() OVER (...) |
-| `prior(col)` | LAG(col, 1) OVER (...) |
-| `next(col)` | LEAD(col, 1) OVER (...) |
-| `running_sum(col)` | SUM(col) OVER (ROWS UNBOUNDED PRECEDING) |
-| `rolling_avg(col, n)` | AVG(col) OVER (ROWS n-1 PRECEDING) |
 
 ---
 
@@ -207,42 +245,31 @@ from users
   rename id as user_id
 ```
 
-### Replace Column Values
-
-Transform column values in-place:
+### Replace Values
 
 ```asql-play
 from users
   replace name with upper(name), salary with round(salary, 2)
 ```
 
-Compiles to: `SELECT * EXCEPT(name, salary), upper(name) AS name, round(salary, 2) AS salary`
-
 ---
 
 ## Sampling
 
-Get random subsets of your data:
-
 ```asql
 -- Fixed sample size
-from orders
-  sample 100
+from orders sample 100
 
 -- Percentage sample
-from orders
-  sample 10%
+from orders sample 10%
 
 -- Stratified sampling (N per group)
-from orders
-  sample 100 per category
+from orders sample 100 per category
 ```
 
 ---
 
 ## Pivot & Unpivot
-
-Reshape data between wide and long formats:
 
 ```asql
 -- Rows to columns
@@ -260,99 +287,25 @@ from posts
 
 ---
 
-## Date Handling
-
-SQL date functions vary by dialect. ASQL normalizes them:
-
-| Operation | PostgreSQL | BigQuery | ASQL |
-|-----------|------------|----------|------|
-| Truncate to month | `DATE_TRUNC('month', d)` | `DATE_TRUNC(d, MONTH)` | `month(d)` |
-| Add days | `d + INTERVAL '7 days'` | `DATE_ADD(d, INTERVAL 7 DAY)` | `d + 7 days` |
-| Date literal | `DATE '2024-01-01'` | `DATE '2024-01-01'` | `@2024-01-01` |
-
-### Relative Dates
-
-```asql
-where created_at > 7 days ago
-where expires_at < 30 days from now
-```
-
-### Duration Columns
-
-```asql
-select
-  days_since_created_at,      -- days(now() - created_at)
-  months_until_subscription_end  -- months(subscription_end - now())
-```
-
----
-
-## Guaranteed Groups (splines by default!)
-
-SQL doesn't guarantee your grouped results are complete. If a dimension value has no data, it simply won't appear in your results.
-
-This isn't a bug—it's a design decision. SQL was created in the 1970s for transactional systems (OLTP): banking, inventory, order processing. In that context, you're asking "what happened?" and showing non-existent data would be wrong. The relational model is based on set theory: you can only group rows that exist.
-
-But analytics is different. When you ask "what's the trend?" or build a time-series chart, missing data points cause real problems. The line jumps. Month-over-month calculations use the wrong prior month. The dashboard looks broken.
-
-```sql
-SELECT month, SUM(amount) as revenue
-FROM orders
-GROUP BY month;
-```
-
-| month | revenue |
-|-------|---------|
-| Jan   | 1000    |
-| Feb   | 1500    |
-| Mar   | 800     | 
-| Jun   | 1200    |
-
-April and May are missing. Data warehousing evolved workarounds: date dimension tables, calendar CTEs, CROSS JOINs, Kimball-style star schemas. Every analytics team reinvents this wheel. It's easy to forget until something breaks in production.
-
-**ASQL guarantees complete results:**
-
-```asql-play
-from orders
-  group by month(order_date) (
-    sum(amount) ?? 0 as revenue
-  )
-```
-
-| month | revenue |
-|-------|---------|
-| Jan   | 1000    |
-| Feb   | 1500    |
-| Mar   | 800     |
-| Apr   | 0       |
-| May   | 0       |
-| Jun   | 1200    |
-
-This is analytically correct by default. No dimension tables. No extra CTEs. No post-processing. ASQL automatically ensures all expected values appear in your results.
-
-See [Grouping & Aggregation](group_by.md) for details on `guarantee()` and configuration options.
-
----
-
 ## Multi-Dialect Output
 
-ASQL uses [SQLGlot](https://github.com/tobymao/sqlglot) for transpilation. Supported dialects include:
+ASQL uses [SQLGlot](https://github.com/tobymao/sqlglot) for transpilation:
 
-PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark SQL, and [others](https://github.com/tobymao/sqlglot#dialects).
+PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark SQL, and [more](https://github.com/tobymao/sqlglot#dialects).
 
 ---
 
 ## What ASQL Is
 
-- A syntax layer that compiles to SQL
-- Useful for analytics queries that benefit from pipeline structure
-- Analytically correct by default (guaranteed grouping prevents missing data in reports)
-- Compatible with any SQL database via transpilation
+- **Analytics-first** — Built-in features for dashboards, time series, and reporting
+- **Analytically correct** — Guaranteed complete results prevent missing data bugs
+- **SQL-compatible** — Familiar vocabulary, compiles to standard SQL
+- **Dialect-portable** — Write once, run on any database
 
 ## What ASQL Is Not
 
 - Not a database
-- Not required—you can always use the generated SQL directly
+- Not required—use the generated SQL directly if you prefer
 - Not production-ready (yet)
 
 ---
@@ -367,33 +320,28 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 
 ## Documentation
 
-### Syntax Guide
+### Concepts
 
-Detailed documentation on ASQL syntax:
+Understanding ASQL's design:
+
+- [Guaranteed Groups](concepts/guaranteed-groups.md) — Automatic gap-filling
+- [Pipeline Semantics](concepts/pipelines.md) — Why FROM-first matters
+- [Convention Over Configuration](concepts/conventions.md) — Smart defaults
+- [Function Shorthand](concepts/shorthand.md) — Underscore/space flexibility
+
+### Syntax Guide
 
 - [Syntax Overview](syntax/index.md) — All syntax documentation
 - [Pipeline Basics](syntax/pipeline.md) — FROM-first queries, chaining
-- [Expressions & Operators](syntax/expressions.md) — Comparisons, conditionals
 - [Aggregations](syntax/aggregations.md) — GROUP BY deep dive
 - [Joins](syntax/joins.md) — Join operators, FK inference
 - [Dates & Time](syntax/dates.md) — Date functions, arithmetic
 - [Window Functions](syntax/window-functions.md) — Ranking, running totals
 - [CTEs & Variables](syntax/ctes.md) — stash as, set
 - [Sampling](syntax/sampling.md) — Random, percentage, stratified sampling
-- [Pivot, Unpivot & Explode](syntax/pivot-unpivot.md) — Data reshaping, array expansion
-
-### Concepts
-
-Understanding ASQL's design:
-
-- [Pipeline Semantics](concepts/pipelines.md) — Why FROM-first matters
-- [Guaranteed Groups](concepts/guaranteed-groups.md) — Automatic gap-filling
-- [Convention Over Configuration](concepts/conventions.md) — Smart defaults
-- [Function Shorthand](concepts/shorthand.md) — Underscore/space flexibility
+- [Pivot, Unpivot & Explode](syntax/pivot-unpivot.md) — Data reshaping
 
 ### Reference
-
-Quick lookup:
 
 - [Functions Reference](reference/functions.md) — All built-in functions
 - [Operators Reference](reference/operators.md) — All operators
@@ -410,11 +358,10 @@ Quick lookup:
 ## Inspiration
 
 - [SQLGlot](https://github.com/tobymao/sqlglot) — SQL parsing and transpilation
-- [pandas](https://pandas.pydata.org/) — Method chaining, `shift()` → `prior/next`, `rolling()` → `rolling_avg`, column ops like `drop/rename/add_prefix`
+- [pandas](https://pandas.pydata.org/) — Method chaining, column operations
 - [PRQL](https://prql-lang.org/) — Pipeline approach to SQL
-- [Kusto/KQL](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/) — Pipeline syntax at scale
 - [dbt](https://www.getdbt.com/) — Many ASQL features are built-in versions of dbt macro patterns
-- [ClickHouse](https://clickhouse.com/) — Aggregation patterns like `argMax`
+- [Kusto/KQL](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/) — Pipeline syntax at scale
 
 ---
 
