@@ -21,6 +21,12 @@ from __future__ import annotations
 import argparse
 import sys
 
+from dbt_asql.plugin import (
+    AsqlCompilationError,
+    InvalidDialectError,
+    VALID_DIALECTS,
+)
+
 
 def main() -> int:
     """Main entry point for dbt-asql CLI."""
@@ -49,6 +55,7 @@ def main() -> int:
     compile_parser.add_argument(
         "--dialect",
         default="postgres",
+        choices=sorted(VALID_DIALECTS),
         help="SQL dialect to compile to (default: postgres)",
     )
     compile_parser.add_argument(
@@ -106,8 +113,16 @@ def cmd_compile(args: argparse.Namespace) -> int:
         
         return 0
         
-    except Exception as e:
+    except InvalidDialectError as e:
         print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except AsqlCompilationError as e:
+        print(f"Compilation Error: {e}", file=sys.stderr)
+        return 1
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
         return 1
 
 
@@ -126,8 +141,10 @@ def cmd_clean(args: argparse.Namespace) -> int:
         
         return 0
         
+    except (KeyboardInterrupt, SystemExit):
+        raise
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"Unexpected error: {e}", file=sys.stderr)
         return 1
 
 

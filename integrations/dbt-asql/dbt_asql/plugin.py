@@ -37,6 +37,51 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
+# Constants
+# =============================================================================
+
+# Valid SQL dialects supported by ASQL/SQLGlot
+VALID_DIALECTS = frozenset({
+    "postgres", "postgresql",
+    "mysql",
+    "sqlite",
+    "bigquery",
+    "snowflake",
+    "redshift",
+    "duckdb",
+    "spark",
+    "databricks",
+    "trino",
+    "presto",
+    "clickhouse",
+    "oracle",
+    "mssql", "tsql",
+})
+
+
+class AsqlCompilationError(Exception):
+    """Raised when ASQL compilation fails for a specific file."""
+    
+    def __init__(self, file_path: Path, original_error: Exception) -> None:
+        self.file_path = file_path
+        self.original_error = original_error
+        super().__init__(
+            f"Failed to compile {file_path}: {original_error}"
+        )
+
+
+class InvalidDialectError(ValueError):
+    """Raised when an invalid SQL dialect is specified."""
+    
+    def __init__(self, dialect: str) -> None:
+        self.dialect = dialect
+        valid_list = ", ".join(sorted(VALID_DIALECTS))
+        super().__init__(
+            f"Invalid dialect '{dialect}'. Valid dialects: {valid_list}"
+        )
+
+
+# =============================================================================
 # CLI Preprocessor Approach
 # =============================================================================
 
@@ -55,13 +100,23 @@ def get_manifest_models(manifest_path: str = "target/manifest.json") -> set[str]
     if not manifest_file.exists():
         return set()
     
-    with open(manifest_file) as f:
+    with open(manifest_file, encoding="utf-8") as f:
         manifest = json.load(f)
     
+    # Validate manifest structure
+    if not isinstance(manifest, dict):
+        return set()
+    
+    nodes = manifest.get("nodes")
+    if not isinstance(nodes, dict):
+        return set()
+    
     models = set()
-    for node_id, node in manifest.get("nodes", {}).items():
-        if node.get("resource_type") == "model":
-            models.add(node["name"])
+    for node_id, node in nodes.items():
+        if isinstance(node, dict) and node.get("resource_type") == "model":
+            name = node.get("name")
+            if isinstance(name, str):
+                models.add(name)
     
     return models
 
@@ -76,18 +131,31 @@ def discover_asql_files(models_dir: str = "models") -> list[Path]:
     Returns:
         List of paths to .asql files
     """
-    models_path = Path(models_dir)
+    models_path = Path(models_dir).resolve()
     if not models_path.exists():
         return []
     
     return list(models_path.rglob("*.asql"))
 
 
+def validate_dialect(dialect: str) -> None:
+    """
+    Validate that the dialect is supported.
+    
+    Args:
+        dialect: SQL dialect name
+        
+    Raises:
+        InvalidDialectError: If dialect is not supported
+    """
+    if dialect.lower() not in VALID_DIALECTS:
+        raise InvalidDialectError(dialect)
+
+
 def compile_project(
     models_dir: str = "models",
     manifest_path: str = "target/manifest.json",
     dialect: str = "postgres",
-    clean: bool = False,
     verbose: bool = True,
 ) -> list[tuple[Path, Path]]:
     """
@@ -99,13 +167,19 @@ def compile_project(
         models_dir: Path to dbt models directory
         manifest_path: Path to dbt manifest (for ref detection)
         dialect: SQL dialect to compile to
-        clean: If True, remove .sql files for .asql files
         verbose: Print progress messages
         
     Returns:
         List of (asql_path, sql_path) tuples that were compiled
+        
+    Raises:
+        InvalidDialectError: If dialect is not supported
+        AsqlCompilationError: If compilation fails for a file
     """
     from dbt_asql.compiler import compile_asql_model
+    
+    # Validate dialect upfront
+    validate_dialect(dialect)
     
     asql_files = discover_asql_files(models_dir)
     
@@ -116,8 +190,11 @@ def compile_project(
     
     # Try to load manifest for model detection
     known_models = get_manifest_models(manifest_path)
-    if verbose and known_models:
-        print(f"Found {len(known_models)} models in manifest")
+    if verbose:
+        if known_models:
+            print(f"Found {len(known_models)} models in manifest")
+        else:
+            print(f"No manifest found at {manifest_path} (ref detection disabled)")
     
     compiled = []
     
@@ -125,29 +202,27 @@ def compile_project(
         if verbose:
             print(f"Compiling: {asql_file}")
         
-        # Read ASQL
-        asql_code = asql_file.read_text()
-        
-        # Compile to SQL
-        sql = compile_asql_model(
-            asql_code,
-            known_models=known_models,
-            dialect=dialect,
-        )
-        
-        # Write .sql file alongside .asql
-        sql_file = asql_file.with_suffix(".sql")
-        
-        if clean:
-            if sql_file.exists():
-                sql_file.unlink()
-                if verbose:
-                    print(f"  Removed: {sql_file}")
-        else:
-            sql_file.write_text(sql)
+        try:
+            # Read ASQL with explicit encoding
+            asql_code = asql_file.read_text(encoding="utf-8")
+            
+            # Compile to SQL
+            sql = compile_asql_model(
+                asql_code,
+                known_models=known_models,
+                dialect=dialect,
+            )
+            
+            # Write .sql file alongside .asql with explicit encoding
+            sql_file = asql_file.with_suffix(".sql")
+            sql_file.write_text(sql, encoding="utf-8")
+            
             if verbose:
                 print(f"  → {sql_file}")
             compiled.append((asql_file, sql_file))
+            
+        except Exception as e:
+            raise AsqlCompilationError(asql_file, e) from e
     
     return compiled
 
@@ -181,6 +256,19 @@ def clean_project(models_dir: str = "models", verbose: bool = True) -> list[Path
 # =============================================================================
 
 
+def _get_jinja_dialect() -> str:
+    """
+    Get the SQL dialect for Jinja extension.
+    
+    Reads from DBT_ASQL_DIALECT environment variable, defaults to postgres.
+    """
+    dialect = os.environ.get("DBT_ASQL_DIALECT", "postgres")
+    # Validate but don't raise - just fall back to postgres
+    if dialect.lower() not in VALID_DIALECTS:
+        return "postgres"
+    return dialect
+
+
 class AsqlExtension(Extension):
     """
     Jinja extension for ASQL in dbt.
@@ -194,6 +282,9 @@ class AsqlExtension(Extension):
     
     This is automatically registered when dbt-asql is installed,
     via the pth file mechanism (like dbt-prql).
+    
+    Environment variables:
+        DBT_ASQL_DIALECT: SQL dialect to compile to (default: postgres)
     """
     
     tags = {"asql"}
@@ -213,13 +304,20 @@ class AsqlExtension(Extension):
     
     def _compile_asql(self, args: list, caller: callable) -> str:
         """Compile ASQL to SQL."""
-        from dbt_asql.compiler import compile_asql_model
+        try:
+            from dbt_asql.compiler import compile_asql_model
+        except ImportError as e:
+            raise ImportError(
+                "Failed to import dbt_asql.compiler. "
+                "Ensure the asql package is installed: pip install asql"
+            ) from e
         
         asql_code = caller()
+        dialect = _get_jinja_dialect()
         
         # Compile ASQL to SQL
         # Note: We don't have access to manifest here, so no auto ref detection
-        sql = compile_asql_model(asql_code, dialect="postgres")
+        sql = compile_asql_model(asql_code, dialect=dialect)
         
         # Return with comment showing original ASQL
         asql_lines = "\n".join(f"-- {line}" for line in asql_code.strip().splitlines())
@@ -241,6 +339,7 @@ def patch_dbt_environment() -> None:
     Environment variables:
         DBT_ASQL_DISABLE: Set to disable the patch
         DBT_ASQL_LOG_LEVEL: Set to enable debug logging
+        DBT_ASQL_DIALECT: SQL dialect for Jinja extension (default: postgres)
     """
     if os.environ.get("DBT_ASQL_DISABLE"):
         return

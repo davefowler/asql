@@ -11,7 +11,13 @@ This module handles:
 import re
 from typing import Optional
 
-from asql import compile as asql_compile
+try:
+    from asql import compile as asql_compile
+except ImportError as e:
+    raise ImportError(
+        "Failed to import the asql package. "
+        "Please install it with: pip install asql"
+    ) from e
 
 
 def compile_asql_model(
@@ -29,6 +35,9 @@ def compile_asql_model(
         
     Returns:
         SQL code with dbt Jinja expressions
+        
+    Raises:
+        Exception: If ASQL compilation fails
     """
     # Step 1: Extract and convert SET statements to config
     config, remaining_code = _extract_config(asql_code)
@@ -213,6 +222,8 @@ def _resolve_refs(sql: str, known_models: set[str]) -> str:
     Replace table names with {{ ref('...') }} if they're known models.
     
     Uses regex to find FROM/JOIN clauses and check table names.
+    Note: This is a simplified implementation that handles common cases.
+    It may not handle complex SQL patterns like CTEs or multiline FROM clauses.
     """
     def replace_table(match: re.Match) -> str:
         keyword = match.group(1)  # FROM or JOIN
@@ -231,4 +242,3 @@ def _resolve_refs(sql: str, known_models: set[str]) -> str:
     # Match FROM table or JOIN table (not already using ref/source)
     pattern = r'\b(FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
     return re.sub(pattern, replace_table, sql, flags=re.IGNORECASE)
-
