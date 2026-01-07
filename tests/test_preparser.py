@@ -408,6 +408,81 @@ class TestColumnOperators:
         assert "UPPER(NAME)" in result.upper()
 
 
+class TestExtendOperator:
+    """Test extend operator for adding computed columns."""
+
+    def test_extend_simple_expression(self):
+        """Extend with simple expression."""
+        result = preparse_asql("from users extend age > 15 as is_adult")
+        assert "SELECT *" in result.upper()
+        assert "AGE > 15" in result.upper()
+        assert "IS_ADULT" in result.upper()
+        assert "EXTEND" not in result.upper()
+
+    def test_extend_function_call(self):
+        """Extend with function call."""
+        result = preparse_asql("from users extend upper(name) as name_upper")
+        assert "UPPER(NAME)" in result.upper()
+        assert "NAME_UPPER" in result.upper()
+
+    def test_extend_multiple_chained(self):
+        """Multiple extend statements chained."""
+        result = preparse_asql("from users extend age > 15 as is_adult extend age > 65 as is_senior")
+        assert "AGE > 15" in result.upper()
+        assert "IS_ADULT" in result.upper()
+        assert "AGE > 65" in result.upper()
+        assert "IS_SENIOR" in result.upper()
+
+    def test_extend_with_when_expression(self):
+        """Extend with when expression (case statement)."""
+        result = preparse_asql("""
+            from users
+            extend when age > 18 then "adult" otherwise "minor" as age_category
+        """)
+        # The when expression should be transformed to CASE WHEN
+        assert "CASE" in result.upper()
+        assert "WHEN" in result.upper()
+        assert "AGE_CATEGORY" in result.upper()
+        assert "EXTEND" not in result.upper()
+
+    def test_extend_with_multiline_when(self):
+        """Extend with multiline when expression."""
+        result = preparse_asql("""
+            from users
+            extend when age
+                > 18 then "adult"
+                > 15 then "teen"
+                otherwise "child"
+            as age_category
+        """)
+        assert "CASE" in result.upper()
+        assert "AGE_CATEGORY" in result.upper()
+        assert "ADULT" in result.upper()
+        assert "TEEN" in result.upper()
+
+    def test_extend_with_where(self):
+        """Extend followed by where clause."""
+        result = preparse_asql("from users extend age > 15 as is_adult where is_adult")
+        assert "AGE > 15" in result.upper()
+        assert "IS_ADULT" in result.upper()
+        assert "WHERE" in result.upper()
+
+    def test_extend_with_existing_select(self):
+        """Extend when there's already a select clause."""
+        result = preparse_asql("from users select name, email extend age > 15 as is_adult")
+        assert "NAME" in result.upper()
+        assert "EMAIL" in result.upper()
+        assert "AGE > 15" in result.upper()
+        assert "IS_ADULT" in result.upper()
+
+    def test_extend_combined_with_except(self):
+        """Extend combined with except operator."""
+        result = preparse_asql("from users extend age > 15 as is_adult except password")
+        assert "IS_ADULT" in result.upper()
+        assert "EXCEPT" in result.upper()
+        assert "PASSWORD" in result.upper()
+
+
 class TestStarColumnOverride:
     """Test SELECT *, expr AS col → SELECT * EXCEPT(col), expr AS col."""
     

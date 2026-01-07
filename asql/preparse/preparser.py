@@ -16,6 +16,7 @@ from asql.preparse.aggregates import AggregatesMixin
 from asql.preparse.dates import DatesMixin
 from asql.preparse.stash import StashMixin
 from asql.preparse.clauses import ClausesMixin
+from asql.preparse.extend import ExtendMixin
 from asql.preparse.pivot import PivotMixin
 from asql.preparse.window import WindowMixin
 from asql.preparse.normalize import NormalizeMixin
@@ -54,6 +55,7 @@ class ASQLPreParser(
     DatesMixin,
     StashMixin,
     ClausesMixin,
+    ExtendMixin,
     PivotMixin,
     WindowMixin,
     NormalizeMixin,
@@ -111,6 +113,7 @@ class ASQLPreParser(
         result = self._transform_implicit_function_aliases(result)  # sum_amount → sum(amount) as sum_amount (SELECT and GROUP BY)
         result = self._transform_aggregate_blocks(result)
         result = self._transform_column_operators(result)  # except, rename, replace - before from_first
+        result = self._transform_extend(result)  # extend expr as alias - add computed columns
         result = self._transform_multiple_where(result)  # Combine multiple WHERE clauses
         result = self._transform_string_matching_operators(result)  # contains, icontains, starts with, etc.
         result = self._transform_explode(result)  # explode array as alias
