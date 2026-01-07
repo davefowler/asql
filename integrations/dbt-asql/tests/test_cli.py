@@ -1,11 +1,9 @@
 """Tests for the dbt-asql CLI."""
 
-import json
 import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 
 class TestCLI:

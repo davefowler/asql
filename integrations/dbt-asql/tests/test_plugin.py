@@ -1,10 +1,8 @@
 """Tests for the dbt-asql plugin functionality."""
 
 import json
-import tempfile
 from pathlib import Path
 
-import pytest
 
 from dbt_asql.plugin import (
     AsqlExtension,
