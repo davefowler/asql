@@ -228,6 +228,131 @@ class TestBackwardCompatibility:
         assert "e2" in sql
 
 
+class TestExplicitFKColumnShorthand:
+    """Test explicit FK column shorthand syntax for joins."""
+    
+    def test_explicit_fk_column_inner_join(self) -> None:
+        """Test FK column shorthand with INNER JOIN."""
+        asql = "from accounts & users on owner_id"
+        sql = compile(asql)
+        
+        assert_sql_contains(sql, "JOIN", "accounts", "users", "ON")
+        assert "accounts.owner_id" in sql.lower()
+        assert "users.id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_explicit_fk_column_left_join(self) -> None:
+        """Test FK column shorthand with LEFT JOIN."""
+        asql = "from accounts &? users on owner_id"
+        sql = compile(asql)
+        
+        assert "LEFT JOIN" in sql.upper()
+        assert "accounts.owner_id" in sql.lower()
+        assert "users.id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_explicit_fk_column_right_join(self) -> None:
+        """Test FK column shorthand with RIGHT JOIN."""
+        asql = "from accounts ?& users on owner_id"
+        sql = compile(asql)
+        
+        assert "RIGHT JOIN" in sql.upper()
+        assert "accounts.owner_id" in sql.lower()
+        assert "users.id" in sql.lower()
+    
+    def test_explicit_fk_column_with_alias(self) -> None:
+        """Test FK column shorthand with table alias."""
+        asql = "from accounts &? users as u on owner_id"
+        sql = compile(asql)
+        
+        assert "LEFT JOIN" in sql.upper()
+        assert "accounts.owner_id" in sql.lower()
+        # Should use alias in the condition
+        assert "u.id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_explicit_fk_column_chained_joins(self) -> None:
+        """Test FK column shorthand with multiple chained joins."""
+        asql = """from orders 
+            & customers on customer_id 
+            &? shipping on shipping_id"""
+        sql = compile(asql)
+        
+        assert_sql_contains(sql, "orders", "customers", "shipping")
+        assert "orders.customer_id" in sql.lower()
+        assert "customers.id" in sql.lower()
+        # Note: the second FK is relative to the first table in FROM
+        assert "orders.shipping_id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_explicit_fk_fallback_to_full_condition(self) -> None:
+        """Test that full explicit conditions still work (passthrough)."""
+        asql = "from accounts & users on accounts.owner_id = users.id"
+        sql = compile(asql)
+        
+        assert_sql_contains(sql, "JOIN", "accounts", "users", "ON")
+        assert "accounts.owner_id" in sql.lower()
+        assert "users.id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_explicit_fk_fallback_with_equality(self) -> None:
+        """Test that conditions with = operator fall back to passthrough."""
+        asql = "from accounts & users on accounts.owner_id = users.user_id"
+        sql = compile(asql)
+        
+        # Should pass through unchanged - not expand as FK shorthand
+        assert "accounts.owner_id" in sql.lower()
+        assert "users.user_id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_explicit_fk_fallback_complex_condition(self) -> None:
+        """Test that complex conditions with AND fall back to passthrough."""
+        asql = 'from accounts & users on accounts.owner_id = users.id and users.active = true'
+        sql = compile(asql)
+        
+        assert "AND" in sql.upper()
+        assert "accounts.owner_id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_explicit_fk_with_underscore_column(self) -> None:
+        """Test FK shorthand with underscore in column name."""
+        asql = "from orders & users on created_by_id"
+        sql = compile(asql)
+        
+        assert "orders.created_by_id" in sql.lower()
+        assert "users.id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_traditional_join_fk_shorthand(self) -> None:
+        """Test FK shorthand with traditional JOIN keyword."""
+        asql = "from accounts join users on owner_id"
+        sql = compile(asql)
+        
+        assert "accounts.owner_id" in sql.lower()
+        assert "users.id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_traditional_left_join_fk_shorthand(self) -> None:
+        """Test FK shorthand with traditional LEFT JOIN."""
+        asql = "from accounts left join users on owner_id"
+        sql = compile(asql)
+        
+        assert "LEFT JOIN" in sql.upper()
+        assert "accounts.owner_id" in sql.lower()
+        assert "users.id" in sql.lower()
+        assert_valid_sql(sql)
+    
+    def test_traditional_join_fk_shorthand_with_alias(self) -> None:
+        """Test FK shorthand with traditional JOIN and alias."""
+        asql = "from accounts left join users as u on owner_id"
+        sql = compile(asql)
+        
+        assert "LEFT JOIN" in sql.upper()
+        assert "accounts.owner_id" in sql.lower()
+        assert "u.id" in sql.lower()
+        assert_valid_sql(sql)
+
+
 class TestJoinEdgeCases:
     """Test edge cases in join handling."""
     
