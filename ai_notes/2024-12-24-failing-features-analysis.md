@@ -124,28 +124,13 @@ end as category
 
 ## 4. `with name = from` CTE Syntax
 
-**Status**: ❌ Not implemented  
-**Impact**: Medium - related to issue #1  
-**Tests**: Examples 06, 11
+**Status**: 🚫 Intentionally not supported  
+**Impact**: Medium  
 
-### What Fails
+We intentionally do **not** support ASQL-only `with name = from ...` sugar. Use one of:
 
-```asql
-with customer_stats = from customers   -- ❌ Alternative CTE syntax
-  group by customer_id (sum(amount) as total)
-
-from customer_stats
-```
-
-### Error
-
-```
-Invalid expression / Unexpected token
-```
-
-### Root Cause
-
-The `with name = from ...` syntax (alternative to `stash as`) isn't recognized by the preparser.
+- `stash as` (ASQL-native)
+- standard SQL `WITH name AS (SELECT ...)` (portable)
 
 ---
 
@@ -206,7 +191,7 @@ where status = 'completed'
 |----------|---------|--------|
 | 🔴 **P1** | Multi-query CTEs | Blocks real analytics workflows |
 | 🟠 **P2** | Nested when/then | Bug in existing feature |
-| 🟠 **P2** | `with name = from` syntax | Alternative CTE syntax |
+| 🟠 **P2** | `with name = from` syntax | Alternative CTE syntax (intentionally not supported) |
 | 🟡 **P3** | UNION pipeline | Has workaround (standard SQL) |
 | 🟢 **P4** | Subqueries with `from` | Edge case |
 

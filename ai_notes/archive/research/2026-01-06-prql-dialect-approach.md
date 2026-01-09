@@ -96,7 +96,7 @@ class ASQLPreParser(
     CohortMixin,          # cohort by date
     WhenMixin,            # when x then y else z
     TernaryMixin,         # x ? y : z
-    WithCTEMixin,         # with name = from ...
+    # WithCTEMixin removed (we don't support ASQL-only `with name = from ...` sugar)
     UnionMixin,           # union all, intersect, except
     SlugifyMixin,         # slugify(col)
     BucketMixin,          # bucket(col, ranges)

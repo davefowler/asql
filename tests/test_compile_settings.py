@@ -165,6 +165,16 @@ class TestCompileWithSettings:
         
         assert "SELECT" in sql
         assert "users" in sql
+
+    def test_compile_with_inline_set_without_semicolon(self):
+        """SET statements should work even without a trailing semicolon."""
+        asql = """
+        SET dialect = 'postgres'
+        from users limit 10
+        """
+        sql = compile(asql)
+        assert "SELECT" in sql
+        assert "users" in sql
     
     def test_inline_set_overrides_passed_settings(self):
         """Test that inline SET overrides passed settings."""
@@ -202,6 +212,18 @@ class TestGetSettingsFromQuery:
         
         assert settings.auto_spine is True
         assert dialect == "postgres"
+
+    def test_get_settings_without_semicolons(self):
+        """SET statements without semicolons should still be parsed."""
+        asql = """
+        SET auto_spine = false
+        SET week_start = 'sunday'
+        from orders limit 10
+        """
+        settings, dialect = get_settings_from_query(asql)
+        assert settings.auto_spine is False
+        assert settings.week_start == "sunday"
+        assert dialect is None
     
     def test_get_settings_with_base(self):
         """Test extracting settings with base settings."""

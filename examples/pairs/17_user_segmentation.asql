@@ -1,5 +1,5 @@
 -- User segmentation: RFM analysis
-with customer_rfm = from customers
+from customers
   &? orders on customers.customer_id = orders.customer_id and orders.status = "completed"
   group by customers.customer_id, customers.customer_name (
     max(orders.order_date) as last_order_date,
@@ -7,6 +7,7 @@ with customer_rfm = from customers
     sum(orders.total_amount) as monetary_value,
     current_date - max(orders.order_date) as days_since_last_order
   )
+  stash as customer_rfm
 
 from customer_rfm
   select 

@@ -1,6 +1,5 @@
 """Tests for key() surrogate key function in ASQL."""
 
-import pytest
 import sqlglot
 from sqlglot import exp
 from asql import compile
@@ -150,7 +149,10 @@ class TestKeyCrossDialect:
         asql = "from orders select key(user_id, order_id) as order_key"
         sql = compile(asql, dialect="postgres")
         
-        assert_sql_contains(sql, "MD5", "CONCAT")
+        # PostgreSQL uses either CONCAT() or || for string concatenation
+        # SQLGlot may produce either form
+        assert_sql_contains(sql, "MD5")
+        assert "CONCAT" in sql.upper() or "||" in sql
         assert_valid_sql(sql)
     
     def test_key_mysql(self) -> None:

@@ -440,4 +440,10 @@ def apply_auto_aliasing(
         
         return node
     
-    return visit(statement.copy())
+    result = visit(statement.copy())
+    
+    # Preserve custom attributes (like _cohort_info) that don't survive .copy()
+    if hasattr(statement, '_cohort_info'):
+        result._cohort_info = statement._cohort_info
+    
+    return result

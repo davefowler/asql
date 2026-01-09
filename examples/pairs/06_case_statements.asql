@@ -1,10 +1,11 @@
 -- Case statements: Customer segmentation
-with customer_stats = from customers
+from customers
   &? orders on customers.customer_id = orders.customer_id and orders.status = "completed"
   group by customers.customer_id, customers.customer_name (
     count(distinct orders.order_id) as total_orders,
     coalesce(sum(orders.total_amount), 0) as total_spent
   )
+  stash as customer_stats
 
 from customer_stats
   select 

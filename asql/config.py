@@ -28,7 +28,7 @@ KNOWN_COMPILE_SETTINGS = {
     'alias_prefixes',
     'alias_templates',
     # Join key inference - used for docs/playground examples that don't have real schemas
-    'invent_join_keys',
+    'infer_join_keys',
     # Comment settings
     'include_transpilation_comments',
     'passthrough_comments',
@@ -81,7 +81,7 @@ class CompileSettings:
     # Invent join keys: when True, infer join keys using {table}_id convention
     # when no schema information is available. Useful for docs/playground examples.
     # When False (default), raises an error if join key cannot be determined from schema.
-    invent_join_keys: bool = False
+    infer_join_keys: bool = False
     
     # Schema: provides table/column metadata and relationships for join inference.
     # Can be loaded from dbt schema.yml, asql_schema.yml, or database introspection.
@@ -103,7 +103,7 @@ class CompileSettings:
             "auto_spine": self.auto_spine,
             "week_start": self.week_start,
             "relative_date_type": self.relative_date_type,
-            "invent_join_keys": self.invent_join_keys,
+            "infer_join_keys": self.infer_join_keys,
             "include_transpilation_comments": self.include_transpilation_comments,
             "passthrough_comments": self.passthrough_comments,
         }

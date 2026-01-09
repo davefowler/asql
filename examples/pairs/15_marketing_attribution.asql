@@ -1,19 +1,21 @@
 -- Marketing attribution: First-touch and last-touch attribution
-with first_touch = from marketing_touchpoints
+from marketing_touchpoints
   select 
     customer_id,
     campaign_id,
     touchpoint_date,
     row_number() over (partition by customer_id order by touchpoint_date asc) as rn
   where rn = 1
+  stash as first_touch
 
-with last_touch = from marketing_touchpoints
+from marketing_touchpoints
   select 
     customer_id,
     campaign_id,
     touchpoint_date,
     row_number() over (partition by customer_id order by touchpoint_date desc) as rn
   where rn = 1
+  stash as last_touch
 
 from campaigns
   &? first_touch on campaigns.campaign_id = first_touch.campaign_id

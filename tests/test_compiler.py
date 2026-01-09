@@ -370,12 +370,17 @@ def test_compile_where_or() -> None:
 
 
 def test_compile_where_not() -> None:
-    """Test compiling WHERE with NOT operator."""
+    """Test compiling WHERE with NOT operator.
+    
+    Note: The optimizer simplifies `NOT status = 'inactive'` to `status <> 'inactive'`.
+    This is semantically correct.
+    """
     asql = 'from users where not status == "inactive"'
     sql = compile(asql)
     sql_upper = sql.upper()
     assert "WHERE" in sql_upper
-    assert "NOT" in sql_upper
+    # Optimizer may convert NOT x = y to x <> y
+    assert "NOT" in sql_upper or "<>" in sql, "Expected NOT or <> operator"
 
 
 def test_compile_where_multiple_conditions() -> None:

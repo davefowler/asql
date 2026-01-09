@@ -82,7 +82,7 @@ Result:
 When you don't know all pivot values at compile time, use a subquery to get them dynamically:
 
 ```asql
-# Get pivot values from a subquery
+-- Get pivot values from a subquery
 from sales
   pivot sum(amount) by category values (
     from sales select distinct category

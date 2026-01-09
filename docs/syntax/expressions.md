@@ -175,17 +175,23 @@ select value::INTEGER? ?? 0 as int_or_zero
 
 ## Conditional Expressions (`when`)
 
-ASQL uses `when` for conditional logic, replacing SQL's verbose CASE statements:
+ASQL uses `when` for conditional logic, replacing SQL's verbose CASE statements. Branches are **comma-separated** for clear parsing:
 
 ### Simple Equality
 
 ```asql
 select
   when status
-    is "active" then "Active User"
-    is "pending" then "Pending Approval"
+    is "active" then "Active User",
+    is "pending" then "Pending Approval",
     otherwise "Unknown"
   as status_label
+```
+
+### Inline Form
+
+```asql
+select when status is "active" then 1, otherwise 0 as is_active
 ```
 
 ### Comparison Operators
@@ -193,9 +199,9 @@ select
 ```asql
 select
   when age
-    < 13 then "child"
-    < 20 then "teen"
-    < 65 then "adult"
+    < 13 then "child",
+    < 20 then "teen",
+    < 65 then "adult",
     otherwise "senior"
   as age_group
 ```
@@ -205,8 +211,8 @@ select
 ```asql
 select
   when status
-    in ("active", "pending") then "open"
-    in ("completed", "shipped") then "done"
+    in ("active", "pending") then "open",
+    in ("completed", "shipped") then "done",
     otherwise "other"
   as category
 ```
@@ -216,8 +222,8 @@ select
 ```asql
 select
   when
-    is_vip and amount > 1000 then "priority"
-    amount > 500 then "standard"
+    is_vip and amount > 1000 then "priority",
+    amount > 500 then "standard",
     otherwise "basic"
   as service_tier
 ```
@@ -227,8 +233,8 @@ select
 ```asql-play
 from orders
   group by customer_id (
-    sum(status = "completed" ? 1 : 0) as completed_count,
-    sum(status = "returned" ? amount : 0) as returned_total
+    sum(when status is "completed" then 1, otherwise 0) as completed_count,
+    sum(when status is "returned" then amount, otherwise 0) as returned_total
   )
 ```
 

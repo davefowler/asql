@@ -204,8 +204,8 @@ ASQL adds shorthand for patterns that are verbose in SQL.
 ### Count
 
 ```asql
-#                    -- COUNT(*)
-# users              -- COUNT(DISTINCT user_id)
+--                    -- COUNT(*)
+-- users              -- COUNT(DISTINCT user_id)
 #(distinct user_id)  -- COUNT(DISTINCT user_id) - explicit
 ```
 

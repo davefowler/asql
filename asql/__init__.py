@@ -17,14 +17,13 @@ Example:
     "SELECT region, SUM(amount) AS revenue FROM sales GROUP BY region"
 
 The compilation pipeline:
-1. Pre-parser: Transforms ASQL structural syntax to SQL-like syntax
-2. SQLGlot: Parses the SQL-like syntax into an AST
+1. SQLGlot ASQL Dialect: Parses ASQL syntax directly into an AST
+2. Compiler transforms: Apply ASQL-specific transformations to the AST
 3. Generator: Outputs SQL in the target dialect
 """
 
 from asql.compiler import compile, compile_to_ast, get_preparsed, get_settings_from_query
 from asql.dialect import ASQL, ASQLDialect, register_asql_dialect
-from asql.preparser import preparse_asql, ASQLPreParser
 from asql.reverse_compiler import reverse_compile, detect_dialect
 from asql.config import ASQLConfig, StyleConfig, CompileSettings
 
@@ -64,10 +63,6 @@ __all__ = [
     "get_preparsed",
     "get_settings_from_query",
     "normalize",
-    
-    # Pre-parser
-    "preparse_asql",
-    "ASQLPreParser",
     
     # Dialect
     "ASQL",

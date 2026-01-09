@@ -1,7 +1,8 @@
 -- Nested subqueries: Customers who ordered above average
-with avg_order_amount = from orders
+from orders
   where status = "completed" and order_date >= @2024-01-01
   select avg(total_amount) as avg_amount
+  stash as avg_order_amount
 
 from customers
   & orders on customers.customer_id = orders.customer_id

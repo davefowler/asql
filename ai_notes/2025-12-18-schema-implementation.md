@@ -27,7 +27,7 @@ At compile time:
 1. Load schema from file
 2. Pass to CompileSettings(schema=schema)
 3. Preparser uses schema for join/cohort inference
-4. Falls back to invent_join_keys convention if no schema
+4. Falls back to infer_join_keys convention if no schema
 ```
 
 ---

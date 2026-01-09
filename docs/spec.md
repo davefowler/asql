@@ -239,28 +239,28 @@ ASQL uses the `??` operator for COALESCE (nullish coalescing), providing a clean
 
 **Syntax:**
 ```asql
-# Operator form (preferred)
+-- Operator form (preferred)
 column ?? default_value
 
-# Chained (multiple fallbacks)
+-- Chained (multiple fallbacks)
 column ?? fallback1 ?? fallback2 ?? "default"
 
-# Function form (also accepted)
+-- Function form (also accepted)
 coalesce(column, default_value)
 ```
 
 **Examples:**
 ```asql
-# Handle NULL values
+-- Handle NULL values
 from users select name ?? "Unknown" as display_name
 
-# Multiple fallbacks
+-- Multiple fallbacks
 from products select price ?? sale_price ?? 0 as final_price
 
-# In WHERE clauses
+-- In WHERE clauses
 from users where not (is_deleted ?? false)
 
-# With boolean logic
+-- With boolean logic
 from orders where (status ?? "pending") = "completed"
 ```
 
@@ -293,7 +293,7 @@ from orders
     amount > 1000 ? "high" : "low" as tier,
     status = "active" ? 1 : 0 as is_active
 
-# With expressions
+-- With expressions
 from users
   select
     age >= 18 ? "adult" : "minor" as age_group,
@@ -308,7 +308,7 @@ from users
 
 #### 4.7.2 Multi-Branch Conditionals (`when`)
 
-For multi-branch conditions, ASQL uses `when` expressions:
+For multi-branch conditions, ASQL uses `when` expressions with **comma-separated branches**:
 
 **Basic syntax with `is` for equality:**
 ```asql
@@ -316,49 +316,44 @@ from users
   select
     name,
     when status
-      is "active" then "Active User"
-      is "pending" then "Pending"
+      is "active" then "Active User",
+      is "pending" then "Pending",
       otherwise "Unknown"
     as status_label
 ```
 
-**Implied equality (most concise):**
+**Inline form (single line):**
 ```asql
-when status
-  "active" then 1
-  "pending" then 0
-  otherwise -1
+when status is "active" then 1, is "pending" then 0, otherwise -1
 ```
 
 **Comparison operators:**
 ```asql
 when age
-  < 4 then "infant"
-  < 12 then "child"
-  < 18 then "teen"
+  < 4 then "infant",
+  < 12 then "child",
+  < 18 then "teen",
   otherwise "adult"
 ```
 
 **Inequality with `is not`:**
 ```asql
-when status
-  is not "deleted" then 1
-  otherwise 0
+when status is not "deleted" then 1, otherwise 0
 ```
 
 **Multiple values with `in`:**
 ```asql
 when status
-  in ("active", "pending") then "open"
-  in ("completed", "shipped") then "done"
+  in ("active", "pending") then "open",
+  in ("completed", "shipped") then "done",
   otherwise "unknown"
 ```
 
 **Searched when (complex conditions):**
 ```asql
 when
-  age < 18 and country = "US" then "US Minor"
-  age < 18 then "Minor"
+  age < 18 and country = "US" then "US Minor",
+  age < 18 then "Minor",
   otherwise "Adult"
 ```
 
@@ -367,9 +362,9 @@ when
 from opportunity
   select
     when
-      is_won then "Won"
-      not is_won and is_closed then "Lost"
-      not is_closed and lower(forecast_category) in ("pipeline", "forecast", "bestcase") then "Pipeline"
+      is_won then "Won",
+      not is_won and is_closed then "Lost",
+      not is_closed and lower(forecast_category) in ("pipeline", "forecast", "bestcase") then "Pipeline",
       otherwise "Other"
     as status
 ```
@@ -380,13 +375,15 @@ from orders
   group by customer_id
   select
     customer_id,
-    sum(status = "completed" ? 1 : 0) as completed_count,
-    sum(status = "returned" ? amount : 0) as returned_value
+    sum(when status is "completed" then 1, otherwise 0) as completed_count,
+    sum(when status is "returned" then amount, otherwise 0) as returned_value
 ```
+
+**Branch separators:** Branches are separated by commas. The trailing comma before `otherwise`/`else` is optional.
 
 **Operators supported:**
 - `is` / `=` - equality
-- `is not` / `!=` - inequality
+- `is not` / `!=` - inequality  
 - `<`, `>`, `<=`, `>=` - comparisons
 - `in (values)` - multiple value match
 
@@ -405,23 +402,23 @@ expression::type_name
 
 **Examples:**
 ```asql
-# Cast to timestamp
+-- Cast to timestamp
 from fields
   select _fivetran_synced::TIMESTAMP as _fivetran_synced
 
-# Cast to date
+-- Cast to date
 from events
   select created_at::DATE as date_day
 
-# Cast to integer
+-- Cast to integer
 from products
   select price::INT as price_int
 
-# Cast to string
+-- Cast to string
 from users
   select id::VARCHAR as user_id_str
 
-# Cast in WHERE clauses
+-- Cast in WHERE clauses
 from orders
   where created_at::DATE = @2024-01-01
 ```
@@ -631,8 +628,12 @@ string agg(name, ", ")     -- → string_agg(name, ", ")
 - **Date “since/until” patterns** are supported as special forms:
 
 ```asql
-days_since_created_at   -- → DATEDIFF('day', created_at, CURRENT_TIMESTAMP)
-days_until_due_date     -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
+-- All three syntaxes work:
+days_since(created_at)     -- Function call (recommended)
+days since created_at      -- Space notation
+days_since_created_at      -- Underscore alias
+
+days_until(due_date)       -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
 ```
 
 #### Underscore shorthand
@@ -693,18 +694,18 @@ ASQL automatically generates meaningful column names when functions are used wit
 The `#` symbol is a shortcut for counting. When followed by a table name, it infers the primary key and performs a distinct count.
 
 ```asql
-# Basic count syntaxes
-#                    -- COUNT(*)
-# *                  -- COUNT(*) (explicit row count)
+-- Basic count syntaxes
+--                    -- COUNT(*)
+-- *                  -- COUNT(*) (explicit row count)
 #(col)               -- COUNT(col)
 #(distinct col)      -- COUNT(DISTINCT col)
 
-# Table name → distinct count with inferred primary key
-# users              -- COUNT(DISTINCT user_id)
-# of users           -- COUNT(DISTINCT user_id)
-# orders             -- COUNT(DISTINCT order_id)
+-- Table name → distinct count with inferred primary key
+-- users              -- COUNT(DISTINCT user_id)
+-- of users           -- COUNT(DISTINCT user_id)
+-- orders             -- COUNT(DISTINCT order_id)
 
-# In select statements
+-- In select statements
 from Users
   select #, birthday
   -- Returns: COUNT(*) as #, birthday
@@ -726,17 +727,17 @@ from Users
 `sum` and `total` are interchangeable (both compile to `SUM()`):
 
 ```asql
-# Standard syntax
+-- Standard syntax
 sum(amount) as revenue
 total(amount) as revenue
 
-# Natural language syntax
+-- Natural language syntax
 Sum of amount as revenue
 Total of amount as revenue
 Sum amount as revenue
 Total amount as revenue
 
-# In group by
+-- In group by
 from sales
   group by region (
     total amount as revenue
@@ -748,17 +749,17 @@ from sales
 Multiple natural language forms for averages:
 
 ```asql
-# Standard syntax
+-- Standard syntax
 avg(Users.age) as avg_age
 average(Users.age) as avg_age
 
-# Natural language syntax
+-- Natural language syntax
 Avg Users.age as avg_age
 Average of Users.age as avg_age
 Average Users.age as avg_age
 Avg of Users.age as avg_age
 
-# With expressions
+-- With expressions
 Avg(Users.age + 3) as adjusted_age
 Average of Users.age + 3 as adjusted_age
 ```
@@ -768,14 +769,14 @@ Average of Users.age + 3 as adjusted_age
 ASQL encourages natural language expressions. The `of` keyword can replace parentheses, making queries read like questions:
 
 ```asql
-# Instead of: count(*) from Users where country = 'US'
-# of Users where country = "US"
+-- Instead of: count(*) from Users where country = 'US'
+-- of Users where country = "US"
 
-# Instead of: sum(amount) from sales
-# Sum of amount from sales
+-- Instead of: sum(amount) from sales
+-- Sum of amount from sales
 
-# Instead of: avg(age) from users group by country
-# Average of Users.age by country
+-- Instead of: avg(age) from users group by country
+-- Average of Users.age by country
 ```
 
 This makes ASQL queries feel like asking questions rather than writing code.
@@ -822,24 +823,24 @@ Or without partition (whole table):
 
 **Examples:**
 ```asql
-# DEDUPLICATION: Keep most recent order per customer
+-- DEDUPLICATION: Keep most recent order per customer
 from orders
   per customer_id first by -order_date
 
-# ADD ROW NUMBER: Number orders per customer (most recent = 1)
+-- ADD ROW NUMBER: Number orders per customer (most recent = 1)
 from orders
   per customer_id number by -order_date
-# Result: adds `row_num` column
+-- Result: adds `row_num` column
 
-# ADD RANK: Rank employees by salary within department
+-- ADD RANK: Rank employees by salary within department
 from employees
   per department rank by -salary
-# Result: adds `rank` column
+-- Result: adds `rank` column
 
-# NO PARTITION: Number all rows
+-- NO PARTITION: Number all rows
 from events
   number by -timestamp
-# Result: adds `row_num` to all rows, ordered by timestamp desc
+-- Result: adds `row_num` to all rows, ordered by timestamp desc
 ```
 
 **Reading the syntax naturally:**
@@ -969,7 +970,7 @@ from sales
 For very simple queries, natural language syntax can be used:
 
 ```asql
-# of Users by country
+-- of Users by country
 Sum of revenue by region, month
 Avg Users.age by country
 ```
@@ -1432,33 +1433,56 @@ WHERE estimated_delivery <= CURRENT_TIMESTAMP + INTERVAL '3 days'
 
 ### 8.7 Time Since/Until Patterns
 
-**`*_since_*` pattern** - time elapsed since a date:
+ASQL provides three equivalent syntaxes for calculating time differences:
+
+**Syntax variants (all equivalent):**
 ```asql
-days_since_created_at        -- → DATEDIFF('day', created_at, CURRENT_TIMESTAMP)
-weeks_since_signup_date      -- → DATEDIFF('week', signup_date, CURRENT_TIMESTAMP)
-months_since_last_login      -- → DATEDIFF('month', last_login, CURRENT_TIMESTAMP)
-years_since_birth_date       -- → DATEDIFF('year', birth_date, CURRENT_TIMESTAMP)
+-- Function call syntax (recommended)
+days_since(created_at)
+months_until(due_date)
+
+-- Space notation (natural language)
+days since created_at
+months until due_date
+
+-- Underscore alias (compact)
+days_since_created_at
+months_until_due_date
 ```
 
-**`*_until_*` pattern** - time remaining until a future date:
-```asql
-days_until_due_date          -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
-weeks_until_deadline         -- → DATEDIFF('week', CURRENT_TIMESTAMP, deadline)
-months_until_renewal         -- → DATEDIFF('month', CURRENT_TIMESTAMP, renewal_date)
-```
+**Available functions:**
+| Since (time elapsed) | Until (time remaining) |
+|---------------------|------------------------|
+| `days_since(col)` | `days_until(col)` |
+| `weeks_since(col)` | `weeks_until(col)` |
+| `months_since(col)` | `months_until(col)` |
+| `years_since(col)` | `years_until(col)` |
+| `hours_since(col)` | `hours_until(col)` |
+| `minutes_since(col)` | `minutes_until(col)` |
+| `seconds_since(col)` | `seconds_until(col)` |
 
 **Example usage:**
 ```asql
 from users
   select
     name,
-    days_since_last_login,
-    months_since_signup_date,
-    years_since_birth_date as age
+    days_since(last_login),           -- Function call
+    months since signup_date,          -- Space notation
+    years_since_birth_date as age      -- Underscore alias
 
 from tasks
-  where days_until_due_date < 7
-  -- Tasks due within a week
+  where days_until(due_date) < 7
+  -- or: where days until due_date < 7
+  -- or: where days_until_due_date < 7
+```
+
+**Compiles to (PostgreSQL):**
+```sql
+SELECT name, 
+       DATEDIFF('day', last_login, CURRENT_TIMESTAMP),
+       DATEDIFF('month', signup_date, CURRENT_TIMESTAMP),
+       DATEDIFF('year', birth_date, CURRENT_TIMESTAMP) AS age
+FROM users
 ```
 
 ### 8.8 Week Start Configuration
@@ -1523,8 +1547,8 @@ from sales
 | Difference | `unit(date1 - date2)` | `days(end - start)` |
 | Relative past | `N unit ago` | `7 days ago` |
 | Relative future | `N unit from now` | `3 days from now` |
-| Time since | `unit_since_col` | `days_since_created_at` |
-| Time until | `unit_until_col` | `days_until_due_date` |
+| Time since | `unit_since(col)` or `unit since col` | `days_since(created_at)` |
+| Time until | `unit_until(col)` or `unit until col` | `days_until(due_date)` |
 | Timezone | `col::TZ` | `created_at::PST` |
 | Week (Sunday) | `week_sunday(col)` | `week_sunday(created_at)` |
 
@@ -1766,11 +1790,11 @@ These operators manipulate column sets without needing to list every column.
 Exclude specific columns from the result:
 
 ```asql
-# Exclude sensitive columns
+-- Exclude sensitive columns
 from users
   except email, phone, ssn
 
-# After a join, exclude from specific tables
+-- After a join, exclude from specific tables
 from users
   & orders on users.id = orders.user_id
   except users.password_hash, orders.internal_notes
@@ -1786,7 +1810,7 @@ Rename columns inline:
 from users
   rename id as user_id, name as user_name
 
-# Rename with table prefix after join
+-- Rename with table prefix after join
 from users
   & orders on users.id = orders.user_id
   rename users.id as user_id
@@ -1802,11 +1826,11 @@ Replace column values with new expressions:
 from users
   replace name with upper(name)
 
-# Chained replacements (comma-separated)
+-- Chained replacements (comma-separated)
 from users
   replace name with upper(name), email with lower(email), salary with round(salary, 2)
 
-# Or separate statements
+-- Or separate statements
 from users
   replace name with upper(name)
   replace email with lower(email)
@@ -1849,11 +1873,11 @@ Transform row values into columns.
 When you know the pivot values at compile time, specify them explicitly:
 
 ```asql
-# Pivot with explicit values
+-- Pivot with explicit values
 from sales
   pivot sum(amount) by category values ("Electronics", "Clothing", "Food")
 
-# Non-aggregate pivot (uses MAX)
+-- Non-aggregate pivot (uses MAX)
 from sales
   pivot amount by category values ("A", "B", "C")
 ```
@@ -1876,11 +1900,11 @@ from monthly_metrics
 Expand array-typed columns into multiple rows:
 
 ```asql
-# Explode array column
+-- Explode array column
 from posts
   explode tags as tag
 
-# Split string and explode
+-- Split string and explode
 from posts
   explode split(tags_csv, ',') as tag
 ```
@@ -2196,14 +2220,14 @@ from users
 **ASQL is case-safe by design.** This means you can use capital letters in column and table names without wrapping them in quotes obsessively. However, table/column names must still match the actual database names (case-insensitively).
 
 ```asql
-# You can write queries using any case style
+-- You can write queries using any case style
 from Users
   select firstName, createdAt, user_id
   where status = "active"
 
-# ASQL resolves case-insensitively to actual database names
-# If database has: users table, first_name column, created_at column
-# ASQL matches them correctly without requiring exact case
+-- ASQL resolves case-insensitively to actual database names
+-- If database has: users table, first_name column, created_at column
+-- ASQL matches them correctly without requiring exact case
 ```
 
 **Important clarification**: 
@@ -2231,16 +2255,16 @@ ASQL normalizes identifiers internally while preserving the original case for SQ
 
 **Example:**
 ```asql
-# You write:
+-- You write:
 from Users
   select firstName, createdAt
 
-# ASQL resolves (case-insensitive):
-# - Users → users (if that's the actual table name)
-# - firstName → first_name (if that's the actual column)
-# - createdAt → created_at (if that's the actual column)
+-- ASQL resolves (case-insensitive):
+-- - Users → users (if that's the actual table name)
+-- - firstName → first_name (if that's the actual column)
+-- - createdAt → created_at (if that's the actual column)
 
-# Generated SQL uses actual database names:
+-- Generated SQL uses actual database names:
 SELECT first_name, created_at FROM users
 ```
 
@@ -2364,7 +2388,7 @@ from sessions
 ### Example 4: Natural Language Aggregates
 
 ```asql
-# of Users by country
+-- of Users by country
 Sum of revenue by region
 Avg Users.age by country
 ```

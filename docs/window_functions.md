@@ -33,7 +33,7 @@ That's 10 lines for a simple concept: "give me the latest order for each custome
 The `per` command is the most intuitive way to handle window-based deduplication and ranking:
 
 ```asql
-# Get the most recent order per customer
+-- Get the most recent order per customer
 from orders
   per customer_id first by -order_date
 ```
@@ -59,24 +59,24 @@ per <partition_cols> <operation> by <order_cols> [as <alias>]
 #### Examples
 
 ```asql
-# Deduplication: most recent order per customer
+-- Deduplication: most recent order per customer
 from orders
   per customer_id first by -order_date
 
-# Add row numbers per customer
+-- Add row numbers per customer
 from orders
   per customer_id number by -order_date
-# Result: adds `row_num` column
+-- Result: adds `row_num` column
 
-# Rank employees by salary within department
+-- Rank employees by salary within department
 from employees
   per department rank by -salary
-# Result: adds `rank` column
+-- Result: adds `rank` column
 
-# Dense rank (no gaps in ranking)
+-- Dense rank (no gaps in ranking)
 from employees
   per department dense rank by -salary
-# Result: adds `dense_rank` column
+-- Result: adds `dense_rank` column
 ```
 
 Note: `dense rank` and `dense_rank` are interchangeable - underscores and spaces work the same.
@@ -88,12 +88,12 @@ Note: `dense rank` and `dense_rank` are interchangeable - underscores and spaces
 For operations across all rows without partitioning:
 
 ```asql
-# Number all rows
+-- Number all rows
 from events
   number by -timestamp
-# Result: adds `row_num` to all rows
+-- Result: adds `row_num` to all rows
 
-# Rank all rows
+-- Rank all rows
 from scores
   rank by -score
 ```
@@ -304,16 +304,16 @@ from employees
 ### Get Most Recent Record Per Group
 
 ```asql
-# Pattern 1: Using per command (cleanest)
+-- Pattern 1: Using per command (cleanest)
 from orders
   per customer_id first by -order_date
 
-# Pattern 2: Using QUALIFY
+-- Pattern 2: Using QUALIFY
 from orders
   select *, row_number() over (partition by customer_id order by -order_date) as rn
   qualify rn = 1
 
-# Pattern 3: Using DISTINCT ON (PostgreSQL-style)
+-- Pattern 3: Using DISTINCT ON (PostgreSQL-style)
 from orders
   distinct on (customer_id)
   order by customer_id, -order_date
@@ -357,12 +357,12 @@ from transactions
 ### Rank Within Groups
 
 ```asql
-# Pattern 1: Using per command
+-- Pattern 1: Using per command
 from employees
   per department rank by -salary
   where rank <= 3  -- Top 3 in each department
 
-# Pattern 2: Using QUALIFY
+-- Pattern 2: Using QUALIFY
 from employees
   select 
     department,
