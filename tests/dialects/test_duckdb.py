@@ -40,10 +40,10 @@ class TestDuckDBBasic(ASQLValidator):
         )
     
     def test_order_by_ascending(self) -> None:
-        """Test ORDER BY ascending (default)."""
+        """Test ORDER BY ascending (default) - includes NULLS FIRST for deterministic sort."""
         self.validate_asql(
             "from users order by name",
-            "SELECT * FROM users ORDER BY name"
+            "SELECT * FROM users ORDER BY name NULLS FIRST"
         )
     
     def test_order_by_descending(self) -> None:

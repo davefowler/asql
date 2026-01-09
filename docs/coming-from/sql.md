@@ -294,7 +294,7 @@ If you can write:
     ```asql
     first_name ?? nickname ?? 'Unknown'
     
-    when amount = 0 then null else amount
+    when amount = 0 then null, else amount
     ```
 
 ---

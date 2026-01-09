@@ -93,11 +93,10 @@ These features are documented as future/planned work in `docs/spec_future.md` (o
 
 **See**: `docs/spec.md` section 4.5 for full documentation.
 
-### Conditional Expressions (Section 4.7)
-- `when status is "active" then 1 otherwise 0`
-- `when age < 18 then "minor" otherwise "adult"`
-
-**Workaround**: Use SQL `CASE WHEN ... THEN ... ELSE ... END`.
+### Conditional Expressions (Section 4.7) ✅
+- `when status is "active" then 1, otherwise 0` — comma-separated branches
+- `when age < 18 then "minor", otherwise "adult"`
+- Compiles to SQL `CASE WHEN ... THEN ... ELSE ... END`
 
 ### Natural Language Aggregates (Section 5.5)
 - `# of Users by country` (inferred FROM)

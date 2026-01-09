@@ -13,26 +13,26 @@ class TestOrderDescBasic(ASQLValidator):
     """Test basic -column DESC syntax."""
     
     def test_simple_desc(self) -> None:
-        """-col becomes col DESC."""
+        """-col becomes col DESC (with NULLS LAST on supported dialects)."""
         self.validate_all(
             "from users order by -created_at",
             write={
                 "duckdb": "SELECT * FROM users ORDER BY created_at DESC",
-                "postgres": "SELECT * FROM users ORDER BY created_at DESC",
+                "postgres": "SELECT * FROM users ORDER BY created_at DESC NULLS LAST",
                 "mysql": "SELECT * FROM users ORDER BY created_at DESC",
                 "sqlite": "SELECT * FROM users ORDER BY created_at DESC",
                 "bigquery": "SELECT * FROM users ORDER BY created_at DESC",
-                "snowflake": "SELECT * FROM users ORDER BY created_at DESC",
+                "snowflake": "SELECT * FROM users ORDER BY created_at DESC NULLS LAST",
             }
         )
     
     def test_simple_asc(self) -> None:
-        """col without prefix is ASC."""
+        """col without prefix is ASC (with NULLS FIRST on supported dialects)."""
         self.validate_all(
             "from users order by name",
             write={
-                "duckdb": "SELECT * FROM users ORDER BY name",
-                "postgres": "SELECT * FROM users ORDER BY name",
+                "duckdb": "SELECT * FROM users ORDER BY name NULLS FIRST",
+                "postgres": "SELECT * FROM users ORDER BY name NULLS FIRST",
                 "mysql": "SELECT * FROM users ORDER BY name",
                 "sqlite": "SELECT * FROM users ORDER BY name",
             }
@@ -79,12 +79,12 @@ class TestOrderDescCrossDialect(ASQLValidator):
     """Cross-dialect ORDER BY DESC tests."""
     
     def test_desc_with_limit(self) -> None:
-        """Test ORDER BY DESC with LIMIT."""
+        """Test ORDER BY DESC with LIMIT (NULLS LAST on supported dialects)."""
         self.validate_all(
             "from users order by -created_at limit 10",
             write={
                 "duckdb": "SELECT * FROM users ORDER BY created_at DESC LIMIT 10",
-                "postgres": "SELECT * FROM users ORDER BY created_at DESC LIMIT 10",
+                "postgres": "SELECT * FROM users ORDER BY created_at DESC NULLS LAST LIMIT 10",
                 "mysql": "SELECT * FROM users ORDER BY created_at DESC LIMIT 10",
                 "sqlite": "SELECT * FROM users ORDER BY created_at DESC LIMIT 10",
             }

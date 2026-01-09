@@ -1,14 +1,16 @@
 -- Cohort analysis: User retention by signup month
-with user_cohorts = from users
+from users
   select 
     user_id,
     month(signup_date) as cohort_month,
     signup_date
+  stash as user_cohorts
 
-with monthly_activity = from user_activities
+from user_activities
   group by user_id, month(activity_date) (
     month(activity_date) as activity_month
   )
+  stash as monthly_activity
 
 from user_cohorts
   &? monthly_activity on user_cohorts.user_id = monthly_activity.user_id 

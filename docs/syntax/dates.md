@@ -172,40 +172,54 @@ from reminders
 
 These compile to dialect-appropriate SQL using `CURRENT_TIMESTAMP` and intervals.
 
-## Time Since/Until Patterns
+## Time Since/Until Functions
 
-### `*_since_*` Pattern
+Calculate time elapsed since a date, or time remaining until a future date.
 
-Calculate time elapsed since a date:
+### Three Equivalent Syntaxes
 
-```asql
-days_since_created_at        -- → days(now() - created_at)
-weeks_since_signup_date      -- → weeks(now() - signup_date)
-months_since_last_login      -- → months(now() - last_login)
-```
-
-### `*_until_*` Pattern
-
-Calculate time remaining until a future date:
+All of these are equivalent:
 
 ```asql
-days_until_due_date          -- → days(due_date - now())
-weeks_until_deadline         -- → weeks(deadline - now())
-months_until_renewal         -- → months(renewal_date - now())
+-- Function call (recommended)
+days_since(created_at)
+months_until(due_date)
+
+-- Space notation (natural language)
+days since created_at
+months until due_date
+
+-- Underscore alias (compact)
+days_since_created_at
+months_until_due_date
 ```
 
-Example:
+### Available Functions
+
+| Since (time elapsed) | Until (time remaining) |
+|---------------------|------------------------|
+| `days_since(col)` | `days_until(col)` |
+| `weeks_since(col)` | `weeks_until(col)` |
+| `months_since(col)` | `months_until(col)` |
+| `years_since(col)` | `years_until(col)` |
+| `hours_since(col)` | `hours_until(col)` |
+| `minutes_since(col)` | `minutes_until(col)` |
+| `seconds_since(col)` | `seconds_until(col)` |
+
+### Examples
 
 ```asql
 from users
   select
     name,
-    days_since_last_login,
-    months_since_signup_date,
-    years_since_birth_date as age
+    days_since(last_login),           -- Function call
+    months since signup_date,          -- Space notation  
+    years_since_birth_date as age      -- Underscore alias
 
 from tasks
-  where days_until_due_date < 7
+  where days_until(due_date) < 7
+  -- or: where days until due_date < 7
+  -- or: where days_until_due_date < 7
 ```
 
 ## Week Start Configuration
@@ -266,8 +280,8 @@ created_at::UTC + 7 days
 | Difference | `unit(date1 - date2)` | `days(end - start)` |
 | Relative past | `N unit ago` | `7 days ago` |
 | Relative future | `N unit from now` | `3 days from now` |
-| Time since | `unit_since_col` | `days_since_created_at` |
-| Time until | `unit_until_col` | `days_until_due_date` |
+| Time since | `unit_since(col)` or `unit since col` | `days_since(created_at)` |
+| Time until | `unit_until(col)` or `unit until col` | `days_until(due_date)` |
 | Timezone | `col::TZ` | `created_at::PST` |
 
 ## Real-World Examples

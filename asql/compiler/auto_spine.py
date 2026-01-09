@@ -615,32 +615,53 @@ def _build_date_spine_from_data_bounds_sql(
     ) + null_union
 
 
+def _build_explicit_values_spine_ast(
+    alias: str,
+    values: List[str],
+    dialect: Optional[str] = None,
+    include_null: bool = False,
+) -> exp.Expression:
+    """Build AST for a categorical spine with explicit values.
+    
+    Returns an exp.Select or exp.Union representing the spine query.
+    SQLGlot handles dialect-specific UNNEST/ARRAY syntax automatically.
+    """
+    # Build array of literal values
+    value_literals = [exp.Literal.string(v) for v in values]
+    array_expr = exp.Array(expressions=value_literals)
+    
+    # UNNEST(array) AS alias - SQLGlot generates correct syntax per dialect
+    unnest_expr = exp.Unnest(expressions=[array_expr])
+    
+    # SELECT alias FROM UNNEST(...) AS alias
+    main_select = exp.Select(
+        expressions=[exp.to_identifier(alias)],
+        from_=exp.From(this=exp.Alias(this=unnest_expr, alias=exp.to_identifier(alias)))
+    )
+    
+    if include_null:
+        # UNION ALL SELECT NULL AS alias
+        null_select = exp.Select(
+            expressions=[exp.Alias(this=exp.Null(), alias=exp.to_identifier(alias))]
+        )
+        return exp.Union(this=main_select, expression=null_select, distinct=False)
+    
+    return main_select
+
+
 def _build_explicit_values_spine_sql(
     alias: str,
     values: List[str],
     dialect: Optional[str] = None,
     include_null: bool = False,
 ) -> str:
-    """Build SQL for a categorical spine with explicit values."""
-    dialect_lower = dialect.lower() if dialect else ""
-
-    values_sql = ", ".join([f"'{v}'" for v in values])
-    null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
-
-    if dialect_lower in ("postgres", "postgresql", "redshift", "duckdb"):
-        return f"SELECT unnest(ARRAY[{values_sql}]) AS {alias}{null_union}"
-    if dialect_lower == "bigquery":
-        return f"SELECT {alias} FROM UNNEST([{values_sql}]) AS {alias}{null_union}"
-    if dialect_lower == "snowflake":
-        return (
-            f"SELECT value AS {alias} FROM TABLE(FLATTEN(INPUT => SPLIT('{','.join(values)}', ',')))"
-            f"{null_union}"
-        )
-
-    unions = [f"SELECT '{v}' AS {alias}" for v in values]
-    if include_null:
-        unions.append(f"SELECT NULL AS {alias}")
-    return " UNION ALL ".join(unions)
+    """Build SQL for a categorical spine with explicit values.
+    
+    Note: This is a wrapper around _build_explicit_values_spine_ast for backward compatibility.
+    New code should use _build_explicit_values_spine_ast directly.
+    """
+    ast = _build_explicit_values_spine_ast(alias, values, dialect, include_null)
+    return ast.sql(dialect=dialect)
 
 
 def _build_date_spine_with_filter_sql(

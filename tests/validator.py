@@ -143,7 +143,13 @@ class ASQLValidator(unittest.TestCase):
     target_dialect: Optional[str] = None
     
     # Default compile settings - auto_spine disabled for simpler test output
-    settings: Optional[CompileSettings] = CompileSettings(auto_spine=False)
+    # Note: Using None as default to avoid mutable default argument issues
+    settings: Optional[CompileSettings] = None
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.settings is None:
+            self.settings = CompileSettings(auto_spine=False)
     
     def validate_asql(
         self,

@@ -178,11 +178,11 @@ select
   amount > 1000 ? "high" : "low" as tier,
   status == "active" ? 1 : 0 as is_active
 
--- Preferred: when for multi-branch conditions
+-- Preferred: when for multi-branch conditions (comma-separated)
 select
   when status
-    is "active" then "Active User"
-    is "pending" then "Pending"
+    is "active" then "Active User",
+    is "pending" then "Pending",
     otherwise "Unknown"
   as status_label
 
@@ -208,16 +208,16 @@ select
 **Alternative**: `=` (also works)
 
 ```asql
--- Preferred (most readable)
+-- Preferred (most readable, comma-separated)
 when status
-  is "active" then 1
-  is "pending" then 0
+  is "active" then 1,
+  is "pending" then 0,
   otherwise -1
 
 -- Also works
 when status
-  = "active" then 1
-  = "pending" then 0
+  = "active" then 1,
+  = "pending" then 0,
   otherwise -1
 ```
 
@@ -232,14 +232,10 @@ when status
 
 ```asql
 -- Preferred
-when status
-  is "active" then 1
-  otherwise 0
+when status is "active" then 1, otherwise 0
 
 -- Also works
-when status
-  is "active" then 1
-  else 0
+when status is "active" then 1, else 0
 ```
 
 **Rationale**: `otherwise` is more explicit and reads better in natural language.

@@ -11,12 +11,15 @@ Public API:
 Implementation submodules:
 - auto_spine: gap-filling spine transformations
 - inline_settings: inline SET parsing
-- explode: dialect-specific explode marker expansion
+- explode_fallback: dialect-specific explode rewriting (Snowflake FLATTEN)
+- pivot_fallback: PIVOT to CASE/WHEN for non-native dialects
 """
 
 from asql.compiler.api import compile, compile_to_ast, get_preparsed, get_settings_from_query
 from asql.compiler.inline_settings import extract_inline_settings, extract_dialect_from_comment
-from asql.compiler.explode import process_explode_markers
+from asql.compiler.explode_fallback import transform_explode_for_dialect
+from asql.compiler.pivot_fallback import transform_pivot_for_dialect
+from asql.compiler.join_inference import resolve_join_condition, JoinCondition
 from asql.compiler.auto_spine import (
     _apply_auto_spine,
     _build_categorical_spine_sql,
@@ -44,7 +47,11 @@ __all__ = [
     "get_settings_from_query",
     "extract_inline_settings",
     "extract_dialect_from_comment",
-    "process_explode_markers",
+    "transform_explode_for_dialect",
+    "transform_pivot_for_dialect",
+    # Join inference
+    "resolve_join_condition",
+    "JoinCondition",
     # Auto-spine (semi-private; used by tests and power users)
     "_apply_auto_spine",
     "_build_categorical_spine_sql",

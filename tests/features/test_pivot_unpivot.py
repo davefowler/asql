@@ -8,8 +8,7 @@ Unpivot syntax:
 - unpivot col1, col2, col3 into name_col, value_col → UNION ALL of columns
 """
 
-from tests.validator import ASQLValidator, ASQLDialectError, ASQLCompilationError
-import pytest
+from tests.validator import ASQLValidator, ASQLCompilationError
 
 
 class TestPivotWithValues(ASQLValidator):

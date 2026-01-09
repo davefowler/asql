@@ -261,8 +261,8 @@ async def api_settings_schema() -> dict:
                     "description": "What type '7 days ago' compiles to"
                 },
                 {
-                    "name": "invent_join_keys",
-                    "label": "Invent Join Keys",
+                    "name": "infer_join_keys",
+                    "label": "Infer Join Keys",
                     "type": "boolean",
                     "default": False,
                     "description": "Infer join keys using {table}_id convention when no schema is available"

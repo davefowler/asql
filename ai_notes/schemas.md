@@ -156,12 +156,12 @@ from orders &? users on orders.user_id = users.id
 select users.name
 ```
 
-### 2. `invent_join_keys` Setting (Just Added)
+### 2. `infer_join_keys` Setting (Just Added)
 
 For docs/playground where no real schema exists:
 
 ```python
-settings = CompileSettings(invent_join_keys=True)
+settings = CompileSettings(infer_join_keys=True)
 # Will assume user_id → users.id, customer_id → customers.id, etc.
 ```
 
@@ -241,7 +241,7 @@ config = ASQLConfig(schema=schema)
 | FK dot notation | ❌ | Not implemented |
 | Schema file loading | ❌ | Not implemented |
 | dbt compatibility | ❌ | Not implemented |
-| `invent_join_keys` setting | ❌ | Added for future use |
+| `infer_join_keys` setting | ❌ | Added for future use |
 
 ---
 
@@ -249,7 +249,7 @@ config = ASQLConfig(schema=schema)
 
 ### Short-term (Docs/Playground)
 
-1. **Use `invent_join_keys=True`** for doc examples and playground
+1. **Use `infer_join_keys=True`** for doc examples and playground
 2. **Document the limitation** - FK dot notation is future feature
 3. **Always show explicit joins** in examples as primary pattern
 
@@ -272,8 +272,10 @@ config = ASQLConfig(schema=schema)
 - `docs/spec.md` §7.4-7.11 - FK traversal specification
 - `docs/quick_start.md` - FK Dot Notation section (documented but not working)
 - `asql/preparse/joins.py` - Current join implementation
-- `asql/config.py` - `invent_join_keys` setting
+- `asql/config.py` - `infer_join_keys` setting
 - `tests/test_join.py` - Join tests (explicit only)
+
+
 
 
 

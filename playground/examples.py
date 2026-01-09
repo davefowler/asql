@@ -643,13 +643,13 @@ from users
 from orders
   select amount > 1000 ? "high" : "low" as tier;
 
--- when for multi-branch conditions (preferred)
+-- when for multi-branch conditions (comma-separated branches)
 -- More readable than SQL CASE WHEN
 from users
   select
     when status
-      is "active" then "Active User"
-      is "pending" then "Pending"
+      is "active" then "Active User",
+      is "pending" then "Pending",
       otherwise "Unknown"
     as status_label"""
     },

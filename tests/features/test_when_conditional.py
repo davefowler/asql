@@ -48,14 +48,9 @@ class TestWhenComparison(ASQLValidator):
         )
     
     def test_when_multiple_conditions(self) -> None:
-        """Multiple when branches with comparisons."""
+        """Multiple when branches with comparisons (comma-separated per spec)."""
         self.validate_contains(
-            '''from users select when age
-                < 4 then "infant"
-                < 12 then "child"
-                < 18 then "teen"
-                otherwise "adult"
-            as age_group''',
+            'from users select when age < 4 then "infant", < 12 then "child", < 18 then "teen", otherwise "adult" as age_group',
             "CASE", "WHEN", "infant", "child", "teen", "adult"
         )
 
@@ -64,13 +59,9 @@ class TestWhenIn(ASQLValidator):
     """Test when with IN operator."""
     
     def test_when_in_list(self) -> None:
-        """when expr in (values) then result."""
+        """when expr in (values) then result (comma-separated per spec)."""
         self.validate_contains(
-            '''from users select when status
-                in ("active", "pending") then "open"
-                in ("completed", "shipped") then "done"
-                otherwise "unknown"
-            as status_category''',
+            'from users select when status in ("active", "pending") then "open", in ("completed", "shipped") then "done", otherwise "unknown" as status_category',
             "CASE", "WHEN", "IN", "open", "done"
         )
 

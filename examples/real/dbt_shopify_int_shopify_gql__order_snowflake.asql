@@ -6,9 +6,9 @@
 
 -- Note: Simplified ASQL version - original has conditional Jinja logic
 
-with orders = from stg_shopify_gql__order
+from stg_shopify_gql__order stash as orders
 
-with customer_visit = from stg_shopify_gql__customer_visit
+from stg_shopify_gql__customer_visit stash as customer_visit
 
 from orders
   &? customer_visit 

@@ -236,7 +236,7 @@ group by month(order_date) (sum(total) as revenue)
 cohort by month(customers.first_order_date)
 ```
 
-If your schema doesn't follow these conventions, provide schema information or enable `invent_join_keys` mode for examples.
+If your schema doesn't follow these conventions, provide schema information or enable `infer_join_keys` mode for examples.
 
 ## Common Use Cases
 

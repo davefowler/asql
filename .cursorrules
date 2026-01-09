@@ -28,6 +28,16 @@
 - **Language spec**: `docs/spec.md`
 - **Future / maybe features**: `docs/spec_future.md`
 
+## ⚠️ Documentation Structure
+- `docs/spec.md` is the **comprehensive spec** - a single large reference file
+- `docs/` contains **mkdocs site** with organized, user-friendly documentation:
+  - `docs/syntax/` - Detailed syntax guides (dates.md, joins.md, etc.)
+  - `docs/reference/` - Reference docs (functions.md, operators.md, etc.)
+  - `docs/concepts/` - Conceptual explanations
+  - `docs/tutorial.md`, `docs/quick_start.md` - Learning paths
+- **When updating features**: Update BOTH spec.md AND the relevant mkdocs pages
+- The mkdocs site is what users see on the website; spec.md is the complete reference
+
 ## ⚠️ AI Notes Location
 - **CRITICAL**: All AI-generated notes, analysis reports, implementation plans, investigations, and research documents MUST go in `ai_notes/` NOT `docs/`
 - `docs/` is ONLY for user-facing public documentation that appears on the website

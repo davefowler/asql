@@ -45,7 +45,7 @@ jobs:
         env:
           POSTGRES_URL: ${{ steps.postgres.outputs.connection-uri }}
         run: |
-          pytest tests/test_execution.py -v --tb=short
+          pytest tests/execution/test_execution.py -v --tb=short
 
   lint:
     runs-on: ubuntu-latest

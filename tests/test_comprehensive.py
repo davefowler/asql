@@ -132,10 +132,15 @@ class TestExpressionPrecedence:
         assert "AND" in sql.upper()
     
     def test_not_precedence(self) -> None:
-        """Test that NOT has highest precedence."""
+        """Test that NOT has highest precedence.
+        
+        Note: The optimizer simplifies `NOT status = 'inactive'` to `status <> 'inactive'`.
+        This is semantically correct.
+        """
         asql = 'from users where not status == "inactive"'
         sql = compile(asql)
-        assert "NOT" in sql.upper()
+        # Optimizer may convert NOT x = y to x <> y
+        assert "NOT" in sql.upper() or "<>" in sql, "Expected NOT or <> operator"
 
 
 class TestStringLiterals:

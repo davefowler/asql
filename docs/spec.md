@@ -308,7 +308,7 @@ from users
 
 #### 4.7.2 Multi-Branch Conditionals (`when`)
 
-For multi-branch conditions, ASQL uses `when` expressions:
+For multi-branch conditions, ASQL uses `when` expressions with **comma-separated branches**:
 
 **Basic syntax with `is` for equality:**
 ```asql
@@ -316,49 +316,44 @@ from users
   select
     name,
     when status
-      is "active" then "Active User"
-      is "pending" then "Pending"
+      is "active" then "Active User",
+      is "pending" then "Pending",
       otherwise "Unknown"
     as status_label
 ```
 
-**Implied equality (most concise):**
+**Inline form (single line):**
 ```asql
-when status
-  "active" then 1
-  "pending" then 0
-  otherwise -1
+when status is "active" then 1, is "pending" then 0, otherwise -1
 ```
 
 **Comparison operators:**
 ```asql
 when age
-  < 4 then "infant"
-  < 12 then "child"
-  < 18 then "teen"
+  < 4 then "infant",
+  < 12 then "child",
+  < 18 then "teen",
   otherwise "adult"
 ```
 
 **Inequality with `is not`:**
 ```asql
-when status
-  is not "deleted" then 1
-  otherwise 0
+when status is not "deleted" then 1, otherwise 0
 ```
 
 **Multiple values with `in`:**
 ```asql
 when status
-  in ("active", "pending") then "open"
-  in ("completed", "shipped") then "done"
+  in ("active", "pending") then "open",
+  in ("completed", "shipped") then "done",
   otherwise "unknown"
 ```
 
 **Searched when (complex conditions):**
 ```asql
 when
-  age < 18 and country = "US" then "US Minor"
-  age < 18 then "Minor"
+  age < 18 and country = "US" then "US Minor",
+  age < 18 then "Minor",
   otherwise "Adult"
 ```
 
@@ -367,9 +362,9 @@ when
 from opportunity
   select
     when
-      is_won then "Won"
-      not is_won and is_closed then "Lost"
-      not is_closed and lower(forecast_category) in ("pipeline", "forecast", "bestcase") then "Pipeline"
+      is_won then "Won",
+      not is_won and is_closed then "Lost",
+      not is_closed and lower(forecast_category) in ("pipeline", "forecast", "bestcase") then "Pipeline",
       otherwise "Other"
     as status
 ```
@@ -380,13 +375,15 @@ from orders
   group by customer_id
   select
     customer_id,
-    sum(status = "completed" ? 1 : 0) as completed_count,
-    sum(status = "returned" ? amount : 0) as returned_value
+    sum(when status is "completed" then 1, otherwise 0) as completed_count,
+    sum(when status is "returned" then amount, otherwise 0) as returned_value
 ```
+
+**Branch separators:** Branches are separated by commas. The trailing comma before `otherwise`/`else` is optional.
 
 **Operators supported:**
 - `is` / `=` - equality
-- `is not` / `!=` - inequality
+- `is not` / `!=` - inequality  
 - `<`, `>`, `<=`, `>=` - comparisons
 - `in (values)` - multiple value match
 
@@ -631,8 +628,12 @@ string agg(name, ", ")     -- → string_agg(name, ", ")
 - **Date “since/until” patterns** are supported as special forms:
 
 ```asql
-days_since_created_at   -- → DATEDIFF('day', created_at, CURRENT_TIMESTAMP)
-days_until_due_date     -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
+-- All three syntaxes work:
+days_since(created_at)     -- Function call (recommended)
+days since created_at      -- Space notation
+days_since_created_at      -- Underscore alias
+
+days_until(due_date)       -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
 ```
 
 #### Underscore shorthand
@@ -1432,33 +1433,56 @@ WHERE estimated_delivery <= CURRENT_TIMESTAMP + INTERVAL '3 days'
 
 ### 8.7 Time Since/Until Patterns
 
-**`*_since_*` pattern** - time elapsed since a date:
+ASQL provides three equivalent syntaxes for calculating time differences:
+
+**Syntax variants (all equivalent):**
 ```asql
-days_since_created_at        -- → DATEDIFF('day', created_at, CURRENT_TIMESTAMP)
-weeks_since_signup_date      -- → DATEDIFF('week', signup_date, CURRENT_TIMESTAMP)
-months_since_last_login      -- → DATEDIFF('month', last_login, CURRENT_TIMESTAMP)
-years_since_birth_date       -- → DATEDIFF('year', birth_date, CURRENT_TIMESTAMP)
+-- Function call syntax (recommended)
+days_since(created_at)
+months_until(due_date)
+
+-- Space notation (natural language)
+days since created_at
+months until due_date
+
+-- Underscore alias (compact)
+days_since_created_at
+months_until_due_date
 ```
 
-**`*_until_*` pattern** - time remaining until a future date:
-```asql
-days_until_due_date          -- → DATEDIFF('day', CURRENT_TIMESTAMP, due_date)
-weeks_until_deadline         -- → DATEDIFF('week', CURRENT_TIMESTAMP, deadline)
-months_until_renewal         -- → DATEDIFF('month', CURRENT_TIMESTAMP, renewal_date)
-```
+**Available functions:**
+| Since (time elapsed) | Until (time remaining) |
+|---------------------|------------------------|
+| `days_since(col)` | `days_until(col)` |
+| `weeks_since(col)` | `weeks_until(col)` |
+| `months_since(col)` | `months_until(col)` |
+| `years_since(col)` | `years_until(col)` |
+| `hours_since(col)` | `hours_until(col)` |
+| `minutes_since(col)` | `minutes_until(col)` |
+| `seconds_since(col)` | `seconds_until(col)` |
 
 **Example usage:**
 ```asql
 from users
   select
     name,
-    days_since_last_login,
-    months_since_signup_date,
-    years_since_birth_date as age
+    days_since(last_login),           -- Function call
+    months since signup_date,          -- Space notation
+    years_since_birth_date as age      -- Underscore alias
 
 from tasks
-  where days_until_due_date < 7
-  -- Tasks due within a week
+  where days_until(due_date) < 7
+  -- or: where days until due_date < 7
+  -- or: where days_until_due_date < 7
+```
+
+**Compiles to (PostgreSQL):**
+```sql
+SELECT name, 
+       DATEDIFF('day', last_login, CURRENT_TIMESTAMP),
+       DATEDIFF('month', signup_date, CURRENT_TIMESTAMP),
+       DATEDIFF('year', birth_date, CURRENT_TIMESTAMP) AS age
+FROM users
 ```
 
 ### 8.8 Week Start Configuration
@@ -1523,8 +1547,8 @@ from sales
 | Difference | `unit(date1 - date2)` | `days(end - start)` |
 | Relative past | `N unit ago` | `7 days ago` |
 | Relative future | `N unit from now` | `3 days from now` |
-| Time since | `unit_since_col` | `days_since_created_at` |
-| Time until | `unit_until_col` | `days_until_due_date` |
+| Time since | `unit_since(col)` or `unit since col` | `days_since(created_at)` |
+| Time until | `unit_until(col)` or `unit until col` | `days_until(due_date)` |
 | Timezone | `col::TZ` | `created_at::PST` |
 | Week (Sunday) | `week_sunday(col)` | `week_sunday(created_at)` |
 

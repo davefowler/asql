@@ -1,13 +1,15 @@
 -- Retention analysis: Monthly active users and retention
-with monthly_users = from user_activities
+from user_activities
   group by user_id, month(activity_date) (
     month(activity_date) as activity_month
   )
+  stash as monthly_users
 
-with user_first_month = from monthly_users
+from monthly_users
   group by user_id (
     min(activity_month) as first_month
   )
+  stash as user_first_month
 
 from monthly_users
   &? user_first_month on monthly_users.user_id = user_first_month.user_id

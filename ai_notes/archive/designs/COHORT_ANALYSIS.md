@@ -175,13 +175,14 @@ ORDER BY uc.cohort_month DESC;
 
 **Current ASQL (21 lines):**
 ```asql
-with user_cohorts = from users
+-- NOTE: `with name = from ...` is not supported; use `stash as` or standard SQL `WITH ... AS (...)`.
+from users
   select 
     user_id,
     month(signup_date) as cohort_month,
     signup_date
 
-with monthly_activity = from user_activities
+from user_activities
   group by user_id, month(activity_date) (
     month(activity_date) as activity_month
   )
@@ -293,13 +294,13 @@ Combining implemented features, a cohort query becomes cleaner:
 
 ```asql
 -- Step 1: Get cohort assignment using first()
-with user_cohorts = from events
+from events
   group by user_id (
     month(first(event_date order by event_date)) as cohort_month
   )
 
 -- Step 2: Activity with period calculation
-with activity = from events
+from events
   join user_cohorts on user_id
   select
     user_id,
@@ -857,7 +858,7 @@ The implemented features from WINDOW_UTILS.md and dates.md provide **most of the
 
 **Today (manual):**
 ```asql
-with user_cohorts = from orders
+from orders
   group by customer_id (
     month(first(order_date order by order_date)) as cohort_month
   )

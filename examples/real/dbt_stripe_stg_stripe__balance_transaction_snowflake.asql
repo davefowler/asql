@@ -6,7 +6,7 @@
 
 -- Note: Simplified ASQL version - original has dbt macros for column filling
 
-with base = from stg_stripe__balance_transaction_tmp
+from stg_stripe__balance_transaction_tmp stash as base
 
 from base
   select 

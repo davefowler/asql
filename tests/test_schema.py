@@ -586,9 +586,9 @@ class TestSchemaJoinInference:
         assert "orders" in sql.lower()
         assert "users" in sql.lower()
     
-    def test_join_with_invent_join_keys(self) -> None:
-        """Test fallback to invent_join_keys when no schema."""
-        settings = CompileSettings(invent_join_keys=True)
+    def test_join_with_infer_join_keys(self) -> None:
+        """Test fallback to infer_join_keys when no schema."""
+        settings = CompileSettings(infer_join_keys=True)
         
         # Without schema, should use convention
         asql = "from orders & users on orders.user_id = users.id"
@@ -649,6 +649,8 @@ class TestSchemaToDict:
         rel = schema.find_relationship("orders", "users")
         assert rel is not None
         assert rel.alias == "user"
+
+
 
 
 

@@ -188,8 +188,8 @@ def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Di
     if skip_compilation:
         return results
     
-    # For docs examples, enable invent_join_keys since we don't have real schemas
-    docs_settings = CompileSettings(invent_join_keys=True)
+    # For docs examples, enable infer_join_keys since we don't have real schemas
+    docs_settings = CompileSettings(infer_join_keys=True)
     
     compilation_errors: list[str] = []
 

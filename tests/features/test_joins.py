@@ -143,3 +143,192 @@ class TestTraditionalJoinSyntax(ASQLValidator):
             "from users left join orders on users.id = orders.user_id",
             "LEFT", "JOIN"
         )
+
+
+class TestSchemaAwareFKShorthand(ASQLValidator):
+    """Test schema-aware FK column expansion in JOIN conditions."""
+    
+    def test_fk_uses_schema_pk_not_id(self) -> None:
+        """FK shorthand uses actual primary key from schema, not just 'id'."""
+        from asql import compile
+        from asql.schema import Schema, Table, Column
+        from asql.config import CompileSettings
+        
+        # Create schema where users has user_id as PK (not 'id')
+        schema = Schema()
+        users = Table(name="users")
+        users.add_column(Column(name="user_id", primary_key=True))
+        users.add_column(Column(name="name"))
+        schema.add_table(users)
+        
+        orders = Table(name="orders")
+        orders.add_column(Column(name="id"))
+        orders.add_column(Column(name="user_id"))  # FK to users
+        schema.add_table(orders)
+        
+        settings = CompileSettings(schema=schema, auto_spine=False)
+        sql = compile("from orders & users on user_id", settings=settings)
+        
+        # Should use user_id (the actual PK) not assume 'id'
+        assert "users.user_id" in sql.lower(), f"Expected users.user_id in: {sql}"
+        assert "orders.user_id" in sql.lower(), f"Expected orders.user_id in: {sql}"
+    
+    def test_fk_detects_column_on_right_table(self) -> None:
+        """Schema helps detect when FK is on the right table, not left."""
+        from asql import compile
+        from asql.schema import Schema, Table, Column
+        from asql.config import CompileSettings
+        
+        schema = Schema()
+        users = Table(name="users")
+        users.add_column(Column(name="id", primary_key=True))
+        users.add_column(Column(name="name"))
+        schema.add_table(users)
+        
+        customers = Table(name="customers")
+        customers.add_column(Column(name="id", primary_key=True))
+        customers.add_column(Column(name="user_id"))  # FK to users - on the RIGHT table
+        schema.add_table(customers)
+        
+        settings = CompileSettings(schema=schema, auto_spine=False)
+        sql = compile("from users & customers on user_id", settings=settings)
+        
+        # Schema should detect that user_id is on customers (right), not users (left)
+        assert "customers.user_id" in sql.lower(), f"Expected customers.user_id in: {sql}"
+        assert "users.id" in sql.lower(), f"Expected users.id in: {sql}"
+    
+    def test_fk_without_schema_uses_defaults(self) -> None:
+        """Without schema, FK shorthand uses default assumptions."""
+        from asql import compile
+        from asql.config import CompileSettings
+        
+        settings = CompileSettings(auto_spine=False)  # No schema
+        sql = compile("from orders & users on user_id", settings=settings)
+        
+        # Without schema, should assume: FK on left table, PK is 'id' on right
+        assert "orders.user_id" in sql.lower(), f"Expected orders.user_id in: {sql}"
+        assert "users.id" in sql.lower(), f"Expected users.id in: {sql}"
+    
+    def test_fk_schema_with_custom_pk_name(self) -> None:
+        """FK shorthand with non-standard primary key name."""
+        from asql import compile
+        from asql.schema import Schema, Table, Column
+        from asql.config import CompileSettings
+        
+        schema = Schema()
+        products = Table(name="products")
+        products.add_column(Column(name="pk", primary_key=True))
+        products.add_column(Column(name="name"))
+        schema.add_table(products)
+        
+        order_items = Table(name="order_items")
+        order_items.add_column(Column(name="id", primary_key=True))
+        order_items.add_column(Column(name="product_pk"))  # FK uses pk naming
+        schema.add_table(order_items)
+        
+        settings = CompileSettings(schema=schema, auto_spine=False)
+        sql = compile("from order_items & products on product_pk", settings=settings)
+        
+        # Should use 'pk' as the primary key, not 'id'
+        assert "products.pk" in sql.lower(), f"Expected products.pk in: {sql}"
+        assert "order_items.product_pk" in sql.lower(), f"Expected order_items.product_pk in: {sql}"
+
+
+class TestAutoJoin(ASQLValidator):
+    """Test automatic join condition inference."""
+    
+    def test_auto_join_with_infer_join_keys(self) -> None:
+        """Auto-infer join condition when infer_join_keys=True."""
+        from asql import compile
+        from asql.config import CompileSettings
+        
+        settings = CompileSettings(infer_join_keys=True)
+        sql = compile("from orders & users", settings=settings)
+        
+        # Should infer: orders.user_id = users.id
+        assert "JOIN" in sql.upper()
+        assert "orders.user_id" in sql.lower()
+        assert "users.id" in sql.lower()
+    
+    def test_auto_join_with_schema_relationship(self) -> None:
+        """Auto-infer join condition from schema relationship."""
+        from asql import compile
+        from asql.config import CompileSettings
+        from asql.schema import Schema, Table, Relationship
+        
+        schema = Schema()
+        schema.add_table(Table.from_column_list("orders", ["id", "customer_id"]))
+        schema.add_table(Table.from_column_list("customers", ["id", "name"]))
+        schema.add_relationship(Relationship(
+            from_table="orders",
+            from_column="customer_id",
+            to_table="customers",
+            to_column="id",
+            source="explicit"
+        ))
+        
+        settings = CompileSettings(schema=schema)
+        sql = compile("from orders & customers", settings=settings)
+        
+        # Should use explicit relationship
+        assert "JOIN" in sql.upper()
+        assert "orders.customer_id" in sql.lower()
+        assert "customers.id" in sql.lower()
+    
+    def test_auto_join_with_inferred_relationship(self) -> None:
+        """Auto-infer join from inferred schema relationship."""
+        from asql import compile
+        from asql.config import CompileSettings
+        from asql.schema import Schema, Table
+        
+        schema = Schema()
+        schema.add_table(Table.from_column_list("orders", ["id", "user_id"]))
+        schema.add_table(Table.from_column_list("users", ["id", "name"]))
+        schema.infer_relationships()
+        
+        settings = CompileSettings(schema=schema)
+        sql = compile("from orders & users", settings=settings)
+        
+        # Should use inferred relationship
+        assert "JOIN" in sql.upper()
+        assert "orders.user_id" in sql.lower()
+        assert "users.id" in sql.lower()
+    
+    def test_auto_join_without_setting_or_schema(self) -> None:
+        """Without infer_join_keys or schema, join has no ON condition."""
+        from asql import compile
+        
+        # No settings - should produce join without condition (becomes comma join)
+        sql = compile("from orders & users")
+        
+        # Should have JOIN but no ON condition
+        assert "users" in sql.lower()
+        # The join should exist but without a condition
+    
+    def test_cross_join_no_auto_condition(self) -> None:
+        """CROSS JOIN should not get auto-inferred condition."""
+        from asql import compile
+        from asql.config import CompileSettings
+        
+        settings = CompileSettings(infer_join_keys=True)
+        sql = compile("from orders * users", settings=settings)
+        
+        # Cross join shouldn't have ON condition
+        assert "CROSS JOIN" in sql.upper()
+        # Should NOT have an ON clause inferred
+        assert "orders.user_id" not in sql.lower() or "ON" not in sql.upper()
+    
+    def test_chained_auto_joins(self) -> None:
+        """Auto-infer conditions for chained joins."""
+        from asql import compile
+        from asql.config import CompileSettings
+        
+        settings = CompileSettings(infer_join_keys=True)
+        sql = compile("from orders & users & products", settings=settings)
+        
+        # Should infer both conditions
+        assert "JOIN" in sql.upper()
+        # orders → users: user_id
+        assert "user_id" in sql.lower()
+        # users → products: product_id
+        assert "product_id" in sql.lower()

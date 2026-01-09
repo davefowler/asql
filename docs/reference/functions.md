@@ -194,6 +194,76 @@ hours(end_date - start_date)    -- Integer hours between
 
 ---
 
+## Time Since/Until Functions
+
+Calculate time elapsed since a date, or time remaining until a future date.
+
+### days_since / days_until
+
+```asql
+-- Three equivalent syntaxes:
+days_since(created_at)          -- Function call (recommended)
+days since created_at           -- Space notation
+days_since_created_at           -- Underscore alias
+
+days_until(due_date)            -- Time remaining
+days until due_date
+days_until_due_date
+```
+
+### weeks_since / weeks_until
+
+```asql
+weeks_since(signup_date)
+weeks since signup_date
+weeks_since_signup_date
+
+weeks_until(deadline)
+weeks until deadline
+```
+
+### months_since / months_until
+
+```asql
+months_since(last_login)
+months since last_login
+
+months_until(renewal_date)
+months until renewal_date
+```
+
+### years_since / years_until
+
+```asql
+years_since(birth_date)         -- Calculate age
+years since birth_date
+
+years_until(contract_end)
+```
+
+### hours_since / hours_until
+
+```asql
+hours_since(event_time)
+hours since event_time
+```
+
+### minutes_since / minutes_until
+
+```asql
+minutes_since(last_update)
+minutes since last_update
+```
+
+### seconds_since / seconds_until
+
+```asql
+seconds_since(request_time)
+seconds since request_time
+```
+
+---
+
 ## Window Functions
 
 ### prior

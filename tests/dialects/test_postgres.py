@@ -3,7 +3,7 @@
 Tests ASQL compilation targeting PostgreSQL dialect.
 """
 
-from tests.validator import ASQLValidator, ASQLDialectError
+from tests.validator import ASQLValidator
 
 
 class TestPostgresBasic(ASQLValidator):
@@ -40,17 +40,17 @@ class TestPostgresBasic(ASQLValidator):
         )
     
     def test_order_by_ascending(self) -> None:
-        """Test ORDER BY ascending (default)."""
+        """Test ORDER BY ascending (default) - includes NULLS FIRST for deterministic sort."""
         self.validate_asql(
             "from users order by name",
-            "SELECT * FROM users ORDER BY name"
+            "SELECT * FROM users ORDER BY name NULLS FIRST"
         )
     
     def test_order_by_descending(self) -> None:
-        """Test ORDER BY descending with - prefix."""
+        """Test ORDER BY descending with - prefix - includes NULLS LAST for deterministic sort."""
         self.validate_asql(
             "from users order by -created_at",
-            "SELECT * FROM users ORDER BY created_at DESC"
+            "SELECT * FROM users ORDER BY created_at DESC NULLS LAST"
         )
 
 

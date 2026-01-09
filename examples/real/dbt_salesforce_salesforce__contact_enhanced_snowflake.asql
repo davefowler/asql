@@ -7,11 +7,11 @@
 -- Note: This is a simplified ASQL version focusing on the core SQL logic
 -- The original dbt file contains Jinja macros which are handled by dbt
 
-with contact = from stg_salesforce__contact
+from stg_salesforce__contact stash as contact
 
-with account = from stg_salesforce__account
+from stg_salesforce__account stash as account
 
-with salesforce_user = from stg_salesforce__user
+from stg_salesforce__user stash as salesforce_user
 
 from contact
   &? account on contact.account_id = account.account_id
