@@ -7,16 +7,17 @@ and which widgets to use for rendering.
 """
 
 # Operation schemas - maps operation type to UI configuration
+# Uses exact ASQL terminology (not "friendly" renamed labels)
 OPERATION_UI_SCHEMAS = {
     "where": {
-        "label": "Filter",
+        "label": "where",
         "icon": "🔍",
         "description": "Filter rows by condition",
         "category": "filter",
         "parameters": [
             {
                 "name": "condition",
-                "label": "Condition",
+                "label": "condition",
                 "widget": "expression",
                 "required": True,
                 "operators": ["=", "!=", "<", ">", "<=", ">=", "contains", "starts with", "ends with", "in"]
@@ -25,35 +26,35 @@ OPERATION_UI_SCHEMAS = {
     },
 
     "join": {
-        "label": "Join",
+        "label": "join",
         "icon": "🔗",
         "description": "Join with another table",
         "category": "join",
         "parameters": [
             {
                 "name": "join_type",
-                "label": "Join Type",
+                "label": "join type",
                 "widget": "dropdown",
                 "required": True,
                 "default": "inner",
                 "options": [
-                    {"value": "inner", "label": "Inner Join (&)"},
-                    {"value": "left", "label": "Left Join (&?)"},
-                    {"value": "right", "label": "Right Join (?&)"},
-                    {"value": "full", "label": "Full Outer Join (?&?)"},
-                    {"value": "cross", "label": "Cross Join (*)"}
+                    {"value": "inner", "label": "inner (&)"},
+                    {"value": "left", "label": "left (&?)"},
+                    {"value": "right", "label": "right (?&)"},
+                    {"value": "full", "label": "full (?&?)"},
+                    {"value": "cross", "label": "cross (*)"}
                 ]
             },
             {
                 "name": "table",
-                "label": "Table",
+                "label": "table",
                 "widget": "text",
                 "required": True,
                 "placeholder": "table_name"
             },
             {
                 "name": "condition",
-                "label": "Join Condition",
+                "label": "on",
                 "widget": "expression",
                 "required": False,
                 "help": "Leave empty to infer from schema",
@@ -63,14 +64,14 @@ OPERATION_UI_SCHEMAS = {
     },
 
     "select": {
-        "label": "Select Columns",
+        "label": "select",
         "icon": "📋",
         "description": "Choose which columns to return",
         "category": "select",
         "parameters": [
             {
                 "name": "columns",
-                "label": "Columns",
+                "label": "columns",
                 "widget": "list",
                 "required": True,
                 "item_type": "text",
@@ -81,14 +82,14 @@ OPERATION_UI_SCHEMAS = {
     },
 
     "group_by": {
-        "label": "Group & Aggregate",
+        "label": "group by",
         "icon": "📊",
         "description": "Group rows and compute aggregations",
         "category": "aggregate",
         "parameters": [
             {
                 "name": "dimensions",
-                "label": "Group By",
+                "label": "group by",
                 "widget": "list",
                 "required": True,
                 "item_type": "text",
@@ -97,7 +98,7 @@ OPERATION_UI_SCHEMAS = {
             },
             {
                 "name": "aggregates",
-                "label": "Aggregations",
+                "label": "aggregations",
                 "widget": "aggregate_list",
                 "required": False,
                 "functions": ["count", "sum", "avg", "min", "max", "count_distinct"],
@@ -107,14 +108,14 @@ OPERATION_UI_SCHEMAS = {
     },
 
     "order_by": {
-        "label": "Sort",
+        "label": "order by",
         "icon": "⬆️",
         "description": "Sort results",
         "category": "sort",
         "parameters": [
             {
                 "name": "expressions",
-                "label": "Sort By",
+                "label": "order by",
                 "widget": "order_list",
                 "required": True,
                 "help": "Columns to sort by"
@@ -123,14 +124,14 @@ OPERATION_UI_SCHEMAS = {
     },
 
     "limit": {
-        "label": "Limit",
+        "label": "limit",
         "icon": "🔢",
         "description": "Limit number of rows",
         "category": "limit",
         "parameters": [
             {
                 "name": "count",
-                "label": "Row Limit",
+                "label": "count",
                 "widget": "number",
                 "required": True,
                 "default": 10,
