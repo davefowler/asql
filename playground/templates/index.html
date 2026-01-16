@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
     <link rel="stylesheet" href="/static/playground/playground.css">
+    <link rel="stylesheet" href="/static/playground/visual-editor.css">
 </head>
 <body>
     <div class="container">
@@ -40,6 +41,10 @@
                             <option value="spark">Spark</option>
                         </select>
                     </div>
+                    <button id="mode-toggle" class="mode-toggle" title="Toggle Visual Editor">
+                        <span class="icon">👁️</span>
+                        <span class="label">Visual</span>
+                    </button>
                     <button class="copy-btn" onclick="copyInput()" title="Copy">
                         <svg viewBox="0 0 16 16" fill="currentColor">
                             <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path>
@@ -48,8 +53,37 @@
                     </button>
                 </div>
                 <div class="panel-content">
-                    <div id="input-editor"></div>
-                    <span class="detected-dialect" id="detected-dialect" style="display: none;"></span>
+                    <!-- Text Editor (CodeMirror) -->
+                    <div id="input-editor-container">
+                        <div id="input-editor"></div>
+                        <span class="detected-dialect" id="detected-dialect" style="display: none;"></span>
+                    </div>
+
+                    <!-- Visual Editor -->
+                    <div id="visual-editor-container" style="display: none;">
+                        <div class="visual-editor">
+                            <!-- FROM block (always visible) -->
+                            <div class="block from-block">
+                                <div class="block-header">
+                                    <span class="block-icon">📁</span>
+                                    <span class="block-title">From</span>
+                                </div>
+                                <div class="block-body">
+                                    <input type="text" id="from-table" placeholder="table_name" class="input-field">
+                                </div>
+                            </div>
+
+                            <!-- Transform blocks container -->
+                            <div id="transforms-container">
+                                <!-- Blocks will be added here dynamically -->
+                            </div>
+
+                            <!-- Add step button -->
+                            <button id="add-step-btn" class="add-step-btn">
+                                <span>+ Add Step</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -135,7 +169,22 @@
             </div>
         </div>
     </div>
-    
+
+    <!-- Add Step Modal (for visual editor) -->
+    <div id="add-step-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Pipeline Step</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="operations-grid" class="operations-grid">
+                    <!-- Operations will be loaded here dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- CodeMirror Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
@@ -151,5 +200,8 @@
     
     <!-- Playground Application -->
     <script src="/static/playground/playground.js"></script>
+
+    <!-- Visual Editor -->
+    <script src="/static/playground/visual-editor.js"></script>
 </body>
 </html>

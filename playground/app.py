@@ -615,46 +615,30 @@ async def compile_from_visual(request: Request):
 async def list_visual_operations():
     """
     List available operations for the visual editor.
-
-    Returns a list of operation types with labels and icons.
+    Dynamically generated from ui_schema.
     """
+    from asql.ui_schema import list_all_operations
+
     return {
-        "operations": [
-            {
-                "type": "where",
-                "label": "Filter",
-                "icon": "🔍",
-                "description": "Filter rows by condition"
-            },
-            {
-                "type": "join",
-                "label": "Join",
-                "icon": "🔗",
-                "description": "Join with another table"
-            },
-            {
-                "type": "select",
-                "label": "Select Columns",
-                "icon": "📋",
-                "description": "Choose which columns to return"
-            },
-            {
-                "type": "group_by",
-                "label": "Group & Aggregate",
-                "icon": "📊",
-                "description": "Group rows and compute aggregations"
-            },
-            {
-                "type": "order_by",
-                "label": "Sort",
-                "icon": "⬆️",
-                "description": "Sort results"
-            },
-            {
-                "type": "limit",
-                "label": "Limit",
-                "icon": "🔢",
-                "description": "Limit number of rows"
-            }
-        ]
+        "operations": list_all_operations()
     }
+
+
+@app.get("/api/visual/operations/{operation_type}/schema")
+async def get_operation_schema(operation_type: str):
+    """
+    Get UI schema for a specific operation type.
+
+    Returns the schema needed to render the operation's form,
+    including parameter definitions, widgets, and validation.
+    """
+    from asql.ui_schema import get_operation_schema
+
+    schema = get_operation_schema(operation_type)
+
+    if not schema:
+        return {
+            "error": f"Unknown operation type: {operation_type}"
+        }
+
+    return schema

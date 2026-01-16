@@ -1007,7 +1007,99 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     checkASQLMode();
+
+    // Visual Editor Mode Toggle
+    setupVisualEditorToggle();
 });
+
+// ========== Visual Editor Integration ==========
+let isVisualMode = false;
+
+function setupVisualEditorToggle() {
+    const modeToggle = document.getElementById('mode-toggle');
+    if (!modeToggle) return;
+
+    modeToggle.addEventListener('click', toggleEditorMode);
+}
+
+async function toggleEditorMode() {
+    isVisualMode = !isVisualMode;
+
+    const textContainer = document.getElementById('input-editor-container');
+    const visualContainer = document.getElementById('visual-editor-container');
+    const toggleBtn = document.getElementById('mode-toggle');
+
+    if (!textContainer || !visualContainer || !toggleBtn) return;
+
+    if (isVisualMode) {
+        // Initialize visual editor if needed
+        if (visualEditor && !visualEditor.initialized) {
+            await visualEditor.init();
+        }
+
+        // Switch to visual mode
+        textContainer.style.display = 'none';
+        visualContainer.style.display = 'block';
+        toggleBtn.classList.add('active');
+        toggleBtn.querySelector('.label').textContent = 'Text';
+
+        // Load current ASQL into visual editor
+        const currentASSQL = inputEditor.getValue();
+        if (currentASSQL.trim() && visualEditor) {
+            await visualEditor.loadFromASQL(currentASSQL);
+        }
+    } else {
+        // Switch to text mode
+        textContainer.style.display = 'block';
+        visualContainer.style.display = 'none';
+        toggleBtn.classList.remove('active');
+        toggleBtn.querySelector('.label').textContent = 'Visual';
+
+        // Update text editor with visual query
+        if (visualEditor) {
+            const asql = await visualEditor.getASSQL();
+            if (asql) {
+                inputEditor.setValue(asql);
+            }
+        }
+    }
+}
+
+// Handle visual editor changes
+window.onVisualEditorChange = debounce(async () => {
+    if (isVisualMode && visualEditor) {
+        const asql = await visualEditor.getASSQL();
+        // Trigger compilation
+        if (asql) {
+            const fromDialect = document.getElementById('from-dialect').value || 'asql';
+            const toDialect = document.getElementById('to-dialect').value || 'snowflake';
+
+            try {
+                const response = await fetch('/api/compile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        asql: asql,
+                        from_dialect: fromDialect,
+                        to_dialect: toDialect,
+                        settings: currentSettings
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    outputEditor.setValue(data.sql || data.asql || '');
+                    hideError();
+                } else {
+                    showError(data.error || 'Compilation failed');
+                }
+            } catch (error) {
+                showError(`Network error: ${error.message}`);
+            }
+        }
+    }
+}, 500);
 
 
 
