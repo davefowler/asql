@@ -397,4 +397,3 @@ ASQL generates meaningful column names automatically:
 | `count(distinct user_id)` | `num_distinct_user_id` |
 
 See the [Auto-Aliasing Reference](../reference/auto-aliasing.md) for the complete mapping table and configuration options.
-

@@ -301,9 +301,10 @@ class TestAutoJoin(ASQLValidator):
         # No settings - should produce join without condition (becomes comma join)
         sql = compile("from orders & users")
         
-        # Should have JOIN but no ON condition
+        # Should have users table referenced
         assert "users" in sql.lower()
-        # The join should exist but without a condition
+        # The join should exist but without an ON condition (no auto-inference without settings)
+        assert " on " not in sql.lower(), f"Join should not have ON clause without settings: {sql}"
     
     def test_cross_join_no_auto_condition(self) -> None:
         """CROSS JOIN should not get auto-inferred condition."""
@@ -315,8 +316,8 @@ class TestAutoJoin(ASQLValidator):
         
         # Cross join shouldn't have ON condition
         assert "CROSS JOIN" in sql.upper()
-        # Should NOT have an ON clause inferred
-        assert "orders.user_id" not in sql.lower() or "ON" not in sql.upper()
+        # Should NOT have an ON clause inferred - check both conditions
+        assert " on " not in sql.lower(), f"CROSS JOIN should not have ON clause: {sql}"
     
     def test_chained_auto_joins(self) -> None:
         """Auto-infer conditions for chained joins."""

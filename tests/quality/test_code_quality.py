@@ -48,7 +48,8 @@ def test_compile_function_signature() -> None:
 
 def test_no_syntax_errors_in_code() -> None:
     """Test that all Python files have valid syntax."""
-    asql_dir = Path(__file__).parent.parent / "asql"
+    # Path goes: tests/quality/test_code_quality.py -> tests/quality -> tests -> repo root -> asql/
+    asql_dir = Path(__file__).parent.parent.parent / "asql"
     
     for py_file in asql_dir.glob("**/*.py"):
         if "__pycache__" in str(py_file):

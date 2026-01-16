@@ -14,10 +14,16 @@ Used by:
 
 from __future__ import annotations
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import TYPE_CHECKING, Optional
+
+import inflect
 
 if TYPE_CHECKING:
     from asql.schema import Schema
+
+# Module-level cached inflect engine for performance
+_inflect_engine = inflect.engine()
 
 
 @dataclass
@@ -202,14 +208,12 @@ def _resolve_from_convention(
     )
 
 
+@lru_cache(maxsize=256)
 def _singularize(name: str) -> str:
-    """Simple singularization for table names."""
-    name_lower = name.lower()
-    if name_lower.endswith("ies"):
-        return name_lower[:-3] + "y"
-    elif name_lower.endswith("es") and name_lower not in ("series", "species"):
-        return name_lower[:-2]
-    elif name_lower.endswith("s") and not name_lower.endswith("ss"):
-        return name_lower[:-1]
-    return name_lower
+    """Singularize table names using inflect library for accuracy.
+    
+    Uses module-level cached engine and lru_cache for performance.
+    """
+    result = _inflect_engine.singular_noun(name.lower())
+    return result if result else name.lower()
 

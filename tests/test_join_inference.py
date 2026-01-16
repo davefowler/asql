@@ -84,14 +84,17 @@ class TestResolveJoinCondition:
         """Test various table name singularization."""
         # Regular plural
         condition = resolve_join_condition("orders", "users", schema=None)
+        assert condition is not None, "Expected join condition for orders/users"
         assert condition.left_column == "user_id"
         
         # -ies → -y
         condition = resolve_join_condition("orders", "categories", schema=None)
+        assert condition is not None, "Expected join condition for orders/categories"
         assert condition.left_column == "category_id"
         
         # -es ending
         condition = resolve_join_condition("orders", "boxes", schema=None)
+        assert condition is not None, "Expected join condition for orders/boxes"
         assert condition.left_column == "box_id"
     
     def test_as_sql(self) -> None:

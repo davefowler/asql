@@ -153,9 +153,12 @@ def apply_implicit_function_aliases(
         if len(parts) < 2:
             return expr
 
+        # Normalize parts for case-insensitive prefix matching
+        parts_lower = [p.lower() for p in parts]
+
         for prefix in prefixes:
             prefix_parts = prefix.lower().split("_")
-            if parts[: len(prefix_parts)] != prefix_parts:
+            if parts_lower[: len(prefix_parts)] != prefix_parts:
                 continue
 
             col_name = "_".join(parts[len(prefix_parts) :])

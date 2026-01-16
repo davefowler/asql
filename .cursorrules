@@ -61,3 +61,31 @@
 - Commits must use "Fixes #<issue-number>" (exact phrase) so GitHub auto-closes the issue.
 
 
+## 🤖 AI Agent Workflow: Publish and Get Feedback
+Use `scripts/publish_and_get_feedback.sh` to submit work and get CI/review feedback.
+
+**Usage:**
+```bash
+# Full flow: push, create/find PR, wait 5 min, get feedback
+./scripts/publish_and_get_feedback.sh --title "asql: fix parser bug (#42)"
+
+# Quick check without waiting (get current PR status immediately)  
+./scripts/publish_and_get_feedback.sh --no-wait
+
+# Custom wait time (e.g., 2 minutes)
+./scripts/publish_and_get_feedback.sh --wait 120
+```
+
+**What it returns:**
+- Last 2 PR comments
+- Last 2 review comments  
+- CI status (✅ success, ❌ failure, 🔄 in progress, ⏳ queued)
+- Failed check details with URLs
+
+**When to use this:**
+- After completing a task, run this to push and create a PR
+- Wait for CI to run and reviewers to comment
+- Review the feedback and address any issues
+- Use `--no-wait` to quickly check PR status without waiting
+
+

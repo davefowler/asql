@@ -44,7 +44,10 @@ def transform_explode_for_dialect(
             "SELECT * FROM t CROSS JOIN (SELECT value AS __alias__ FROM TABLE(FLATTEN(INPUT => __array__))) AS __sub__",
             dialect="snowflake",
         )
-        template_join = template.args.get("joins")[0]
+        joins = template.args.get("joins")
+        if not joins:
+            continue
+        template_join = joins[0]
         subquery = template_join.this
         if not isinstance(subquery, exp.Subquery):
             continue
