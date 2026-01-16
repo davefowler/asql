@@ -13,6 +13,8 @@ from asql import compile
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 from asql.reverse_compiler import reverse_compile, detect_dialect
 from asql.config import ASQLConfig, StyleConfig, CompileSettings
+from asql.json_schema import ast_to_json, json_to_asql
+from asql.compiler.api import compile_to_ast
 
 from .jinja_utils import strip_jinja_templates
 from .examples import (
@@ -525,5 +527,134 @@ async def api_debug_examples_path() -> dict:
         if exists and is_dir and not debug_info['found_path']:
             debug_info['found_path'] = path_str
             debug_info['examples_count'] = file_count
-    
+
     return debug_info
+
+
+# --- Visual Editor API Endpoints ---
+
+@app.post("/api/visual/parse")
+async def parse_to_visual(request: Request):
+    """
+    Convert ASQL text to JSON representation for visual editor.
+
+    Request body:
+        {"asql": "from users where status == \"active\""}
+
+    Response:
+        {"success": true, "query": {...}} or {"success": false, "error": "..."}
+    """
+    try:
+        data = await request.json()
+        asql_text = data.get('asql', '').strip()
+
+        if not asql_text:
+            return {
+                "success": False,
+                "error": "No ASQL query provided"
+            }
+
+        # Parse ASQL to AST
+        ast = compile_to_ast(asql_text)
+
+        # Convert AST to JSON
+        query_json = ast_to_json(ast)
+
+        return {
+            "success": True,
+            "query": query_json
+        }
+    except ASQLSyntaxError as e:
+        return {
+            "success": False,
+            "error": f"Syntax error: {str(e)}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Parse error: {str(e)}"
+        }
+
+
+@app.post("/api/visual/compile")
+async def compile_from_visual(request: Request):
+    """
+    Convert JSON representation from visual editor to ASQL text.
+
+    Request body:
+        {"query": {"from": {"table": "users"}, "transforms": [...]}}
+
+    Response:
+        {"success": true, "asql": "from users\\n  where ..."} or {"success": false, "error": "..."}
+    """
+    try:
+        data = await request.json()
+        query_json = data.get('query', {})
+
+        if not query_json:
+            return {
+                "success": False,
+                "error": "No query provided"
+            }
+
+        # Convert JSON to ASQL
+        asql_text = json_to_asql(query_json)
+
+        return {
+            "success": True,
+            "asql": asql_text
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Compilation error: {str(e)}"
+        }
+
+
+@app.get("/api/visual/operations")
+async def list_visual_operations():
+    """
+    List available operations for the visual editor.
+
+    Returns a list of operation types with labels and icons.
+    """
+    return {
+        "operations": [
+            {
+                "type": "where",
+                "label": "Filter",
+                "icon": "🔍",
+                "description": "Filter rows by condition"
+            },
+            {
+                "type": "join",
+                "label": "Join",
+                "icon": "🔗",
+                "description": "Join with another table"
+            },
+            {
+                "type": "select",
+                "label": "Select Columns",
+                "icon": "📋",
+                "description": "Choose which columns to return"
+            },
+            {
+                "type": "group_by",
+                "label": "Group & Aggregate",
+                "icon": "📊",
+                "description": "Group rows and compute aggregations"
+            },
+            {
+                "type": "order_by",
+                "label": "Sort",
+                "icon": "⬆️",
+                "description": "Sort results"
+            },
+            {
+                "type": "limit",
+                "label": "Limit",
+                "icon": "🔢",
+                "description": "Limit number of rows"
+            }
+        ]
+    }
