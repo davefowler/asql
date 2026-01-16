@@ -20,6 +20,161 @@ ASQL Text → sqlglot.parse(dialect="asql") → AST → Transformations → SQL
 
 **Critical Gap**: No JSON serialization layer exists yet - AST is pure Python objects.
 
+### Leveraging SQLGlot's Type System
+
+**IMPORTANT DISCOVERY**: SQLGlot provides extensive type metadata that can be leveraged for UI generation, significantly reducing implementation complexity.
+
+#### What SQLGlot Provides
+
+1. **Expression Metadata (`arg_types`)**
+   - Every SQLGlot Expression class has an `arg_types` dictionary
+   - Keys: Parameter names
+   - Values: Boolean (True = required, False = optional)
+   - **946 Expression classes** with this metadata!
+
+   ```python
+   from sqlglot import exp
+
+   # Binary operators
+   exp.EQ.arg_types = {'this': True, 'expression': True}
+
+   # Join
+   exp.Join.arg_types = {
+       'this': True,      # Required: table to join
+       'on': False,       # Optional: join condition
+       'kind': False,     # Optional: INNER, LEFT, etc.
+       'using': False     # Optional: USING clause
+   }
+
+   # Aggregate functions
+   exp.Sum.arg_types = {'this': True}
+   exp.Count.arg_types = {'this': False, 'expressions': False}
+   exp.DateTrunc.arg_types = {'unit': True, 'this': True, 'zone': False}
+   ```
+
+2. **Expression Type Hierarchy**
+   - Clear categorization: `exp.Binary`, `exp.Func`, `exp.Condition`, `exp.Predicate`
+   - Can group operations by base class for UI organization
+   - Auto-generate operator palettes and function pickers
+
+3. **SQL Data Types**
+   - `exp.DataType.Type` enum with 127 SQL types
+   - Use for column type selectors and validation
+
+4. **ASQL-Specific Registries**
+   ```python
+   # All ASQL custom functions (60+)
+   from asql.functions import ASQL_FUNCTION_REGISTRY
+   available_functions = list(ASQL_FUNCTION_REGISTRY.keys())
+   # ['DAYS_SINCE', 'RUNNING_SUM', 'FILL_FORWARD', ...]
+
+   # All pipeline transforms (34+)
+   from asql.dialect import ASQLParser
+   available_transforms = list(ASQLParser.TRANSFORM_PARSERS.keys())
+   # ['WHERE', 'JOIN', 'GROUP BY', 'STASH', ...]
+   ```
+
+5. **Python Dataclasses with Type Hints**
+   ```python
+   # Already exists in asql/schema.py and asql/config.py
+   @dataclass
+   class Column:
+       name: str
+       type: Optional[str] = None
+       primary_key: bool = False
+       distinct_values: Optional[List[str]] = None
+
+   @dataclass
+   class CompileSettings:
+       auto_spine: bool = True
+       week_start: Literal["monday", "sunday"] = "monday"
+       alias_prefixes: Dict[str, str] = field(default_factory=dict)
+       # Already has to_dict() and from_dict()!
+   ```
+
+#### What We Need to Add (Thin Custom Layer)
+
+SQLGlot's `arg_types` only provides **parameter names** and **required/optional flags**, but not:
+- Type constraints (e.g., "condition must be boolean expression")
+- UI hints (dropdown, column picker, expression builder)
+- Labels and descriptions for end users
+- Validation rules
+
+**Solution**: Build a lightweight schema layer on top of SQLGlot's metadata:
+
+```python
+# asql/ui_schema.py
+TRANSFORM_UI_SCHEMAS = {
+    'where': {
+        'sqlglot_class': exp.Where,
+        'parameters': {
+            'condition': {
+                'type': 'expression',
+                'constraint': 'boolean',
+                'ui_widget': 'expression_builder',
+                'label': 'Filter Condition',
+                'description': 'Boolean expression to filter rows',
+                'operators': ['=', '!=', '<', '>', 'contains', 'in']
+            }
+        }
+    },
+    'join': {
+        'sqlglot_class': exp.Join,
+        'parameters': {
+            'kind': {
+                'type': 'enum',
+                'options': ['INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS'],
+                'labels': {
+                    'INNER': 'Inner Join (&)',
+                    'LEFT': 'Left Join (&?)',
+                    'RIGHT': 'Right Join (?&)',
+                    'FULL': 'Full Outer Join (?&?)',
+                    'CROSS': 'Cross Join (*)'
+                },
+                'ui_widget': 'icon_selector',
+                'default': 'INNER'
+            },
+            'this': {
+                'type': 'table',
+                'source': 'schema.tables',
+                'ui_widget': 'table_picker',
+                'label': 'Join Table'
+            },
+            'on': {
+                'type': 'expression',
+                'constraint': 'boolean',
+                'ui_widget': 'expression_builder',
+                'optional': True,
+                'inferred_from': 'schema.relationships',
+                'label': 'Join Condition'
+            }
+        }
+    }
+}
+
+# Usage: Merge SQLGlot's arg_types with our UI schema
+def get_form_schema(transform_type: str):
+    ui_schema = TRANSFORM_UI_SCHEMAS[transform_type]
+    sqlglot_class = ui_schema['sqlglot_class']
+
+    # Start with SQLGlot's parameter list
+    parameters = sqlglot_class.arg_types.copy()
+
+    # Enhance with our UI metadata
+    for param_name, param_schema in ui_schema['parameters'].items():
+        parameters[param_name].update(param_schema)
+
+    return parameters
+```
+
+#### Benefits of This Approach
+
+- ✅ **90% Less Work**: SQLGlot provides parameter discovery, we only add UI hints
+- ✅ **Stay in Sync**: When SQLGlot adds new Expression types, we automatically see them
+- ✅ **Extensible**: Adding ASQL features only requires lightweight UI schema entries
+- ✅ **Type-Safe**: Leverage Python's type hints and dataclasses
+- ✅ **Introspectable**: Can programmatically discover all operations at runtime
+
 ### ASQL Syntax Characteristics
 
 **Pipeline-Based:**
@@ -517,10 +672,13 @@ class FunctionCall(Expression): ...
 class Literal(Expression): ...
 ```
 
-**3. Schema-Driven Form Generation**
+**3. Schema-Driven Form Generation (Leveraging SQLGlot)**
 
 ```python
 # asql/form_schema.py
+
+from sqlglot import exp
+from asql.ui_schema import TRANSFORM_UI_SCHEMAS
 
 def get_transform_form_schema(
     transform_type: str,
@@ -528,10 +686,55 @@ def get_transform_form_schema(
 ) -> Dict[str, Any]:
     """
     Generate JSON Schema for configuring a transform.
+    Merges SQLGlot's arg_types with our UI metadata.
     Context includes available columns, tables, functions.
     """
 
-    if transform_type == "where":
+    # Get UI schema (our thin layer)
+    ui_schema = TRANSFORM_UI_SCHEMAS.get(transform_type)
+    if not ui_schema:
+        raise ValueError(f"Unknown transform: {transform_type}")
+
+    # Get SQLGlot's parameter metadata
+    sqlglot_class = ui_schema['sqlglot_class']
+    sqlglot_params = sqlglot_class.arg_types  # {'this': True, 'on': False, ...}
+
+    # Merge: Start with SQLGlot's parameters, enhance with UI metadata
+    form_schema = {"type": "object", "properties": {}}
+
+    for param_name, required in sqlglot_params.items():
+        # Get our UI metadata for this parameter (if defined)
+        param_ui = ui_schema['parameters'].get(param_name, {})
+
+        # Build form field
+        field = {
+            "required": required,
+            "type": param_ui.get('type', 'string'),
+            "label": param_ui.get('label', param_name.replace('_', ' ').title()),
+            "description": param_ui.get('description', ''),
+            "ui_widget": param_ui.get('ui_widget', 'text')
+        }
+
+        # Add context-specific data
+        if param_ui.get('type') == 'table':
+            field['options'] = context.available_tables
+        elif param_ui.get('source') == 'schema.columns':
+            field['options'] = context.columns
+        elif param_ui.get('type') == 'enum':
+            field['options'] = param_ui['options']
+            field['labels'] = param_ui.get('labels', {})
+
+        # Handle inferred values (e.g., join conditions from schema)
+        if param_ui.get('inferred_from') == 'schema.relationships':
+            field['inferred_value'] = context.infer_join_condition()
+
+        form_schema["properties"][param_name] = field
+
+    return form_schema
+
+# Example usage:
+# WHERE transform
+if transform_type == "where":
         return {
             "type": "object",
             "properties": {
@@ -665,6 +868,49 @@ async def validate_query(
         "errors": errors,
         "warnings": warnings
     }
+
+@router.get("/operations")
+async def list_operations():
+    """
+    List all available ASQL operations by introspecting registries.
+    This is dynamically generated - adding new operations to the dialect
+    automatically makes them available in the UI.
+    """
+    from asql.dialect import ASQLParser
+    from asql.ui_schema import TRANSFORM_UI_SCHEMAS
+
+    operations = []
+    for op_name in ASQLParser.TRANSFORM_PARSERS.keys():
+        ui_schema = TRANSFORM_UI_SCHEMAS.get(op_name, {})
+        operations.append({
+            "name": op_name,
+            "category": ui_schema.get('category', 'other'),
+            "description": ui_schema.get('description', ''),
+            "aliases": ui_schema.get('aliases', [])
+        })
+
+    return {"operations": operations}
+
+@router.get("/functions")
+async def list_functions():
+    """
+    List all available ASQL functions by introspecting registries.
+    Automatically stays in sync with function additions.
+    """
+    from asql.functions import ASQL_FUNCTION_REGISTRY
+    from asql.ui_schema import FUNCTION_UI_SCHEMAS
+
+    functions = []
+    for func_name in ASQL_FUNCTION_REGISTRY.keys():
+        ui_schema = FUNCTION_UI_SCHEMAS.get(func_name, {})
+        functions.append({
+            "name": func_name,
+            "category": ui_schema.get('category', 'other'),
+            "signature": ui_schema.get('signature', f"{func_name}(...)"),
+            "description": ui_schema.get('description', '')
+        })
+
+    return {"functions": functions}
 
 @router.get("/forms/transform/{transform_type}")
 async def get_transform_form(
@@ -1231,22 +1477,60 @@ function ImportButton() {
 - ✅ **Extensible**: New transform = new block component
 - ✅ **Version-controlled JSON**: Queries can be stored in JSON format
 - ✅ **API-first**: Backend can be used by other clients
+- ✅ **Built on SQLGlot types**: Leverages 946 expression types with arg_types metadata
+- ✅ **Minimal sync burden**: Only UI hints need updates, parameters auto-discovered
+- ✅ **Dynamic discovery**: Operations/functions introspectable at runtime
 
 #### Cons
 
 **For Users:**
 - ❌ **Slower for experts**: More clicks than typing for power users
 - ❌ **Limited expressiveness**: May not support all ASQL features initially
-- ❌ **Not copyable as text**: Queries are UI state, not plain text
+- ❌ **Not copyable as text**: Queries are UI state, not plain text (mitigated by import/export)
 - ❌ **Vertical space**: Long pipelines require scrolling
 - ❌ **Learning curve**: Different mental model than SQL
 
 **For Developers:**
-- ❌ **Large upfront investment**: Requires building entire component library
-- ❌ **JSON schema complexity**: Must mirror entire ASQL grammar
-- ❌ **Sync burden**: JSON format must stay in sync with ASQL features
+- ❌ **Upfront investment**: Requires building component library (but less than expected due to SQLGlot)
+- ❌ **UI schema maintenance**: Must add UI hints for new operations (lightweight ~10 lines per operation)
 - ❌ **Complex state management**: Nested expressions, validation, etc.
 - ❌ **Accessibility challenges**: Custom components harder to make accessible
+
+#### Maintenance Burden (NEW ASQL Feature)
+
+**Example: Adding DEDUPLICATE operation**
+
+```python
+# Step 1: Add to dialect (already required today)
+TRANSFORM_PARSERS["DEDUPLICATE"] = lambda self, query: self._parse_asql_deduplicate(query)
+
+# Step 2: Add minimal UI schema (NEW - ~10 lines)
+TRANSFORM_UI_SCHEMAS["DEDUPLICATE"] = {
+    'sqlglot_class': exp.Select,  # Maps to underlying SQLGlot node
+    'category': 'advanced',
+    'description': 'Remove duplicate rows',
+    'parameters': {
+        'key_columns': {
+            'type': 'list',
+            'ui_widget': 'column_picker',
+            'label': 'Deduplicate By'
+        },
+        'keep': {
+            'type': 'enum',
+            'options': ['first', 'last'],
+            'ui_widget': 'dropdown',
+            'default': 'first'
+        }
+    }
+}
+
+# Step 3: Done! UI auto-generates:
+# - Form fields from parameters
+# - Add to operation palette via /operations introspection
+# - No custom React components needed (uses generic column_picker and dropdown)
+```
+
+**Key Point**: You're NOT building a new custom UI component for every operation. The UI widgets (column_picker, dropdown, expression_builder) are reusable. You're just configuring which widgets to use via declarative schema.
 
 #### Implementation Estimate
 
