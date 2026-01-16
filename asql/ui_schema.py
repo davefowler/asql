@@ -4,28 +4,67 @@ UI Schema for Visual ASQL Editor
 Provides lightweight metadata layer on top of SQLGlot's arg_types to enable
 automatic UI generation. Each operation has a schema defining its parameters
 and which widgets to use for rendering.
+
+Architecture:
+1. Base schemas are auto-generated from ASQL's TRANSFORM_PARSERS
+2. Manual UI overrides add labels, help text, and widget specifics
+3. Final schemas merge both (90% auto, 10% manual)
 """
 
-# Operation schemas - maps operation type to UI configuration
-# Uses exact ASQL terminology (not "friendly" renamed labels)
-OPERATION_UI_SCHEMAS = {
+from .ui_schema_generator import generate_base_schema_from_asql, merge_with_overrides
+
+# Manual UI overrides - only specify what can't be auto-generated
+# (labels, help text, dropdown options, etc.)
+_MANUAL_UI_OVERRIDES = {
     "where": {
-        "label": "where",
-        "icon": "🔍",
-        "description": "Filter rows by condition",
-        "category": "filter",
         "parameters": [
             {
                 "name": "condition",
                 "label": "condition",
-                "widget": "expression",
-                "required": True,
                 "operators": ["=", "!=", "<", ">", "<=", ">=", "contains", "starts with", "ends with", "in"]
             }
         ]
     },
 
     "join": {
+        "parameters": [
+            {
+                "name": "join_type",
+                "label": "join type",
+                "options": [
+                    {"value": "inner", "label": "inner (&)"},
+                    {"value": "left", "label": "left (&?)"},
+                    {"value": "right", "label": "right (?&)"},
+                    {"value": "full", "label": "full (?&?)"},
+                    {"value": "cross", "label": "cross (*)"}
+                ]
+            },
+            {
+                "name": "table",
+                "label": "table",
+                "placeholder": "table_name"
+            },
+            {
+                "name": "condition",
+                "label": "on",
+                "help": "Leave empty to infer from schema",
+                "operators": ["=", "!="]
+            }
+        ]
+    },
+
+    "select": {
+        "parameters": [
+            {
+                "name": "columns",
+                "label": "columns",
+                "placeholder": "column_name",
+                "help": "List of columns to select"
+            }
+        ]
+    },
+
+    "group_by": {
         "label": "join",
         "icon": "🔗",
         "description": "Join with another table",
@@ -82,25 +121,16 @@ OPERATION_UI_SCHEMAS = {
     },
 
     "group_by": {
-        "label": "group by",
-        "icon": "📊",
-        "description": "Group rows and compute aggregations",
-        "category": "aggregate",
         "parameters": [
             {
                 "name": "dimensions",
                 "label": "group by",
-                "widget": "list",
-                "required": True,
-                "item_type": "text",
                 "placeholder": "column_name",
                 "help": "Columns to group by"
             },
             {
                 "name": "aggregates",
                 "label": "aggregations",
-                "widget": "aggregate_list",
-                "required": False,
                 "functions": ["count", "sum", "avg", "min", "max", "count_distinct"],
                 "help": "Aggregate functions to compute"
             }
@@ -108,38 +138,54 @@ OPERATION_UI_SCHEMAS = {
     },
 
     "order_by": {
-        "label": "order by",
-        "icon": "⬆️",
-        "description": "Sort results",
-        "category": "sort",
         "parameters": [
             {
                 "name": "expressions",
                 "label": "order by",
-                "widget": "order_list",
-                "required": True,
                 "help": "Columns to sort by"
             }
         ]
     },
 
     "limit": {
-        "label": "limit",
-        "icon": "🔢",
-        "description": "Limit number of rows",
-        "category": "limit",
         "parameters": [
             {
                 "name": "count",
                 "label": "count",
-                "widget": "number",
-                "required": True,
-                "default": 10,
                 "min": 1
             }
         ]
     }
 }
+
+# Auto-generate base schemas and merge with manual overrides
+_BASE_SCHEMAS = generate_base_schema_from_asql()
+
+# Merge: Start with auto-generated, override with manual UI details
+OPERATION_UI_SCHEMAS = {}
+for op_name in _BASE_SCHEMAS.keys():
+    base = _BASE_SCHEMAS[op_name]
+    override = _MANUAL_UI_OVERRIDES.get(op_name, {})
+
+    # Merge parameters
+    if "parameters" in override:
+        merged_params = []
+        override_params_by_name = {p["name"]: p for p in override["parameters"]}
+
+        for base_param in base.get("parameters", []):
+            param_name = base_param["name"]
+            if param_name in override_params_by_name:
+                # Merge base + override for this parameter
+                merged_param = {**base_param, **override_params_by_name[param_name]}
+                merged_params.append(merged_param)
+            else:
+                merged_params.append(base_param)
+
+        base["parameters"] = merged_params
+
+    # Merge top-level fields
+    OPERATION_UI_SCHEMAS[op_name] = {**base, **override}
+
 
 
 def get_operation_schema(operation_type: str) -> dict:
