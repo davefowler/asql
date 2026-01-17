@@ -14,6 +14,7 @@ class VisualEditor {
     this.operations = [];
     this.schemas = {};
     this.initialized = false;
+    this.nextTransformId = 0;  // Counter for unique transform IDs
   }
 
   async init() {
@@ -39,6 +40,10 @@ class VisualEditor {
     for (const op of this.operations) {
       try {
         const response = await fetch(`/api/visual/operations/${op.type}/schema`);
+        if (!response.ok) {
+          console.error(`Failed to load schema for ${op.type}: HTTP ${response.status}`);
+          continue;
+        }
         const schema = await response.json();
         this.schemas[op.type] = schema;
       } catch (error) {
@@ -104,7 +109,7 @@ class VisualEditor {
   }
 
   addTransform(type) {
-    const id = `t${this.query.transforms.length}`;
+    const id = `t${this.nextTransformId++}`;
     const schema = this.schemas[type];
 
     // Initialize transform with defaults from schema
@@ -178,14 +183,24 @@ class VisualEditor {
   createErrorBlock(transform, error) {
     const block = document.createElement('div');
     block.className = 'block error-block';
-    block.innerHTML = `
-      <div class="block-header">
-        <span class="block-title">${transform.type} (Error)</span>
-      </div>
-      <div class="block-body">
-        <p class="error">${error}</p>
-      </div>
-    `;
+    
+    // Build DOM safely to avoid XSS
+    const header = document.createElement('div');
+    header.className = 'block-header';
+    const title = document.createElement('span');
+    title.className = 'block-title';
+    title.textContent = `${transform.type} (Error)`;
+    header.appendChild(title);
+    
+    const body = document.createElement('div');
+    body.className = 'block-body';
+    const errorP = document.createElement('p');
+    errorP.className = 'error';
+    errorP.textContent = error;
+    body.appendChild(errorP);
+    
+    block.appendChild(header);
+    block.appendChild(body);
     return block;
   }
 
@@ -432,6 +447,12 @@ class VisualEditor {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ asql })
       });
+      
+      if (!response.ok) {
+        console.error('Failed to parse ASQL: HTTP', response.status);
+        return;
+      }
+      
       const data = await response.json();
 
       if (data.success) {

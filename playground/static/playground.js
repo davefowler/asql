@@ -1054,7 +1054,8 @@ async function toggleEditorMode() {
         textContainer.style.display = 'none';
         visualContainer.style.display = 'block';
         toggleBtn.classList.add('active');
-        toggleBtn.querySelector('.label').textContent = 'Text';
+        const labelEl = toggleBtn.querySelector('.label');
+        if (labelEl) labelEl.textContent = 'Text';
 
         // Load current ASQL into visual editor
         const currentASSQL = inputEditor.getValue();
@@ -1066,7 +1067,8 @@ async function toggleEditorMode() {
         textContainer.style.display = 'block';
         visualContainer.style.display = 'none';
         toggleBtn.classList.remove('active');
-        toggleBtn.querySelector('.label').textContent = 'Visual';
+        const labelEl2 = toggleBtn.querySelector('.label');
+        if (labelEl2) labelEl2.textContent = 'Visual';
 
         // Update text editor with visual query
         if (visualEditor) {
@@ -1100,15 +1102,15 @@ window.onVisualEditorChange = debounce(async () => {
 
                 const data = await response.json();
 
-                if (data.success) {
-                    outputEditor.setValue(data.sql || data.asql || '');
+                if (data.sql) {
+                    outputEditor.setValue(data.sql);
                     if (errorDiv) {
                         errorDiv.style.display = 'none';
                         errorDiv.className = '';
                     }
-                } else {
+                } else if (data.error) {
                     if (errorDiv) {
-                        errorDiv.textContent = data.error || 'Compilation failed';
+                        errorDiv.textContent = data.error;
                         errorDiv.className = 'error';
                         errorDiv.style.display = 'block';
                     }
