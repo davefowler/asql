@@ -11,114 +11,26 @@ Architecture:
 3. Final schemas merge both (90% auto, 10% manual)
 """
 
+import yaml
+from pathlib import Path
 from .ui_schema_generator import generate_base_schema_from_asql
 
-# Manual UI overrides - only specify what can't be auto-generated
-# (labels, help text, dropdown options, etc.)
-_MANUAL_UI_OVERRIDES = {
-    "where": {
-        "parameters": [
-            {
-                "name": "condition",
-                "label": "condition",
-                "operators": ["=", "!=", "<", ">", "<=", ">=", "contains", "starts with", "ends with", "in"]
-            }
-        ]
-    },
+# Load manual UI overrides from YAML file
+# This centralizes all UI-specific metadata (labels, help text, dropdown options, etc.)
+# in a single editable file without touching code
+_OVERRIDES_PATH = Path(__file__).parent / "ui_overrides.yaml"
 
-    "join": {
-        "label": "join",
-        "icon": "🔗",
-        "description": "Join with another table",
-        "category": "join",
-        "parameters": [
-            {
-                "name": "join_type",
-                "label": "join type",
-                "widget": "dropdown",
-                "required": True,
-                "default": "inner",
-                "options": [
-                    {"value": "inner", "label": "inner (&)"},
-                    {"value": "left", "label": "left (&?)"},
-                    {"value": "right", "label": "right (?&)"},
-                    {"value": "full", "label": "full (?&?)"},
-                    {"value": "cross", "label": "cross (*)"}
-                ]
-            },
-            {
-                "name": "table",
-                "label": "table",
-                "widget": "text",
-                "required": True,
-                "placeholder": "table_name"
-            },
-            {
-                "name": "condition",
-                "label": "on",
-                "widget": "expression",
-                "required": False,
-                "help": "Leave empty to infer from schema",
-                "operators": ["=", "!="]
-            }
-        ]
-    },
-
-    "select": {
-        "label": "select",
-        "icon": "📋",
-        "description": "Choose which columns to return",
-        "category": "select",
-        "parameters": [
-            {
-                "name": "columns",
-                "label": "columns",
-                "widget": "list",
-                "required": True,
-                "item_type": "text",
-                "placeholder": "column_name",
-                "help": "List of columns to select"
-            }
-        ]
-    },
-
-    "group_by": {
-        "parameters": [
-            {
-                "name": "dimensions",
-                "label": "group by",
-                "placeholder": "column_name",
-                "help": "Columns to group by"
-            },
-            {
-                "name": "aggregates",
-                "label": "aggregations",
-                "functions": ["count", "sum", "avg", "min", "max", "count_distinct"],
-                "help": "Aggregate functions to compute"
-            }
-        ]
-    },
-
-    "order_by": {
-        "parameters": [
-            {
-                "name": "expressions",
-                "label": "order by",
-                "help": "Columns to sort by"
-            }
-        ]
-    },
-
-    "limit": {
-        "parameters": [
-            {
-                "name": "count",
-                "label": "count",
-                "min": 1
-            }
-        ]
-    }
-}
+try:
+    with open(_OVERRIDES_PATH, 'r') as f:
+        _yaml_data = yaml.safe_load(f)
+        _MANUAL_UI_OVERRIDES = _yaml_data.get("operations", {}) if _yaml_data else {}
+except FileNotFoundError:
+    # Fallback to empty dict if YAML file doesn't exist
+    _MANUAL_UI_OVERRIDES = {}
+except yaml.YAMLError as e:
+    # Log error but don't crash - use empty overrides
+    print(f"Warning: Failed to parse ui_overrides.yaml: {e}")
+    _MANUAL_UI_OVERRIDES = {}
 
 # Auto-generate base schemas and merge with manual overrides
 _BASE_SCHEMAS = generate_base_schema_from_asql()
