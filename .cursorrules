@@ -1,5 +1,12 @@
 # ASQL Development Rules
 
+## ⚠️ CRITICAL: No Legacy/Compatibility Code
+- **ASQL is pre-launch with ZERO users** - there is NO reason for backwards compatibility
+- **Delete wrapper functions** - don't keep them "for compatibility"
+- **No deprecation warnings** - just remove old code
+- **No shims or adapters** - refactor directly
+- If something is wrong, FIX IT. Don't add workarounds.
+
 ## ⚠️ CRITICAL: Virtual Environment
 - **ALWAYS** prefix Python commands with `./venv/bin/`:
 - `./venv/bin/pytest tests/` (not just `pytest`)
@@ -16,6 +23,155 @@
 - Don't reuse variables
 - Prefer function expressions over function declarations
 - Use Styled Components exclusively for styling (if applicable)
+
+## ⚠️ SQLGlot Coding Patterns (CRITICAL for dialect code)
+
+When writing code in `asql/dialect.py` or any SQLGlot-related code, **follow SQLGlot's idiomatic patterns**:
+
+### 1. Use Declarative Dicts, NOT `elif` Chains
+```python
+# ❌ BAD - procedural elif chains
+def _build_comparison(self, left, op_token, right):
+    if op_token == TokenType.LT:
+        return exp.LT(this=left, expression=right)
+    elif op_token == TokenType.GT:
+        return exp.GT(this=left, expression=right)
+    # ... more elifs
+
+# ✅ GOOD - declarative dict lookup
+COMPARISON_OPS = {
+    TokenType.LT: exp.LT,
+    TokenType.GT: exp.GT,
+    TokenType.LTE: exp.LTE,
+    TokenType.GTE: exp.GTE,
+    TokenType.EQ: exp.EQ,
+    TokenType.NEQ: exp.NEQ,
+}
+
+def _build_comparison(self, left, op_token, right):
+    op_class = self.COMPARISON_OPS.get(op_token, exp.EQ)
+    return op_class(this=left, expression=right)
+```
+
+### 2. Extend Parent Dicts with `**spread` + `.copy().pop()`
+```python
+# ✅ GOOD - SQLGlot canonical pattern
+FUNCTIONS = {
+    **parser.Parser.FUNCTIONS,
+    "CUSTOM_FUNC": my_builder,
+}
+
+COLUMN_OPERATORS = parser.Parser.COLUMN_OPERATORS.copy()
+COLUMN_OPERATORS.pop(TokenType.PLACEHOLDER)  # Remove unwanted
+```
+
+### 3. Use Reusable Builder Functions
+```python
+# ✅ GOOD - define builders for repeated patterns
+def build_window_offset(expr_type, default_offset=1):
+    def _builder(args):
+        return expr_type(
+            this=seq_get(args, 0),
+            offset=seq_get(args, 1) or exp.Literal.number(default_offset)
+        )
+    return _builder
+
+FUNCTIONS = {
+    "PRIOR": build_window_offset(exp.Lag),
+    "NEXT": build_window_offset(exp.Lead),
+}
+```
+
+### 4. Use Parser Primitives, NOT Manual Token Iteration
+```python
+# ❌ BAD - manual token scanning
+i = self._index
+while i < len(self._tokens):
+    tok = self._tokens[i]
+    # ... manual logic
+
+# ✅ GOOD - use parser primitives
+if self._match_set(self.COMPARISON):
+    return self.expression(...)
+
+# ✅ GOOD - use _try_parse for lookahead
+result = self._try_parse(self._parse_complex_thing)
+if not result:
+    self._retreat(start_index)
+```
+
+### 5. Small Composable Methods, NOT Monolithic Functions
+- Methods should be < 50 lines
+- Split complex parsing into focused helpers
+- Use `_parse_X` naming convention
+
+### 6. Class-Level Constants for Token Sets
+```python
+# ✅ GOOD - class constants
+SQL_KEYWORDS = frozenset({'select', 'from', 'where', ...})
+TIME_UNITS = frozenset({'day', 'week', 'month', 'year', ...})
+
+# ❌ BAD - inline sets in methods
+if text.lower() in {'select', 'from', 'where', ...}:
+```
+
+### 7. Always Add Type Annotations
+```python
+# ✅ GOOD
+def _parse_thing(self) -> t.Optional[exp.Expression]:
+
+# ❌ BAD
+def _parse_thing(self):
+```
+
+### 8. ASQL-Specific: Unified Dialect Schema (VALID DEVIATION from SQLGlot)
+
+**SQLGlot uses scattered module-level dicts. ASQL uses a unified `DIALECT` class with nested classes for organization, type safety, and single source of truth.**
+
+The `asql/dialect_schema.py` file defines ALL ASQL syntax declaratively:
+
+```python
+# ✅ ASQL style - nested classes in dialect_schema.py
+from asql.dialect_schema import DIALECT
+
+class DIALECT:
+    class OPERATORS:
+        COMPARISON = {
+            TokenType.GT: {"expr_class": exp.GT, "label": ">", "description": "Greater than"},
+            TokenType.LT: {"expr_class": exp.LT, "label": "<", "description": "Less than"},
+            ...
+        }
+        STRING = {
+            "contains": {"tokens": ("CONTAINS",), "wrap_pattern": ("%", "%"), "case_sensitive": True},
+            ...
+        }
+    
+    class JOIN_TYPES:
+        INNER = {"symbols": ["&"], "kind": "INNER", "label": "inner (&)"}
+        LEFT = {"symbols": ["&?"], "kind": "LEFT", "label": "left (&?)"}
+        ...
+    
+    class TRANSFORMS:
+        WHERE = {"keywords": ["WHERE", "FILTER", "IF"], "icon": "🔍", ...}
+        ...
+
+# Usage in dialect.py - NO elif chains!
+op_spec = DIALECT.OPERATORS.COMPARISON[op_token]
+return op_spec["expr_class"](this=left, expression=right)
+
+join_spec = DIALECT.JOIN_TYPES.INNER
+return self._parse_join(kind=join_spec["kind"])
+```
+
+**Benefits:**
+- ✅ Type-safe: IDE autocomplete for `DIALECT.OPERATORS.COMPARISON`
+- ✅ Single source of truth: Parser, UI, docs all use same definitions
+- ✅ No magic strings: `DIALECT.JOIN_TYPES.INNER` not `JOIN_TYPES["inner"]`
+- ✅ Organized: Nested by category (not 50 flat dicts)
+
+**When adding new syntax:** Add it to `dialect_schema.py`, then use it in `dialect.py`.
+
+**Reference:** See `ai_notes/2026-01-16-dialect-refactor-plan.md` for full migration plan.
 
 ## Development Workflow
 - Use TDD: Write tests first, then implement
@@ -59,33 +215,5 @@
 - PR titles MUST include the issue number "(#123)".
 - Branch names MUST include the issue number "issue-123-...".
 - Commits must use "Fixes #<issue-number>" (exact phrase) so GitHub auto-closes the issue.
-
-
-## 🤖 AI Agent Workflow: Publish and Get Feedback
-Use `scripts/publish_and_get_feedback.sh` to submit work and get CI/review feedback.
-
-**Usage:**
-```bash
-# Full flow: push, create/find PR, wait 5 min, get feedback
-./scripts/publish_and_get_feedback.sh --title "asql: fix parser bug (#42)"
-
-# Quick check without waiting (get current PR status immediately)  
-./scripts/publish_and_get_feedback.sh --no-wait
-
-# Custom wait time (e.g., 2 minutes)
-./scripts/publish_and_get_feedback.sh --wait 120
-```
-
-**What it returns:**
-- Last 2 PR comments
-- Last 2 review comments  
-- CI status (✅ success, ❌ failure, 🔄 in progress, ⏳ queued)
-- Failed check details with URLs
-
-**When to use this:**
-- After completing a task, run this to push and create a PR
-- Wait for CI to run and reviewers to comment
-- Review the feedback and address any issues
-- Use `--no-wait` to quickly check PR status without waiting
 
 
