@@ -828,22 +828,30 @@ class Schema:
             
             # Create table and add columns
             table = Table(name=table_name)
-            for col in columns:
-                if isinstance(col, str):
-                    col_name = col
+            
+            # Handle different column formats
+            if isinstance(columns, dict):
+                # Dict format: {'id': 'INT', 'name': 'VARCHAR'}
+                for col_name, col_type in columns.items():
                     is_pk = col_name.lower() == "id"
-                    table.add_column(Column(name=col_name, primary_key=is_pk))
-                elif isinstance(col, dict):
-                    # Column dict format: {"name": "category", "distinct_values": [...]}
-                    col_name = col.get("name", "")
-                    if col_name:
-                        is_pk = col.get("primary_key", col_name.lower() == "id")
-                        table.add_column(Column(
-                            name=col_name,
-                            type=col.get("type"),
-                            primary_key=is_pk,
-                            distinct_values=col.get("distinct_values")
-                        ))
+                    table.add_column(Column(name=col_name, type=col_type, primary_key=is_pk))
+            elif isinstance(columns, list):
+                for col in columns:
+                    if isinstance(col, str):
+                        col_name = col
+                        is_pk = col_name.lower() == "id"
+                        table.add_column(Column(name=col_name, primary_key=is_pk))
+                    elif isinstance(col, dict):
+                        # Column dict format: {"name": "category", "distinct_values": [...]}
+                        col_name = col.get("name", "")
+                        if col_name:
+                            is_pk = col.get("primary_key", col_name.lower() == "id")
+                            table.add_column(Column(
+                                name=col_name,
+                                type=col.get("type"),
+                                primary_key=is_pk,
+                                distinct_values=col.get("distinct_values")
+                            ))
             
             # Check for per-column metadata as top-level keys
             # Format: {"columns": [...], "category": {"distinct_values": [...]}}

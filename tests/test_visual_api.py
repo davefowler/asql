@@ -7,9 +7,13 @@ Tests for the FastAPI API endpoints used by the visual editor.
 import pytest
 import json
 
-# Configure pytest-asyncio to use auto mode for async fixtures
-pytest_plugins = ('pytest_asyncio',)
-
+# Skip all tests if pytest_asyncio is not available
+try:
+    import pytest_asyncio
+    pytest_plugins = ('pytest_asyncio',)
+    HAS_PYTEST_ASYNCIO = True
+except ImportError:
+    HAS_PYTEST_ASYNCIO = False
 
 # Skip tests if httpx/FastAPI test client is not available
 try:
@@ -18,6 +22,10 @@ try:
     HAS_FASTAPI = True
 except ImportError:
     HAS_FASTAPI = False
+
+# Skip entire module if dependencies aren't available
+if not HAS_PYTEST_ASYNCIO:
+    pytest.skip("pytest_asyncio not installed", allow_module_level=True)
 
 
 @pytest.fixture

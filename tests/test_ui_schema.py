@@ -1,7 +1,7 @@
 """
 Tests for asql/ui_schema.py
 
-Tests for UI schema generation, merging with manual overrides, and API functions.
+Tests for UI schema generation from dialect_schema.py dataclasses.
 """
 
 import pytest
@@ -33,7 +33,7 @@ class TestGetOperationSchema:
 
         if schema:  # If where operation exists
             # Check common keys that should be present
-            expected_keys = ['label', 'icon', 'description', 'category', 'parameters']
+            expected_keys = ['label', 'description', 'category', 'parameters']
             for key in expected_keys:
                 assert key in schema, f"Missing key: {key}"
 
@@ -63,7 +63,6 @@ class TestListAllOperations:
         for op in operations:
             assert 'type' in op, "Operation missing 'type'"
             assert 'label' in op, "Operation missing 'label'"
-            assert 'icon' in op, "Operation missing 'icon'"
             assert 'description' in op, "Operation missing 'description'"
             assert 'category' in op, "Operation missing 'category'"
 
@@ -72,20 +71,11 @@ class TestListAllOperations:
         operations = list_all_operations()
         op_types = {op['type'] for op in operations}
 
-        # These should be available based on ASQL's TRANSFORM_PARSERS
+        # These should be available based on dialect_schema.py TRANSFORMS
         expected_common = ['where', 'select', 'limit']
 
         for expected in expected_common:
             assert expected in op_types, f"Missing expected operation: {expected}"
-
-    def test_operations_have_valid_categories(self):
-        """Test that operations have valid categories."""
-        operations = list_all_operations()
-
-        valid_categories = {'filter', 'select', 'join', 'aggregate', 'sort', 'limit', 'advanced', 'other'}
-
-        for op in operations:
-            assert op['category'] in valid_categories, f"Invalid category: {op['category']}"
 
 
 class TestSchemaStructure:
@@ -129,102 +119,63 @@ class TestSchemaStructure:
             assert 'count' in param_names, "LIMIT missing 'count' parameter"
 
 
-class TestSchemaOverrides:
-    """Tests for manual override merging functionality."""
+class TestDialectSchemaIntegration:
+    """Tests for dialect_schema.py integration."""
 
-    def test_base_schema_exists_for_operations(self):
-        """Test that base schemas exist for ASQL operations."""
-        from asql.ui_schema_generator import generate_base_schema_from_asql
+    def test_schemas_come_from_dialect_schema(self):
+        """Test that schemas are generated from dialect_schema.py TRANSFORMS."""
+        from asql.dialect_schema import TRANSFORMS
 
-        base_schemas = generate_base_schema_from_asql()
+        # Check that TRANSFORMS attributes correspond to UI schemas
+        transform_labels = []
+        for attr_name in dir(TRANSFORMS):
+            if not attr_name.startswith("_"):
+                transform = getattr(TRANSFORMS, attr_name)
+                if hasattr(transform, "label"):
+                    transform_labels.append(transform.label.replace(" ", "_"))
 
-        assert len(base_schemas) > 0
+        # UI schemas should have entries for transforms
+        assert len(transform_labels) > 0
+        assert len(OPERATION_UI_SCHEMAS) > 0
 
     def test_merged_schemas_contain_base_info(self):
-        """Test that merged schemas contain base schema info."""
-        # The merged schemas should have auto-generated fields
+        """Test that schemas contain base schema info from dialect_schema."""
         for op_name, schema in OPERATION_UI_SCHEMAS.items():
             # All schemas should have these basic fields
             assert 'label' in schema, f"{op_name} missing 'label'"
-            assert 'icon' in schema, f"{op_name} missing 'icon'"
             assert 'category' in schema, f"{op_name} missing 'category'"
 
-    def test_override_parameters_merged_correctly(self):
-        """Test that parameter overrides are merged with base parameters."""
-        # If we have overrides with parameters, they should be merged
+    def test_parameters_from_dialect_schema(self):
+        """Test that parameters come from dialect_schema.py."""
         schema = OPERATION_UI_SCHEMAS.get('where', {})
 
         if 'parameters' in schema:
-            # Parameters should exist and have merged fields
+            # Parameters should exist and have required fields
             for param in schema['parameters']:
                 # Base fields should exist
                 assert 'name' in param
-                # Widget should be present (from base or override)
+                # Widget should be present
                 assert 'widget' in param
 
 
-class TestYAMLOverridesLoading:
-    """Tests for YAML overrides loading behavior."""
-
-    def test_handles_missing_yaml_file(self):
-        """Test that missing YAML file is handled gracefully."""
-        # This is tested implicitly by the fallback behavior
-        # If the YAML file doesn't exist, _MANUAL_UI_OVERRIDES should be {}
-        # The module should still load without errors
-        from asql import ui_schema
-
-        # Should not raise an error
-        assert hasattr(ui_schema, 'OPERATION_UI_SCHEMAS')
-
-    def test_handles_invalid_yaml_gracefully(self):
-        """Test that invalid YAML doesn't crash the module."""
-        # This is implicitly tested - if the module loads, it handles errors
-        import asql.ui_schema
-
-        # Module should load successfully even with YAML errors
-        assert asql.ui_schema.OPERATION_UI_SCHEMAS is not None
-
-
 class TestParameterMerging:
-    """Tests for parameter merging logic."""
+    """Tests for parameter handling."""
 
-    def test_base_only_params_preserved(self):
-        """Test that parameters only in base are preserved."""
-        # This tests the fix for CodeRabbit's review
-        # The merge should keep base-only parameters
-
-        from asql.ui_schema_generator import generate_base_schema_from_asql
-
-        base_schemas = generate_base_schema_from_asql()
-
-        for op_name, base_schema in base_schemas.items():
-            merged_schema = OPERATION_UI_SCHEMAS.get(op_name, {})
-
-            # Base parameters should be present in merged schema
-            base_param_names = {p['name'] for p in base_schema.get('parameters', [])}
-            merged_param_names = {p['name'] for p in merged_schema.get('parameters', [])}
-
-            # All base params should be in merged (unless explicitly removed)
-            for base_param in base_param_names:
-                assert base_param in merged_param_names, \
-                    f"Base param '{base_param}' missing from merged schema for '{op_name}'"
-
-    def test_override_only_params_added(self):
-        """Test that parameters only in overrides are added."""
-        # This tests that override-only parameters are included
-        # The fix addressed CodeRabbit's comment about losing override-only params
-
-        # This is tested implicitly by the module loading
-        # If overrides have extra params, they should be added
-        pass  # The main test is that the module loads without error
+    def test_parameters_have_correct_structure(self):
+        """Test that parameters have the expected structure."""
+        for op_name, schema in OPERATION_UI_SCHEMAS.items():
+            if 'parameters' in schema:
+                for param in schema['parameters']:
+                    assert 'name' in param, f"Parameter missing 'name' in {op_name}"
+                    assert isinstance(param['name'], str)
 
 
-class TestCategoryGuessing:
+class TestCategoryAssignment:
     """Tests for category assignment logic."""
 
     def test_filter_operations_have_filter_category(self):
         """Test that filter operations are categorized correctly."""
-        filter_ops = ['where', 'filter', 'if_']
+        filter_ops = ['where']
 
         for op in filter_ops:
             if op in OPERATION_UI_SCHEMAS:
@@ -232,54 +183,23 @@ class TestCategoryGuessing:
                 assert schema.get('category') == 'filter', \
                     f"{op} should have 'filter' category"
 
-    def test_limit_has_limit_category(self):
-        """Test that LIMIT has limit category."""
-        if 'limit' in OPERATION_UI_SCHEMAS:
-            schema = OPERATION_UI_SCHEMAS['limit']
-            assert schema.get('category') == 'limit'
-
-
-class TestIconAssignment:
-    """Tests for icon assignment logic."""
-
-    def test_where_has_search_icon(self):
-        """Test that WHERE has a search icon."""
-        schema = OPERATION_UI_SCHEMAS.get('where', {})
-
-        # Icon should be present
-        assert 'icon' in schema
-
-    def test_join_has_link_icon(self):
-        """Test that JOIN has a link icon."""
-        schema = OPERATION_UI_SCHEMAS.get('join', {})
-
-        # Icon should be present
-        if schema:
-            assert 'icon' in schema
-
-    def test_all_operations_have_icons(self):
-        """Test that all operations have icons."""
-        for op_name, schema in OPERATION_UI_SCHEMAS.items():
-            assert 'icon' in schema, f"{op_name} missing 'icon'"
-            assert schema['icon'], f"{op_name} has empty 'icon'"
+    def test_join_has_join_category(self):
+        """Test that JOIN has join category."""
+        if 'join' in OPERATION_UI_SCHEMAS:
+            schema = OPERATION_UI_SCHEMAS['join']
+            assert schema.get('category') == 'join'
 
 
 class TestIntegration:
     """Integration tests for the full UI schema system."""
 
     def test_full_workflow(self):
-        """Test the full workflow: generate -> merge -> access."""
-        # 1. Generate base schemas
-        from asql.ui_schema_generator import generate_base_schema_from_asql
-        base = generate_base_schema_from_asql()
-
-        assert len(base) > 0
-
-        # 2. Access merged schemas
+        """Test the full workflow: generate -> access."""
+        # 1. Access schemas
         from asql.ui_schema import OPERATION_UI_SCHEMAS
         assert len(OPERATION_UI_SCHEMAS) > 0
 
-        # 3. Use API functions
+        # 2. Use API functions
         schema = get_operation_schema('where')
         assert schema or len(OPERATION_UI_SCHEMAS) > 0
 

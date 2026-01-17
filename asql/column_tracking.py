@@ -70,6 +70,9 @@ def _extract_column_info(
 
     # Get output name (handles aliases)
     col_name = expr.output_name
+    if col_name is None:
+        # Complex expressions without aliases may not have an output name
+        return None
 
     # Try to determine type from schema
     col_type = "UNKNOWN"
