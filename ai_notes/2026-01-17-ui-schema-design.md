@@ -18,7 +18,7 @@ The UI (TypeScript/React) needs this as structured data it can consume.
 - ✅ Join types (with symbols, labels, descriptions)
 - ✅ Aggregates (count, sum, avg, etc.)
 - ✅ Per operations (first, last, number, rank)
-- ✅ Transforms (with icons, descriptions, parameters!)
+- ✅ Transforms (with descriptions, parameters)
 - ✅ Time units
 - ❌ Functions (not yet)
 - ❌ Data types (not yet)
@@ -74,177 +74,122 @@ operators:
 
 ```yaml
 transforms:
-  - id: "where"
-    keywords: ["where"]
+  where:
     label: "Filter"
-    icon: "🔍"
     description: "Filter rows by condition"
-    category: "filter"
     fields:
       - { name: "condition", type: "expression", required: true }
   
-  - id: "select"
-    keywords: ["select", "project"]
+  select:
     label: "Select Columns"
-    icon: "📋"
     description: "Choose which columns to include"
-    category: "columns"
     fields:
       - { name: "columns", type: "expression[]", required: true }
   
-  - id: "group_by"
-    keywords: ["group by"]
+  group_by:
     label: "Group & Aggregate"
-    icon: "📊"
     description: "Group rows and calculate aggregates"
-    category: "aggregate"
     fields:
       - { name: "columns", type: "column[]", required: true }
       - { name: "aggregates", type: "aggregate[]", required: false }
   
-  - id: "order_by"
-    keywords: ["order by"]
+  order_by:
     label: "Sort"
-    icon: "↕️"
     description: "Sort rows by columns"
-    category: "order"
     fields:
       - { name: "columns", type: "ordered_column[]", required: true }
   
-  - id: "limit"
-    keywords: ["limit"]
+  limit:
     label: "Limit"
-    icon: "✂️"
     description: "Limit number of rows"
-    category: "limit"
     fields:
       - { name: "count", type: "number", required: true }
       - { name: "offset", type: "number", required: false }
   
-  - id: "join"
-    keywords: ["join", "&", "&?", "?&", "?&?"]
+  join:
     label: "Join"
-    icon: "🔗"
     description: "Combine with another table"
-    category: "join"
     fields:
       - { name: "table", type: "table", required: true }
       - { name: "type", type: "join_type", required: true }
       - { name: "on", type: "expression", required: false }
   
-  - id: "extend"
-    keywords: ["extend"]
+  extend:
     label: "Add Column"
-    icon: "➕"
     description: "Add a computed column"
-    category: "columns"
     fields:
       - { name: "expression", type: "expression", required: true }
       - { name: "alias", type: "identifier", required: true }
   
-  - id: "distinct"
-    keywords: ["distinct"]
+  distinct:
     label: "Deduplicate"
-    icon: "🎯"
     description: "Remove duplicate rows"
-    category: "filter"
     fields:
       - { name: "on", type: "column[]", required: false }
   
-  - id: "except"
-    keywords: ["except"]
+  except:
     label: "Exclude Columns"
-    icon: "➖"
     description: "Remove columns from output"
-    category: "columns"
     fields:
       - { name: "columns", type: "column[]", required: true }
   
-  - id: "rename"
-    keywords: ["rename"]
+  rename:
     label: "Rename Columns"
-    icon: "✏️"
     description: "Rename one or more columns"
-    category: "columns"
     fields:
       - { name: "mappings", type: "rename_pair[]", required: true }
   
-  - id: "sample"
-    keywords: ["sample"]
+  sample:
     label: "Sample"
-    icon: "🎲"
     description: "Random sample of rows"
-    category: "filter"
     fields:
       - { name: "count_or_percent", type: "number", required: true }
       - { name: "is_percent", type: "boolean", required: false }
   
-  - id: "per"
-    keywords: ["per"]
+  per:
     label: "Window"
-    icon: "🪟"
     description: "Window function partitioning"
-    category: "window"
     fields:
       - { name: "partition", type: "column[]", required: true }
       - { name: "order", type: "ordered_column[]", required: false }
       - { name: "operation", type: "per_operation", required: true }
   
-  - id: "stash"
-    keywords: ["stash"]
+  stash:
     label: "Save as CTE"
-    icon: "💾"
     description: "Save current query as reusable CTE"
-    category: "cte"
     fields:
       - { name: "name", type: "identifier", required: true }
   
-  - id: "union"
-    keywords: ["union", "union all"]
+  union:
     label: "Union"
-    icon: "⊔"
     description: "Combine with another query"
-    category: "set"
     fields:
       - { name: "query", type: "query", required: true }
       - { name: "distinct", type: "boolean", required: false, default: true }
   
-  - id: "intersect"
-    keywords: ["intersect"]
+  intersect:
     label: "Intersect"
-    icon: "∩"
     description: "Keep only rows in both queries"
-    category: "set"
     fields:
       - { name: "query", type: "query", required: true }
   
-  # Advanced
-  - id: "cohort"
-    keywords: ["cohort"]
+  cohort:
     label: "Cohort Analysis"
-    icon: "👥"
     description: "Cohort retention analysis"
-    category: "analytics"
     fields:
       - { name: "granularity", type: "time_unit", required: true }
       - { name: "date_column", type: "column", required: false }
   
-  - id: "deduplicate"
-    keywords: ["deduplicate"]
+  deduplicate:
     label: "Deduplicate (keep one)"
-    icon: "1️⃣"
     description: "Keep first/last row per group"
-    category: "filter"
     fields:
       - { name: "by", type: "column[]", required: true }
       - { name: "keep", type: "first|last", required: false, default: "first" }
   
-  - id: "recurse"
-    keywords: ["recurse"]
+  recurse:
     label: "Recursive Query"
-    icon: "🔄"
     description: "Traverse hierarchical data"
-    category: "advanced"
     fields:
       - { name: "on", type: "column", required: true }
       - { name: "start", type: "expression", required: true }
@@ -255,11 +200,11 @@ transforms:
 
 ```yaml
 join_types:
-  - { symbol: "&", keyword: "join", label: "Inner Join", sql_kind: "INNER" }
-  - { symbol: "&?", keyword: "left join", label: "Left Join", sql_kind: "LEFT" }
-  - { symbol: "?&", keyword: "right join", label: "Right Join", sql_kind: "RIGHT" }
-  - { symbol: "?&?", keyword: "full join", label: "Full Outer Join", sql_kind: "FULL OUTER" }
-  - { symbol: "*", keyword: "cross join", label: "Cross Join", sql_kind: "CROSS" }
+  inner: { symbol: "&", label: "Inner Join" }
+  left: { symbol: "&?", label: "Left Join" }
+  right: { symbol: "?&", label: "Right Join" }
+  full: { symbol: "?&?", label: "Full Outer Join" }
+  cross: { symbol: "*", label: "Cross Join" }
 ```
 
 ### 4. Aggregates
@@ -567,10 +512,8 @@ data_types:
 │      description: Optional[str]                                      │
 │                                                                      │
 │  class Transform(BaseModel):                                         │
-│      id: str                                                         │
-│      keywords: list[str]                                             │
 │      label: str                                                      │
-│      icon: Optional[str]                                             │
+│      description: Optional[str]                                      │
 │      fields: list[Field]                                             │
 │                                                                      │
 │  class ASQLUISchema(BaseModel):                                      │
@@ -601,7 +544,7 @@ data_types:
 │                                                                      │
 │  // Now fully typed!                                                 │
 │  schema.transforms.map(t => (                                        │
-│    <MenuItem icon={t.icon}>{t.label}</MenuItem>                      │
+│    <MenuItem>{t.label}</MenuItem>                                     │
 │  ))                                                                  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -654,52 +597,43 @@ def main():
 
 ### Where Metadata Lives
 
-The question is: where does human-readable metadata (labels, descriptions, icons) live?
+The question is: where does human-readable metadata (labels, descriptions) live?
 
 **Option A: In `dialect_schema.py`** (current approach)
 ```python
 class DIALECT:
     class TRANSFORMS:
-        WHERE = {"keywords": ["WHERE"], "label": "Filter", "icon": "🔍", ...}
+        WHERE = {"label": "Filter", "description": "Filter rows by condition", ...}
 ```
 
 **Option B: In `ui_schema.py`** (separate from dialect)
 ```python
 TRANSFORM_METADATA = {
-    "WHERE": {"label": "Filter", "icon": "🔍", "description": "..."},
+    "WHERE": {"label": "Filter", "description": "..."},
 }
 ```
 
 **Option C: Derive from dialect, enrich separately**
 ```python
-# ui_schema.py
-# Auto-extract from TRANSFORM_PARSERS, then add UI metadata
-ENRICHMENTS = {
-    "WHERE": {"icon": "🔍"},  # Only what can't be derived
-}
+# Auto-extract transform names from TRANSFORM_PARSERS
+# Add labels/descriptions in a separate file
 ```
 
-**Recommendation: Option C**
+**Recommendation: Option A (keep in dialect_schema.py)**
 
-- Dialect stays clean (parsing logic only)
-- UI metadata is UI's concern
-- Auto-generation ensures sync
-- Enrichments are minimal
+- Single source of truth
+- Labels/descriptions are useful for docs too
+- Parser doesn't care about extra fields
+- Simpler than maintaining two files
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: Define Pydantic Models
-1. Create `asql/ui_schema.py` with Pydantic models for all schema types
-2. Define the full `ASQLUISchema` model
-
-### Phase 2: Write Generator Script
-1. Create `scripts/generate_ui_schema.py`
-2. Extract transforms from `TRANSFORM_PARSERS`
-3. Extract operators from parser comparison/string dicts
-4. Extract functions from `FUNCTIONS` dict
-5. Add UI enrichments (icons, descriptions)
+### Phase 1: Write Export Script
+1. Create `scripts/export_ui_schema.py`
+2. Extract from `dialect_schema.py`
+3. Output JSON
 
 ### Phase 3: Generate TypeScript Types
 1. Use `pydantic-to-typescript` or `json-schema-to-typescript`
@@ -720,23 +654,16 @@ ENRICHMENTS = {
 ### Transform Picker
 ```tsx
 function TransformPicker({ onSelect }) {
-  const grouped = groupBy(schema.transforms, 'category');
-  
   return (
     <Menu>
-      {Object.entries(grouped).map(([category, transforms]) => (
-        <MenuGroup label={category}>
-          {transforms.map(t => (
-            <MenuItem 
-              key={t.id}
-              icon={t.icon}
-              onClick={() => onSelect(t)}
-            >
-              {t.label}
-              <Description>{t.description}</Description>
-            </MenuItem>
-          ))}
-        </MenuGroup>
+      {Object.entries(schema.transforms).map(([id, t]) => (
+        <MenuItem 
+          key={id}
+          onClick={() => onSelect(id, t)}
+        >
+          {t.label}
+          <Description>{t.description}</Description>
+        </MenuItem>
       ))}
     </Menu>
   );
@@ -792,7 +719,7 @@ function FunctionAutocomplete({ search }) {
 ### Option A: Keep `dialect_schema.py` as Source of Truth
 
 ```
-dialect_schema.py (has icons, descriptions, params)
+dialect_schema.py (has labels, descriptions, params)
          │
          ▼  (export script)
     ui_schema.json  →  TypeScript imports
@@ -806,7 +733,6 @@ dialect_schema.py (has icons, descriptions, params)
 **Cons:**
 - Mixes parser concerns with UI concerns
 - Python classes aren't ideal format
-- Parser doesn't need icons/descriptions
 
 ### Option B: Delete `dialect_schema.py`, Generate from Dialect
 
@@ -814,7 +740,7 @@ dialect_schema.py (has icons, descriptions, params)
 dialect.py (TRANSFORM_PARSERS, FUNCTIONS, etc.)
          │
          ▼  (introspect + enrich)
-enrichments.py (icons, descriptions)
+enrichments.py (labels, descriptions)
          │
          ▼  (generate script)
     ui_schema.json  →  TypeScript imports
@@ -903,17 +829,13 @@ def export_ui_schema():
                 # ...
             ],
         },
-        "transforms": [
-            {
-                "id": "where",
-                "keywords": ["where"],
+        "transforms": {
+            "where": {
                 "label": "Filter",
-                "icon": "🔍",
-                "category": "filter",
                 "description": "Filter rows by condition",
             },
-            # ... extract from TRANSFORM_PARSERS
-        ],
+            # ... extract from dialect_schema.py
+        },
         "joins": [
             {"symbol": "&", "label": "Inner Join", "kind": "INNER"},
             # ...
@@ -931,7 +853,7 @@ Then TypeScript just imports it:
 import schema from './ui_schema.json';
 
 // Use directly - JSON is already typed by inference
-schema.transforms.map(t => <MenuItem icon={t.icon}>{t.label}</MenuItem>)
+Object.entries(schema.transforms).map(([id, t]) => <MenuItem>{t.label}</MenuItem>)
 ```
 
 ---
@@ -946,12 +868,11 @@ Current uses:
 5. `DIALECT.COHORT.GRANULARITIES` - used by parser
 6. `DIALECT.TRANSFORMS.all_keywords()` - used to detect transform boundaries
 
-**Recommendation:** Keep `dialect_schema.py` for parser use, but:
-1. Remove UI-only fields (icons) from it
-2. Keep only what parser needs
-3. Generate UI schema separately, enriching with icons/descriptions
+**Recommendation:** Keep `dialect_schema.py` as-is. It has:
+- Labels and descriptions (useful for UI AND docs)
+- Parser-specific fields (expr_class, tokens)
 
-Or simpler: Keep it as-is, add an export function that filters out parser-only fields.
+Just export the UI-relevant fields to JSON.
 
 ---
 
