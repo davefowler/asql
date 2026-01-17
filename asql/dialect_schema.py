@@ -13,7 +13,7 @@ No magic strings, full IDE autocomplete support.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict
 from sqlglot import exp, TokenType
 
 
