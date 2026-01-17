@@ -21,6 +21,10 @@ class VisualEditor {
     try {
       // Load operation metadata
       const opsResponse = await fetch('/api/visual/operations');
+      if (!opsResponse.ok) {
+        console.error('Failed to load operations: HTTP', opsResponse.status);
+        return;
+      }
       const opsData = await opsResponse.json();
       this.operations = opsData.operations || [];
 
@@ -86,11 +90,24 @@ class VisualEditor {
     this.operations.forEach(op => {
       const card = document.createElement('div');
       card.className = 'operation-card';
-      card.innerHTML = `
-        <div class="operation-icon">${op.icon}</div>
-        <div class="operation-label">${op.label}</div>
-        <div class="operation-description">${op.description}</div>
-      `;
+      
+      // Build DOM safely to avoid XSS
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'operation-icon';
+      iconDiv.textContent = op.icon || '';
+      
+      const labelDiv = document.createElement('div');
+      labelDiv.className = 'operation-label';
+      labelDiv.textContent = op.label || '';
+      
+      const descDiv = document.createElement('div');
+      descDiv.className = 'operation-description';
+      descDiv.textContent = op.description || '';
+      
+      card.appendChild(iconDiv);
+      card.appendChild(labelDiv);
+      card.appendChild(descDiv);
+      
       card.addEventListener('click', () => {
         this.addTransform(op.type);
         this.hideAddStepModal();
@@ -158,24 +175,37 @@ class VisualEditor {
     block.className = `block transform-block ${transform.type}-block`;
     block.dataset.id = transform.id;
 
-    block.innerHTML = `
-      <div class="block-header">
-        <span class="block-icon">${schema.icon || '📦'}</span>
-        <span class="block-title">${schema.label || transform.type}</span>
-        <button class="block-delete" data-id="${transform.id}">×</button>
-      </div>
-      <div class="block-body">
-        ${this.renderBlockBody(transform, schema)}
-      </div>
-    `;
-
-    // Attach delete handler
-    const deleteBtn = block.querySelector('.block-delete');
-    if (deleteBtn) {
-      deleteBtn.addEventListener('click', () => {
-        this.removeTransform(transform.id);
-      });
-    }
+    // Build header safely to avoid XSS with server-provided strings
+    const header = document.createElement('div');
+    header.className = 'block-header';
+    
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'block-icon';
+    iconSpan.textContent = schema.icon || '📦';
+    
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'block-title';
+    titleSpan.textContent = schema.label || transform.type;
+    
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'block-delete';
+    deleteBtn.dataset.id = transform.id;
+    deleteBtn.textContent = '×';
+    deleteBtn.addEventListener('click', () => {
+      this.removeTransform(transform.id);
+    });
+    
+    header.appendChild(iconSpan);
+    header.appendChild(titleSpan);
+    header.appendChild(deleteBtn);
+    
+    // Body contains form widgets - these use escapeHtml for user values
+    const body = document.createElement('div');
+    body.className = 'block-body';
+    body.innerHTML = this.renderBlockBody(transform, schema);
+    
+    block.appendChild(header);
+    block.appendChild(body);
 
     return block;
   }
@@ -490,6 +520,12 @@ class VisualEditor {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: this.query })
       });
+      
+      if (!response.ok) {
+        console.error('Failed to compile ASQL: HTTP', response.status);
+        return '';
+      }
+      
       const data = await response.json();
 
       if (data.success) {
