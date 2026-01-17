@@ -384,8 +384,9 @@ def _expression_to_asql(expr: Dict[str, Any]) -> str:
         data_type = expr.get('data_type', 'string')
 
         if data_type == 'string':
-            # Use double quotes for ASQL strings
-            return f'"{value}"'
+            # Escape double quotes to prevent injection, then wrap in double quotes
+            escaped = str(value).replace('\\', '\\\\').replace('"', '\\"')
+            return f'"{escaped}"'
         elif data_type == 'number':
             return str(value)
         elif data_type == 'boolean':

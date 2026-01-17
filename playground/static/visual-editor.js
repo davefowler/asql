@@ -488,8 +488,15 @@ class VisualEditor {
       if (data.success) {
         this.query = data.query;
 
-        // Ensure all transforms have unique IDs for event handling
-        if (this.query.transforms) {
+        // Compute max existing transform ID to prevent collisions
+        if (this.query.transforms && this.query.transforms.length > 0) {
+          const maxId = this.query.transforms
+            .map(t => parseInt(String(t.id || '').replace(/^t/, ''), 10))
+            .filter(n => !Number.isNaN(n))
+            .reduce((a, b) => Math.max(a, b), -1);
+          this.nextTransformId = maxId + 1;
+          
+          // Ensure all transforms have unique IDs for event handling
           this.query.transforms.forEach(transform => {
             if (!transform.id) {
               transform.id = `t${this.nextTransformId++}`;
