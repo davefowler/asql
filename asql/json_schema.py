@@ -24,12 +24,14 @@ def ast_to_json(ast: exp.Select) -> Dict[str, Any]:
         'transforms': []
     }
 
-    # Extract FROM clause
-    if from_clause := ast.args.get('from'):
+    # Extract FROM clause (SQLGlot uses 'from_' because 'from' is a Python keyword)
+    if from_clause := ast.args.get('from_'):
         table = from_clause.this
         if table:
+            # Table might be wrapped in Table(this=Identifier(...))
+            table_name = table.name if hasattr(table, 'name') else str(table)
             query['from'] = {
-                'table': table.name if hasattr(table, 'name') else str(table),
+                'table': table_name,
                 'alias': table.alias if hasattr(table, 'alias') else None
             }
 
