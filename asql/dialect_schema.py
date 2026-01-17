@@ -21,9 +21,11 @@ from sqlglot import exp, TokenType
 # DATACLASS DEFINITIONS
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class Operator:
     """Definition of a comparison/equality operator"""
+
     token: TokenType
     expr_class: type  # SQLGlot expression class (exp.GT, exp.LT, etc.)
     symbol: str
@@ -34,6 +36,7 @@ class Operator:
 @dataclass(frozen=True)
 class StringOperator:
     """Definition of an ASQL string matching operator"""
+
     tokens: tuple  # Token sequence to match, e.g., ("STARTS", "WITH")
     wrap_pattern: tuple  # Left/right wrap patterns for LIKE, e.g., ("", "%")
     case_sensitive: bool
@@ -44,6 +47,7 @@ class StringOperator:
 @dataclass(frozen=True)
 class JoinType:
     """Definition of a join operation type"""
+
     kind: str  # SQL join kind: "INNER", "LEFT", "RIGHT", "FULL OUTER", "CROSS"
     symbols: List[str]  # ASQL symbols: ["&"], ["&?"], etc.
     keywords: List[str]  # SQL keywords: ["JOIN", "INNER JOIN"]
@@ -55,6 +59,7 @@ class JoinType:
 @dataclass(frozen=True)
 class Aggregate:
     """Definition of an aggregate function"""
+
     expr_class: type  # SQLGlot aggregate class (exp.Count, exp.Sum, etc.)
     label: str
     description: str
@@ -65,6 +70,7 @@ class Aggregate:
 @dataclass(frozen=True)
 class Parameter:
     """Definition of a transform parameter"""
+
     name: str
     type: str  # "expression", "table", "column", "integer", etc.
     required: bool
@@ -88,6 +94,7 @@ class Parameter:
 @dataclass(frozen=True)
 class Transform:
     """Definition of a pipeline transform operation"""
+
     keywords: List[str]  # Keywords that trigger this transform
     label: str
     category: str  # Optional grouping: "filter", "join", "aggregate", etc.
@@ -100,6 +107,7 @@ class Transform:
 # =============================================================================
 # OPERATORS
 # =============================================================================
+
 
 class OPERATORS:
     """Comparison, equality, string, and logical operators"""
@@ -209,6 +217,7 @@ class OPERATORS:
 # JOIN TYPES
 # =============================================================================
 
+
 class JOIN_TYPES:
     """Join operation types with symbols and keywords"""
 
@@ -257,6 +266,7 @@ class JOIN_TYPES:
 # =============================================================================
 # AGGREGATES
 # =============================================================================
+
 
 class AGGREGATES:
     """Aggregate functions"""
@@ -313,6 +323,7 @@ class AGGREGATES:
 # =============================================================================
 # TRANSFORMS
 # =============================================================================
+
 
 class TRANSFORMS:
     """Pipeline operations (where, select, join, etc.)"""
@@ -513,12 +524,13 @@ class TRANSFORMS:
 # HELPER FUNCTIONS
 # =============================================================================
 
+
 def get_all_operators() -> List[Operator]:
     """Get all comparison and equality operators flattened into a list."""
     ops = []
     for cls in [OPERATORS.COMPARISON, OPERATORS.EQUALITY]:
         for name in dir(cls):
-            if not name.startswith('_'):
+            if not name.startswith("_"):
                 op = getattr(cls, name)
                 if isinstance(op, Operator):
                     ops.append(op)
@@ -529,7 +541,7 @@ def get_all_string_operators() -> List[StringOperator]:
     """Get all string matching operators."""
     ops = []
     for name in dir(OPERATORS.STRING):
-        if not name.startswith('_'):
+        if not name.startswith("_"):
             op = getattr(OPERATORS.STRING, name)
             if isinstance(op, StringOperator):
                 ops.append(op)
@@ -540,14 +552,12 @@ def get_join_options() -> List[Dict[str, str]]:
     """Get join type options formatted for UI dropdown."""
     options = []
     for name in dir(JOIN_TYPES):
-        if not name.startswith('_'):
+        if not name.startswith("_"):
             join = getattr(JOIN_TYPES, name)
             if isinstance(join, JoinType):
-                options.append({
-                    "value": name,
-                    "label": join.label,
-                    "description": join.description
-                })
+                options.append(
+                    {"value": name, "label": join.label, "description": join.description}
+                )
     return options
 
 
@@ -555,14 +565,10 @@ def get_aggregate_options() -> List[Dict[str, str]]:
     """Get aggregate function options formatted for UI dropdown."""
     options = []
     for name in dir(AGGREGATES):
-        if not name.startswith('_'):
+        if not name.startswith("_"):
             agg = getattr(AGGREGATES, name)
             if isinstance(agg, Aggregate):
-                options.append({
-                    "value": name,
-                    "label": agg.label,
-                    "description": agg.description
-                })
+                options.append({"value": name, "label": agg.label, "description": agg.description})
     return options
 
 
@@ -570,7 +576,7 @@ def get_transform_by_keyword(keyword: str) -> Optional[Transform]:
     """Get transform definition by keyword (e.g., 'WHERE' -> TRANSFORMS.WHERE)"""
     keyword_upper = keyword.upper()
     for name in dir(TRANSFORMS):
-        if not name.startswith('_'):
+        if not name.startswith("_"):
             transform = getattr(TRANSFORMS, name)
             if isinstance(transform, Transform) and keyword_upper in transform.keywords:
                 return transform
@@ -581,7 +587,7 @@ def get_all_transforms() -> List[Transform]:
     """Get list of all available transforms."""
     transforms = []
     for name in dir(TRANSFORMS):
-        if not name.startswith('_'):
+        if not name.startswith("_"):
             transform = getattr(TRANSFORMS, name)
             if isinstance(transform, Transform):
                 transforms.append(transform)

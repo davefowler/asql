@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 _OVERRIDES_PATH = Path(__file__).parent / "ui_overrides.yaml"
 
 try:
-    with open(_OVERRIDES_PATH, 'r') as f:
+    with open(_OVERRIDES_PATH, "r") as f:
         _yaml_data = yaml.safe_load(f)
         _MANUAL_UI_OVERRIDES = _yaml_data.get("operations", {}) if _yaml_data else {}
 except FileNotFoundError:
@@ -72,7 +72,6 @@ for op_name in _BASE_SCHEMAS.keys():
     OPERATION_UI_SCHEMAS[op_name] = {**base, **override}
 
 
-
 def get_operation_schema(operation_type: str) -> dict:
     """
     Get UI schema for an operation type.
@@ -95,11 +94,13 @@ def list_all_operations() -> list:
     """
     operations = []
     for op_type, schema in OPERATION_UI_SCHEMAS.items():
-        operations.append({
-            "type": op_type,
-            "label": schema.get("label", op_type.title()),
-            "icon": schema.get("icon", "📦"),
-            "description": schema.get("description", ""),
-            "category": schema.get("category", "other")
-        })
+        operations.append(
+            {
+                "type": op_type,
+                "label": schema.get("label", op_type.title()),
+                "icon": schema.get("icon", "📦"),
+                "description": schema.get("description", ""),
+                "category": schema.get("category", "other"),
+            }
+        )
     return operations

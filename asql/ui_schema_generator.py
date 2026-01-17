@@ -25,7 +25,7 @@ def generate_base_schema_from_asql() -> Dict[str, Any]:
             "icon": _guess_icon(operation_name),
             "description": f"{operation_name} operation",
             "category": _guess_category(operation_name),
-            "parameters": _generate_parameters(operation_name)
+            "parameters": _generate_parameters(operation_name),
         }
 
         schemas[operation_name.lower().replace(" ", "_")] = schema
@@ -88,42 +88,24 @@ def _generate_parameters(operation_name: str) -> List[Dict[str, Any]]:
     """
     # Map operations to their common parameters
     param_patterns = {
-        "WHERE": [
-            {"name": "condition", "widget": "expression", "required": True}
-        ],
-        "FILTER": [
-            {"name": "condition", "widget": "expression", "required": True}
-        ],
-        "IF": [
-            {"name": "condition", "widget": "expression", "required": True}
-        ],
+        "WHERE": [{"name": "condition", "widget": "expression", "required": True}],
+        "FILTER": [{"name": "condition", "widget": "expression", "required": True}],
+        "IF": [{"name": "condition", "widget": "expression", "required": True}],
         "JOIN": [
             {"name": "join_type", "widget": "dropdown", "required": True, "default": "inner"},
             {"name": "table", "widget": "text", "required": True},
-            {"name": "condition", "widget": "expression", "required": False}
+            {"name": "condition", "widget": "expression", "required": False},
         ],
-        "SELECT": [
-            {"name": "columns", "widget": "list", "required": True}
-        ],
-        "PROJECT": [
-            {"name": "columns", "widget": "list", "required": True}
-        ],
+        "SELECT": [{"name": "columns", "widget": "list", "required": True}],
+        "PROJECT": [{"name": "columns", "widget": "list", "required": True}],
         "GROUP BY": [
             {"name": "dimensions", "widget": "list", "required": True},
-            {"name": "aggregates", "widget": "aggregate_list", "required": False}
+            {"name": "aggregates", "widget": "aggregate_list", "required": False},
         ],
-        "ORDER BY": [
-            {"name": "expressions", "widget": "order_list", "required": True}
-        ],
-        "LIMIT": [
-            {"name": "count", "widget": "number", "required": True, "default": 10}
-        ],
-        "EXTEND": [
-            {"name": "columns", "widget": "list", "required": True}
-        ],
-        "STASH": [
-            {"name": "name", "widget": "text", "required": True, "placeholder": "cte_name"}
-        ],
+        "ORDER BY": [{"name": "expressions", "widget": "order_list", "required": True}],
+        "LIMIT": [{"name": "count", "widget": "number", "required": True, "default": 10}],
+        "EXTEND": [{"name": "columns", "widget": "list", "required": True}],
+        "STASH": [{"name": "name", "widget": "text", "required": True, "placeholder": "cte_name"}],
     }
 
     return param_patterns.get(operation_name, [])
@@ -142,7 +124,7 @@ def generate_function_schemas() -> Dict[str, Any]:
             "name": func_name.lower(),
             "category": _guess_function_category(func_name),
             "signature": f"{func_name.lower()}(...)",
-            "description": f"{func_name} function"
+            "description": f"{func_name} function",
         }
         schemas[func_name.lower()] = schema
 
@@ -195,8 +177,8 @@ if __name__ == "__main__":
         print(f"  Icon: {schema['icon']}")
         print(f"  Category: {schema['category']}")
         print(f"  Parameters: {len(schema['parameters'])}")
-        for param in schema['parameters']:
-            required = "required" if param.get('required') else "optional"
+        for param in schema["parameters"]:
+            required = "required" if param.get("required") else "optional"
             print(f"    - {param['name']} ({param['widget']}) [{required}]")
 
     print("\n" + "=" * 60)
