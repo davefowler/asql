@@ -171,19 +171,22 @@ def _expression_to_json(expr: exp.Expression) -> Dict[str, Any]:
 
     elif isinstance(expr, exp.Literal):
         value = expr.this
-        # Determine data type
-        if isinstance(value, str):
-            data_type = 'string'
-        elif isinstance(value, (int, float)):
+        # Determine data type using SQLGlot's type properties
+        # Note: exp.Literal.this is always a string, so we use is_number property
+        if expr.is_number:
             data_type = 'number'
-        elif isinstance(value, bool):
-            data_type = 'boolean'
+            # Convert string to actual numeric type
+            try:
+                typed_value = int(value) if '.' not in str(value) else float(value)
+            except (ValueError, TypeError):
+                typed_value = value
         else:
             data_type = 'string'
+            typed_value = value
 
         return {
             'type': 'literal',
-            'value': value,
+            'value': typed_value,
             'data_type': data_type
         }
 

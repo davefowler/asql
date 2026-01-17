@@ -2,6 +2,19 @@
  * ASQL Playground JavaScript
  */
 
+// ========== Utility Functions ==========
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
 // ========== Global Variables ==========
 let inputEditor, outputEditor;
 
@@ -1057,7 +1070,7 @@ async function toggleEditorMode() {
 
         // Update text editor with visual query
         if (visualEditor) {
-            const asql = await visualEditor.getASSQL();
+            const asql = await visualEditor.getASQL();
             if (asql) {
                 inputEditor.setValue(asql);
             }
@@ -1068,11 +1081,11 @@ async function toggleEditorMode() {
 // Handle visual editor changes
 window.onVisualEditorChange = debounce(async () => {
     if (isVisualMode && visualEditor) {
-        const asql = await visualEditor.getASSQL();
+        const asql = await visualEditor.getASQL();
         // Trigger compilation
         if (asql) {
-            const fromDialect = document.getElementById('from-dialect').value || 'asql';
-            const toDialect = document.getElementById('to-dialect').value || 'snowflake';
+            const dialect = document.getElementById('to-dialect').value || 'snowflake';
+            const errorDiv = document.getElementById('error');
 
             try {
                 const response = await fetch('/api/compile', {
@@ -1080,8 +1093,7 @@ window.onVisualEditorChange = debounce(async () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         asql: asql,
-                        from_dialect: fromDialect,
-                        to_dialect: toDialect,
+                        dialect: dialect,
                         settings: currentSettings
                     })
                 });
@@ -1090,12 +1102,23 @@ window.onVisualEditorChange = debounce(async () => {
 
                 if (data.success) {
                     outputEditor.setValue(data.sql || data.asql || '');
-                    hideError();
+                    if (errorDiv) {
+                        errorDiv.style.display = 'none';
+                        errorDiv.className = '';
+                    }
                 } else {
-                    showError(data.error || 'Compilation failed');
+                    if (errorDiv) {
+                        errorDiv.textContent = data.error || 'Compilation failed';
+                        errorDiv.className = 'error';
+                        errorDiv.style.display = 'block';
+                    }
                 }
             } catch (error) {
-                showError(`Network error: ${error.message}`);
+                if (errorDiv) {
+                    errorDiv.textContent = `Network error: ${error.message}`;
+                    errorDiv.className = 'error';
+                    errorDiv.style.display = 'block';
+                }
             }
         }
     }

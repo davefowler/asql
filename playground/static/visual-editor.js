@@ -452,7 +452,7 @@ class VisualEditor {
   /**
    * Get ASQL text from current query
    */
-  async getASSQL() {
+  async getASQL() {
     try {
       const response = await fetch('/api/visual/compile', {
         method: 'POST',
@@ -493,6 +493,7 @@ let visualEditor = null;
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   visualEditor = new VisualEditor();
+  visualEditor.init();
 });
 
 // Event delegation for dynamically created form fields
