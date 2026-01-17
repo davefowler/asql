@@ -541,17 +541,6 @@ def compile_to_ast(asql_query: str) -> exp.Expression:
         raise ASQLCompilationError(f"Compilation error: {e}") from e
 
 
-def get_preparsed(asql_query: str) -> str:
-    """Get the SQL representation of an ASQL query (for debugging).
-    
-    Note: This now parses with SQLGlot and re-generates.
-    There is no separate preparser.
-    """
-    asql_query = _normalize_leading_set_statements(asql_query)
-    ast = sqlglot.parse_one(asql_query, dialect="asql")
-    return ast.sql()
-
-
 def get_settings_from_query(
     asql_query: str,
     base_settings: Optional[CompileSettings] = None,

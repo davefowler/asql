@@ -6,7 +6,6 @@ These functions support 3 syntax variants:
 3. Underscore alias: days_since_created_at (preparser, needs schema for optimizer)
 """
 
-import pytest
 from asql import compile
 
 

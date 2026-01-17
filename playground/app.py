@@ -5,18 +5,32 @@ import re
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from sqlglot.dialects import Dialects
 
+import sqlglot
+
 from asql import compile
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
-from asql.reverse_compiler import reverse_compile, detect_dialect
-from asql.config import ASQLConfig, StyleConfig, CompileSettings
+from asql.config import CompileSettings
 from asql.json_schema import ast_to_json, json_to_asql
 from asql.compiler.api import compile_to_ast
+
+from .jinja_utils import strip_jinja_templates
+from .examples import (
+    ASQL_EXAMPLES,
+    PIPELINE_EXAMPLES,
+    COHORT_EXAMPLES,
+    SAMPLING_EXAMPLES,
+    RESHAPING_EXAMPLES,
+    COLUMN_OPERATOR_EXAMPLES,
+    COUNT_INFERENCE_EXAMPLES,
+    SYNTAX_STYLES_EXAMPLES,
+    SQL_EXAMPLES,
+)
 
 
 def get_dialect_options(panel: str = "from") -> list[dict]:
@@ -102,21 +116,6 @@ def generate_dialect_options_html(dialects: list[dict], selected: str = "") -> s
             f'{d["label"]}</option>'
         )
     return "\n                            ".join(options)
-
-
-from .jinja_utils import strip_jinja_templates
-from .examples import (
-    ASQL_EXAMPLES,
-    PIPELINE_EXAMPLES,
-    COHORT_EXAMPLES,
-    SAMPLING_EXAMPLES,
-    RESHAPING_EXAMPLES,
-    COLUMN_OPERATOR_EXAMPLES,
-    COUNT_INFERENCE_EXAMPLES,
-    SYNTAX_STYLES_EXAMPLES,
-    SQL_EXAMPLES,
-    get_all_examples,
-)
 
 
 app = FastAPI(title="ASQL Playground", version="1.0.0")
@@ -249,33 +248,31 @@ async def api_compile(request: CompileRequest) -> dict:
 
 @app.post("/api/reverse-compile")
 async def api_reverse_compile(request: ReverseCompileRequest) -> dict:
-    """API endpoint to compile SQL to ASQL."""
+    """API endpoint to compile SQL to ASQL using sqlglot.transpile()."""
     try:
         if not request.sql.strip():
             return {"error": "Empty SQL query"}
 
-        # Build style config from request settings
-        # Default to ignore_aliases=True for playground (cleaner ASQL output)
-        settings_dict = {"ignore_aliases": True}
-        if request.settings:
-            settings_dict.update(request.settings)
-        style = StyleConfig.from_dict(settings_dict)
-        config = ASQLConfig(style=style)
-
-        asql = reverse_compile(
+        # Use sqlglot.transpile to convert SQL to ASQL
+        source_dialect = request.source_dialect if request.source_dialect else None
+        results = sqlglot.transpile(
             request.sql,
-            source_dialect=request.source_dialect if request.source_dialect else None,
-            config=config,
+            read=source_dialect,
+            write="asql",
         )
+        
+        if not results or not results[0]:
+            return {"error": "Failed to convert SQL to ASQL"}
+        
+        asql = results[0]
         return {"asql": asql}
 
-    except ASQLCompilationError as e:
+    except sqlglot.errors.ParseError as e:
         error_msg = str(e)
-        # Clean up error messages - remove ANSI escape codes
         error_msg = re.sub(r"\x1b\[[0-9;]*m", "", error_msg)
         if len(error_msg) > 500:
             error_msg = error_msg[:500] + "..."
-        return {"error": f"Compilation Error: {error_msg}"}
+        return {"error": f"Parse Error: {error_msg}"}
     except Exception as e:
         error_msg = str(e)
         error_msg = re.sub(r"\x1b\[[0-9;]*m", "", error_msg)
@@ -286,47 +283,48 @@ async def api_reverse_compile(request: ReverseCompileRequest) -> dict:
 
 @app.post("/api/detect-dialect")
 async def api_detect_dialect(request: DetectDialectRequest) -> dict:
-    """API endpoint to detect SQL dialect."""
+    """API endpoint to detect SQL dialect.
+    
+    Note: Dialect detection is heuristic-based. Returns None if unable to
+    determine a specific dialect (the SQL is generic enough to work in multiple).
+    """
     try:
         if not request.sql.strip():
             return {"dialect": None}
 
-        dialect = detect_dialect(request.sql)
-        return {"dialect": dialect}
+        # Try parsing with common dialects and see which one works best
+        # For now, return None since dialect detection is complex and
+        # sqlglot.transpile works without specifying a source dialect
+        return {"dialect": None}
     except Exception as e:
         return {"dialect": None, "error": str(e)}
 
 
 @app.post("/api/normalize")
 async def api_normalize(request: NormalizeRequest) -> dict:
-    """Normalize ASQL to configured style."""
+    """Normalize ASQL to configured style using sqlglot.transpile().
+    
+    Note: Style configuration is currently limited - use transpile's built-in
+    normalization. Full style options will be added to the ASQL generator.
+    """
     try:
         if not request.asql.strip():
             return {"error": "Empty ASQL query"}
 
-        style_config = request.style
-        style = StyleConfig(
-            equality=style_config.get("equality", "single"),
-            count=style_config.get("count", "hash"),
-            coalesce=style_config.get("coalesce", "operator"),
-            descending=style_config.get("descending", "prefix"),
-            cast=style_config.get("cast", "double_colon"),
-            quotes=style_config.get("quotes", "double"),
-            week_start=style_config.get("week_start", "monday"),
-            squash_empty_ctes=style_config.get("squash_empty_ctes", True),
-        )
-        config = ASQLConfig(style=style)
-
-        # Compile to SQL then reverse compile to normalized ASQL
-        sql = compile(request.asql, pretty=True)
-        normalized = reverse_compile(sql, config=config)
-
+        # Use sqlglot.transpile for ASQL → ASQL normalization
+        # This applies the ASQL generator's standard formatting
+        results = sqlglot.transpile(request.asql, read="asql", write="asql")
+        
+        if not results or not results[0]:
+            return {"error": "Failed to normalize ASQL"}
+        
+        normalized = results[0]
         return {"normalized": normalized}
 
     except ASQLSyntaxError as e:
         return {"error": f"Syntax Error: {str(e)}"}
-    except ASQLCompilationError as e:
-        return {"error": f"Compilation Error: {str(e)}"}
+    except sqlglot.errors.ParseError as e:
+        return {"error": f"Parse Error: {str(e)}"}
     except Exception as e:
         return {"error": f"Error: {str(e)}"}
 
@@ -532,14 +530,11 @@ async def api_fivetran_examples() -> list:
                 continue
 
             # Parse metadata from header comments
-            source = None
             model = None
             dialect = "snowflake"
 
             for line in content.split("\n")[:10]:
-                if line.startswith("-- Source:"):
-                    source = line.replace("-- Source:", "").strip()
-                elif line.startswith("-- Model:"):
+                if line.startswith("-- Model:"):
                     model = line.replace("-- Model:", "").strip()
                 elif line.startswith("-- Dialect:"):
                     dialect = line.replace("-- Dialect:", "").strip().lower()

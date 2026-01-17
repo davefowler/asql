@@ -7,7 +7,7 @@ SQLGlot's extension model (custom tokens, function parsers, etc.).
 import pytest
 import sqlglot
 from sqlglot import exp
-from asql.dialect import ASQL, ASQLDialect, register_asql_dialect
+from asql.dialect import ASQL, register_asql_dialect
 
 
 # Ensure dialect is registered

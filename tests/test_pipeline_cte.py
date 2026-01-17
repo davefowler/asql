@@ -5,7 +5,6 @@ intermediate CTEs. CTEs are only generated when explicitly requested
 with 'stash as' or 'set' statements.
 """
 
-import pytest
 
 from asql import compile
 

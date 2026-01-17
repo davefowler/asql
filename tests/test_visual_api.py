@@ -9,7 +9,7 @@ import json
 
 # Skip all tests if pytest_asyncio is not available
 try:
-    import pytest_asyncio
+    import pytest_asyncio  # noqa: F401
     pytest_plugins = ('pytest_asyncio',)
     HAS_PYTEST_ASYNCIO = True
 except ImportError:

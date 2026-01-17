@@ -5,7 +5,6 @@ using SQLGlot's parsing capabilities, without requiring database connections.
 """
 
 import pytest
-import os
 from pathlib import Path
 from typing import List
 
@@ -14,7 +13,6 @@ from asql.testing.syntax_validator import (
     SUPPORTED_DIALECTS,
     DIALECT_LIMITATIONS,
     validate_syntax,
-    is_feature_supported,
 )
 
 

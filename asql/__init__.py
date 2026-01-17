@@ -16,62 +16,33 @@ Example:
     >>> compile("from sales group by region (sum(amount) as revenue)")
     "SELECT region, SUM(amount) AS revenue FROM sales GROUP BY region"
 
+For SQL → ASQL conversion, use sqlglot.transpile:
+    >>> import sqlglot
+    >>> sqlglot.transpile("SELECT * FROM users", write="asql")[0]
+    'from users'
+
 The compilation pipeline:
 1. SQLGlot ASQL Dialect: Parses ASQL syntax directly into an AST
 2. Compiler transforms: Apply ASQL-specific transformations to the AST
 3. Generator: Outputs SQL in the target dialect
 """
 
-from asql.compiler import compile, compile_to_ast, get_preparsed, get_settings_from_query
-from asql.dialect import ASQL, ASQLDialect, register_asql_dialect
-from asql.reverse_compiler import reverse_compile, detect_dialect
+from asql.compiler import compile, compile_to_ast, get_settings_from_query
+from asql.dialect import ASQL, register_asql_dialect
 from asql.config import ASQLConfig, StyleConfig, CompileSettings
 
 __version__ = "0.1.0"
-
-
-def normalize(asql_query: str, config: ASQLConfig = None) -> str:
-    """
-    Normalize ASQL to a consistent style based on config.
-    
-    This is ASQL → SQL → ASQL transpilation that applies
-    the configured style preferences.
-    
-    Args:
-        asql_query: Input ASQL query (any style)
-        config: Style configuration (uses defaults if None)
-    
-    Returns:
-        ASQL query in the configured style
-    """
-    if config is None:
-        config = ASQLConfig()
-    
-    # Step 1: ASQL → SQL
-    sql = compile(asql_query, dialect=config.dialect)
-    
-    # Step 2: SQL → ASQL (with config)
-    normalized = reverse_compile(sql, source_dialect=config.dialect, config=config)
-    
-    return normalized
 
 
 __all__ = [
     # Main compilation functions
     "compile",
     "compile_to_ast",
-    "get_preparsed",
     "get_settings_from_query",
-    "normalize",
     
     # Dialect
     "ASQL",
-    "ASQLDialect",
     "register_asql_dialect",
-    
-    # Reverse compilation
-    "reverse_compile",
-    "detect_dialect",
     
     # Configuration
     "ASQLConfig",

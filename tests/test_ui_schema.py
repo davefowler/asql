@@ -1,12 +1,17 @@
 """
 Tests for asql/ui_schema.py
 
-Tests for UI schema generation from dialect_schema.py dataclasses.
+Tests for UI schema loaded from ui-metadata.json.
 """
 
 import pytest
 
-from asql.ui_schema import get_operation_schema, list_all_operations, OPERATION_UI_SCHEMAS
+from asql.ui_schema import get_schema, get_operation_schema, list_all_operations
+
+
+def get_transforms() -> dict:
+    """Get transforms from the schema."""
+    return get_schema().get("transforms", {})
 
 
 class TestGetOperationSchema:
@@ -71,7 +76,7 @@ class TestListAllOperations:
         operations = list_all_operations()
         op_types = {op['type'] for op in operations}
 
-        # These should be available based on dialect_schema.py TRANSFORMS
+        # These should be available based on ui-metadata.json
         expected_common = ['where', 'select', 'limit']
 
         for expected in expected_common:
@@ -79,24 +84,27 @@ class TestListAllOperations:
 
 
 class TestSchemaStructure:
-    """Tests for the structure of OPERATION_UI_SCHEMAS."""
+    """Tests for the structure of transforms in schema."""
 
     def test_schemas_are_generated(self):
-        """Test that schemas were auto-generated."""
-        assert OPERATION_UI_SCHEMAS is not None
-        assert isinstance(OPERATION_UI_SCHEMAS, dict)
-        assert len(OPERATION_UI_SCHEMAS) > 0
+        """Test that schemas were loaded from JSON."""
+        transforms = get_transforms()
+        assert transforms is not None
+        assert isinstance(transforms, dict)
+        assert len(transforms) > 0
 
     def test_schema_has_filter_operations(self):
         """Test that filter operations exist in schemas."""
-        filter_ops = [op for op in OPERATION_UI_SCHEMAS.keys()
-                      if OPERATION_UI_SCHEMAS[op].get('category') == 'filter']
+        transforms = get_transforms()
+        filter_ops = [op for op in transforms.keys()
+                      if transforms[op].get('category') == 'filter']
 
         assert len(filter_ops) > 0, "No filter operations found"
 
     def test_where_schema_has_condition_parameter(self):
         """Test that WHERE schema has a condition parameter."""
-        schema = OPERATION_UI_SCHEMAS.get('where', {})
+        transforms = get_transforms()
+        schema = transforms.get('where', {})
 
         if 'parameters' in schema:
             param_names = [p['name'] for p in schema['parameters']]
@@ -104,7 +112,8 @@ class TestSchemaStructure:
 
     def test_join_schema_has_table_parameter(self):
         """Test that JOIN schema has a table parameter."""
-        schema = OPERATION_UI_SCHEMAS.get('join', {})
+        transforms = get_transforms()
+        schema = transforms.get('join', {})
 
         if 'parameters' in schema:
             param_names = [p['name'] for p in schema['parameters']]
@@ -112,42 +121,37 @@ class TestSchemaStructure:
 
     def test_limit_schema_has_count_parameter(self):
         """Test that LIMIT schema has a count parameter."""
-        schema = OPERATION_UI_SCHEMAS.get('limit', {})
+        transforms = get_transforms()
+        schema = transforms.get('limit', {})
 
         if 'parameters' in schema:
             param_names = [p['name'] for p in schema['parameters']]
             assert 'count' in param_names, "LIMIT missing 'count' parameter"
 
 
-class TestDialectSchemaIntegration:
-    """Tests for dialect_schema.py integration."""
+class TestSchemaJsonIntegration:
+    """Tests for ui-metadata.json integration."""
 
-    def test_schemas_come_from_dialect_schema(self):
-        """Test that schemas are generated from dialect_schema.py TRANSFORMS."""
-        from asql.dialect_schema import TRANSFORMS
-
-        # Check that TRANSFORMS attributes correspond to UI schemas
-        transform_labels = []
-        for attr_name in dir(TRANSFORMS):
-            if not attr_name.startswith("_"):
-                transform = getattr(TRANSFORMS, attr_name)
-                if hasattr(transform, "label"):
-                    transform_labels.append(transform.label.replace(" ", "_"))
-
+    def test_schemas_come_from_json(self):
+        """Test that schemas are loaded from ui-metadata.json."""
+        schema = get_schema()
+        transforms = schema.get("transforms", {})
+        
         # UI schemas should have entries for transforms
-        assert len(transform_labels) > 0
-        assert len(OPERATION_UI_SCHEMAS) > 0
+        assert len(transforms) > 0
 
     def test_merged_schemas_contain_base_info(self):
-        """Test that schemas contain base schema info from dialect_schema."""
-        for op_name, schema in OPERATION_UI_SCHEMAS.items():
+        """Test that schemas contain base schema info from JSON."""
+        transforms = get_transforms()
+        for op_name, schema in transforms.items():
             # All schemas should have these basic fields
             assert 'label' in schema, f"{op_name} missing 'label'"
             assert 'category' in schema, f"{op_name} missing 'category'"
 
-    def test_parameters_from_dialect_schema(self):
-        """Test that parameters come from dialect_schema.py."""
-        schema = OPERATION_UI_SCHEMAS.get('where', {})
+    def test_parameters_from_json(self):
+        """Test that parameters come from ui-metadata.json."""
+        transforms = get_transforms()
+        schema = transforms.get('where', {})
 
         if 'parameters' in schema:
             # Parameters should exist and have required fields
@@ -163,7 +167,8 @@ class TestParameterMerging:
 
     def test_parameters_have_correct_structure(self):
         """Test that parameters have the expected structure."""
-        for op_name, schema in OPERATION_UI_SCHEMAS.items():
+        transforms = get_transforms()
+        for op_name, schema in transforms.items():
             if 'parameters' in schema:
                 for param in schema['parameters']:
                     assert 'name' in param, f"Parameter missing 'name' in {op_name}"
@@ -175,18 +180,20 @@ class TestCategoryAssignment:
 
     def test_filter_operations_have_filter_category(self):
         """Test that filter operations are categorized correctly."""
+        transforms = get_transforms()
         filter_ops = ['where']
 
         for op in filter_ops:
-            if op in OPERATION_UI_SCHEMAS:
-                schema = OPERATION_UI_SCHEMAS[op]
+            if op in transforms:
+                schema = transforms[op]
                 assert schema.get('category') == 'filter', \
                     f"{op} should have 'filter' category"
 
     def test_join_has_join_category(self):
         """Test that JOIN has join category."""
-        if 'join' in OPERATION_UI_SCHEMAS:
-            schema = OPERATION_UI_SCHEMAS['join']
+        transforms = get_transforms()
+        if 'join' in transforms:
+            schema = transforms['join']
             assert schema.get('category') == 'join'
 
 
@@ -194,14 +201,14 @@ class TestIntegration:
     """Integration tests for the full UI schema system."""
 
     def test_full_workflow(self):
-        """Test the full workflow: generate -> access."""
+        """Test the full workflow: load -> access."""
         # 1. Access schemas
-        from asql.ui_schema import OPERATION_UI_SCHEMAS
-        assert len(OPERATION_UI_SCHEMAS) > 0
+        transforms = get_transforms()
+        assert len(transforms) > 0
 
         # 2. Use API functions
         schema = get_operation_schema('where')
-        assert schema or len(OPERATION_UI_SCHEMAS) > 0
+        assert schema or len(transforms) > 0
 
         operations = list_all_operations()
         assert len(operations) > 0
@@ -210,7 +217,8 @@ class TestIntegration:
         """Test that schemas can be JSON serialized (for API responses)."""
         import json
 
-        for op_name, schema in OPERATION_UI_SCHEMAS.items():
+        transforms = get_transforms()
+        for op_name, schema in transforms.items():
             try:
                 json.dumps(schema)
             except (TypeError, ValueError) as e:
@@ -221,7 +229,7 @@ class TestIntegration:
         operations = list_all_operations()
         op_types = {op['type'] for op in operations}
 
-        schema_types = set(OPERATION_UI_SCHEMAS.keys())
+        schema_types = set(get_transforms().keys())
 
         assert op_types == schema_types, \
             f"Mismatch between operations list and schemas: {op_types ^ schema_types}"

@@ -1,8 +1,6 @@
 """Edge case and boundary condition tests."""
 
-import pytest
 from asql import compile
-from asql.errors import ASQLSyntaxError
 
 
 class TestBoundaryConditions:

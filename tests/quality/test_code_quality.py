@@ -43,7 +43,7 @@ def test_compile_function_signature() -> None:
     
     # Check return type annotation if present
     if sig.return_annotation != inspect.Signature.empty:
-        assert sig.return_annotation == str
+        assert sig.return_annotation is str
 
 
 def test_no_syntax_errors_in_code() -> None:
@@ -69,11 +69,11 @@ def test_imports_work() -> None:
     from asql import compile
     from asql.compiler import compile as compile_func
     from asql.errors import ASQLSyntaxError, ASQLCompilationError
-    from asql.dialect import ASQLDialect
+    from asql.dialect import ASQL
     
     # Test that imports don't raise errors
     assert compile is not None
     assert compile_func is not None
     assert ASQLSyntaxError is not None
     assert ASQLCompilationError is not None
-    assert ASQLDialect is not None
+    assert ASQL is not None

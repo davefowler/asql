@@ -807,72 +807,113 @@ playground/static/
 
 ---
 
-## Simplified Approach: Just Export JSON
+## FINAL APPROACH: Static JSON + Validation Tests
 
-Actually, for MVP, we might not need Pydantic at all:
+After discussion, the simplest approach is:
 
-```python
-# scripts/export_ui_schema.py
+1. **`asql/schema.json`** - Static JSON file with all UI metadata
+2. **`tests/test_schema_sync.py`** - Tests that validate JSON keys match parser
 
-def export_ui_schema():
-    """Export ASQL schema for UI consumption."""
-    
-    schema = {
-        "operators": {
-            "comparison": [
-                {"symbol": ">", "label": "greater than"},
-                {"symbol": "<", "label": "less than"},
-                # ...
-            ],
-            "string": [
-                {"keyword": "contains", "label": "contains"},
-                # ...
-            ],
-        },
-        "transforms": {
-            "where": {
-                "label": "Filter",
-                "description": "Filter rows by condition",
-            },
-            # ... extract from dialect_schema.py
-        },
-        "joins": [
-            {"symbol": "&", "label": "Inner Join", "kind": "INNER"},
-            # ...
-        ],
-        "aggregates": [...],
-        "functions": {...},
-    }
-    
-    with open("playground/static/ui_schema.json", "w") as f:
-        json.dump(schema, f, indent=2)
+```
+┌─────────────────┐      ┌─────────────────┐
+│  schema.json    │      │   dialect.py    │
+│  (UI metadata)  │      │   (parser)      │
+│                 │      │                 │
+│  - labels       │      │  - TokenTypes   │
+│  - descriptions │      │  - keywords     │
+│  - parameters   │      │  - actual logic │
+└────────┬────────┘      └────────┬────────┘
+         │                        │
+         └──────────┬─────────────┘
+                    │
+             ┌──────▼──────┐
+             │    TESTS    │
+             │  validate   │
+             │  keys match │
+             └─────────────┘
 ```
 
-Then TypeScript just imports it:
-```typescript
-import schema from './ui_schema.json';
+### Why This Works
 
-// Use directly - JSON is already typed by inference
-Object.entries(schema.transforms).map(([id, t]) => <MenuItem>{t.label}</MenuItem>)
+- **No code generation** - just a JSON file
+- **No Pydantic/dataclasses** - plain data
+- **No imports between schema and parser** - clean separation
+- **JSON is directly consumable by JS** - no build step
+- **Tests catch drift immediately** - if you add a parser feature and forget schema, test fails
+- **"Duplication" is useful** - parser needs `expr_class`, UI needs `label`
+
+### The Files
+
+**`asql/schema.json`** - Hand-written, all UI metadata:
+```json
+{
+  "operators": {
+    "comparison": {
+      ">": { "label": ">", "description": "Greater than" },
+      "<": { "label": "<", "description": "Less than" }
+    },
+    "string": {
+      "contains": { "label": "contains", "description": "Case-sensitive substring" }
+    }
+  },
+  "transforms": {
+    "where": { "label": "Filter", "category": "filter", "description": "..." }
+  },
+  "joins": {
+    "inner": { "symbol": "&", "label": "inner (&)" }
+  }
+}
+```
+
+**`tests/test_schema_sync.py`** - Validation:
+```python
+def test_transforms_sync():
+    """Ensure schema transforms match parser TRANSFORM_PARSERS."""
+    from asql.dialect import ASQLParser
+    import json
+    
+    with open("asql/schema.json") as f:
+        schema = json.load(f)
+    
+    # Normalize keys for comparison
+    parser_transforms = {k.lower().replace(" ", "_") for k in ASQLParser.TRANSFORM_PARSERS.keys()}
+    schema_transforms = set(schema["transforms"].keys())
+    
+    # Some parser keys are internal (ASQL_INNER_JOIN etc)
+    internal_keys = {k for k in parser_transforms if k.startswith("asql_")}
+    parser_transforms -= internal_keys
+    
+    assert parser_transforms == schema_transforms, f"""
+        In parser only: {parser_transforms - schema_transforms}
+        In schema only: {schema_transforms - parser_transforms}
+    """
+```
+
+**`asql/ui_schema.py`** - Thin wrapper:
+```python
+import json
+from pathlib import Path
+
+_SCHEMA_PATH = Path(__file__).parent / "schema.json"
+
+def get_schema():
+    with open(_SCHEMA_PATH) as f:
+        return json.load(f)
+
+def get_operation_schema(op_type: str):
+    return get_schema()["transforms"].get(op_type, {})
 ```
 
 ---
 
-## What About `dialect_schema.py`?
+## What to Delete
 
-Current uses:
-1. `DIALECT.TIME_UNITS` - used by parser
-2. `DIALECT.OPERATORS.COMPARISON` - used by parser for `_build_comparison`
-3. `DIALECT.OPERATORS.STRING` - used by parser for `_parse_comparison`
-4. `DIALECT.PER_OPERATIONS` - used by parser
-5. `DIALECT.COHORT.GRANULARITIES` - used by parser
-6. `DIALECT.TRANSFORMS.all_keywords()` - used to detect transform boundaries
+**`asql/dialect_schema.py`** - DELETE entirely. It was trying to be:
+- Source of truth for parser (but parser has its own dicts)
+- Source of truth for UI (but we now have schema.json)
+- Type-safe with dataclasses (but added complexity without benefit)
 
-**Recommendation:** Keep `dialect_schema.py` as-is. It has:
-- Labels and descriptions (useful for UI AND docs)
-- Parser-specific fields (expr_class, tokens)
-
-Just export the UI-relevant fields to JSON.
+The 2 places in `dialect.py` that import from it can be refactored to use simple dicts.
 
 ---
 
@@ -880,18 +921,15 @@ Just export the UI-relevant fields to JSON.
 
 | Aspect | Decision |
 |--------|----------|
-| **Keep `dialect_schema.py`?** | Yes, for parser use |
-| **UI schema format** | JSON (simplest) |
-| **Source of truth for UI** | Export script that reads dialect |
-| **TypeScript types** | Infer from JSON (or add .d.ts) |
-| **Build integration** | `make ui-schema` or pre-commit |
+| **Delete `dialect_schema.py`?** | YES |
+| **UI schema format** | Static JSON file |
+| **Source of truth for UI** | `asql/schema.json` |
+| **Validation** | Tests compare JSON keys to parser |
+| **TypeScript types** | Infer from JSON (add later if needed) |
 
-**Immediate action:**
-1. Add `scripts/export_ui_schema.py`
-2. Generate `playground/static/ui_schema.json`
-3. Import in UI components
-
-**Later:**
-1. Add Pydantic models if we need validation
-2. Add TypeScript type generation if inference isn't enough
-3. Consider consolidating `dialect_schema.py` if duplication becomes a problem
+**Implementation:**
+1. Create `asql/schema.json` with all UI data
+2. Update `asql/ui_schema.py` to read from JSON
+3. Write `tests/test_schema_sync.py` 
+4. Remove dialect_schema imports from `dialect.py`
+5. Delete `dialect_schema.py`

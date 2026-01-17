@@ -8,9 +8,8 @@ Then creates ASQL equivalents and tests that they compile.
 """
 
 import subprocess
-import re
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import Tuple, Optional
 import time
 import sys
 
@@ -189,7 +188,7 @@ def save_query(
         # Test compilation
         compiles, result = test_asql_compiles(asql_content)
         if compiles:
-            print(f"  ✅ ASQL compiles successfully")
+            print("  ✅ ASQL compiles successfully")
             return True, None
         else:
             print(f"  ⚠️  ASQL compilation failed: {result}")
@@ -249,7 +248,7 @@ def main():
                 print(f"  ❌ Failed to fetch {model_name}")
     
     print(f"\n{'='*60}")
-    print(f"Summary:")
+    print("Summary:")
     print(f"  ✅ Fetched {total_fetched} SQL queries")
     print(f"  ✅ Compiled {total_compiled} ASQL queries")
     if failed_compiles:
@@ -257,7 +256,7 @@ def main():
     print(f"\nSaved to: {output_dir}")
     
     if failed_compiles:
-        print(f"\nFailed compilations:")
+        print("\nFailed compilations:")
         for repo, model, error in failed_compiles:
             print(f"  - {repo}/{model}: {error}")
 

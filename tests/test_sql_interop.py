@@ -217,9 +217,10 @@ class TestRecommendedPatterns:
         """Break subquery logic into stash as CTEs."""
         # Instead of: SELECT * FROM orders WHERE id IN (SELECT id FROM vip_orders)
         # Use stash as for the subquery:
-        asql = """
+        _asql_example = """
         from vip_orders select id stash as vip_ids
         from orders where id IN (SELECT id FROM vip_ids)
         """
         # This still has the WHERE issue, but demonstrates the pattern
         # A full fix would need the subquery WHERE fix
+        assert _asql_example  # Silence unused variable warning

@@ -3,7 +3,7 @@
 import pytest
 from asql import compile
 from asql.errors import ASQLCompilationError
-from tests.fixtures import assert_valid_sql, assert_sql_contains
+from tests.fixtures import assert_valid_sql
 
 
 def test_alias_reuse_duckdb() -> None:

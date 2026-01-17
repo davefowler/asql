@@ -92,10 +92,6 @@ class VisualEditor {
       card.className = 'operation-card';
       
       // Build DOM safely to avoid XSS
-      const iconDiv = document.createElement('div');
-      iconDiv.className = 'operation-icon';
-      iconDiv.textContent = op.icon || '';
-      
       const labelDiv = document.createElement('div');
       labelDiv.className = 'operation-label';
       labelDiv.textContent = op.label || '';
@@ -104,7 +100,6 @@ class VisualEditor {
       descDiv.className = 'operation-description';
       descDiv.textContent = op.description || '';
       
-      card.appendChild(iconDiv);
       card.appendChild(labelDiv);
       card.appendChild(descDiv);
       
@@ -179,10 +174,6 @@ class VisualEditor {
     const header = document.createElement('div');
     header.className = 'block-header';
     
-    const iconSpan = document.createElement('span');
-    iconSpan.className = 'block-icon';
-    iconSpan.textContent = schema.icon || '📦';
-    
     const titleSpan = document.createElement('span');
     titleSpan.className = 'block-title';
     titleSpan.textContent = schema.label || transform.type;
@@ -195,7 +186,6 @@ class VisualEditor {
       this.removeTransform(transform.id);
     });
     
-    header.appendChild(iconSpan);
     header.appendChild(titleSpan);
     header.appendChild(deleteBtn);
     

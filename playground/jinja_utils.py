@@ -58,8 +58,6 @@ def strip_jinja_templates(sql_content: str) -> str:
     prev_line_was_cte_end = False  # Track if previous line ended a CTE
     
     for i, line in enumerate(lines):
-        original_line = line
-        
         # Skip lines that are entirely config blocks or 404 errors
         if re.search(r'^\s*\{\{\s*config\s*\(', line, re.IGNORECASE):
             continue

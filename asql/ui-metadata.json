@@ -1,0 +1,435 @@
+{
+  "$comment": "ASQL UI Metadata - data for visual editors. Validated by tests/test_schema_sync.py",
+  
+  "operators": {
+    "comparison": {
+      ">": { "label": ">", "description": "Greater than" },
+      ">=": { "label": ">=", "description": "Greater than or equal" },
+      "<": { "label": "<", "description": "Less than" },
+      "<=": { "label": "<=", "description": "Less than or equal" },
+      "=": { "label": "=", "description": "Equal to" },
+      "!=": { "label": "!=", "description": "Not equal" },
+      "<=>": { "label": "<=>", "description": "Null-safe equality" }
+    },
+    "string": {
+      "contains": { "label": "contains", "description": "Case-sensitive substring match", "case_sensitive": true },
+      "icontains": { "label": "icontains", "description": "Case-insensitive substring match", "case_sensitive": false },
+      "starts with": { "label": "starts with", "description": "String starts with (case-sensitive)", "case_sensitive": true },
+      "istarts with": { "label": "istarts with", "description": "String starts with (case-insensitive)", "case_sensitive": false },
+      "ends with": { "label": "ends with", "description": "String ends with (case-sensitive)", "case_sensitive": true },
+      "iends with": { "label": "iends with", "description": "String ends with (case-insensitive)", "case_sensitive": false },
+      "matches": { "label": "matches", "description": "Regex pattern match", "case_sensitive": true }
+    },
+    "null": {
+      "is null": { "label": "is null", "description": "Value is null/empty" },
+      "is not null": { "label": "is not null", "description": "Value is not null" }
+    },
+    "list": {
+      "in": { "label": "in", "description": "Value is in list" },
+      "not in": { "label": "not in", "description": "Value is not in list" }
+    },
+    "logical": {
+      "and": { "symbol": "&&", "label": "and", "description": "Both conditions true" },
+      "or": { "symbol": "||", "label": "or", "description": "Either condition true" },
+      "not": { "label": "not", "description": "Negate condition" }
+    }
+  },
+
+  "joins": {
+    "inner": {
+      "kind": "INNER",
+      "symbol": "&",
+      "keywords": ["JOIN", "INNER JOIN"],
+      "label": "inner (&)",
+      "description": "Inner join - only matching rows",
+      "default": true
+    },
+    "left": {
+      "kind": "LEFT",
+      "symbol": "&?",
+      "keywords": ["LEFT JOIN", "LEFT OUTER JOIN"],
+      "label": "left (&?)",
+      "description": "Left outer join - all left rows + matches"
+    },
+    "right": {
+      "kind": "RIGHT",
+      "symbol": "?&",
+      "keywords": ["RIGHT JOIN", "RIGHT OUTER JOIN"],
+      "label": "right (?&)",
+      "description": "Right outer join - all right rows + matches"
+    },
+    "full": {
+      "kind": "FULL OUTER",
+      "symbol": "?&?",
+      "keywords": ["FULL JOIN", "FULL OUTER JOIN"],
+      "label": "full (?&?)",
+      "description": "Full outer join - all rows from both sides"
+    },
+    "cross": {
+      "kind": "CROSS",
+      "symbol": "*",
+      "keywords": ["CROSS JOIN"],
+      "label": "cross (*)",
+      "description": "Cross join - cartesian product"
+    }
+  },
+
+  "aggregates": {
+    "count": { "label": "count", "description": "Count rows", "allows_distinct": true },
+    "sum": { "label": "sum", "description": "Sum of values", "allows_distinct": true },
+    "avg": { "label": "avg", "description": "Average of values", "allows_distinct": true },
+    "min": { "label": "min", "description": "Minimum value" },
+    "max": { "label": "max", "description": "Maximum value" },
+    "count_distinct": { "label": "count distinct", "description": "Count unique values" },
+    "stddev": { "label": "stddev", "description": "Standard deviation" },
+    "variance": { "label": "variance", "description": "Statistical variance" },
+    "median": { "label": "median", "description": "Median value" },
+    "array_agg": { "label": "array_agg", "description": "Collect values into array" },
+    "string_agg": { "label": "string_agg", "description": "Concatenate values with separator" }
+  },
+
+  "functions": {
+    "date": {
+      "year": { "label": "year", "description": "Extract year from date", "args": ["date"], "returns": "integer" },
+      "month": { "label": "month", "description": "Extract month from date", "args": ["date"], "returns": "integer" },
+      "day": { "label": "day", "description": "Extract day from date", "args": ["date"], "returns": "integer" },
+      "week": { "label": "week", "description": "Extract week number from date", "args": ["date"], "returns": "integer" },
+      "quarter": { "label": "quarter", "description": "Extract quarter from date", "args": ["date"], "returns": "integer" },
+      "hour": { "label": "hour", "description": "Extract hour from timestamp", "args": ["timestamp"], "returns": "integer" },
+      "minute": { "label": "minute", "description": "Extract minute from timestamp", "args": ["timestamp"], "returns": "integer" },
+      "second": { "label": "second", "description": "Extract second from timestamp", "args": ["timestamp"], "returns": "integer" },
+      "date_trunc": { "label": "date_trunc", "description": "Truncate to time unit", "args": ["unit", "date"], "returns": "date" },
+      "date_diff": { "label": "date_diff", "description": "Difference between dates", "args": ["unit", "start", "end"], "returns": "integer" },
+      "date_add": { "label": "date_add", "description": "Add interval to date", "args": ["date", "interval"], "returns": "date" },
+      "days_since": { "label": "days_since", "description": "Days since date", "args": ["date"], "returns": "integer", "asql_only": true },
+      "weeks_since": { "label": "weeks_since", "description": "Weeks since date", "args": ["date"], "returns": "integer", "asql_only": true },
+      "months_since": { "label": "months_since", "description": "Months since date", "args": ["date"], "returns": "integer", "asql_only": true },
+      "years_since": { "label": "years_since", "description": "Years since date", "args": ["date"], "returns": "integer", "asql_only": true },
+      "days_until": { "label": "days_until", "description": "Days until date", "args": ["date"], "returns": "integer", "asql_only": true },
+      "weeks_until": { "label": "weeks_until", "description": "Weeks until date", "args": ["date"], "returns": "integer", "asql_only": true },
+      "months_until": { "label": "months_until", "description": "Months until date", "args": ["date"], "returns": "integer", "asql_only": true },
+      "years_until": { "label": "years_until", "description": "Years until date", "args": ["date"], "returns": "integer", "asql_only": true }
+    },
+    "string": {
+      "upper": { "label": "upper", "description": "Convert to uppercase", "args": ["text"], "returns": "string" },
+      "lower": { "label": "lower", "description": "Convert to lowercase", "args": ["text"], "returns": "string" },
+      "trim": { "label": "trim", "description": "Remove whitespace", "args": ["text"], "returns": "string" },
+      "ltrim": { "label": "ltrim", "description": "Remove leading whitespace", "args": ["text"], "returns": "string" },
+      "rtrim": { "label": "rtrim", "description": "Remove trailing whitespace", "args": ["text"], "returns": "string" },
+      "length": { "label": "length", "description": "String length", "args": ["text"], "returns": "integer" },
+      "substring": { "label": "substring", "description": "Extract substring", "args": ["text", "start", "length?"], "returns": "string" },
+      "left": { "label": "left", "description": "Left N characters", "args": ["text", "n"], "returns": "string" },
+      "right": { "label": "right", "description": "Right N characters", "args": ["text", "n"], "returns": "string" },
+      "replace": { "label": "replace", "description": "Replace substring", "args": ["text", "search", "replace"], "returns": "string" },
+      "concat": { "label": "concat", "description": "Concatenate strings", "args": ["...strings"], "returns": "string" },
+      "split": { "label": "split", "description": "Split by delimiter", "args": ["text", "delimiter"], "returns": "array" },
+      "reverse": { "label": "reverse", "description": "Reverse string", "args": ["text"], "returns": "string" }
+    },
+    "math": {
+      "abs": { "label": "abs", "description": "Absolute value", "args": ["number"], "returns": "number" },
+      "round": { "label": "round", "description": "Round to N decimals", "args": ["number", "decimals?"], "returns": "number" },
+      "floor": { "label": "floor", "description": "Round down", "args": ["number"], "returns": "integer" },
+      "ceil": { "label": "ceil", "description": "Round up", "args": ["number"], "returns": "integer" },
+      "power": { "label": "power", "description": "Raise to power", "args": ["base", "exponent"], "returns": "number" },
+      "sqrt": { "label": "sqrt", "description": "Square root", "args": ["number"], "returns": "number" },
+      "log": { "label": "log", "description": "Logarithm", "args": ["number", "base?"], "returns": "number" },
+      "exp": { "label": "exp", "description": "Exponential (e^x)", "args": ["number"], "returns": "number" },
+      "mod": { "label": "mod", "description": "Modulo/remainder", "args": ["dividend", "divisor"], "returns": "number" }
+    },
+    "conditional": {
+      "coalesce": { "label": "coalesce", "description": "First non-null value", "args": ["...values"], "returns": "any" },
+      "nullif": { "label": "nullif", "description": "Return null if equal", "args": ["value", "compare"], "returns": "any" },
+      "if": { "label": "if", "description": "Conditional expression", "args": ["condition", "then", "else"], "returns": "any" },
+      "case": { "label": "case", "description": "Multi-branch conditional", "args": ["...when_then"], "returns": "any" }
+    },
+    "window": {
+      "row_number": { "label": "row_number", "description": "Sequential row number", "args": [], "returns": "integer" },
+      "rank": { "label": "rank", "description": "Rank with gaps", "args": [], "returns": "integer" },
+      "dense_rank": { "label": "dense_rank", "description": "Rank without gaps", "args": [], "returns": "integer" },
+      "lag": { "label": "lag", "description": "Value from previous row", "args": ["column", "offset?", "default?"], "returns": "any" },
+      "lead": { "label": "lead", "description": "Value from next row", "args": ["column", "offset?", "default?"], "returns": "any" },
+      "first_value": { "label": "first_value", "description": "First value in window", "args": ["column"], "returns": "any" },
+      "last_value": { "label": "last_value", "description": "Last value in window", "args": ["column"], "returns": "any" },
+      "nth_value": { "label": "nth_value", "description": "Nth value in window", "args": ["column", "n"], "returns": "any" },
+      "running_sum": { "label": "running_sum", "description": "Cumulative sum", "args": ["column"], "returns": "number", "asql_only": true },
+      "running_avg": { "label": "running_avg", "description": "Cumulative average", "args": ["column"], "returns": "number", "asql_only": true },
+      "running_count": { "label": "running_count", "description": "Cumulative count", "args": ["column"], "returns": "integer", "asql_only": true },
+      "rolling_sum": { "label": "rolling_sum", "description": "Rolling sum over N rows", "args": ["column", "window_size"], "returns": "number", "asql_only": true },
+      "rolling_avg": { "label": "rolling_avg", "description": "Rolling average over N rows", "args": ["column", "window_size"], "returns": "number", "asql_only": true },
+      "fill_forward": { "label": "fill_forward", "description": "Fill nulls with previous value", "args": ["column"], "returns": "any", "asql_only": true },
+      "fill_backward": { "label": "fill_backward", "description": "Fill nulls with next value", "args": ["column"], "returns": "any", "asql_only": true }
+    },
+    "array": {
+      "array_length": { "label": "array_length", "description": "Array length", "args": ["array"], "returns": "integer" },
+      "array_contains": { "label": "array_contains", "description": "Check if array contains value", "args": ["array", "value"], "returns": "boolean" },
+      "unnest": { "label": "unnest", "description": "Expand array to rows", "args": ["array"], "returns": "any" }
+    },
+    "type": {
+      "cast": { "label": "cast", "description": "Convert to type", "args": ["value", "type"], "returns": "any" },
+      "typeof": { "label": "typeof", "description": "Get value type", "args": ["value"], "returns": "string" }
+    }
+  },
+
+  "transforms": {
+    "where": {
+      "keywords": ["WHERE", "FILTER", "IF"],
+      "label": "Filter",
+      "category": "filter",
+      "description": "Filter rows by condition",
+      "parameters": [
+        { "name": "condition", "type": "expression", "required": true, "widget": "expression" }
+      ]
+    },
+    "select": {
+      "keywords": ["SELECT"],
+      "label": "Select",
+      "category": "select",
+      "description": "Choose which columns to return",
+      "parameters": [
+        { "name": "columns", "type": "expression[]", "required": true, "widget": "list" }
+      ]
+    },
+    "limit": {
+      "keywords": ["LIMIT"],
+      "label": "Limit",
+      "category": "utility",
+      "description": "Limit number of rows",
+      "parameters": [
+        { "name": "count", "type": "integer", "required": true, "widget": "number", "min": 1 }
+      ]
+    },
+    "order_by": {
+      "keywords": ["ORDER BY"],
+      "label": "Sort",
+      "category": "sort",
+      "description": "Sort results by columns",
+      "parameters": [
+        { "name": "expressions", "type": "ordered_column[]", "required": true, "widget": "order_list" }
+      ]
+    },
+    "group_by": {
+      "keywords": ["GROUP BY"],
+      "label": "Group",
+      "category": "aggregate",
+      "description": "Group rows and compute aggregates",
+      "parameters": [
+        { "name": "dimensions", "type": "column[]", "required": true, "widget": "list" },
+        { "name": "aggregates", "type": "aggregate[]", "required": false, "widget": "aggregate_list" }
+      ]
+    },
+    "having": {
+      "keywords": ["HAVING"],
+      "label": "Having",
+      "category": "filter",
+      "description": "Filter aggregated results",
+      "parameters": [
+        { "name": "condition", "type": "expression", "required": true, "widget": "expression" }
+      ]
+    },
+    "qualify": {
+      "keywords": ["QUALIFY"],
+      "label": "Qualify",
+      "category": "filter",
+      "description": "Filter window function results",
+      "parameters": [
+        { "name": "condition", "type": "expression", "required": true, "widget": "expression" }
+      ]
+    },
+    "join": {
+      "keywords": ["JOIN"],
+      "label": "Join",
+      "category": "join",
+      "description": "Join with another table",
+      "parameters": [
+        { 
+          "name": "join_type", 
+          "type": "enum", 
+          "required": true, 
+          "widget": "dropdown",
+          "options": [
+            { "value": "inner", "label": "inner (&)" },
+            { "value": "left", "label": "left (&?)" },
+            { "value": "right", "label": "right (?&)" },
+            { "value": "full", "label": "full (?&?)" },
+            { "value": "cross", "label": "cross (*)" }
+          ]
+        },
+        { "name": "table", "type": "table", "required": true, "widget": "text" },
+        { "name": "condition", "type": "expression", "required": false, "widget": "expression" }
+      ]
+    },
+    "left": {
+      "keywords": ["LEFT"],
+      "label": "Left Join",
+      "category": "join",
+      "description": "Left outer join"
+    },
+    "right": {
+      "keywords": ["RIGHT"],
+      "label": "Right Join",
+      "category": "join", 
+      "description": "Right outer join"
+    },
+    "full": {
+      "keywords": ["FULL"],
+      "label": "Full Join",
+      "category": "join",
+      "description": "Full outer join"
+    },
+    "cross": {
+      "keywords": ["CROSS"],
+      "label": "Cross Join",
+      "category": "join",
+      "description": "Cross join (cartesian product)"
+    },
+    "extend": {
+      "keywords": ["EXTEND"],
+      "label": "Extend",
+      "category": "transform",
+      "description": "Add computed columns",
+      "parameters": [
+        { "name": "columns", "type": "aliased_expression[]", "required": true, "widget": "list" }
+      ]
+    },
+    "explode": {
+      "keywords": ["EXPLODE"],
+      "label": "Explode",
+      "category": "transform",
+      "description": "Unnest array column into rows",
+      "parameters": [
+        { "name": "column", "type": "column", "required": true, "widget": "text" }
+      ]
+    },
+    "stash": {
+      "keywords": ["STASH"],
+      "label": "Stash",
+      "category": "utility",
+      "description": "Save as CTE for reuse",
+      "parameters": [
+        { "name": "name", "type": "identifier", "required": true, "widget": "text" }
+      ]
+    },
+    "distinct": {
+      "keywords": ["DISTINCT"],
+      "label": "Distinct",
+      "category": "utility",
+      "description": "Remove duplicate rows"
+    },
+    "except": {
+      "keywords": ["EXCEPT"],
+      "label": "Except",
+      "category": "select",
+      "description": "Remove columns from selection",
+      "parameters": [
+        { "name": "columns", "type": "column[]", "required": true, "widget": "list" }
+      ]
+    },
+    "rename": {
+      "keywords": ["RENAME"],
+      "label": "Rename",
+      "category": "transform",
+      "description": "Rename columns",
+      "parameters": [
+        { "name": "mappings", "type": "rename_mapping[]", "required": true, "widget": "list" }
+      ]
+    },
+    "replace": {
+      "keywords": ["REPLACE"],
+      "label": "Replace",
+      "category": "transform",
+      "description": "Replace column definitions",
+      "parameters": [
+        { "name": "columns", "type": "aliased_expression[]", "required": true, "widget": "list" }
+      ]
+    },
+    "sample": {
+      "keywords": ["SAMPLE"],
+      "label": "Sample",
+      "category": "utility",
+      "description": "Random sample of rows",
+      "parameters": [
+        { "name": "size", "type": "number", "required": true, "widget": "number" }
+      ]
+    },
+    "per": {
+      "keywords": ["PER"],
+      "label": "Per",
+      "category": "window",
+      "description": "Window partitioning for ranking/aggregates",
+      "parameters": [
+        { "name": "columns", "type": "column[]", "required": true, "widget": "list" }
+      ]
+    },
+    "number": {
+      "keywords": ["NUMBER"],
+      "label": "Number",
+      "category": "window",
+      "description": "Add row number column"
+    },
+    "rank": {
+      "keywords": ["RANK"],
+      "label": "Rank",
+      "category": "window",
+      "description": "Add rank column (with gaps)"
+    },
+    "dense": {
+      "keywords": ["DENSE"],
+      "label": "Dense Rank",
+      "category": "window",
+      "description": "Add dense rank column (no gaps)"
+    },
+    "deduplicate": {
+      "keywords": ["DEDUPLICATE"],
+      "label": "Deduplicate",
+      "category": "utility",
+      "description": "Remove duplicate rows keeping first",
+      "parameters": [
+        { "name": "columns", "type": "column[]", "required": false, "widget": "list" }
+      ]
+    },
+    "cohort": {
+      "keywords": ["COHORT"],
+      "label": "Cohort",
+      "category": "analytics",
+      "description": "Cohort retention analysis",
+      "parameters": [
+        { "name": "entity", "type": "column", "required": true, "widget": "text" },
+        { "name": "cohort_date", "type": "column", "required": true, "widget": "text" },
+        { "name": "event_date", "type": "column", "required": true, "widget": "text" }
+      ]
+    },
+    "recurse": {
+      "keywords": ["RECURSE"],
+      "label": "Recurse",
+      "category": "advanced",
+      "description": "Recursive CTE for hierarchical data",
+      "parameters": [
+        { "name": "max_depth", "type": "integer", "required": false, "widget": "number" }
+      ]
+    }
+  },
+
+  "time_units": [
+    { "name": "year", "label": "Year", "plural": "years" },
+    { "name": "quarter", "label": "Quarter", "plural": "quarters" },
+    { "name": "month", "label": "Month", "plural": "months" },
+    { "name": "week", "label": "Week", "plural": "weeks" },
+    { "name": "day", "label": "Day", "plural": "days" },
+    { "name": "hour", "label": "Hour", "plural": "hours" },
+    { "name": "minute", "label": "Minute", "plural": "minutes" },
+    { "name": "second", "label": "Second", "plural": "seconds" }
+  ],
+
+  "data_types": [
+    { "name": "string", "label": "Text", "sql": "VARCHAR" },
+    { "name": "integer", "label": "Integer", "sql": "INTEGER" },
+    { "name": "number", "label": "Number", "sql": "NUMERIC" },
+    { "name": "float", "label": "Decimal", "sql": "FLOAT" },
+    { "name": "boolean", "label": "Boolean", "sql": "BOOLEAN" },
+    { "name": "date", "label": "Date", "sql": "DATE" },
+    { "name": "timestamp", "label": "Timestamp", "sql": "TIMESTAMP" },
+    { "name": "time", "label": "Time", "sql": "TIME" },
+    { "name": "json", "label": "JSON", "sql": "JSON" },
+    { "name": "array", "label": "Array", "sql": "ARRAY" }
+  ]
+}

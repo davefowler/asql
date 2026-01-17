@@ -72,38 +72,29 @@ from active_users group by country ( # as total )
 sql = compile(multi_query, dialect="bigquery", pretty=True)
 ```
 
-#### `reverse_compile(sql_query, source_dialect=None)`
+#### SQL to ASQL Conversion
 
-Converts SQL back to ASQL syntax.
-
-**Parameters:**
-- `sql_query` (str): SQL query string
-- `source_dialect` (str, optional): Source SQL dialect for better parsing
-
-**Returns:**
-- `str`: ASQL query string
+Convert SQL back to ASQL syntax using `sqlglot.transpile()`:
 
 **Example:**
 ```python
-from asql import reverse_compile
+import sqlglot
+import asql  # Registers the ASQL dialect
 
 sql = "SELECT country, COUNT(*) AS total FROM users WHERE status = 'active' GROUP BY country"
-asql = reverse_compile(sql)
+asql_query = sqlglot.transpile(sql, write='asql')[0]
 # Returns:
-# from users
-# where status == 'active'
-# group by country ( # as total )
+# from users where status = 'active' group by country select country, COUNT(*) AS total
 ```
 
-#### `detect_dialect(sql_query)`
+You can also specify the source dialect for better parsing:
+```python
+# From BigQuery SQL
+asql_query = sqlglot.transpile(sql, read='bigquery', write='asql')[0]
 
-Attempts to detect the SQL dialect from a query.
-
-**Parameters:**
-- `sql_query` (str): SQL query string
-
-**Returns:**
-- `str` or `None`: Detected dialect name or `None` if detection fails
+# From PostgreSQL
+asql_query = sqlglot.transpile(sql, read='postgres', write='asql')[0]
+```
 
 ### Error Handling
 

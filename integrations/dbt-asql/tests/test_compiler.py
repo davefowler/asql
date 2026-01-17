@@ -1,6 +1,5 @@
 """Tests for the dbt-asql compiler."""
 
-import pytest
 from dbt_asql.compiler import (
     _extract_config,
     _expand_variables,

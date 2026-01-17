@@ -1,6 +1,5 @@
 """Tests for slugify() URL-friendly slug function in ASQL."""
 
-import pytest
 import sqlglot
 from sqlglot import exp
 from asql import compile

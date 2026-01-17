@@ -10,7 +10,6 @@ TODO: This is a placeholder. The actual dbt plugin API may differ.
       See: https://docs.getdbt.com/docs/build/about-plugins
 """
 
-from typing import Any
 
 
 class Plugin:

@@ -32,7 +32,6 @@ import unittest
 from typing import Dict, Optional, Type, Union
 
 import sqlglot
-from sqlglot import exp
 
 from asql import compile as asql_compile
 from asql.config import CompileSettings

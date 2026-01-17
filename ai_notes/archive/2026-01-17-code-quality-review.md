@@ -83,9 +83,9 @@ Override `sqlglot.transpile()` when ASQL is imported to use `compile()`.
 
 ## Other Issues Found
 
-### 1. `reverse_compiler.py` Was a Wrapper (FIXED)
-- **Issue**: Had a separate `reverse_compile()` function instead of using `transpile(..., write='asql')`
-- **Status**: ✅ FIXED - Deleted the file, now uses standard SQLGlot API
+### 1. `reverse_compiler.py` Is a Wrapper (TODO)
+- **Issue**: Has a separate `reverse_compile()` function instead of using `transpile(..., write='asql')`
+- **Status**: ⚠️ STILL EXISTS - Should delete and use `sqlglot.transpile(..., write='asql')`
 
 ### 2. `json_schema.py` Duplicates Generator Logic
 - **Issue**: `json_to_asql()` manually builds ASQL strings instead of using `ASQLGenerator`
@@ -118,8 +118,11 @@ Override `sqlglot.transpile()` when ASQL is imported to use `compile()`.
 
 ## Wrapper Functions Audit
 
-### ✅ Removed (Good)
-- `reverse_compile()` - was in `reverse_compiler.py`, now deleted
+### ⚠️ TODO: Should Remove
+- `reverse_compile()` in `reverse_compiler.py` - use `sqlglot.transpile(..., write='asql')` instead
+- `normalize()` in `__init__.py` - use `sqlglot.transpile(query, read='asql', write='asql')` instead
+- `get_preparsed()` in `compiler/api.py` - redundant, use `sqlglot.parse_one(query, dialect="asql").sql()`
+- `ASQLDialect = ASQL` alias in `dialect.py` - no backwards compatibility needed
 
 ### ⚠️ Still Exists (Necessary for some features)
 - `asql.compile()` - Wrapper that applies AST transforms before generating SQL
@@ -131,13 +134,14 @@ Override `sqlglot.transpile()` when ASQL is imported to use `compile()`.
 - **FK shorthand** now expands at parse time: `on user_id` → `ON left.user_id = right.id`
 - `transpile()` now works for basic FK shorthand (uses convention: assumes `id` as PK)
 - `compile()` with schema still provides smarter FK expansion (respects actual PK names)
-- **`normalize()` removed** - use `sqlglot.transpile(query, read='asql', write='asql')` instead
+- **UNION/INTERSECT** now handled as TRANSFORM_PARSERS (PRQL-style)
+- Removed `PROJECT` alias for SELECT
+- Removed `FILTER` alias for WHERE
 
 ### ✅ OK (ASQL-specific but legitimate)
 - `compile_to_ast()` - Returns AST instead of string (standard pattern)
 - `get_settings_from_query()` - Extracts ASQL inline settings (`SET auto_spine = false`)
-  - **Note**: ASQL-specific, not in other dialects. ASQL's `SET` statements configure the *compiler*, not the database session. Other dialects don't have compiler settings.
-- **`get_preparsed()` REMOVED** - was redundant, use `sqlglot.parse_one(query, dialect="asql").sql()`
+  - **Note**: ASQL-specific, not in other dialects. ASQL's `SET` statements configure the *compiler*, not the database session.
 
 ### What Other Dialects Do
 

@@ -10,7 +10,6 @@ Note: For more examples, see examples/pairs/ directory which contains
 20+ SQL/ASQL query pairs organized by pattern type.
 """
 
-from asql import compile
 
 
 def example_1_shopify_line_items() -> None:

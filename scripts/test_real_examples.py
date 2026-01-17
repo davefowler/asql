@@ -3,13 +3,13 @@
 
 import sys
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import Tuple, Optional
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from asql import compile
+from asql import compile  # noqa: E402
 
 
 def test_asql_file(asql_path: Path) -> Tuple[bool, str, Optional[str]]:

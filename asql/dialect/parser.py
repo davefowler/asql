@@ -17,12 +17,11 @@ import typing as t
 
 import sqlglot
 from sqlglot import exp
-from sqlglot.dialects.dialect import Dialect
-from sqlglot.generator import Generator
 from sqlglot.helper import seq_get
 from sqlglot.parser import Parser
-from sqlglot.tokens import Token, Tokenizer, TokenType
+from sqlglot.tokens import Token, TokenType
 
+from asql.dialect.tokenizer import ASQLTokenizer  # noqa: F401
 from asql.functions import (
     ASQL_FUNCTION_REGISTRY,
     NATURAL_DATE_UNITS,
@@ -45,52 +44,6 @@ def _select_all(table: exp.Expression) -> t.Optional[exp.Select]:
     PRQL pattern for cleanly building initial queries from FROM clauses.
     """
     return exp.select("*").from_(table, copy=False) if table else None
-
-
-class ASQLTokenizer(Tokenizer):
-    """Tokenizer for ASQL syntax.
-    
-    Key mappings:
-    - `|` → PIPE_GT to reuse SQLGlot's pipe syntax infrastructure
-    - `#` → HASH for COUNT() shorthand
-    - `&` → AMP for INNER JOIN
-    - `&?` → QMARK_AMP for LEFT JOIN
-    - `?&` → QMARK_AMP for RIGHT JOIN (differentiated by text)
-    - `?&?` → uses PLACEHOLDER token (differentiated by text)
-    - `*` → STAR for CROSS JOIN (context-dependent)
-    
-    String handling:
-    - Single quotes (') are string literals (SQL standard)
-    - Double quotes (") are string literals (ASQL accepts both)
-    - Backticks (`) are identifiers (for column/table names with special chars)
-    """
-    
-    IDENTIFIERS = ["`"]  # Only backticks for identifiers
-    QUOTES = ["'", '"']  # Both ' and " for strings
-    
-    SINGLE_TOKENS = {
-        **Tokenizer.SINGLE_TOKENS,
-        "|": TokenType.PIPE_GT,  # Map | to |> to reuse BigQuery's pipe infrastructure
-        "#": TokenType.HASH,     # For COUNT(*) shorthand
-    }
-    
-    KEYWORDS = {
-        **Tokenizer.KEYWORDS,
-        # ASQL-specific keywords
-        "STASH": TokenType.VAR,
-        "PER": TokenType.VAR,
-        "EXTEND": TokenType.VAR,
-        "RECURSE": TokenType.VAR,  # For recursive CTEs
-        
-        # Natural language alternatives
-        "OTHERWISE": TokenType.ELSE,  # Alias for ELSE in when expressions
-        
-        # Join operators (multi-char tokens)
-        "?&?": TokenType.PLACEHOLDER,  # FULL OUTER JOIN
-        "&?": TokenType.QMARK_AMP,     # LEFT JOIN
-        "?&": TokenType.QMARK_AMP,     # RIGHT JOIN
-    }
-
 
 class ASQLParser(Parser):
     # Transform keywords that should not be treated as table aliases
@@ -369,11 +322,8 @@ class ASQLParser(Parser):
     # Transform parsers for FROM-first pipeline operations
     # These handle the transformation keywords that come after FROM (not using |>)
     TRANSFORM_PARSERS = {
-        # Filtering (WHERE aliases)
-        **dict.fromkeys(
-            ("WHERE", "FILTER", "IF"),
-            lambda self, query: self._parse_asql_where(query)
-        ),
+        # Filtering
+        "WHERE": lambda self, query: self._parse_asql_where(query),
         # Selection
         "SELECT": lambda self, query: self._parse_asql_select(query),
         # Core transforms
@@ -927,23 +877,22 @@ class ASQLParser(Parser):
         result = self._parse_when_result()
         return exp.If(this=condition, true=result)
 
+    # Comparison operator token -> expression class mapping
+    COMPARISON_OPS = {
+        TokenType.GT: exp.GT,
+        TokenType.GTE: exp.GTE,
+        TokenType.LT: exp.LT,
+        TokenType.LTE: exp.LTE,
+        TokenType.EQ: exp.EQ,
+        TokenType.NEQ: exp.NEQ,
+        TokenType.NULLSAFE_EQ: exp.NullSafeEQ,
+    }
+
     def _build_comparison(
         self, left: exp.Expression, op_token: TokenType, right: exp.Expression
     ) -> exp.Expression:
-        """Build a comparison expression from operator token using dialect schema."""
-        from asql.dialect_schema import OPERATORS
-
-        # Build lookup dict from OPERATORS schema (comparison + equality)
-        operator_map = {}
-        for cls in [OPERATORS.COMPARISON, OPERATORS.EQUALITY]:
-            for attr_name in dir(cls):
-                if not attr_name.startswith('_'):
-                    op = getattr(cls, attr_name)
-                    if hasattr(op, 'token') and hasattr(op, 'expr_class'):
-                        operator_map[op.token] = op.expr_class
-
-        # Look up operator, default to EQ if not found
-        expr_class = operator_map.get(op_token, exp.EQ)
+        """Build a comparison expression from operator token."""
+        expr_class = self.COMPARISON_OPS.get(op_token, exp.EQ)
         return expr_class(this=left, expression=right)
 
     def _parse_bracket(self, this: t.Optional[exp.Expression] = None) -> t.Optional[exp.Expression]:
@@ -1309,7 +1258,7 @@ class ASQLParser(Parser):
             if not transform_name:
                 break
 
-            if seen_group_by and transform_name in ("WHERE", "FILTER", "IF"):
+            if seen_group_by and transform_name == "WHERE":
                 query = self._build_pipe_cte(query, [exp.Star()])
 
             query = self.TRANSFORM_PARSERS[transform_name](self, query)
@@ -1369,7 +1318,7 @@ class ASQLParser(Parser):
             
             # Determine if we need CTE wrapping
             # GROUP BY followed by WHERE/HAVING needs CTE
-            if seen_group_by and transform_name in ("WHERE", "FILTER", "IF"):
+            if seen_group_by and transform_name == "WHERE":
                 query = self._build_pipe_cte(query, [exp.Star()])
             
             # Apply the transform
@@ -2561,25 +2510,36 @@ class ASQLParser(Parser):
                 like_cls: t.Type[exp.Expression] = exp.ILike if case_insensitive else exp.Like
                 return like_cls(this=left, expression=pattern)
 
-            # Try to match string operators from dialect schema
-            from asql.dialect_schema import OPERATORS
+            # String operators: tokens to match -> (wrap_left, wrap_right, case_insensitive)
+            string_ops = {
+                ("CONTAINS",): ("%", "%", False),
+                ("ICONTAINS",): ("%", "%", True),
+                ("STARTS", "WITH"): ("", "%", False),
+                ("ISTARTS", "WITH"): ("", "%", True),
+                ("ENDS", "WITH"): ("%", "", False),
+                ("IENDS", "WITH"): ("%", "", True),
+                ("MATCHES",): ("", "", False),  # Regex - handled specially
+            }
 
-            matched_operator = None
-            for attr_name in dir(OPERATORS.STRING):
-                if not attr_name.startswith('_'):
-                    string_op = getattr(OPERATORS.STRING, attr_name)
-                    if hasattr(string_op, 'tokens'):
-                        if self._match_text_seq(*string_op.tokens):
-                            matched_operator = string_op
-                            break
+            matched = None
+            for tokens, config in string_ops.items():
+                if self._match_text_seq(*tokens):
+                    matched = config
+                    break
 
-            if not matched_operator:
+            if not matched:
                 self._retreat(index)
                 return super()._parse_comparison()
 
-            # Use matched operator's configuration
-            case_insensitive = not matched_operator.case_sensitive
-            wrap_left, wrap_right = matched_operator.wrap_pattern
+            wrap_left, wrap_right, case_insensitive = matched
+
+            # Handle MATCHES specially - it's regex, not LIKE
+            if wrap_left == "" and wrap_right == "" and not case_insensitive:
+                # This was MATCHES - use REGEXP
+                right = self._parse_range()
+                if not right:
+                    self.raise_error("Expected pattern after MATCHES")
+                return exp.RegexpLike(this=left, expression=right)
 
             right = self._parse_range()
             if not right:
@@ -3016,66 +2976,3 @@ class ASQLParser(Parser):
         new_query.set("with_", exp.With(expressions=[cte_expr], recursive=True))
         
         return new_query
-
-
-class ASQLGenerator(Generator):
-    """Generator for outputting SQL from ASQL AST.
-    
-    Note: We typically use target dialect generators (postgres, bigquery, etc.)
-    for final output. This is mainly for debugging/introspection.
-    """
-    pass  # Inherits all from Generator - add TRANSFORMS overrides as needed
-
-
-class ASQL(Dialect):
-    """ASQL (Analytic SQL) dialect for SQLGlot.
-    
-    ASQL is a human-readable, pipeline-based query language that transpiles to SQL.
-    This dialect uses SQLGlot's TRANSFORM_PARSERS pattern (like PRQL) for proper
-    pipeline semantics.
-    
-    Key features handled:
-    - FROM-first syntax: `from users where status = 'active'`
-    - Pipeline operators: `from users | where x | group by y`
-    - Proper CTE wrapping: `group by X | where Y` → CTE + WHERE
-    - Descending order shorthand: `-column` → `column DESC`
-    - NULL equality: `== null` → `IS NULL`
-    - Ternary operator: `x ? y : z` → `CASE WHEN x THEN y ELSE z END`
-    - Relative dates: `7 days ago` → `CURRENT_TIMESTAMP - INTERVAL '7 days'`
-    - Date arithmetic: `col + 7 days` → `col + INTERVAL '7 days'`
-    
-    Features still handled by preparser (syntactic sugar):
-    - `#` → COUNT(*)
-    - `@date` → DATE literal
-    - Natural aggregates: `sum amount` → `sum(amount)`
-    - Join operators (`&`, `<&`, `&>`)
-    - etc.
-    """
-    
-    # Dialect configuration constants (following ClickHouse pattern)
-    DPIPE_IS_STRING_CONCAT = True  # || is string concatenation, not OR
-    NORMALIZE_FUNCTIONS: bool | str = False  # Preserve function name casing
-    
-    class Tokenizer(ASQLTokenizer):
-        pass
-    
-    class Parser(ASQLParser):
-        pass
-    
-    class Generator(ASQLGenerator):
-        pass
-
-
-# Register the dialect with SQLGlot
-def register_asql_dialect() -> None:
-    """Register the ASQL dialect with SQLGlot."""
-    if "asql" not in Dialect._classes:
-        Dialect["asql"] = ASQL
-
-
-# Auto-register on import
-register_asql_dialect()
-
-
-# Backwards compatibility alias
-ASQLDialect = ASQL

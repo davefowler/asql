@@ -124,54 +124,23 @@ def _parse_thing(self) -> t.Optional[exp.Expression]:
 def _parse_thing(self):
 ```
 
-### 8. ASQL-Specific: Unified Dialect Schema (VALID DEVIATION from SQLGlot)
+### 8. ASQL-Specific: UI Schema (Separate from Parser)
 
-**SQLGlot uses scattered module-level dicts. ASQL uses a unified `DIALECT` class with nested classes for organization, type safety, and single source of truth.**
+**The parser (dialect.py) and UI metadata (ui-metadata.json) are intentionally separate:**
 
-The `asql/dialect_schema.py` file defines ALL ASQL syntax declaratively:
+- `asql/dialect.py` - Parser logic with simple inline dicts (e.g., `COMPARISON_OPS`, `TRANSFORM_PARSERS`)
+- `asql/ui-metadata.json` - Static JSON file with UI metadata (labels, descriptions, parameters)
+- `asql/ui_schema.py` - Thin Python wrapper to load ui-metadata.json
+- `tests/test_schema_sync.py` - Tests that validate JSON keys match parser
 
-```python
-# ✅ ASQL style - nested classes in dialect_schema.py
-from asql.dialect_schema import DIALECT
+**When adding new syntax:**
+1. Add parsing logic to `dialect.py`
+2. Add UI metadata to `ui-metadata.json`
+3. Run `./venv/bin/pytest tests/test_schema_sync.py` to verify sync
 
-class DIALECT:
-    class OPERATORS:
-        COMPARISON = {
-            TokenType.GT: {"expr_class": exp.GT, "label": ">", "description": "Greater than"},
-            TokenType.LT: {"expr_class": exp.LT, "label": "<", "description": "Less than"},
-            ...
-        }
-        STRING = {
-            "contains": {"tokens": ("CONTAINS",), "wrap_pattern": ("%", "%"), "case_sensitive": True},
-            ...
-        }
-    
-    class JOIN_TYPES:
-        INNER = {"symbols": ["&"], "kind": "INNER", "label": "inner (&)"}
-        LEFT = {"symbols": ["&?"], "kind": "LEFT", "label": "left (&?)"}
-        ...
-    
-    class TRANSFORMS:
-        WHERE = {"keywords": ["WHERE", "FILTER", "IF"], "icon": "🔍", ...}
-        ...
+**Why separate?** The parser needs `TokenType` and `exp.*` classes. The UI needs `label` and `description`. Keeping them separate is simpler than forcing both into one file.
 
-# Usage in dialect.py - NO elif chains!
-op_spec = DIALECT.OPERATORS.COMPARISON[op_token]
-return op_spec["expr_class"](this=left, expression=right)
-
-join_spec = DIALECT.JOIN_TYPES.INNER
-return self._parse_join(kind=join_spec["kind"])
-```
-
-**Benefits:**
-- ✅ Type-safe: IDE autocomplete for `DIALECT.OPERATORS.COMPARISON`
-- ✅ Single source of truth: Parser, UI, docs all use same definitions
-- ✅ No magic strings: `DIALECT.JOIN_TYPES.INNER` not `JOIN_TYPES["inner"]`
-- ✅ Organized: Nested by category (not 50 flat dicts)
-
-**When adding new syntax:** Add it to `dialect_schema.py`, then use it in `dialect.py`.
-
-**Reference:** See `ai_notes/2026-01-16-dialect-refactor-plan.md` for full migration plan.
+**Reference:** See `ai_notes/2026-01-17-ui-schema-design.md` for design rationale.
 
 ## Development Workflow
 - Use TDD: Write tests first, then implement

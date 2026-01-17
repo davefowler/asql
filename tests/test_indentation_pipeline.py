@@ -5,7 +5,6 @@ import sqlglot
 
 class TestIndentationPipelines:
     def test_multiline_where_select_limit_without_pipes(self) -> None:
-        import asql  # register dialect
 
         query = """
         from orders

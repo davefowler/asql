@@ -13,16 +13,9 @@ Run with: pytest tests/test_playground_examples.py -v
 import pytest
 import sqlglot
 from asql import compile
-from asql.reverse_compiler import reverse_compile
 
 # Import examples directly from playground package
 from playground.examples import (
-    ASQL_EXAMPLES,
-    PIPELINE_EXAMPLES,
-    SAMPLING_EXAMPLES,
-    RESHAPING_EXAMPLES,
-    COLUMN_OPERATOR_EXAMPLES,
-    COUNT_INFERENCE_EXAMPLES,
     SQL_EXAMPLES,
     get_all_examples_flat,
 )
@@ -170,20 +163,20 @@ class TestRoundTrip:
     
     @pytest.mark.parametrize("category,title,query", cached_examples())
     def test_sql_can_reverse_compile(self, category, title, query):
-        """Test that generated SQL can be reverse-compiled back to ASQL."""
+        """Test that generated SQL can be transpiled back to ASQL."""
         try:
             sql = compile(query, dialect="postgres", pretty=True)
-            asql_result = reverse_compile(sql, source_dialect="postgres")
+            asql_result = sqlglot.transpile(sql, read="postgres", write="asql")[0]
             
-            assert asql_result is not None, "Reverse compilation returned None"
-            assert len(asql_result) > 0, "Reverse compilation returned empty string"
+            assert asql_result is not None, "Transpile returned None"
+            assert len(asql_result) > 0, "Transpile returned empty string"
             
         except Exception as e:
-            pytest.skip(f"Reverse compilation not supported for this pattern: {e}")
+            pytest.skip(f"Reverse transpilation not supported for this pattern: {e}")
 
 
 class TestSQLExamples:
-    """Test SQL examples can be reverse-compiled to ASQL."""
+    """Test SQL examples can be transpiled to ASQL."""
     
     def test_sql_examples_exist(self):
         """Verify SQL examples are loaded."""
@@ -192,7 +185,7 @@ class TestSQLExamples:
     
     @pytest.mark.parametrize("example", SQL_EXAMPLES, ids=lambda ex: ex.get("title", "unknown"))
     def test_sql_example_can_reverse_compile(self, example):
-        """Test that SQL examples can be reverse-compiled to ASQL."""
+        """Test that SQL examples can be transpiled to ASQL."""
         try:
             dialect = example.get("dialect", "") or "postgres"
             query = example.get("query", "")
@@ -200,7 +193,7 @@ class TestSQLExamples:
             if not query:
                 pytest.skip("Empty query")
             
-            asql = reverse_compile(query, source_dialect=dialect)
+            asql = sqlglot.transpile(query, read=dialect, write="asql")[0]
             
             assert asql is not None
             assert len(asql) > 0

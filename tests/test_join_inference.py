@@ -1,6 +1,5 @@
 """Tests for shared join inference logic."""
 
-import pytest
 from asql.compiler.join_inference import resolve_join_condition, JoinCondition
 from asql.schema import Schema, Table, Column, Relationship
 
