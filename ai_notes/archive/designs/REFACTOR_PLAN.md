@@ -8,7 +8,7 @@ Create ONE declarative schema that serves both the parser AND the visual editor,
 ## Part 1: What We're Changing
 
 ### Current State (Problems)
-```
+```text
 dialect.py (2600 lines)
 ├── if/elif chains (hard to introspect)
 ├── _build_comparison() - duplicates COMPARISON dict logic
@@ -30,7 +30,7 @@ dialect_schema.py (NEW - but dict-based)
 **Problem**: Information scattered across 4 files, lots of duplication, magic strings
 
 ### Target State (Solution)
-```
+```text
 dialect_schema.py (ONE FILE - nested classes)
 └── class DIALECT:
     ├── class OPERATORS (for parser + UI)

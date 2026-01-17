@@ -10,7 +10,8 @@ This enables dynamic column suggestions in dropdowns based on:
 """
 
 from typing import List, Dict, Optional
-from sqlglot import parse_one, exp
+from sqlglot import exp
+from asql.errors import ASQLError
 from sqlglot.optimizer import qualify
 from sqlglot.schema import MappingSchema
 
@@ -29,20 +30,22 @@ def get_output_columns_for_step(
     Returns:
         List of dicts with column info: [{"name": "col", "type": "VARCHAR", "table": "users"}, ...]
     """
-    from asql.compiler.api import compile, compile_to_ast
+    from asql.compiler.api import compile_to_ast
 
     # Compile ASQL to SQL AST
     try:
         ast = compile_to_ast(asql_up_to_step)
-    except Exception:
-        # If compilation fails, return empty list
+    except ASQLError:
+        # If compilation fails (syntax error, compilation error, etc.), return empty list
+        # This is expected when partial/incomplete ASQL is passed during editing
         return []
 
     # Use SQLGlot's qualify to expand * and resolve columns
     if schema:
         try:
             qualified = qualify.qualify(ast, schema=schema)
-        except Exception:
+        except (KeyError, AttributeError, ValueError):
+            # Schema resolution can fail for missing tables/columns - use unqualified AST
             qualified = ast
     else:
         qualified = ast

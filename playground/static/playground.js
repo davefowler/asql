@@ -1242,19 +1242,22 @@ function renderOutputBlockBody(transform) {
                 <div class="field"><label>Table</label><span>${escapeHtml(transform.table || '')}</span></div>
                 ${transform.condition ? `<div class="field"><label>On</label><code>${escapeHtml(formatCondition(transform.condition))}</code></div>` : ''}
             `;
-        case 'select':
+        case 'select': {
             const cols = (transform.columns || []).map(c => typeof c === 'string' ? c : c.name).join(', ');
             return `<div class="field"><label>Columns</label><span>${escapeHtml(cols)}</span></div>`;
-        case 'group_by':
+        }
+        case 'group_by': {
             const dims = (transform.dimensions || []).join(', ');
             const aggs = (transform.aggregates || []).map(a => `${a.function}(${a.column})`).join(', ');
             return `
                 <div class="field"><label>Group By</label><span>${escapeHtml(dims)}</span></div>
                 ${aggs ? `<div class="field"><label>Aggregates</label><span>${escapeHtml(aggs)}</span></div>` : ''}
             `;
-        case 'order_by':
+        }
+        case 'order_by': {
             const orders = (transform.expressions || []).map(e => `${e.column} ${e.direction}`).join(', ');
             return `<div class="field"><label>Order By</label><span>${escapeHtml(orders)}</span></div>`;
+        }
         case 'limit':
             return `<div class="field"><label>Limit</label><span>${transform.count || 10}</span></div>`;
         default:

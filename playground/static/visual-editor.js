@@ -275,7 +275,7 @@ class VisualEditor {
   }
 
   renderTextWidget(transform, param) {
-    const value = transform[param.name] || '';
+    const value = transform[param.name] ?? '';
     return `
       <div class="field">
         <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
@@ -291,7 +291,8 @@ class VisualEditor {
   }
 
   renderNumberWidget(transform, param) {
-    const value = transform[param.name] !== undefined ? transform[param.name] : (param.default || 0);
+    const rawValue = transform[param.name] !== undefined ? transform[param.name] : (param.default ?? 0);
+    const value = rawValue === null || Number.isNaN(rawValue) ? '' : rawValue;
     return `
       <div class="field">
         <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
@@ -308,7 +309,7 @@ class VisualEditor {
   }
 
   renderDropdownWidget(transform, param) {
-    const value = transform[param.name] || param.default || '';
+    const value = transform[param.name] ?? param.default ?? '';
     return `
       <div class="field">
         <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
@@ -327,10 +328,10 @@ class VisualEditor {
   }
 
   renderExpressionWidget(transform, param) {
-    const expr = transform[param.name] || {};
-    const leftValue = expr.left?.name || '';
-    const operator = expr.operator || '=';
-    const rightValue = expr.right?.value || '';
+    const expr = transform[param.name] ?? {};
+    const leftValue = expr.left?.name ?? '';
+    const operator = expr.operator ?? '=';
+    const rightValue = expr.right?.value ?? '';
 
     return `
       <div class="field">
@@ -365,7 +366,7 @@ class VisualEditor {
   }
 
   renderListWidget(transform, param) {
-    const items = transform[param.name] || [];
+    const items = transform[param.name] ?? [];
     return `
       <div class="field">
         <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
@@ -390,7 +391,7 @@ class VisualEditor {
   }
 
   renderAggregateListWidget(transform, param) {
-    const aggregates = transform[param.name] || [];
+    const aggregates = transform[param.name] ?? [];
     const functions = param.functions || ['count', 'sum', 'avg'];
 
     return `
@@ -431,7 +432,7 @@ class VisualEditor {
   }
 
   renderOrderListWidget(transform, param) {
-    const expressions = transform[param.name] || [];
+    const expressions = transform[param.name] ?? [];
 
     return `
       <div class="field">

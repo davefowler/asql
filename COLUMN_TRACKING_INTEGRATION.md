@@ -230,7 +230,7 @@ async def populate_parameter_options(request: Request):
 
 ## Example User Flow
 
-```
+```text
 Step 1: FROM users
   Available columns: id, name, email, created_at
 
