@@ -398,10 +398,12 @@ function updateUITitles() {
     const toDialect = document.getElementById('to-dialect').value;
     
     // Handle input panel editor switching
-    updateEditorVisibility('input', fromDialect);
+    updateEditorVisibility('input', fromDialect)
+        .catch(err => console.warn('Failed to update input editor visibility', err));
     
     // Handle output panel editor switching
-    updateEditorVisibility('output', toDialect);
+    updateEditorVisibility('output', toDialect)
+        .catch(err => console.warn('Failed to update output editor visibility', err));
     
     // Set CodeMirror modes for text editors
     if (fromDialect === 'asql' || fromDialect === 'visual-asql') {
@@ -1258,8 +1260,10 @@ function renderOutputBlockBody(transform) {
             const orders = (transform.expressions || []).map(e => `${e.column} ${e.direction}`).join(', ');
             return `<div class="field"><label>Order By</label><span>${escapeHtml(orders)}</span></div>`;
         }
-        case 'limit':
-            return `<div class="field"><label>Limit</label><span>${transform.count || 10}</span></div>`;
+        case 'limit': {
+            const limit = transform.count ?? 10;
+            return `<div class="field"><label>Limit</label><span>${escapeHtml(String(limit))}</span></div>`;
+        }
         default:
             return `<div class="field"><pre>${escapeHtml(JSON.stringify(transform, null, 2))}</pre></div>`;
     }

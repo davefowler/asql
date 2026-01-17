@@ -80,7 +80,6 @@ class ASQLTokenizer(Tokenizer):
         "STASH": TokenType.VAR,
         "PER": TokenType.VAR,
         "EXTEND": TokenType.VAR,
-        "PROJECT": TokenType.SELECT,  # Alias for SELECT
         "RECURSE": TokenType.VAR,  # For recursive CTEs
         
         # Natural language alternatives
@@ -96,7 +95,7 @@ class ASQLTokenizer(Tokenizer):
 class ASQLParser(Parser):
     # Transform keywords that should not be treated as table aliases
     _TRANSFORM_KEYWORDS = frozenset({
-        "PER", "STASH", "EXTEND", "EXPLODE", "PROJECT", "FILTER", "SAMPLE",
+        "PER", "STASH", "EXTEND", "EXPLODE", "SAMPLE",
         "RENAME", "REPLACE", "DEDUPLICATE", "NUMBER", "RANK", "DENSE", "COHORT",
         "RECURSE",
     })
@@ -375,11 +374,8 @@ class ASQLParser(Parser):
             ("WHERE", "FILTER", "IF"),
             lambda self, query: self._parse_asql_where(query)
         ),
-        # Selection (SELECT aliases)
-        **dict.fromkeys(
-            ("SELECT", "PROJECT"),
-            lambda self, query: self._parse_asql_select(query)
-        ),
+        # Selection
+        "SELECT": lambda self, query: self._parse_asql_select(query),
         # Core transforms
         "LIMIT": lambda self, query: query.limit(self._parse_limit(skip_limit_token=True), copy=False),
         "ORDER BY": lambda self, query: self._parse_asql_order_by(query),

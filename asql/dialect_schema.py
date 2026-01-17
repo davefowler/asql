@@ -355,7 +355,7 @@ class TRANSFORMS:
     )
 
     SELECT = Transform(
-        keywords=["SELECT", "PROJECT"],
+        keywords=["SELECT"],
         label="select",
         category="select",
         description="Choose which columns to return",
