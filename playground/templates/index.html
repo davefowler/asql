@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
     <link rel="stylesheet" href="/static/playground/playground.css">
+    <link rel="stylesheet" href="/static/playground/visual-editor.css">
 </head>
 <body>
     <div class="container">
@@ -30,14 +31,7 @@
                     <div class="language-selector-inline">
                         <label>From:</label>
                         <select id="from-dialect">
-                            <option value="asql">ASQL</option>
-                            <option value="">SQL (Auto-detect)</option>
-                            <option value="postgres">PostgreSQL</option>
-                            <option value="mysql">MySQL</option>
-                            <option value="bigquery">BigQuery</option>
-                            <option value="snowflake">Snowflake</option>
-                            <option value="redshift">Redshift</option>
-                            <option value="spark">Spark</option>
+                            <!-- FROM_DIALECT_OPTIONS -->
                         </select>
                     </div>
                     <button class="copy-btn" onclick="copyInput()" title="Copy">
@@ -48,8 +42,37 @@
                     </button>
                 </div>
                 <div class="panel-content">
-                    <div id="input-editor"></div>
-                    <span class="detected-dialect" id="detected-dialect" style="display: none;"></span>
+                    <!-- Text Editor (CodeMirror) -->
+                    <div id="input-editor-container">
+                        <div id="input-editor"></div>
+                        <span class="detected-dialect" id="detected-dialect" style="display: none;"></span>
+                    </div>
+
+                    <!-- Visual Editor -->
+                    <div id="visual-editor-container" style="display: none;">
+                        <div class="visual-editor">
+                            <!-- FROM block (always visible) -->
+                            <div class="block from-block">
+                                <div class="block-header">
+                                    <span class="block-icon">📁</span>
+                                    <span class="block-title">From</span>
+                                </div>
+                                <div class="block-body">
+                                    <input type="text" id="from-table" placeholder="table_name" class="input-field">
+                                </div>
+                            </div>
+
+                            <!-- Transform blocks container -->
+                            <div id="transforms-container">
+                                <!-- Blocks will be added here dynamically -->
+                            </div>
+
+                            <!-- Add step button -->
+                            <button id="add-step-btn" class="add-step-btn">
+                                <span>+ Add Step</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -66,14 +89,7 @@
                     <div class="language-selector-inline">
                         <label>To:</label>
                         <select id="to-dialect">
-                            <option value="asql">ASQL</option>
-                            <option value="">SQL (ANSI)</option>
-                            <option value="postgres">PostgreSQL</option>
-                            <option value="mysql">MySQL</option>
-                            <option value="bigquery">BigQuery</option>
-                            <option value="snowflake" selected>Snowflake</option>
-                            <option value="redshift">Redshift</option>
-                            <option value="spark">Spark</option>
+                            <!-- TO_DIALECT_OPTIONS -->
                         </select>
                     </div>
                     <button class="copy-btn" onclick="copyOutput()" title="Copy">
@@ -85,7 +101,25 @@
                 </div>
                 <div class="panel-content">
                     <div id="error" style="display: none;"></div>
-                    <div id="output-editor"></div>
+                    <!-- Text Editor (CodeMirror) -->
+                    <div id="output-editor-container">
+                        <div id="output-editor"></div>
+                    </div>
+                    <!-- Visual Editor (for output) -->
+                    <div id="output-visual-editor-container" style="display: none;">
+                        <div class="visual-editor visual-editor-readonly">
+                            <div class="block from-block">
+                                <div class="block-header">
+                                    <span class="block-icon">📁</span>
+                                    <span class="block-title">From</span>
+                                </div>
+                                <div class="block-body">
+                                    <input type="text" id="output-from-table" placeholder="table_name" class="input-field" readonly>
+                                </div>
+                            </div>
+                            <div id="output-transforms-container"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -135,7 +169,22 @@
             </div>
         </div>
     </div>
-    
+
+    <!-- Add Step Modal (for visual editor) -->
+    <div id="add-step-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Pipeline Step</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="operations-grid" class="operations-grid">
+                    <!-- Operations will be loaded here dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- CodeMirror Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
@@ -151,5 +200,8 @@
     
     <!-- Playground Application -->
     <script src="/static/playground/playground.js"></script>
+
+    <!-- Visual Editor -->
+    <script src="/static/playground/visual-editor.js"></script>
 </body>
 </html>

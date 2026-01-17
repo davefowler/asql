@@ -1,0 +1,399 @@
+/* Visual ASQL Editor Styles */
+
+/* Container */
+.visual-editor {
+  padding: 20px;
+  overflow-y: auto;
+  height: 100%;
+  background: #f8f9fa;
+}
+
+/* Blocks */
+.block {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  transition: all 0.2s;
+}
+
+.block:hover {
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.block-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  border-radius: 8px 8px 0 0;
+}
+
+.block-icon {
+  font-size: 20px;
+  margin-right: 8px;
+}
+
+.block-title {
+  font-weight: 600;
+  flex: 1;
+  color: #333;
+}
+
+.block-delete {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #999;
+  cursor: pointer;
+  padding: 0 8px;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.block-delete:hover {
+  color: #e53935;
+}
+
+.block-body {
+  padding: 16px;
+}
+
+/* FROM block styling */
+.from-block {
+  border-color: #4CAF50;
+}
+
+.from-block .block-header {
+  background: #e8f5e9;
+}
+
+/* Block type colors */
+.where-block {
+  border-left: 4px solid #2196F3;
+}
+
+.join-block {
+  border-left: 4px solid #9C27B0;
+}
+
+.select-block {
+  border-left: 4px solid #FF9800;
+}
+
+.group_by-block {
+  border-left: 4px solid #4CAF50;
+}
+
+.order_by-block {
+  border-left: 4px solid #FF5722;
+}
+
+.limit-block {
+  border-left: 4px solid #607D8B;
+}
+
+/* Fields */
+.field {
+  margin-bottom: 16px;
+}
+
+.field:last-child {
+  margin-bottom: 0;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #333;
+  font-size: 14px;
+}
+
+.field .help {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.field .error {
+  color: #e53935;
+  font-size: 12px;
+  margin: 4px 0 0 0;
+}
+
+.field .empty {
+  color: #999;
+  font-style: italic;
+}
+
+/* Input Fields */
+.input-field {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  transition: border-color 0.2s;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.1);
+}
+
+select.input-field {
+  cursor: pointer;
+  background-color: white;
+}
+
+/* Expression Inputs */
+.expression-inputs {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.expression-inputs select {
+  width: 100px;
+}
+
+/* List Widgets */
+.list-items, .aggregate-items, .order-items {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 8px;
+  background: #f8f9fa;
+}
+
+.list-item, .aggregate-item, .order-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: white;
+  border-radius: 4px;
+}
+
+.list-item:last-of-type, .aggregate-item:last-of-type, .order-item:last-of-type {
+  margin-bottom: 8px;
+}
+
+.list-item .input-field, .aggregate-item .input-field, .order-item .input-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.aggregate-item .input-field:first-child {
+  flex: 0 0 120px;
+}
+
+.order-item .input-field:last-of-type {
+  flex: 0 0 140px;
+}
+
+.list-item-remove {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
+  transition: color 0.2s;
+  flex-shrink: 0;
+}
+
+.list-item-remove:hover {
+  color: #e53935;
+}
+
+.list-add-btn {
+  width: 100%;
+  padding: 8px;
+  background: white;
+  border: 1px dashed #4CAF50;
+  border-radius: 4px;
+  color: #4CAF50;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.list-add-btn:hover {
+  background: #e8f5e9;
+  border-color: #388E3C;
+  color: #388E3C;
+}
+
+/* Add Step Button */
+.add-step-btn {
+  width: 100%;
+  padding: 16px;
+  background: #e3f2fd;
+  border: 2px dashed #2196F3;
+  border-radius: 8px;
+  color: #2196F3;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.add-step-btn:hover {
+  background: #bbdefb;
+  border-color: #1976D2;
+  color: #1976D2;
+}
+
+/* Operations Grid (Modal) */
+.operations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.operation-card {
+  padding: 20px;
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.operation-card:hover {
+  border-color: #4CAF50;
+  background: #f1f8e9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.operation-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.operation-label {
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+}
+
+.operation-description {
+  font-size: 11px;
+  color: #666;
+  margin-top: 4px;
+}
+
+/* Mode Toggle Button */
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+  margin-left: 8px;
+}
+
+.mode-toggle:hover {
+  background: #e0e0e0;
+}
+
+.mode-toggle.active {
+  background: #4CAF50;
+  color: white;
+  border-color: #4CAF50;
+}
+
+.mode-toggle .icon {
+  font-size: 16px;
+}
+
+.mode-toggle .label {
+  font-weight: 500;
+}
+
+/* Modal Overrides */
+#add-step-modal .modal-content {
+  max-width: 600px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#add-step-modal .modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+#add-step-modal .modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+#add-step-modal .modal-close {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #999;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+#add-step-modal .modal-close:hover {
+  color: #333;
+}
+
+#add-step-modal .modal-body {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Scrollbar styling */
+.visual-editor::-webkit-scrollbar,
+.operations-grid::-webkit-scrollbar {
+  width: 8px;
+}
+
+.visual-editor::-webkit-scrollbar-track,
+.operations-grid::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.visual-editor::-webkit-scrollbar-thumb,
+.operations-grid::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.visual-editor::-webkit-scrollbar-thumb:hover,
+.operations-grid::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

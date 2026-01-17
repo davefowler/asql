@@ -2,6 +2,19 @@
  * ASQL Playground JavaScript
  */
 
+// ========== Utility Functions ==========
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
 // ========== Global Variables ==========
 let inputEditor, outputEditor;
 
@@ -384,17 +397,87 @@ function updateUITitles() {
     const fromDialect = document.getElementById('from-dialect').value;
     const toDialect = document.getElementById('to-dialect').value;
     
-    if (fromDialect === 'asql') {
+    // Handle input panel editor switching
+    updateEditorVisibility('input', fromDialect);
+    
+    // Handle output panel editor switching
+    updateEditorVisibility('output', toDialect);
+    
+    // Set CodeMirror modes for text editors
+    if (fromDialect === 'asql' || fromDialect === 'visual-asql') {
         inputEditor.setOption('mode', 'text/x-asql');
     } else {
         inputEditor.setOption('mode', 'text/x-sql');
     }
     
-    if (toDialect === 'asql') {
+    if (toDialect === 'asql' || toDialect === 'visual-asql') {
         outputEditor.setOption('mode', 'text/x-asql');
     } else {
         outputEditor.setOption('mode', 'text/x-sql');
     }
+}
+
+// Switch between text and visual editors based on dialect
+async function updateEditorVisibility(panel, dialect) {
+    // Check the data-editor attribute on the selected option
+    const selectId = panel === 'input' ? 'from-dialect' : 'to-dialect';
+    const select = document.getElementById(selectId);
+    const selectedOption = select?.options[select.selectedIndex];
+    const editorType = selectedOption?.dataset?.editor || 'text';
+    const isVisual = editorType === 'visual';
+    
+    if (panel === 'input') {
+        const textContainer = document.getElementById('input-editor-container');
+        const visualContainer = document.getElementById('visual-editor-container');
+        
+        if (!textContainer || !visualContainer) return;
+        
+        if (isVisual) {
+            // Initialize visual editor if needed
+            if (visualEditor && !visualEditor.initialized) {
+                await visualEditor.init();
+            }
+            
+            // Switch to visual mode - sync content from text editor
+            const currentASQL = inputEditor.getValue();
+            textContainer.style.display = 'none';
+            visualContainer.style.display = 'block';
+            
+            if (currentASQL.trim() && visualEditor) {
+                await visualEditor.loadFromASQL(currentASQL);
+            }
+        } else {
+            // Switch to text mode - sync content from visual editor
+            if (visualContainer.style.display !== 'none' && visualEditor) {
+                const asql = await visualEditor.getASQL();
+                if (asql) {
+                    inputEditor.setValue(asql);
+                }
+            }
+            textContainer.style.display = 'block';
+            visualContainer.style.display = 'none';
+        }
+    } else if (panel === 'output') {
+        const textContainer = document.getElementById('output-editor-container');
+        const visualContainer = document.getElementById('output-visual-editor-container');
+        
+        if (!textContainer || !visualContainer) return;
+        
+        if (isVisual) {
+            textContainer.style.display = 'none';
+            visualContainer.style.display = 'block';
+        } else {
+            textContainer.style.display = 'block';
+            visualContainer.style.display = 'none';
+        }
+    }
+}
+
+// Check if a dialect uses the visual editor
+function isVisualDialect(selectId) {
+    const select = document.getElementById(selectId);
+    const selectedOption = select?.options[select.selectedIndex];
+    return selectedOption?.dataset?.editor === 'visual';
 }
 
 function showToast(message) {
@@ -430,14 +513,24 @@ function getCurrentMode() {
         const fromDialect = fromSelect.value;
         const toDialect = toSelect.value;
         
-        if (fromDialect === 'asql' && toDialect !== 'asql') return 'asql-to-sql';
-        if (fromDialect !== 'asql' && toDialect === 'asql') return 'sql-to-asql';
-        if (fromDialect === 'asql' && toDialect === 'asql') return 'asql-to-asql';
+        // Treat visual-asql as asql for mode detection
+        const fromIsAsql = fromDialect === 'asql' || fromDialect === 'visual-asql';
+        const toIsAsql = toDialect === 'asql' || toDialect === 'visual-asql';
+        
+        if (fromIsAsql && !toIsAsql) return 'asql-to-sql';
+        if (!fromIsAsql && toIsAsql) return 'sql-to-asql';
+        if (fromIsAsql && toIsAsql) return 'asql-to-asql';
         return 'sql-to-sql';
     } catch (error) {
         console.error('Error getting current mode:', error);
         return 'asql-to-sql';
     }
+}
+
+// Get the actual dialect to send to the API (visual-asql -> asql)
+function getApiDialect(dialect) {
+    if (dialect === 'visual-asql') return 'asql';
+    return dialect;
 }
 
 function updateURL() {
@@ -536,27 +629,51 @@ async function translateQuery() {
     
     try {
         if (currentMode === 'asql-to-sql') {
-            const compileSettings = getCompileSettings();
-            const response = await fetch('/api/compile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ asql: input, dialect: toDialect || '', settings: compileSettings })
-            });
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                errorDiv.textContent = `HTTP Error ${response.status}: ${errorText}`;
-                errorDiv.className = 'error';
-                errorDiv.style.display = 'block';
-                return;
-            }
-            
-            const data = await response.json();
-            if (data.error) {
-                showError(data.error);
-            } else if (data.sql) {
-                outputEditor.setValue(data.sql);
-                updateURL();
+            // If output is visual-asql, parse to visual representation
+            if (toDialect === 'visual-asql') {
+                const response = await fetch('/api/visual/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ asql: input })
+                });
+                
+                if (!response.ok) {
+                    showError(`HTTP Error ${response.status}`);
+                    return;
+                }
+                
+                const data = await response.json();
+                if (!data.success) {
+                    showError(data.error || 'Failed to parse ASQL');
+                } else {
+                    // Render to output visual editor
+                    renderOutputVisual(data.query);
+                    updateURL();
+                }
+            } else {
+                // Normal SQL output
+                const compileSettings = getCompileSettings();
+                const response = await fetch('/api/compile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ asql: input, dialect: getApiDialect(toDialect) || '', settings: compileSettings })
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    errorDiv.textContent = `HTTP Error ${response.status}: ${errorText}`;
+                    errorDiv.className = 'error';
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                
+                const data = await response.json();
+                if (data.error) {
+                    showError(data.error);
+                } else if (data.sql) {
+                    outputEditor.setValue(data.sql);
+                    updateURL();
+                }
             }
         } else if (currentMode === 'sql-to-asql') {
             let sourceDialect = fromDialect;
@@ -585,6 +702,21 @@ async function translateQuery() {
             const data = await response.json();
             if (data.error) {
                 showError(data.error);
+            } else if (toDialect === 'visual-asql') {
+                // Parse the ASQL to visual representation
+                const parseResponse = await fetch('/api/visual/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ asql: data.asql })
+                });
+                
+                const parseData = await parseResponse.json();
+                if (!parseData.success) {
+                    showError(parseData.error || 'Failed to parse ASQL');
+                } else {
+                    renderOutputVisual(parseData.query);
+                    updateURL();
+                }
             } else {
                 outputEditor.setValue(data.asql);
                 updateURL();
@@ -619,19 +751,36 @@ async function translateQuery() {
                 return;
             }
             
-            const compileSettings = getCompileSettings();
-            const compileResponse = await fetch('/api/compile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ asql: reverseData.asql, dialect: toDialect || '', settings: compileSettings })
-            });
-            
-            const compileData = await compileResponse.json();
-            if (compileData.error) {
-                showError(compileData.error);
+            // If output is visual-asql, parse to visual representation
+            if (toDialect === 'visual-asql') {
+                const parseResponse = await fetch('/api/visual/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ asql: reverseData.asql })
+                });
+                
+                const parseData = await parseResponse.json();
+                if (!parseData.success) {
+                    showError(parseData.error || 'Failed to parse ASQL');
+                } else {
+                    renderOutputVisual(parseData.query);
+                    updateURL();
+                }
             } else {
-                outputEditor.setValue(compileData.sql);
-                updateURL();
+                const compileSettings = getCompileSettings();
+                const compileResponse = await fetch('/api/compile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ asql: reverseData.asql, dialect: getApiDialect(toDialect) || '', settings: compileSettings })
+                });
+                
+                const compileData = await compileResponse.json();
+                if (compileData.error) {
+                    showError(compileData.error);
+                } else {
+                    outputEditor.setValue(compileData.sql);
+                    updateURL();
+                }
             }
         } else {
             outputEditor.setValue(input);
@@ -1008,6 +1157,137 @@ document.addEventListener('DOMContentLoaded', function() {
     
     checkASQLMode();
 });
+
+// ========== Visual Editor Integration ==========
+
+// Render query JSON to the output visual editor (read-only display)
+function renderOutputVisual(query) {
+    const fromInput = document.getElementById('output-from-table');
+    const transformsContainer = document.getElementById('output-transforms-container');
+    
+    if (!fromInput || !transformsContainer) return;
+    
+    // Set the from table
+    fromInput.value = query.from?.table || '';
+    
+    // Clear and render transforms
+    transformsContainer.innerHTML = '';
+    
+    if (!query.transforms || query.transforms.length === 0) {
+        return;
+    }
+    
+    query.transforms.forEach(transform => {
+        const block = createOutputBlock(transform);
+        transformsContainer.appendChild(block);
+    });
+}
+
+// Create a read-only block for output visual display
+function createOutputBlock(transform) {
+    const block = document.createElement('div');
+    block.className = `block transform-block ${transform.type}-block`;
+    
+    const header = document.createElement('div');
+    header.className = 'block-header';
+    
+    const icon = document.createElement('span');
+    icon.className = 'block-icon';
+    icon.textContent = getTransformIcon(transform.type);
+    
+    const title = document.createElement('span');
+    title.className = 'block-title';
+    title.textContent = transform.type;
+    
+    header.appendChild(icon);
+    header.appendChild(title);
+    
+    const body = document.createElement('div');
+    body.className = 'block-body';
+    body.innerHTML = renderOutputBlockBody(transform);
+    
+    block.appendChild(header);
+    block.appendChild(body);
+    
+    return block;
+}
+
+// Get icon for transform type
+function getTransformIcon(type) {
+    const icons = {
+        'where': '🔍',
+        'join': '🔗',
+        'select': '📋',
+        'group_by': '📊',
+        'order_by': '↕️',
+        'limit': '🔢'
+    };
+    return icons[type] || '📦';
+}
+
+// Render the body of an output block (read-only)
+function renderOutputBlockBody(transform) {
+    const escapeHtml = (text) => {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    };
+    
+    switch (transform.type) {
+        case 'where':
+            return `<div class="field"><label>Condition</label><code>${escapeHtml(formatCondition(transform.condition))}</code></div>`;
+        case 'join':
+            return `
+                <div class="field"><label>Type</label><span>${escapeHtml(transform.join_type || 'inner')}</span></div>
+                <div class="field"><label>Table</label><span>${escapeHtml(transform.table || '')}</span></div>
+                ${transform.condition ? `<div class="field"><label>On</label><code>${escapeHtml(formatCondition(transform.condition))}</code></div>` : ''}
+            `;
+        case 'select':
+            const cols = (transform.columns || []).map(c => typeof c === 'string' ? c : c.name).join(', ');
+            return `<div class="field"><label>Columns</label><span>${escapeHtml(cols)}</span></div>`;
+        case 'group_by':
+            const dims = (transform.dimensions || []).join(', ');
+            const aggs = (transform.aggregates || []).map(a => `${a.function}(${a.column})`).join(', ');
+            return `
+                <div class="field"><label>Group By</label><span>${escapeHtml(dims)}</span></div>
+                ${aggs ? `<div class="field"><label>Aggregates</label><span>${escapeHtml(aggs)}</span></div>` : ''}
+            `;
+        case 'order_by':
+            const orders = (transform.expressions || []).map(e => `${e.column} ${e.direction}`).join(', ');
+            return `<div class="field"><label>Order By</label><span>${escapeHtml(orders)}</span></div>`;
+        case 'limit':
+            return `<div class="field"><label>Limit</label><span>${transform.count || 10}</span></div>`;
+        default:
+            return `<div class="field"><pre>${escapeHtml(JSON.stringify(transform, null, 2))}</pre></div>`;
+    }
+}
+
+// Format a condition object to readable string
+function formatCondition(cond) {
+    if (!cond) return '';
+    if (cond.type === 'column') return cond.name || '';
+    if (cond.type === 'literal') return JSON.stringify(cond.value);
+    if (cond.type === 'binary_op') {
+        const left = formatCondition(cond.left);
+        const right = formatCondition(cond.right);
+        return `${left} ${cond.operator} ${right}`;
+    }
+    return cond.value || JSON.stringify(cond);
+}
+
+// Handle visual editor changes - triggers translation when visual editor content changes
+window.onVisualEditorChange = debounce(async () => {
+    // Only process if input is using visual editor
+    if (isVisualDialect('from-dialect') && visualEditor) {
+        const asql = await visualEditor.getASQL();
+        if (asql) {
+            // Also update the text editor (for when user switches back)
+            inputEditor.setValue(asql);
+            // Trigger normal translation
+            translateQuery();
+        }
+    }
+}, 500);
 
 
 

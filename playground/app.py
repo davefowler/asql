@@ -9,10 +9,103 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from sqlglot.dialects import Dialects
+
 from asql import compile
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 from asql.reverse_compiler import reverse_compile, detect_dialect
 from asql.config import ASQLConfig, StyleConfig, CompileSettings
+from asql.json_schema import ast_to_json, json_to_asql
+from asql.compiler.api import compile_to_ast
+
+
+def get_dialect_options(panel: str = "from") -> list[dict]:
+    """
+    Get list of available dialects from SQLGlot with metadata.
+    
+    Args:
+        panel: "from" for input panel, "to" for output panel
+        
+    Returns list of dicts with: value, label, editor (text/visual).
+    """
+    # Special entries that aren't SQLGlot dialects
+    dialects = [
+        {"value": "asql", "label": "ASQL", "editor": "text"},
+        {"value": "visual-asql", "label": "Visual ASQL", "editor": "visual"},
+    ]
+    
+    # Get SQLGlot dialects
+    sqlglot_dialects = []
+    for d in Dialects:
+        if d.value:  # Skip empty DIALECT entry
+            # Create nice display name
+            label = d.value.replace("_", " ").title()
+            # Special cases for better display
+            label_map = {
+                "bigquery": "BigQuery",
+                "clickhouse": "ClickHouse",
+                "databricks": "Databricks",
+                "duckdb": "DuckDB",
+                "mysql": "MySQL",
+                "postgres": "PostgreSQL",
+                "prql": "PRQL",
+                "redshift": "Redshift",
+                "snowflake": "Snowflake",
+                "spark": "Spark",
+                "spark2": "Spark 2",
+                "sqlite": "SQLite",
+                "tsql": "T-SQL (SQL Server)",
+                "athena": "AWS Athena",
+                "trino": "Trino",
+                "presto": "Presto",
+                "hive": "Hive",
+                "oracle": "Oracle",
+                "teradata": "Teradata",
+                "starrocks": "StarRocks",
+                "risingwave": "RisingWave",
+                "materialize": "Materialize",
+                "doris": "Apache Doris",
+                "druid": "Apache Druid",
+                "dremio": "Dremio",
+                "drill": "Apache Drill",
+                "dune": "Dune Analytics",
+                "fabric": "Microsoft Fabric",
+                "tableau": "Tableau",
+                "solr": "Apache Solr",
+                "exasol": "Exasol",
+            }
+            label = label_map.get(d.value, label)
+            sqlglot_dialects.append({
+                "value": d.value,
+                "label": label,
+                "editor": "text"
+            })
+    
+    # Sort SQLGlot dialects alphabetically by label
+    sqlglot_dialects.sort(key=lambda x: x["label"].lower())
+    
+    # Add SQL option - "Auto-detect" for input, "ANSI" for output
+    if panel == "from":
+        dialects.append({"value": "", "label": "SQL (Auto-detect)", "editor": "text"})
+    else:
+        dialects.append({"value": "", "label": "SQL (ANSI)", "editor": "text"})
+    
+    dialects.extend(sqlglot_dialects)
+    
+    return dialects
+
+
+def generate_dialect_options_html(dialects: list[dict], selected: str = "") -> str:
+    """Generate HTML <option> elements for dialect select."""
+    options = []
+    for d in dialects:
+        selected_attr = ' selected' if d["value"] == selected else ''
+        # Store editor type as data attribute
+        options.append(
+            f'<option value="{d["value"]}" data-editor="{d["editor"]}"{selected_attr}>'
+            f'{d["label"]}</option>'
+        )
+    return "\n                            ".join(options)
 
 from .jinja_utils import strip_jinja_templates
 from .examples import (
@@ -112,6 +205,14 @@ async def index() -> HTMLResponse:
             '/* EXAMPLES_DATA_PLACEHOLDER */ {}',
             examples_json
         )
+        
+        # Inject dialect options (dynamically from SQLGlot)
+        from_dialects = get_dialect_options(panel="from")
+        to_dialects = get_dialect_options(panel="to")
+        from_options = generate_dialect_options_html(from_dialects, selected="asql")
+        to_options = generate_dialect_options_html(to_dialects, selected="snowflake")
+        content = content.replace('<!-- FROM_DIALECT_OPTIONS -->', from_options)
+        content = content.replace('<!-- TO_DIALECT_OPTIONS -->', to_options)
         
         return HTMLResponse(content=content)
     return HTMLResponse(content="<h1>Template not found</h1>", status_code=500)
@@ -525,5 +626,118 @@ async def api_debug_examples_path() -> dict:
         if exists and is_dir and not debug_info['found_path']:
             debug_info['found_path'] = path_str
             debug_info['examples_count'] = file_count
-    
+
     return debug_info
+
+
+# --- Visual Editor API Endpoints ---
+
+@app.post("/api/visual/parse")
+async def parse_to_visual(request: Request):
+    """
+    Convert ASQL text to JSON representation for visual editor.
+
+    Request body:
+        {"asql": "from users where status == \"active\""}
+
+    Response:
+        {"success": true, "query": {...}} or {"success": false, "error": "..."}
+    """
+    try:
+        data = await request.json()
+        asql_text = data.get('asql', '').strip()
+
+        if not asql_text:
+            return {
+                "success": False,
+                "error": "No ASQL query provided"
+            }
+
+        # Parse ASQL to AST
+        ast = compile_to_ast(asql_text)
+
+        # Convert AST to JSON
+        query_json = ast_to_json(ast)
+
+        return {
+            "success": True,
+            "query": query_json
+        }
+    except ASQLSyntaxError as e:
+        return {
+            "success": False,
+            "error": f"Syntax error: {str(e)}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Parse error: {str(e)}"
+        }
+
+
+@app.post("/api/visual/compile")
+async def compile_from_visual(request: Request):
+    """
+    Convert JSON representation from visual editor to ASQL text.
+
+    Request body:
+        {"query": {"from": {"table": "users"}, "transforms": [...]}}
+
+    Response:
+        {"success": true, "asql": "from users\\n  where ..."} or {"success": false, "error": "..."}
+    """
+    try:
+        data = await request.json()
+        query_json = data.get('query', {})
+
+        if not query_json:
+            return {
+                "success": False,
+                "error": "No query provided"
+            }
+
+        # Convert JSON to ASQL
+        asql_text = json_to_asql(query_json)
+
+        return {
+            "success": True,
+            "asql": asql_text
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Compilation error: {str(e)}"
+        }
+
+
+@app.get("/api/visual/operations")
+async def list_visual_operations():
+    """
+    List available operations for the visual editor.
+    Dynamically generated from ui_schema.
+    """
+    from asql.ui_schema import list_all_operations
+
+    return {
+        "operations": list_all_operations()
+    }
+
+
+@app.get("/api/visual/operations/{operation_type}/schema")
+async def get_operation_schema(operation_type: str):
+    """
+    Get UI schema for a specific operation type.
+
+    Returns the schema needed to render the operation's form,
+    including parameter definitions, widgets, and validation.
+    """
+    from asql.ui_schema import get_operation_schema
+
+    schema = get_operation_schema(operation_type)
+
+    if not schema:
+        return {
+            "error": f"Unknown operation type: {operation_type}"
+        }
+
+    return schema
