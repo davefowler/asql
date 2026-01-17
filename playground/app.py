@@ -9,12 +9,103 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from sqlglot.dialects import Dialects
+
 from asql import compile
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 from asql.reverse_compiler import reverse_compile, detect_dialect
 from asql.config import ASQLConfig, StyleConfig, CompileSettings
 from asql.json_schema import ast_to_json, json_to_asql
 from asql.compiler.api import compile_to_ast
+
+
+def get_dialect_options(panel: str = "from") -> list[dict]:
+    """
+    Get list of available dialects from SQLGlot with metadata.
+    
+    Args:
+        panel: "from" for input panel, "to" for output panel
+        
+    Returns list of dicts with: value, label, editor (text/visual).
+    """
+    # Special entries that aren't SQLGlot dialects
+    dialects = [
+        {"value": "asql", "label": "ASQL", "editor": "text"},
+        {"value": "visual-asql", "label": "Visual ASQL", "editor": "visual"},
+    ]
+    
+    # Get SQLGlot dialects
+    sqlglot_dialects = []
+    for d in Dialects:
+        if d.value:  # Skip empty DIALECT entry
+            # Create nice display name
+            label = d.value.replace("_", " ").title()
+            # Special cases for better display
+            label_map = {
+                "bigquery": "BigQuery",
+                "clickhouse": "ClickHouse",
+                "databricks": "Databricks",
+                "duckdb": "DuckDB",
+                "mysql": "MySQL",
+                "postgres": "PostgreSQL",
+                "prql": "PRQL",
+                "redshift": "Redshift",
+                "snowflake": "Snowflake",
+                "spark": "Spark",
+                "spark2": "Spark 2",
+                "sqlite": "SQLite",
+                "tsql": "T-SQL (SQL Server)",
+                "athena": "AWS Athena",
+                "trino": "Trino",
+                "presto": "Presto",
+                "hive": "Hive",
+                "oracle": "Oracle",
+                "teradata": "Teradata",
+                "starrocks": "StarRocks",
+                "risingwave": "RisingWave",
+                "materialize": "Materialize",
+                "doris": "Apache Doris",
+                "druid": "Apache Druid",
+                "dremio": "Dremio",
+                "drill": "Apache Drill",
+                "dune": "Dune Analytics",
+                "fabric": "Microsoft Fabric",
+                "tableau": "Tableau",
+                "solr": "Apache Solr",
+                "exasol": "Exasol",
+            }
+            label = label_map.get(d.value, label)
+            sqlglot_dialects.append({
+                "value": d.value,
+                "label": label,
+                "editor": "text"
+            })
+    
+    # Sort SQLGlot dialects alphabetically by label
+    sqlglot_dialects.sort(key=lambda x: x["label"].lower())
+    
+    # Add SQL option - "Auto-detect" for input, "ANSI" for output
+    if panel == "from":
+        dialects.append({"value": "", "label": "SQL (Auto-detect)", "editor": "text"})
+    else:
+        dialects.append({"value": "", "label": "SQL (ANSI)", "editor": "text"})
+    
+    dialects.extend(sqlglot_dialects)
+    
+    return dialects
+
+
+def generate_dialect_options_html(dialects: list[dict], selected: str = "") -> str:
+    """Generate HTML <option> elements for dialect select."""
+    options = []
+    for d in dialects:
+        selected_attr = ' selected' if d["value"] == selected else ''
+        # Store editor type as data attribute
+        options.append(
+            f'<option value="{d["value"]}" data-editor="{d["editor"]}"{selected_attr}>'
+            f'{d["label"]}</option>'
+        )
+    return "\n                            ".join(options)
 
 from .jinja_utils import strip_jinja_templates
 from .examples import (
@@ -114,6 +205,14 @@ async def index() -> HTMLResponse:
             '/* EXAMPLES_DATA_PLACEHOLDER */ {}',
             examples_json
         )
+        
+        # Inject dialect options (dynamically from SQLGlot)
+        from_dialects = get_dialect_options(panel="from")
+        to_dialects = get_dialect_options(panel="to")
+        from_options = generate_dialect_options_html(from_dialects, selected="asql")
+        to_options = generate_dialect_options_html(to_dialects, selected="snowflake")
+        content = content.replace('<!-- FROM_DIALECT_OPTIONS -->', from_options)
+        content = content.replace('<!-- TO_DIALECT_OPTIONS -->', to_options)
         
         return HTMLResponse(content=content)
     return HTMLResponse(content="<h1>Template not found</h1>", status_code=500)

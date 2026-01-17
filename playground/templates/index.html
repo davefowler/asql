@@ -31,20 +31,9 @@
                     <div class="language-selector-inline">
                         <label>From:</label>
                         <select id="from-dialect">
-                            <option value="asql">ASQL</option>
-                            <option value="">SQL (Auto-detect)</option>
-                            <option value="postgres">PostgreSQL</option>
-                            <option value="mysql">MySQL</option>
-                            <option value="bigquery">BigQuery</option>
-                            <option value="snowflake">Snowflake</option>
-                            <option value="redshift">Redshift</option>
-                            <option value="spark">Spark</option>
+                            <!-- FROM_DIALECT_OPTIONS -->
                         </select>
                     </div>
-                    <button id="mode-toggle" class="mode-toggle" title="Toggle Visual Editor">
-                        <span class="icon">👁️</span>
-                        <span class="label">Visual</span>
-                    </button>
                     <button class="copy-btn" onclick="copyInput()" title="Copy">
                         <svg viewBox="0 0 16 16" fill="currentColor">
                             <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path>
@@ -100,14 +89,7 @@
                     <div class="language-selector-inline">
                         <label>To:</label>
                         <select id="to-dialect">
-                            <option value="asql">ASQL</option>
-                            <option value="">SQL (ANSI)</option>
-                            <option value="postgres">PostgreSQL</option>
-                            <option value="mysql">MySQL</option>
-                            <option value="bigquery">BigQuery</option>
-                            <option value="snowflake" selected>Snowflake</option>
-                            <option value="redshift">Redshift</option>
-                            <option value="spark">Spark</option>
+                            <!-- TO_DIALECT_OPTIONS -->
                         </select>
                     </div>
                     <button class="copy-btn" onclick="copyOutput()" title="Copy">
@@ -119,7 +101,25 @@
                 </div>
                 <div class="panel-content">
                     <div id="error" style="display: none;"></div>
-                    <div id="output-editor"></div>
+                    <!-- Text Editor (CodeMirror) -->
+                    <div id="output-editor-container">
+                        <div id="output-editor"></div>
+                    </div>
+                    <!-- Visual Editor (for output) -->
+                    <div id="output-visual-editor-container" style="display: none;">
+                        <div class="visual-editor visual-editor-readonly">
+                            <div class="block from-block">
+                                <div class="block-header">
+                                    <span class="block-icon">📁</span>
+                                    <span class="block-title">From</span>
+                                </div>
+                                <div class="block-body">
+                                    <input type="text" id="output-from-table" placeholder="table_name" class="input-field" readonly>
+                                </div>
+                            </div>
+                            <div id="output-transforms-container"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

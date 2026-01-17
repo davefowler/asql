@@ -397,17 +397,87 @@ function updateUITitles() {
     const fromDialect = document.getElementById('from-dialect').value;
     const toDialect = document.getElementById('to-dialect').value;
     
-    if (fromDialect === 'asql') {
+    // Handle input panel editor switching
+    updateEditorVisibility('input', fromDialect);
+    
+    // Handle output panel editor switching
+    updateEditorVisibility('output', toDialect);
+    
+    // Set CodeMirror modes for text editors
+    if (fromDialect === 'asql' || fromDialect === 'visual-asql') {
         inputEditor.setOption('mode', 'text/x-asql');
     } else {
         inputEditor.setOption('mode', 'text/x-sql');
     }
     
-    if (toDialect === 'asql') {
+    if (toDialect === 'asql' || toDialect === 'visual-asql') {
         outputEditor.setOption('mode', 'text/x-asql');
     } else {
         outputEditor.setOption('mode', 'text/x-sql');
     }
+}
+
+// Switch between text and visual editors based on dialect
+async function updateEditorVisibility(panel, dialect) {
+    // Check the data-editor attribute on the selected option
+    const selectId = panel === 'input' ? 'from-dialect' : 'to-dialect';
+    const select = document.getElementById(selectId);
+    const selectedOption = select?.options[select.selectedIndex];
+    const editorType = selectedOption?.dataset?.editor || 'text';
+    const isVisual = editorType === 'visual';
+    
+    if (panel === 'input') {
+        const textContainer = document.getElementById('input-editor-container');
+        const visualContainer = document.getElementById('visual-editor-container');
+        
+        if (!textContainer || !visualContainer) return;
+        
+        if (isVisual) {
+            // Initialize visual editor if needed
+            if (visualEditor && !visualEditor.initialized) {
+                await visualEditor.init();
+            }
+            
+            // Switch to visual mode - sync content from text editor
+            const currentASQL = inputEditor.getValue();
+            textContainer.style.display = 'none';
+            visualContainer.style.display = 'block';
+            
+            if (currentASQL.trim() && visualEditor) {
+                await visualEditor.loadFromASQL(currentASQL);
+            }
+        } else {
+            // Switch to text mode - sync content from visual editor
+            if (visualContainer.style.display !== 'none' && visualEditor) {
+                const asql = await visualEditor.getASQL();
+                if (asql) {
+                    inputEditor.setValue(asql);
+                }
+            }
+            textContainer.style.display = 'block';
+            visualContainer.style.display = 'none';
+        }
+    } else if (panel === 'output') {
+        const textContainer = document.getElementById('output-editor-container');
+        const visualContainer = document.getElementById('output-visual-editor-container');
+        
+        if (!textContainer || !visualContainer) return;
+        
+        if (isVisual) {
+            textContainer.style.display = 'none';
+            visualContainer.style.display = 'block';
+        } else {
+            textContainer.style.display = 'block';
+            visualContainer.style.display = 'none';
+        }
+    }
+}
+
+// Check if a dialect uses the visual editor
+function isVisualDialect(selectId) {
+    const select = document.getElementById(selectId);
+    const selectedOption = select?.options[select.selectedIndex];
+    return selectedOption?.dataset?.editor === 'visual';
 }
 
 function showToast(message) {
@@ -1020,108 +1090,19 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     checkASQLMode();
-
-    // Visual Editor Mode Toggle
-    setupVisualEditorToggle();
 });
 
 // ========== Visual Editor Integration ==========
-let isVisualMode = false;
-
-function setupVisualEditorToggle() {
-    const modeToggle = document.getElementById('mode-toggle');
-    if (!modeToggle) return;
-
-    modeToggle.addEventListener('click', toggleEditorMode);
-}
-
-async function toggleEditorMode() {
-    isVisualMode = !isVisualMode;
-
-    const textContainer = document.getElementById('input-editor-container');
-    const visualContainer = document.getElementById('visual-editor-container');
-    const toggleBtn = document.getElementById('mode-toggle');
-
-    if (!textContainer || !visualContainer || !toggleBtn) return;
-
-    if (isVisualMode) {
-        // Initialize visual editor if needed
-        if (visualEditor && !visualEditor.initialized) {
-            await visualEditor.init();
-        }
-
-        // Switch to visual mode
-        textContainer.style.display = 'none';
-        visualContainer.style.display = 'block';
-        toggleBtn.classList.add('active');
-        const labelEl = toggleBtn.querySelector('.label');
-        if (labelEl) labelEl.textContent = 'Text';
-
-        // Load current ASQL into visual editor
-        const currentASSQL = inputEditor.getValue();
-        if (currentASSQL.trim() && visualEditor) {
-            await visualEditor.loadFromASQL(currentASSQL);
-        }
-    } else {
-        // Switch to text mode
-        textContainer.style.display = 'block';
-        visualContainer.style.display = 'none';
-        toggleBtn.classList.remove('active');
-        const labelEl2 = toggleBtn.querySelector('.label');
-        if (labelEl2) labelEl2.textContent = 'Visual';
-
-        // Update text editor with visual query
-        if (visualEditor) {
-            const asql = await visualEditor.getASQL();
-            if (asql) {
-                inputEditor.setValue(asql);
-            }
-        }
-    }
-}
-
-// Handle visual editor changes
+// Handle visual editor changes - triggers translation when visual editor content changes
 window.onVisualEditorChange = debounce(async () => {
-    if (isVisualMode && visualEditor) {
+    // Only process if input is using visual editor
+    if (isVisualDialect('from-dialect') && visualEditor) {
         const asql = await visualEditor.getASQL();
-        // Trigger compilation
         if (asql) {
-            const dialect = document.getElementById('to-dialect').value || 'snowflake';
-            const errorDiv = document.getElementById('error');
-
-            try {
-                const response = await fetch('/api/compile', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        asql: asql,
-                        dialect: dialect,
-                        settings: currentSettings
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.sql) {
-                    outputEditor.setValue(data.sql);
-                    if (errorDiv) {
-                        errorDiv.style.display = 'none';
-                        errorDiv.className = '';
-                    }
-                } else if (data.error) {
-                    if (errorDiv) {
-                        errorDiv.textContent = data.error;
-                        errorDiv.className = 'error';
-                        errorDiv.style.display = 'block';
-                    }
-                }
-            } catch (error) {
-                if (errorDiv) {
-                    errorDiv.textContent = `Network error: ${error.message}`;
-                    errorDiv.className = 'error';
-                    errorDiv.style.display = 'block';
-                }
-            }
+            // Also update the text editor (for when user switches back)
+            inputEditor.setValue(asql);
+            // Trigger normal translation
+            translateQuery();
         }
     }
 }, 500);
