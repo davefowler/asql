@@ -2582,7 +2582,7 @@ class ASQLParser(Parser):
                 return super()._parse_comparison()
 
             # Use matched operator's configuration
-            case_insensitive = matched_operator.case_sensitive == False
+            case_insensitive = not matched_operator.case_sensitive
             wrap_left, wrap_right = matched_operator.wrap_pattern
 
             right = self._parse_range()
