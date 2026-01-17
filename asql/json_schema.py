@@ -55,7 +55,9 @@ def ast_to_json(ast: exp.Select) -> Dict[str, Any]:
 
             condition = None
             if on_clause := join.args.get('on'):
-                condition = _expression_to_json(on_clause)
+                # Unwrap exp.On wrapper to get the actual condition expression
+                on_expr = on_clause.this if isinstance(on_clause, exp.On) else on_clause
+                condition = _expression_to_json(on_expr)
 
             query['transforms'].append({
                 'id': f't{transform_id}',

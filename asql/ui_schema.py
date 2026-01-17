@@ -45,6 +45,7 @@ for op_name in _BASE_SCHEMAS.keys():
     if "parameters" in override:
         merged_params = []
         override_params_by_name = {p["name"]: p for p in override["parameters"]}
+        base_param_names = {p["name"] for p in base.get("parameters", [])}
 
         for base_param in base.get("parameters", []):
             param_name = base_param["name"]
@@ -55,7 +56,14 @@ for op_name in _BASE_SCHEMAS.keys():
             else:
                 merged_params.append(base_param)
 
+        # Keep override-only params too (not in base)
+        for override_param in override["parameters"]:
+            if override_param["name"] not in base_param_names:
+                merged_params.append(override_param)
+
         base["parameters"] = merged_params
+        # Update override to use merged params so final merge doesn't overwrite
+        override = {**override, "parameters": merged_params}
 
     # Merge top-level fields
     OPERATION_UI_SCHEMAS[op_name] = {**base, **override}
