@@ -1,78 +1,73 @@
 """
 UI Schema for Visual ASQL Editor
 
-Provides lightweight metadata layer on top of SQLGlot's arg_types to enable
-automatic UI generation. Each operation has a schema defining its parameters
-and which widgets to use for rendering.
+Reads directly from dialect_schema.py for single source of truth.
+No more code generation or YAML overrides needed.
 
-Architecture:
-1. Base schemas are auto-generated from ASQL's TRANSFORM_PARSERS
-2. Manual UI overrides add labels, help text, and widget specifics
-3. Final schemas merge both (90% auto, 10% manual)
+All metadata (operations, parameters, widgets, etc.) comes from the
+unified dialect schema defined in dialect_schema.py.
 """
 
-import logging
-import yaml
-from pathlib import Path
-from .ui_schema_generator import generate_base_schema_from_asql
+from typing import Dict, List
+from .dialect_schema import TRANSFORMS, JOIN_TYPES, AGGREGATES
 
-logger = logging.getLogger(__name__)
 
-# Load manual UI overrides from YAML file
-# This centralizes all UI-specific metadata (labels, help text, dropdown options, etc.)
-# in a single editable file without touching code
-_OVERRIDES_PATH = Path(__file__).parent / "ui_overrides.yaml"
+def _transform_to_ui_schema(transform) -> Dict:
+    """Convert a Transform dataclass to UI schema dict format."""
+    # Convert transform to dict
+    schema = {
+        "label": transform.label,
+        "category": transform.category,
+        "description": transform.description,
+        "parameters": [],
+    }
 
-try:
-    with open(_OVERRIDES_PATH, "r") as f:
-        _yaml_data = yaml.safe_load(f)
-        _MANUAL_UI_OVERRIDES = _yaml_data.get("operations", {}) if _yaml_data else {}
-except FileNotFoundError:
-    # Fallback to empty dict if YAML file doesn't exist
-    _MANUAL_UI_OVERRIDES = {}
-except yaml.YAMLError as e:
-    # Log error but don't crash - use empty overrides
-    logger.warning("Failed to parse ui_overrides.yaml: %s", e)
-    _MANUAL_UI_OVERRIDES = {}
+    # Convert parameters
+    for param_name, param in transform.parameters.items():
+        param_dict = {
+            "name": param.name,
+            "type": param.type,
+            "required": param.required,
+            "label": param.label,
+            "widget": param.widget,
+            "description": param.description,
+        }
 
-# Auto-generate base schemas and merge with manual overrides
-_BASE_SCHEMAS = generate_base_schema_from_asql()
+        # Add optional fields if present
+        if param.placeholder:
+            param_dict["placeholder"] = param.placeholder
+        if param.help:
+            param_dict["help"] = param.help
+        if param.operators:
+            param_dict["operators"] = param.operators
+        if param.options:
+            param_dict["options"] = param.options
+        if param.min_value is not None:
+            param_dict["min"] = param.min_value
+        if param.max_value is not None:
+            param_dict["max"] = param.max_value
+        if param.populate_query:
+            param_dict["populate_query"] = param.populate_query
+        if param.populate_depends_on:
+            param_dict["populate_depends_on"] = param.populate_depends_on
 
-# Merge: Start with auto-generated, override with manual UI details
+        schema["parameters"].append(param_dict)
+
+    return schema
+
+
+# Build UI schemas from dialect_schema.TRANSFORMS
 OPERATION_UI_SCHEMAS = {}
-for op_name in _BASE_SCHEMAS.keys():
-    base = _BASE_SCHEMAS[op_name]
-    override = _MANUAL_UI_OVERRIDES.get(op_name, {})
-
-    # Merge parameters
-    if "parameters" in override:
-        merged_params = []
-        override_params_by_name = {p["name"]: p for p in override["parameters"]}
-        base_param_names = {p["name"] for p in base.get("parameters", [])}
-
-        for base_param in base.get("parameters", []):
-            param_name = base_param["name"]
-            if param_name in override_params_by_name:
-                # Merge base + override for this parameter
-                merged_param = {**base_param, **override_params_by_name[param_name]}
-                merged_params.append(merged_param)
-            else:
-                merged_params.append(base_param)
-
-        # Keep override-only params too (not in base)
-        for override_param in override["parameters"]:
-            if override_param["name"] not in base_param_names:
-                merged_params.append(override_param)
-
-        base["parameters"] = merged_params
-        # Update override to use merged params so final merge doesn't overwrite
-        override = {**override, "parameters": merged_params}
-
-    # Merge top-level fields
-    OPERATION_UI_SCHEMAS[op_name] = {**base, **override}
+for attr_name in dir(TRANSFORMS):
+    if not attr_name.startswith("_"):
+        transform = getattr(TRANSFORMS, attr_name)
+        if hasattr(transform, "label"):
+            # Use the transform label as the key (e.g., "where", "join")
+            op_key = transform.label.replace(" ", "_")
+            OPERATION_UI_SCHEMAS[op_key] = _transform_to_ui_schema(transform)
 
 
-def get_operation_schema(operation_type: str) -> dict:
+def get_operation_schema(operation_type: str) -> Dict:
     """
     Get UI schema for an operation type.
 
@@ -85,7 +80,7 @@ def get_operation_schema(operation_type: str) -> dict:
     return OPERATION_UI_SCHEMAS.get(operation_type, {})
 
 
-def list_all_operations() -> list:
+def list_all_operations() -> List[Dict]:
     """
     List all available operations with their metadata.
 
@@ -98,9 +93,38 @@ def list_all_operations() -> list:
             {
                 "type": op_type,
                 "label": schema.get("label", op_type.title()),
-                "icon": schema.get("icon", "📦"),
                 "description": schema.get("description", ""),
                 "category": schema.get("category", "other"),
             }
         )
     return operations
+
+
+def get_join_type_options() -> List[Dict]:
+    """Get join type options for UI dropdown."""
+    options = []
+    for attr_name in dir(JOIN_TYPES):
+        if not attr_name.startswith("_"):
+            join_type = getattr(JOIN_TYPES, attr_name)
+            if hasattr(join_type, "label"):
+                options.append(
+                    {
+                        "value": attr_name.lower(),
+                        "label": join_type.label,
+                        "description": join_type.description,
+                    }
+                )
+    return options
+
+
+def get_aggregate_options() -> List[Dict]:
+    """Get aggregate function options for UI dropdown."""
+    options = []
+    for attr_name in dir(AGGREGATES):
+        if not attr_name.startswith("_"):
+            agg = getattr(AGGREGATES, attr_name)
+            if hasattr(agg, "label"):
+                options.append(
+                    {"value": attr_name.lower(), "label": agg.label, "description": agg.description}
+                )
+    return options

@@ -934,21 +934,21 @@ class ASQLParser(Parser):
     def _build_comparison(
         self, left: exp.Expression, op_token: TokenType, right: exp.Expression
     ) -> exp.Expression:
-        """Build a comparison expression from operator token."""
-        if op_token == TokenType.LT:
-            return exp.LT(this=left, expression=right)
-        elif op_token == TokenType.GT:
-            return exp.GT(this=left, expression=right)
-        elif op_token == TokenType.LTE:
-            return exp.LTE(this=left, expression=right)
-        elif op_token == TokenType.GTE:
-            return exp.GTE(this=left, expression=right)
-        elif op_token == TokenType.EQ:
-            return exp.EQ(this=left, expression=right)
-        elif op_token == TokenType.NEQ:
-            return exp.NEQ(this=left, expression=right)
-        else:
-            return exp.EQ(this=left, expression=right)
+        """Build a comparison expression from operator token using dialect schema."""
+        from asql.dialect_schema import OPERATORS
+
+        # Build lookup dict from OPERATORS schema (comparison + equality)
+        operator_map = {}
+        for cls in [OPERATORS.COMPARISON, OPERATORS.EQUALITY]:
+            for attr_name in dir(cls):
+                if not attr_name.startswith('_'):
+                    op = getattr(cls, attr_name)
+                    if hasattr(op, 'token') and hasattr(op, 'expr_class'):
+                        operator_map[op.token] = op.expr_class
+
+        # Look up operator, default to EQ if not found
+        expr_class = operator_map.get(op_token, exp.EQ)
+        return expr_class(this=left, expression=right)
 
     def _parse_bracket(self, this: t.Optional[exp.Expression] = None) -> t.Optional[exp.Expression]:
         """Override to handle:
@@ -2565,30 +2565,25 @@ class ASQLParser(Parser):
                 like_cls: t.Type[exp.Expression] = exp.ILike if case_insensitive else exp.Like
                 return like_cls(this=left, expression=pattern)
 
-            case_insensitive = False
-            wrap_left = ""
-            wrap_right = ""
+            # Try to match string operators from dialect schema
+            from asql.dialect_schema import OPERATORS
 
-            if self._match_text_seq("ICONTAINS"):
-                case_insensitive = True
-                wrap_left, wrap_right = "%", "%"
-            elif self._match_text_seq("CONTAINS"):
-                wrap_left, wrap_right = "%", "%"
-            elif self._match_text_seq("ISTARTS", "WITH"):
-                case_insensitive = True
-                wrap_left, wrap_right = "", "%"
-            elif self._match_text_seq("STARTS", "WITH"):
-                wrap_left, wrap_right = "", "%"
-            elif self._match_text_seq("IENDS", "WITH"):
-                case_insensitive = True
-                wrap_left, wrap_right = "%", ""
-            elif self._match_text_seq("ENDS", "WITH"):
-                wrap_left, wrap_right = "%", ""
-            elif self._match_text_seq("MATCHES"):
-                wrap_left, wrap_right = "", ""
-            else:
+            matched_operator = None
+            for attr_name in dir(OPERATORS.STRING):
+                if not attr_name.startswith('_'):
+                    string_op = getattr(OPERATORS.STRING, attr_name)
+                    if hasattr(string_op, 'tokens'):
+                        if self._match_text_seq(*string_op.tokens):
+                            matched_operator = string_op
+                            break
+
+            if not matched_operator:
                 self._retreat(index)
                 return super()._parse_comparison()
+
+            # Use matched operator's configuration
+            case_insensitive = matched_operator.case_sensitive == False
+            wrap_left, wrap_right = matched_operator.wrap_pattern
 
             right = self._parse_range()
             if not right:

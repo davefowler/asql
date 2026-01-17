@@ -159,6 +159,13 @@ class OPERATORS:
             label="!=",
             description="Not equal",
         )
+        NULLSAFE_EQ = Operator(
+            token=TokenType.NULLSAFE_EQ,
+            expr_class=exp.NullSafeEQ,
+            symbol="<=>",
+            label="<=>",
+            description="Null-safe equality (MySQL style)",
+        )
 
     # ASQL-specific string operators
     class STRING:
@@ -515,6 +522,299 @@ class TRANSFORMS:
                 widget="text",
                 description="Name for the CTE",
                 placeholder="cte_name",
+            ),
+        },
+    )
+
+    HAVING = Transform(
+        keywords=["HAVING"],
+        label="having",
+        category="filter",
+        description="Filter aggregated results",
+        parser_method="query.having",
+        parameters={
+            "condition": Parameter(
+                name="condition",
+                type="expression",
+                required=True,
+                label="condition",
+                widget="expression",
+                description="Boolean expression to filter aggregated rows",
+                operators=["=", "!=", "<", ">", "<=", ">="],
+            ),
+        },
+    )
+
+    QUALIFY = Transform(
+        keywords=["QUALIFY"],
+        label="qualify",
+        category="filter",
+        description="Filter window function results",
+        parser_method="query.qualify",
+        parameters={
+            "condition": Parameter(
+                name="condition",
+                type="expression",
+                required=True,
+                label="condition",
+                widget="expression",
+                description="Boolean expression with window functions",
+                operators=["=", "!=", "<", ">", "<=", ">="],
+            ),
+        },
+    )
+
+    EXPLODE = Transform(
+        keywords=["EXPLODE"],
+        label="explode",
+        category="transform",
+        description="Unnest array column into multiple rows",
+        parser_method="_parse_asql_explode",
+        parameters={
+            "column": Parameter(
+                name="column",
+                type="column",
+                required=True,
+                label="column",
+                widget="text",
+                description="Array column to unnest",
+                placeholder="array_column",
+            ),
+        },
+    )
+
+    DISTINCT = Transform(
+        keywords=["DISTINCT"],
+        label="distinct",
+        category="utility",
+        description="Remove duplicate rows",
+        parser_method="_parse_asql_distinct",
+        parameters={},
+    )
+
+    EXCEPT = Transform(
+        keywords=["EXCEPT"],
+        label="except",
+        category="select",
+        description="Remove specified columns from selection",
+        parser_method="_parse_asql_except",
+        parameters={
+            "columns": Parameter(
+                name="columns",
+                type="list[column]",
+                required=True,
+                label="columns",
+                widget="list",
+                description="Columns to exclude",
+                placeholder="column_name",
+            ),
+        },
+    )
+
+    RENAME = Transform(
+        keywords=["RENAME"],
+        label="rename",
+        category="transform",
+        description="Rename columns",
+        parser_method="_parse_asql_rename",
+        parameters={
+            "mappings": Parameter(
+                name="mappings",
+                type="list[rename_mapping]",
+                required=True,
+                label="renames",
+                widget="list",
+                description="Column rename mappings",
+                placeholder="old_name = new_name",
+            ),
+        },
+    )
+
+    REPLACE = Transform(
+        keywords=["REPLACE"],
+        label="replace",
+        category="transform",
+        description="Replace column definitions",
+        parser_method="_parse_asql_replace",
+        parameters={
+            "columns": Parameter(
+                name="columns",
+                type="list[aliased_expression]",
+                required=True,
+                label="columns",
+                widget="list",
+                description="Column replacements",
+                placeholder="col = new_expression",
+            ),
+        },
+    )
+
+    SAMPLE = Transform(
+        keywords=["SAMPLE"],
+        label="sample",
+        category="utility",
+        description="Sample rows from result set",
+        parser_method="_parse_asql_sample",
+        parameters={
+            "size": Parameter(
+                name="size",
+                type="number",
+                required=True,
+                label="size",
+                widget="number",
+                description="Sample size (number or percentage)",
+                min_value=1,
+            ),
+        },
+    )
+
+    PER = Transform(
+        keywords=["PER"],
+        label="per",
+        category="window",
+        description="Define window partitioning for subsequent operations",
+        parser_method="_parse_asql_per",
+        parameters={
+            "columns": Parameter(
+                name="columns",
+                type="list[column]",
+                required=True,
+                label="partition by",
+                widget="list",
+                description="Columns to partition by",
+                placeholder="column_name",
+            ),
+        },
+    )
+
+    NUMBER = Transform(
+        keywords=["NUMBER"],
+        label="number",
+        category="window",
+        description="Add row number column",
+        parser_method="_parse_asql_standalone_rank",
+        parameters={
+            "alias": Parameter(
+                name="alias",
+                type="identifier",
+                required=False,
+                label="as",
+                widget="text",
+                description="Alias for row number column",
+                placeholder="row_num",
+            ),
+        },
+    )
+
+    RANK = Transform(
+        keywords=["RANK"],
+        label="rank",
+        category="window",
+        description="Add rank column (with gaps)",
+        parser_method="_parse_asql_standalone_rank",
+        parameters={
+            "alias": Parameter(
+                name="alias",
+                type="identifier",
+                required=False,
+                label="as",
+                widget="text",
+                description="Alias for rank column",
+                placeholder="rank",
+            ),
+        },
+    )
+
+    DENSE = Transform(
+        keywords=["DENSE"],
+        label="dense",
+        category="window",
+        description="Add dense rank column (without gaps)",
+        parser_method="_parse_asql_dense_rank_standalone",
+        parameters={
+            "alias": Parameter(
+                name="alias",
+                type="identifier",
+                required=False,
+                label="as",
+                widget="text",
+                description="Alias for dense rank column",
+                placeholder="dense_rank",
+            ),
+        },
+    )
+
+    DEDUPLICATE = Transform(
+        keywords=["DEDUPLICATE"],
+        label="deduplicate",
+        category="utility",
+        description="Remove duplicate rows keeping first occurrence",
+        parser_method="_parse_asql_deduplicate",
+        parameters={
+            "columns": Parameter(
+                name="columns",
+                type="list[column]",
+                required=False,
+                label="by columns",
+                widget="list",
+                description="Columns to determine duplicates (empty = all columns)",
+                placeholder="column_name",
+            ),
+        },
+    )
+
+    COHORT = Transform(
+        keywords=["COHORT"],
+        label="cohort",
+        category="analytics",
+        description="Create cohort analysis with retention calculations",
+        parser_method="_parse_asql_cohort",
+        parameters={
+            "entity": Parameter(
+                name="entity",
+                type="column",
+                required=True,
+                label="entity",
+                widget="text",
+                description="Entity column (e.g., user_id)",
+                placeholder="user_id",
+            ),
+            "cohort_date": Parameter(
+                name="cohort_date",
+                type="column",
+                required=True,
+                label="cohort date",
+                widget="text",
+                description="Date column for cohort grouping",
+                placeholder="signup_date",
+            ),
+            "event_date": Parameter(
+                name="event_date",
+                type="column",
+                required=True,
+                label="event date",
+                widget="text",
+                description="Date column for event tracking",
+                placeholder="activity_date",
+            ),
+        },
+    )
+
+    RECURSE = Transform(
+        keywords=["RECURSE"],
+        label="recurse",
+        category="advanced",
+        description="Create recursive CTE for hierarchical data",
+        parser_method="_parse_asql_recurse",
+        parameters={
+            "max_depth": Parameter(
+                name="max_depth",
+                type="integer",
+                required=False,
+                label="max depth",
+                widget="number",
+                description="Maximum recursion depth",
+                min_value=1,
             ),
         },
     )

@@ -225,3 +225,116 @@ class TestErrorMessages:
             slice_warnings = [warning for warning in dialect_warnings
                               if 'slice' in str(warning.message).lower() or '#77' in str(warning.message)]
             assert len(slice_warnings) == 0, "Slice syntax should not generate warnings after fix"
+
+
+class TestDialectSchemaSync:
+    """Test that dialect_schema.py stays in sync with parser definitions."""
+
+    def test_all_transforms_have_schema_definitions(self) -> None:
+        """All transforms in TRANSFORM_PARSERS should have corresponding schema definitions."""
+        from asql.dialect import ASQLParser
+        from asql.dialect_schema import TRANSFORMS, get_transform_by_keyword
+
+        # Get all transform keywords from parser
+        parser_keywords = set(ASQLParser.TRANSFORM_PARSERS.keys())
+
+        # Filter out internal/alias transforms
+        # These are implementation details or aliases that don't need UI schemas
+        internal_keywords = {
+            'ASQL_INNER_JOIN',  # Internal representation of & symbol
+            'ASQL_QMARK_JOIN',  # Internal representation of &? and ?& symbols
+            'ASQL_FULL_JOIN',   # Internal representation of ?&? symbol
+            'ASQL_CROSS_JOIN',  # Internal representation of * symbol
+        }
+
+        # Alias keywords that map to primary transforms
+        alias_keywords = {
+            'FILTER',  # Alias for WHERE
+            'IF',      # Alias for WHERE
+            'PROJECT', # Alias for SELECT
+        }
+
+        # Keywords that are handled by JOIN with join_type parameter
+        join_variants = {
+            'LEFT',    # Handled by JOIN with join_type="LEFT"
+            'RIGHT',   # Handled by JOIN with join_type="RIGHT"
+            'FULL',    # Handled by JOIN with join_type="FULL"
+            'CROSS',   # Handled by JOIN with join_type="CROSS"
+        }
+
+        # Exclude internal/alias/join-variant keywords
+        required_keywords = parser_keywords - internal_keywords - alias_keywords - join_variants
+
+        # Check each required keyword has a schema
+        missing_schemas = []
+        for keyword in required_keywords:
+            transform = get_transform_by_keyword(keyword)
+            if transform is None:
+                missing_schemas.append(keyword)
+
+        if missing_schemas:
+            pytest.fail(
+                f"Missing schema definitions for transforms: {', '.join(sorted(missing_schemas))}\n"
+                f"Add these to dialect_schema.py TRANSFORMS class."
+            )
+
+    def test_transform_schemas_have_valid_parameters(self) -> None:
+        """All transform schemas should have valid parameter definitions."""
+        from asql.dialect_schema import get_all_transforms
+
+        transforms = get_all_transforms()
+        invalid_transforms = []
+
+        for transform in transforms:
+            # Check that parameters dict exists
+            if not hasattr(transform, 'parameters'):
+                invalid_transforms.append(f"{transform.label}: missing parameters dict")
+                continue
+
+            # Check each parameter has required fields
+            for param_name, param in transform.parameters.items():
+                if not hasattr(param, 'name'):
+                    invalid_transforms.append(f"{transform.label}.{param_name}: missing 'name'")
+                if not hasattr(param, 'widget'):
+                    invalid_transforms.append(f"{transform.label}.{param_name}: missing 'widget'")
+                if not hasattr(param, 'label'):
+                    invalid_transforms.append(f"{transform.label}.{param_name}: missing 'label'")
+
+        if invalid_transforms:
+            pytest.fail(
+                f"Invalid transform schemas:\n" +
+                "\n".join(f"  - {err}" for err in invalid_transforms)
+            )
+
+    def test_operator_schemas_complete(self) -> None:
+        """All operators in Parser.COMPARISON and Parser.EQUALITY should have schemas."""
+        from sqlglot import Parser
+        from asql.dialect_schema import OPERATORS
+
+        # Get all comparison/equality tokens from SQLGlot Parser
+        parser_tokens = set()
+        for token in Parser.COMPARISON.keys():
+            parser_tokens.add(token)
+        for token in Parser.EQUALITY.keys():
+            parser_tokens.add(token)
+
+        # Get all tokens from dialect schema
+        schema_tokens = set()
+        for attr_name in dir(OPERATORS.COMPARISON):
+            if not attr_name.startswith('_'):
+                op = getattr(OPERATORS.COMPARISON, attr_name)
+                if hasattr(op, 'token'):
+                    schema_tokens.add(op.token)
+        for attr_name in dir(OPERATORS.EQUALITY):
+            if not attr_name.startswith('_'):
+                op = getattr(OPERATORS.EQUALITY, attr_name)
+                if hasattr(op, 'token'):
+                    schema_tokens.add(op.token)
+
+        # Check for missing operators
+        missing = parser_tokens - schema_tokens
+        if missing:
+            pytest.fail(
+                f"Missing operator schemas for tokens: {missing}\n"
+                f"Add these to dialect_schema.py OPERATORS class."
+            )
