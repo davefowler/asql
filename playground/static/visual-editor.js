@@ -278,11 +278,11 @@ class VisualEditor {
     const value = transform[param.name] || '';
     return `
       <div class="field">
-        <label>${param.label}${param.required ? ' *' : ''}</label>
-        ${param.help ? `<p class="help">${param.help}</p>` : ''}
+        <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
+        ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
         <input type="text"
                class="input-field"
-               placeholder="${param.placeholder || ''}"
+               placeholder="${this.escapeHtml(param.placeholder || '')}"
                value="${this.escapeHtml(value)}"
                data-param="${param.name}"
                data-transform-id="${transform.id}">
@@ -294,8 +294,8 @@ class VisualEditor {
     const value = transform[param.name] !== undefined ? transform[param.name] : (param.default || 0);
     return `
       <div class="field">
-        <label>${param.label}${param.required ? ' *' : ''}</label>
-        ${param.help ? `<p class="help">${param.help}</p>` : ''}
+        <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
+        ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
         <input type="number"
                class="input-field"
                value="${value}"
@@ -311,14 +311,14 @@ class VisualEditor {
     const value = transform[param.name] || param.default || '';
     return `
       <div class="field">
-        <label>${param.label}${param.required ? ' *' : ''}</label>
-        ${param.help ? `<p class="help">${param.help}</p>` : ''}
+        <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
+        ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
         <select class="input-field"
                 data-param="${param.name}"
                 data-transform-id="${transform.id}">
           ${(param.options || []).map(opt => `
-            <option value="${opt.value}" ${value === opt.value ? 'selected' : ''}>
-              ${opt.label}
+            <option value="${this.escapeHtml(opt.value)}" ${value === opt.value ? 'selected' : ''}>
+              ${this.escapeHtml(opt.label)}
             </option>
           `).join('')}
         </select>
@@ -334,8 +334,8 @@ class VisualEditor {
 
     return `
       <div class="field">
-        <label>${param.label}${param.required ? ' *' : ''}</label>
-        ${param.help ? `<p class="help">${param.help}</p>` : ''}
+        <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
+        ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
         <div class="expression-inputs">
           <input type="text"
                  class="input-field"
@@ -349,7 +349,7 @@ class VisualEditor {
                   data-expr-part="operator"
                   data-transform-id="${transform.id}">
             ${(param.operators || ['=']).map(op => `
-              <option value="${op}" ${operator === op ? 'selected' : ''}>${op}</option>
+              <option value="${this.escapeHtml(op)}" ${operator === op ? 'selected' : ''}>${this.escapeHtml(op)}</option>
             `).join('')}
           </select>
           <input type="text"
@@ -368,21 +368,21 @@ class VisualEditor {
     const items = transform[param.name] || [];
     return `
       <div class="field">
-        <label>${param.label}${param.required ? ' *' : ''}</label>
-        ${param.help ? `<p class="help">${param.help}</p>` : ''}
+        <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
+        ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
         <div class="list-items" data-param="${param.name}" data-transform-id="${transform.id}">
           ${items.map((item, idx) => `
             <div class="list-item">
               <input type="text"
                      class="input-field"
                      value="${this.escapeHtml(item)}"
-                     placeholder="${param.placeholder || ''}"
+                     placeholder="${this.escapeHtml(param.placeholder || '')}"
                      data-list-index="${idx}">
               <button class="list-item-remove" data-list-index="${idx}">×</button>
             </div>
           `).join('')}
           <button class="list-add-btn" data-param="${param.name}" data-transform-id="${transform.id}">
-            + Add ${param.label}
+            + Add ${this.escapeHtml(param.label)}
           </button>
         </div>
       </div>
@@ -395,15 +395,15 @@ class VisualEditor {
 
     return `
       <div class="field">
-        <label>${param.label}</label>
-        ${param.help ? `<p class="help">${param.help}</p>` : ''}
+        <label>${this.escapeHtml(param.label)}</label>
+        ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
         <div class="aggregate-items" data-param="${param.name}" data-transform-id="${transform.id}">
           ${aggregates.map((agg, idx) => `
             <div class="aggregate-item">
               <select class="input-field" data-agg-index="${idx}" data-agg-field="function">
                 ${functions.map(fn => `
-                  <option value="${fn}" ${agg.function === fn ? 'selected' : ''}>
-                    ${fn.charAt(0).toUpperCase() + fn.slice(1)}
+                  <option value="${this.escapeHtml(fn)}" ${agg.function === fn ? 'selected' : ''}>
+                    ${this.escapeHtml(fn.charAt(0).toUpperCase() + fn.slice(1))}
                   </option>
                 `).join('')}
               </select>
@@ -435,8 +435,8 @@ class VisualEditor {
 
     return `
       <div class="field">
-        <label>${param.label}${param.required ? ' *' : ''}</label>
-        ${param.help ? `<p class="help">${param.help}</p>` : ''}
+        <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
+        ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
         <div class="order-items" data-param="${param.name}" data-transform-id="${transform.id}">
           ${expressions.map((expr, idx) => `
             <div class="order-item">
@@ -598,8 +598,12 @@ document.addEventListener('input', (e) => {
     handleOrderUpdate(transform, param, target);
   } else {
     // Simple field
-    const value = target.type === 'number' ? parseInt(target.value) : target.value;
-    transform[param] = value;
+    if (target.type === 'number') {
+      const numericValue = target.valueAsNumber;
+      transform[param] = Number.isNaN(numericValue) ? null : numericValue;
+    } else {
+      transform[param] = target.value;
+    }
   }
 
   visualEditor.notifyChange();
