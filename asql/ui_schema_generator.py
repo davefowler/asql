@@ -5,7 +5,6 @@ This module introspects the ASQL dialect and SQLGlot to automatically
 generate UI schemas, reducing manual schema maintenance.
 """
 
-from sqlglot import exp
 from typing import Dict, Any, List
 
 

@@ -5,7 +5,7 @@ Provides bidirectional conversion between SQLGlot AST and JSON representation
 for use in the visual query builder interface.
 """
 
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any
 from sqlglot import exp
 
 

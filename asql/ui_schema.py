@@ -11,7 +11,7 @@ Architecture:
 3. Final schemas merge both (90% auto, 10% manual)
 """
 
-from .ui_schema_generator import generate_base_schema_from_asql, merge_with_overrides
+from .ui_schema_generator import generate_base_schema_from_asql
 
 # Manual UI overrides - only specify what can't be auto-generated
 # (labels, help text, dropdown options, etc.)
@@ -27,44 +27,6 @@ _MANUAL_UI_OVERRIDES = {
     },
 
     "join": {
-        "parameters": [
-            {
-                "name": "join_type",
-                "label": "join type",
-                "options": [
-                    {"value": "inner", "label": "inner (&)"},
-                    {"value": "left", "label": "left (&?)"},
-                    {"value": "right", "label": "right (?&)"},
-                    {"value": "full", "label": "full (?&?)"},
-                    {"value": "cross", "label": "cross (*)"}
-                ]
-            },
-            {
-                "name": "table",
-                "label": "table",
-                "placeholder": "table_name"
-            },
-            {
-                "name": "condition",
-                "label": "on",
-                "help": "Leave empty to infer from schema",
-                "operators": ["=", "!="]
-            }
-        ]
-    },
-
-    "select": {
-        "parameters": [
-            {
-                "name": "columns",
-                "label": "columns",
-                "placeholder": "column_name",
-                "help": "List of columns to select"
-            }
-        ]
-    },
-
-    "group_by": {
         "label": "join",
         "icon": "🔗",
         "description": "Join with another table",
