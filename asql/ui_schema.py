@@ -11,9 +11,12 @@ Architecture:
 3. Final schemas merge both (90% auto, 10% manual)
 """
 
+import logging
 import yaml
 from pathlib import Path
 from .ui_schema_generator import generate_base_schema_from_asql
+
+logger = logging.getLogger(__name__)
 
 # Load manual UI overrides from YAML file
 # This centralizes all UI-specific metadata (labels, help text, dropdown options, etc.)
@@ -29,7 +32,7 @@ except FileNotFoundError:
     _MANUAL_UI_OVERRIDES = {}
 except yaml.YAMLError as e:
     # Log error but don't crash - use empty overrides
-    print(f"Warning: Failed to parse ui_overrides.yaml: {e}")
+    logger.warning("Failed to parse ui_overrides.yaml: %s", e)
     _MANUAL_UI_OVERRIDES = {}
 
 # Auto-generate base schemas and merge with manual overrides

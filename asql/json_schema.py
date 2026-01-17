@@ -49,15 +49,16 @@ def ast_to_json(ast: exp.Select) -> Dict[str, Any]:
     # Extract JOINs
     if joins := ast.args.get('joins'):
         for join in joins:
-            join_kind = join.args.get('kind', '').lower() or 'inner'
+            # SQLGlot may use 'kind' or 'side' for join type
+            join_kind = join.args.get('kind', '') or join.args.get('side', '')
+            join_kind = join_kind.lower() if join_kind else 'inner'
             table = join.this
             table_name = table.name if hasattr(table, 'name') else str(table)
 
             condition = None
             if on_clause := join.args.get('on'):
-                # Unwrap exp.On wrapper to get the actual condition expression
-                on_expr = on_clause.this if isinstance(on_clause, exp.On) else on_clause
-                condition = _expression_to_json(on_expr)
+                # on_clause is already the condition expression
+                condition = _expression_to_json(on_clause)
 
             query['transforms'].append({
                 'id': f't{transform_id}',
@@ -149,9 +150,11 @@ def ast_to_json(ast: exp.Select) -> Dict[str, Any]:
     # Extract LIMIT
     if limit := ast.args.get('limit'):
         count = 10
-        if limit.this:
+        # SQLGlot stores limit value in 'expression' attribute
+        limit_expr = limit.expression if hasattr(limit, 'expression') else limit.this
+        if limit_expr:
             try:
-                count = int(limit.this.this) if hasattr(limit.this, 'this') else int(limit.this)
+                count = int(limit_expr.this) if hasattr(limit_expr, 'this') else int(limit_expr)
             except (ValueError, AttributeError):
                 count = 10
 
@@ -396,7 +399,9 @@ def _expression_to_asql(expr: Dict[str, Any]) -> str:
         elif data_type == 'boolean':
             return str(value).lower()
         else:
-            return f'"{value}"'
+            # Fallback: treat as string and escape properly
+            escaped = str(value).replace('\\', '\\\\').replace('"', '\\"')
+            return f'"{escaped}"'
 
     elif expr_type == 'binary_op':
         left = _expression_to_asql(expr.get('left', {}))
