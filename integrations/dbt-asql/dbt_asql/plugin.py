@@ -94,14 +94,18 @@ def get_manifest_models(manifest_path: str = "target/manifest.json") -> set[str]
         manifest_path: Path to dbt's manifest.json
         
     Returns:
-        Set of model names (without the model. prefix)
+        Set of model names (without the model. prefix).
+        Returns empty set for missing or malformed manifest.
     """
     manifest_file = Path(manifest_path)
     if not manifest_file.exists():
         return set()
     
-    with open(manifest_file, encoding="utf-8") as f:
-        manifest = json.load(f)
+    try:
+        with open(manifest_file, encoding="utf-8") as f:
+            manifest = json.load(f)
+    except json.JSONDecodeError:
+        return set()
     
     # Validate manifest structure
     if not isinstance(manifest, dict):
@@ -261,10 +265,20 @@ def _get_jinja_dialect() -> str:
     Get the SQL dialect for Jinja extension.
     
     Reads from DBT_ASQL_DIALECT environment variable, defaults to postgres.
+    Logs a warning if an invalid dialect is specified.
     """
+    import logging
+    
+    logger = logging.getLogger(__name__)
     dialect = os.environ.get("DBT_ASQL_DIALECT", "postgres")
-    # Validate but don't raise - just fall back to postgres
+    
+    # Validate but don't raise - just fall back to postgres with warning
     if dialect.lower() not in VALID_DIALECTS:
+        valid_list = ", ".join(sorted(VALID_DIALECTS))
+        logger.warning(
+            f"Invalid DBT_ASQL_DIALECT '{dialect}', falling back to 'postgres'. "
+            f"Valid dialects: {valid_list}"
+        )
         return "postgres"
     return dialect
 

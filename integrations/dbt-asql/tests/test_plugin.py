@@ -61,9 +61,9 @@ class TestGetManifestModels:
         manifest_path = tmp_path / "manifest.json"
         manifest_path.write_text("not valid json", encoding="utf-8")
         
-        # Should handle JSON errors gracefully
-        with pytest.raises(json.JSONDecodeError):
-            get_manifest_models(str(manifest_path))
+        # Should handle JSON errors gracefully and return empty set
+        result = get_manifest_models(str(manifest_path))
+        assert result == set()
     
     def test_manifest_missing_nodes(self, tmp_path: Path):
         """Returns empty set when manifest has no nodes."""

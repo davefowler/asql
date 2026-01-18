@@ -8,8 +8,10 @@ This module handles:
 4. Resolving table names → {{ ref('...') }}
 """
 
+from __future__ import annotations
+
 import re
-from typing import Optional
+from typing import Optional, Union
 
 try:
     from asql import compile as asql_compile
@@ -97,7 +99,7 @@ def _extract_config(code: str) -> tuple[dict, str]:
     return config, '\n'.join(lines)
 
 
-def _parse_value(value: str) -> str | int | float | bool | list:
+def _parse_value(value: str) -> Union[str, int, float, bool, list[str]]:
     """Parse a config value from string."""
     value = value.strip().rstrip(';')
     
@@ -148,8 +150,8 @@ def _extract_jinja(code: str) -> tuple[str, dict]:
     Returns:
         (code_with_placeholders, {placeholder: original_jinja})
     """
-    placeholders = {}
-    counter = [0]  # Use list to allow mutation in closure
+    placeholders: dict[str, str] = {}
+    counter: list[int] = [0]  # Use list to allow mutation in closure
     
     def replace(match: re.Match) -> str:
         key = f"__JINJA_{counter[0]}__"

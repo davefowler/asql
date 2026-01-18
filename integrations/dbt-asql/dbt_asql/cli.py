@@ -4,12 +4,10 @@ Command-line interface for dbt-asql.
 Usage:
     dbt-asql compile [--models-dir=<dir>] [--dialect=<dialect>]
     dbt-asql clean [--models-dir=<dir>]
-    dbt-asql watch [--models-dir=<dir>] [--dialect=<dialect>]
     
 Commands:
     compile     Convert .asql files to .sql files
     clean       Remove generated .sql files
-    watch       Watch for changes and recompile (not yet implemented)
 
 Options:
     --models-dir=<dir>      Path to models directory [default: models]
