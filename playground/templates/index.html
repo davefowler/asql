@@ -33,6 +33,11 @@
                         <select id="from-dialect">
                             <!-- FROM_DIALECT_OPTIONS -->
                         </select>
+                        <!-- Visual mode toggle (shown only for visual-asql) -->
+                        <div id="visual-mode-toggle" class="visual-mode-toggle" style="display: none;">
+                            <button id="json-view-btn" class="view-toggle-btn active" title="JSON Text View">{ }</button>
+                            <button id="visual-view-btn" class="view-toggle-btn" title="Visual Block View">▦</button>
+                        </div>
                     </div>
                     <button class="copy-btn" onclick="copyInput()" title="Copy">
                         <svg viewBox="0 0 16 16" fill="currentColor">

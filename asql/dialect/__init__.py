@@ -8,7 +8,7 @@ This package provides the ASQL dialect for SQLGlot, consisting of:
 
 Usage:
     import sqlglot
-    import asql  # Registers the dialect
+    import asql.dialect  # Registers the ASQL dialect with SQLGlot
     
     # ASQL → SQL
     result = sqlglot.transpile("from users where id = 1", read="asql", write="postgres")

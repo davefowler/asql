@@ -16,8 +16,8 @@ import sqlglot
 from asql import compile
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 from asql.config import CompileSettings
-from asql.json_schema import ast_to_json, json_to_asql
-from asql.compiler.api import compile_to_ast
+from asql.json_schema import json_to_asql
+import json
 
 from .jinja_utils import strip_jinja_templates
 from .examples import (
@@ -651,11 +651,9 @@ async def parse_to_visual(request: Request):
         if not asql_text:
             return {"success": False, "error": "No ASQL query provided"}
 
-        # Parse ASQL to AST
-        ast = compile_to_ast(asql_text)
-
-        # Convert AST to JSON
-        query_json = ast_to_json(ast)
+        # Convert ASQL to JSON using visual_asql dialect
+        json_str = sqlglot.transpile(asql_text, read="asql", write="visual_asql")[0]
+        query_json = json.loads(json_str)
 
         return {"success": True, "query": query_json}
     except ASQLSyntaxError as e:

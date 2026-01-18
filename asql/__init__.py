@@ -29,6 +29,7 @@ The compilation pipeline:
 
 from asql.compiler import compile, compile_to_ast, get_settings_from_query
 from asql.dialect import ASQL, register_asql_dialect
+from asql.visual_dialect import VisualASQL, register_visual_asql_dialect
 from asql.config import ASQLConfig, StyleConfig, CompileSettings
 
 __version__ = "0.1.0"
@@ -40,9 +41,11 @@ __all__ = [
     "compile_to_ast",
     "get_settings_from_query",
     
-    # Dialect
+    # Dialects
     "ASQL",
     "register_asql_dialect",
+    "VisualASQL",
+    "register_visual_asql_dialect",
     
     # Configuration
     "ASQLConfig",

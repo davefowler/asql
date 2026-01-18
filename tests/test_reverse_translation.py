@@ -2,7 +2,7 @@
 
 import pytest
 import sqlglot
-import asql as asql_dialect  # noqa: F401 - registers ASQL dialect
+import asql.dialect  # noqa: F401 - registers ASQL dialect with SQLGlot
 
 
 def test_transpile_simple_select() -> None:

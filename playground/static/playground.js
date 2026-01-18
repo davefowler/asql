@@ -33,6 +33,9 @@ let sqlExamples = [];
 let currentSettings = { compile: {}, style: {} };
 let settingsSchemaCache = null;
 
+// Visual mode preference: 'json' or 'visual' (persisted in localStorage)
+let visualModePreference = localStorage.getItem('asql_visual_mode') || 'json';
+
 const defaultSettings = {
     compile: {
         auto_spine: true,
@@ -426,30 +429,62 @@ async function updateEditorVisibility(panel, dialect) {
     const select = document.getElementById(selectId);
     const selectedOption = select?.options[select.selectedIndex];
     const editorType = selectedOption?.dataset?.editor || 'text';
-    const isVisual = editorType === 'visual';
+    const isVisualDialect = editorType === 'visual';
     
     if (panel === 'input') {
         const textContainer = document.getElementById('input-editor-container');
         const visualContainer = document.getElementById('visual-editor-container');
+        const modeToggle = document.getElementById('visual-mode-toggle');
         
         if (!textContainer || !visualContainer) return;
         
-        if (isVisual) {
-            // Initialize visual editor if needed
-            if (visualEditor && !visualEditor.initialized) {
-                await visualEditor.init();
+        if (isVisualDialect) {
+            // Show the mode toggle for visual-asql
+            if (modeToggle) modeToggle.style.display = 'flex';
+            
+            // Use the stored preference to determine which view to show
+            const showVisualBlocks = visualModePreference === 'visual';
+            
+            if (showVisualBlocks) {
+                // Initialize visual editor if needed
+                if (visualEditor && !visualEditor.initialized) {
+                    await visualEditor.init();
+                }
+                
+                // Switch to visual blocks mode
+                const currentContent = inputEditor.getValue();
+                textContainer.style.display = 'none';
+                visualContainer.style.display = 'block';
+                
+                // If content looks like JSON, parse it; otherwise treat as ASQL
+                if (currentContent.trim() && visualEditor) {
+                    if (currentContent.trim().startsWith('{')) {
+                        // It's JSON - load directly
+                        try {
+                            const json = JSON.parse(currentContent);
+                            await visualEditor.loadFromJSON(json);
+                        } catch (e) {
+                            await visualEditor.loadFromASQL(currentContent);
+                        }
+                    } else {
+                        await visualEditor.loadFromASQL(currentContent);
+                    }
+                }
+            } else {
+                // Stay in JSON text mode
+                textContainer.style.display = 'block';
+                visualContainer.style.display = 'none';
+                
+                // Set editor to JSON mode
+                inputEditor.setOption('mode', 'application/json');
             }
             
-            // Switch to visual mode - sync content from text editor
-            const currentASQL = inputEditor.getValue();
-            textContainer.style.display = 'none';
-            visualContainer.style.display = 'block';
-            
-            if (currentASQL.trim() && visualEditor) {
-                await visualEditor.loadFromASQL(currentASQL);
-            }
+            updateVisualModeToggleButtons();
         } else {
-            // Switch to text mode - sync content from visual editor
+            // Hide the mode toggle for non-visual dialects
+            if (modeToggle) modeToggle.style.display = 'none';
+            
+            // Switch to text mode - sync content from visual editor if it was showing
             if (visualContainer.style.display !== 'none' && visualEditor) {
                 const asql = await visualEditor.getASQL();
                 if (asql) {
@@ -458,6 +493,10 @@ async function updateEditorVisibility(panel, dialect) {
             }
             textContainer.style.display = 'block';
             visualContainer.style.display = 'none';
+            
+            // Reset editor mode based on dialect
+            const mode = dialect === 'asql' ? 'text/x-asql' : 'text/x-sql';
+            inputEditor.setOption('mode', mode);
         }
     } else if (panel === 'output') {
         const textContainer = document.getElementById('output-editor-container');
@@ -465,14 +504,42 @@ async function updateEditorVisibility(panel, dialect) {
         
         if (!textContainer || !visualContainer) return;
         
-        if (isVisual) {
-            textContainer.style.display = 'none';
-            visualContainer.style.display = 'block';
+        if (isVisualDialect) {
+            // For output, always show text (JSON) - visual is read-only display
+            // The visual rendering happens when results come in
+            textContainer.style.display = 'block';
+            visualContainer.style.display = 'none';
         } else {
             textContainer.style.display = 'block';
             visualContainer.style.display = 'none';
         }
     }
+}
+
+// Update the visual mode toggle button states
+function updateVisualModeToggleButtons() {
+    const jsonBtn = document.getElementById('json-view-btn');
+    const visualBtn = document.getElementById('visual-view-btn');
+    
+    if (jsonBtn && visualBtn) {
+        if (visualModePreference === 'json') {
+            jsonBtn.classList.add('active');
+            visualBtn.classList.remove('active');
+        } else {
+            jsonBtn.classList.remove('active');
+            visualBtn.classList.add('active');
+        }
+    }
+}
+
+// Switch visual mode preference
+async function setVisualModePreference(mode) {
+    visualModePreference = mode;
+    localStorage.setItem('asql_visual_mode', mode);
+    
+    // Re-apply the editor visibility
+    const fromDialect = document.getElementById('from-dialect')?.value || '';
+    await updateEditorVisibility('input', fromDialect);
 }
 
 // Check if a dialect uses the visual editor
@@ -1116,6 +1183,9 @@ document.addEventListener('DOMContentLoaded', function() {
             updateUITitles();
             translateQuery();
             updateURL();
+            // Update visual mode toggle visibility
+            const fromDialect = document.getElementById('from-dialect').value;
+            updateEditorVisibility('input', fromDialect);
         });
         
         document.getElementById('to-dialect').addEventListener('change', () => {
@@ -1124,6 +1194,20 @@ document.addEventListener('DOMContentLoaded', function() {
             translateQuery();
             updateURL();
         });
+        
+        // Visual mode toggle buttons
+        const jsonViewBtn = document.getElementById('json-view-btn');
+        const visualViewBtn = document.getElementById('visual-view-btn');
+        
+        if (jsonViewBtn) {
+            jsonViewBtn.addEventListener('click', () => setVisualModePreference('json'));
+        }
+        if (visualViewBtn) {
+            visualViewBtn.addEventListener('click', () => setVisualModePreference('visual'));
+        }
+        
+        // Initialize visual mode toggle state
+        updateVisualModeToggleButtons();
         
         let translateTimeout;
         let urlUpdateTimeout;

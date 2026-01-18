@@ -14,6 +14,30 @@
 - Output JSON via `sqlglot.transpile(sql, write="visual_asql")`  
 - Include `output_columns` at each pipeline stage (for visual editor column pickers)
 - Use SQLGlot's native schema/scope tracking internally
+- Reference `asql/ui-metadata.json` for transform/operator definitions
+
+---
+
+## Recent Codebase Changes (2026-01-17)
+
+The ASQL codebase has been restructured:
+
+1. **Dialect split into package**: `asql/dialect/` now contains:
+   - `tokenizer.py` - ASQLTokenizer
+   - `parser.py` - ASQLParser  
+   - `generator.py` - ASQLGenerator
+   - `dialect.py` - ASQL class + registration
+   - `__init__.py` - exports
+
+2. **UI Metadata file**: `asql/ui-metadata.json` contains all ASQL syntax definitions:
+   - Transforms with parameters and widgets
+   - Operators (comparison, string, null, list, logical)
+   - Functions (date, string, math, conditional, window, array)
+   - Join types, aggregates, time units, data types
+
+3. **Sync tests**: `tests/test_schema_sync.py` validates that `ui-metadata.json` stays in sync with the parser
+
+4. **Legacy wrappers removed**: `normalize()`, `get_preparsed()`, `ASQLDialect` alias all deleted
 
 ---
 
@@ -350,40 +374,52 @@ sql = sqlglot.transpile(json_input, read="visual_asql", write="postgres")[0]
 
 ```
 asql/
-├── dialect.py                 # Existing ASQL dialect
-├── visual_dialect.py          # NEW: VisualASQL dialect
-│   ├── VisualASQLGenerator    # JSON output with column tracking
-│   └── VisualASQL             # Dialect class with parse() override
-├── json_schema.py             # Keep existing json_to_asql(), update ast_to_json()
-└── __init__.py                # Register visual_asql dialect
+├── dialect/                   # ASQL dialect package (EXISTING)
+│   ├── __init__.py           # Package exports
+│   ├── tokenizer.py          # ASQLTokenizer
+│   ├── parser.py             # ASQLParser
+│   ├── generator.py          # ASQLGenerator
+│   └── dialect.py            # ASQL class + registration
+│
+├── visual_dialect/            # NEW: VisualASQL dialect package
+│   ├── __init__.py           # Package exports + registration
+│   ├── generator.py          # VisualASQLGenerator (JSON output)
+│   └── dialect.py            # VisualASQL class with parse() override
+│
+├── ui-metadata.json          # UI metadata (EXISTING - used by visual editor)
+├── json_schema.py            # Keep existing json_to_asql()
+└── __init__.py               # Register both dialects
 ```
+
+**Note**: The `VisualASQLGenerator` can reference `ui-metadata.json` for consistent
+transform/operator definitions between the visual editor and JSON output.
 
 ---
 
 ## Part 6: Implementation Checklist
 
 ### Phase 1: Core Dialect
-- [ ] Create `asql/visual_dialect.py`
-- [ ] Implement `VisualASQLGenerator` with basic JSON output
-- [ ] Implement `VisualASQL` dialect with `parse()` override
-- [ ] Register dialect in `__init__.py`
+- [ ] Create `asql/visual_dialect/` package
+- [ ] Create `asql/visual_dialect/__init__.py` with exports
+- [ ] Implement `VisualASQLGenerator` in `asql/visual_dialect/generator.py`
+- [ ] Implement `VisualASQL` dialect in `asql/visual_dialect/dialect.py`
+- [ ] Register dialect in `asql/__init__.py`
 - [ ] Basic tests: JSON → SQL → JSON roundtrip
 
 ### Phase 2: Column Tracking
 - [ ] Add `schema` parameter to `VisualASQLGenerator.__init__`
-- [ ] Integrate `qualify_columns()` and `build_scope()`
+- [ ] Integrate `qualify_columns()` and `annotate_types()`
 - [ ] Add `output_columns` to each transform
 - [ ] Handle all transform types (JOIN, WHERE, GROUP BY, SELECT, ORDER, LIMIT)
 - [ ] Tests with schema provided
 
 ### Phase 3: Full ASQL Feature Support
-- [ ] Ensure `json_to_asql()` handles all ASQL syntax
+- [ ] Ensure `json_to_asql()` handles all ASQL syntax in `ui-metadata.json`
 - [ ] Test relative dates, natural aggregates, string operators
 - [ ] Test pipeline semantics (GROUP BY | WHERE → CTE wrapping)
-- [ ] Document JSON schema format
+- [ ] Add sync test to ensure JSON schema matches `ui-metadata.json`
 
 ### Phase 4: Integration
-- [ ] Add `compile_visual()` convenience function
 - [ ] Update playground to use new dialect
 - [ ] Documentation
 
@@ -395,33 +431,17 @@ asql/
 |----------|-----------|
 | **No wrapper functions** | Dialect.parse() and Generator.generate() are symmetric |
 | **JSON → ASQL text → AST** | Avoids duplicating 2500 lines of parser logic |
-| **Type annotations in compile flow** | `qualify_columns` + `annotate_types` now run in compile() when schema provided |
-| **Generator reads types from AST** | No need to pass schema separately - types already on `column.type` |
+| **Schema passed to Generator** | Generator can use `qualify_columns` + `annotate_types` internally |
 | **output_columns at each stage** | Visual editor needs column pickers per transform |
 | **Mirror SQLGlot structures** | Consistent with how SQLGlot tracks scope/columns internally |
+| **Use ui-metadata.json** | Consistent definitions between visual editor and JSON dialect |
 
 ---
 
-## Bonus: Type Annotations Already in Compile Flow
+## Schema.from_dict Format
 
-**Implemented!** The compile flow now runs `qualify_columns` + `annotate_types` when schema is provided:
+The ASQL schema supports SQLGlot-style `{col: type}` format:
 
-```python
-# In compile() and compile_to_ast() - already implemented
-if sqlglot_schema:
-    stmt = qualify_columns(stmt, schema=sqlglot_schema, expand_stars=False)
-    stmt = annotate_types(stmt, schema=sqlglot_schema)
-```
-
-This means `VisualASQLGenerator` can simply read `column.type` directly from the AST without needing schema passed to it:
-
-```python
-for node in ast.walk():
-    if isinstance(node, exp.Column) and node.type:
-        print(f'{node} → {node.type}')  # Already annotated!
-```
-
-**Schema.from_dict also fixed** to support SQLGlot-style `{col: type}` format:
 ```python
 Schema.from_dict({
     'tables': {
@@ -429,3 +449,8 @@ Schema.from_dict({
     }
 })
 ```
+
+When schema is passed to `VisualASQLGenerator`, it will:
+1. Call `qualify_columns()` to resolve table references
+2. Call `annotate_types()` to add type info to columns
+3. Build JSON with `output_columns` at each stage

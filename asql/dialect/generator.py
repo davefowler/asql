@@ -154,8 +154,14 @@ class ASQLGenerator(Generator):
         
         # LIMIT clause
         if limit:
-            limit_val = self.sql(limit.this)
+            limit_val = self.sql(limit.expression)
             parts.append(f"limit {limit_val}")
+        
+        # OFFSET clause
+        offset = expression.args.get("offset")
+        if offset:
+            offset_val = self.sql(offset.expression)
+            parts.append(f"offset {offset_val}")
         
         return " ".join(parts)
     

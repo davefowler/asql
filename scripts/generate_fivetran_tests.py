@@ -17,7 +17,7 @@ sys.path.insert(0, str(project_root))
 import re  # noqa: E402
 
 import sqlglot  # noqa: E402
-import asql  # noqa: F401, E402  # Register ASQL dialect
+import asql.dialect  # noqa: F401, E402  # Register ASQL dialect with SQLGlot
 from asql.errors import ASQLCompilationError  # noqa: E402
 from playground import strip_jinja_templates  # noqa: E402  # exported from playground package
 
@@ -112,7 +112,7 @@ This test file is auto-generated. Run scripts/generate_fivetran_tests.py to rege
 
 import pytest
 import sqlglot
-import asql  # noqa: F401  # Register ASQL dialect
+import asql.dialect  # noqa: F401  # Register ASQL dialect with SQLGlot
 from playground import strip_jinja_templates  # exported from playground package
 from pathlib import Path
 

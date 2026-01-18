@@ -195,6 +195,43 @@ h1 {
     border-color: var(--asql-red);
 }
 
+/* ========== Visual Mode Toggle ========== */
+.visual-mode-toggle {
+    display: flex;
+    margin-left: 8px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.view-toggle-btn {
+    padding: 4px 8px;
+    border: none;
+    background: white;
+    font-size: 12px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.15s ease;
+}
+
+.view-toggle-btn:first-child {
+    border-right: 1px solid #dadce0;
+}
+
+.view-toggle-btn:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.view-toggle-btn.active {
+    background: var(--asql-red);
+    color: white;
+}
+
+.view-toggle-btn.active:hover {
+    background: var(--asql-red-dark);
+}
+
 /* ========== Buttons ========== */
 button {
     padding: 10px 24px;

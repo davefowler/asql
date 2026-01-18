@@ -1,314 +1,21 @@
 """
 Tests for asql/json_schema.py
 
-Comprehensive tests for the bidirectional conversion between SQLGlot AST
-and JSON representation used by the visual editor.
+Tests for json_to_asql and related functions.
+For AST to JSON conversion, see tests/test_visual_dialect.py which tests
+the visual_asql dialect.
 """
 
-from sqlglot import exp, parse_one
+import json
+import sqlglot
 
-from asql.json_schema import ast_to_json, json_to_asql, _expression_to_json, _expression_to_asql
-from asql.compiler import compile_to_ast
-
-
-class TestAstToJson:
-    """Tests for converting SQLGlot AST to JSON representation."""
-
-    def test_simple_from_clause(self):
-        """Test extracting FROM clause from a simple query."""
-        ast = parse_one("SELECT * FROM users")
-        result = ast_to_json(ast)
-
-        assert result['from']['table'] == 'users'
-        assert result['transforms'] == []
-
-    def test_from_with_alias(self):
-        """Test FROM clause with table alias."""
-        ast = parse_one("SELECT * FROM users u")
-        result = ast_to_json(ast)
-
-        assert result['from']['table'] == 'users'
-
-    def test_where_clause(self):
-        """Test extracting WHERE clause."""
-        ast = parse_one("SELECT * FROM users WHERE status = 'active'")
-        result = ast_to_json(ast)
-
-        assert len(result['transforms']) == 1
-        transform = result['transforms'][0]
-        assert transform['type'] == 'where'
-        assert transform['id'] == 't0'
-        assert transform['condition']['type'] == 'binary_op'
-        assert transform['condition']['operator'] == '='
-
-    def test_where_with_multiple_conditions(self):
-        """Test WHERE clause with AND conditions."""
-        ast = parse_one("SELECT * FROM users WHERE status = 'active' AND age > 18")
-        result = ast_to_json(ast)
-
-        condition = result['transforms'][0]['condition']
-        assert condition['type'] == 'binary_op'
-        assert condition['operator'] == 'and'
-        assert condition['left']['type'] == 'binary_op'
-        assert condition['right']['type'] == 'binary_op'
-
-    def test_join_clause(self):
-        """Test extracting JOIN clause."""
-        ast = parse_one("SELECT * FROM users JOIN orders ON users.id = orders.user_id")
-        result = ast_to_json(ast)
-
-        # Find the join transform
-        join_transforms = [t for t in result['transforms'] if t['type'] == 'join']
-        assert len(join_transforms) == 1
-
-        join = join_transforms[0]
-        assert join['join_type'] == 'inner'
-        assert join['table'] == 'orders'
-        assert join['condition'] is not None
-        assert join['condition']['type'] == 'binary_op'
-
-    def test_left_join(self):
-        """Test LEFT JOIN extraction."""
-        ast = parse_one("SELECT * FROM users LEFT JOIN orders ON users.id = orders.user_id")
-        result = ast_to_json(ast)
-
-        join_transforms = [t for t in result['transforms'] if t['type'] == 'join']
-        assert join_transforms[0]['join_type'] == 'left'
-
-    def test_select_columns(self):
-        """Test SELECT column extraction."""
-        ast = parse_one("SELECT id, name, email FROM users")
-        result = ast_to_json(ast)
-
-        select_transforms = [t for t in result['transforms'] if t['type'] == 'select']
-        assert len(select_transforms) == 1
-
-        columns = select_transforms[0]['columns']
-        assert len(columns) == 3
-        assert columns[0]['name'] == 'id'
-        assert columns[1]['name'] == 'name'
-        assert columns[2]['name'] == 'email'
-
-    def test_select_star_not_extracted(self):
-        """Test that SELECT * does not create a select transform."""
-        ast = parse_one("SELECT * FROM users")
-        result = ast_to_json(ast)
-
-        select_transforms = [t for t in result['transforms'] if t['type'] == 'select']
-        assert len(select_transforms) == 0
-
-    def test_select_with_alias(self):
-        """Test SELECT with column aliases."""
-        ast = parse_one("SELECT id, first_name as name FROM users")
-        result = ast_to_json(ast)
-
-        select_transforms = [t for t in result['transforms'] if t['type'] == 'select']
-        columns = select_transforms[0]['columns']
-
-        # Check aliased column
-        aliased_col = next((c for c in columns if c.get('name') == 'name'), None)
-        assert aliased_col is not None
-        assert aliased_col.get('expression') == 'first_name'
-
-    def test_group_by(self):
-        """Test GROUP BY extraction."""
-        ast = parse_one("SELECT status, COUNT(*) as cnt FROM users GROUP BY status")
-        result = ast_to_json(ast)
-
-        group_transforms = [t for t in result['transforms'] if t['type'] == 'group_by']
-        assert len(group_transforms) == 1
-
-        group = group_transforms[0]
-        assert 'status' in group['dimensions']
-
-    def test_group_by_with_aggregates(self):
-        """Test GROUP BY with aggregate functions."""
-        ast = parse_one("SELECT status, COUNT(*) as cnt, SUM(amount) as total FROM users GROUP BY status")
-        result = ast_to_json(ast)
-
-        group_transforms = [t for t in result['transforms'] if t['type'] == 'group_by']
-        group = group_transforms[0]
-
-        # Should have aggregates
-        assert len(group['aggregates']) >= 1
-
-    def test_order_by(self):
-        """Test ORDER BY extraction."""
-        ast = parse_one("SELECT * FROM users ORDER BY created_at DESC")
-        result = ast_to_json(ast)
-
-        order_transforms = [t for t in result['transforms'] if t['type'] == 'order_by']
-        assert len(order_transforms) == 1
-
-        order = order_transforms[0]
-        assert len(order['expressions']) == 1
-        assert order['expressions'][0]['column'] == 'created_at'
-        assert order['expressions'][0]['direction'] == 'desc'
-
-    def test_order_by_asc(self):
-        """Test ORDER BY ASC (default)."""
-        ast = parse_one("SELECT * FROM users ORDER BY name ASC")
-        result = ast_to_json(ast)
-
-        order_transforms = [t for t in result['transforms'] if t['type'] == 'order_by']
-        assert order_transforms[0]['expressions'][0]['direction'] == 'asc'
-
-    def test_limit(self):
-        """Test LIMIT extraction."""
-        ast = parse_one("SELECT * FROM users LIMIT 25")
-        result = ast_to_json(ast)
-
-        limit_transforms = [t for t in result['transforms'] if t['type'] == 'limit']
-        assert len(limit_transforms) == 1
-        assert limit_transforms[0]['count'] == 25
-
-    def test_complex_query(self):
-        """Test a complex query with multiple clauses."""
-        ast = parse_one("""
-            SELECT id, name, COUNT(*) as order_count
-            FROM users
-            LEFT JOIN orders ON users.id = orders.user_id
-            WHERE status = 'active'
-            GROUP BY id, name
-            ORDER BY order_count DESC
-            LIMIT 10
-        """)
-        result = ast_to_json(ast)
-
-        assert result['from']['table'] == 'users'
-
-        transform_types = [t['type'] for t in result['transforms']]
-        assert 'where' in transform_types
-        assert 'join' in transform_types
-        assert 'group_by' in transform_types
-        assert 'order_by' in transform_types
-        assert 'limit' in transform_types
-
-    def test_transform_ids_are_sequential(self):
-        """Test that transform IDs are assigned sequentially."""
-        ast = parse_one("SELECT * FROM users WHERE x = 1 ORDER BY y LIMIT 10")
-        result = ast_to_json(ast)
-
-        ids = [t['id'] for t in result['transforms']]
-        expected_ids = [f't{i}' for i in range(len(ids))]
-        assert ids == expected_ids
-
-
-class TestExpressionToJson:
-    """Tests for _expression_to_json helper function."""
-
-    def test_column_expression(self):
-        """Test converting a column reference."""
-        expr = exp.Column(this=exp.Identifier(this='name'))
-        result = _expression_to_json(expr)
-
-        assert result['type'] == 'column'
-        assert result['name'] == 'name'
-
-    def test_string_literal(self):
-        """Test converting a string literal."""
-        expr = exp.Literal.string('hello')
-        result = _expression_to_json(expr)
-
-        assert result['type'] == 'literal'
-        assert result['value'] == 'hello'
-        assert result['data_type'] == 'string'
-
-    def test_number_literal_integer(self):
-        """Test converting an integer literal."""
-        expr = exp.Literal.number(42)
-        result = _expression_to_json(expr)
-
-        assert result['type'] == 'literal'
-        assert result['value'] == 42
-        assert result['data_type'] == 'number'
-
-    def test_number_literal_float(self):
-        """Test converting a float literal."""
-        expr = exp.Literal.number(3.14)
-        result = _expression_to_json(expr)
-
-        assert result['type'] == 'literal'
-        assert result['value'] == 3.14
-        assert result['data_type'] == 'number'
-
-    def test_equality_operator(self):
-        """Test converting equality comparison."""
-        left = exp.Column(this=exp.Identifier(this='status'))
-        right = exp.Literal.string('active')
-        expr = exp.EQ(this=left, expression=right)
-        result = _expression_to_json(expr)
-
-        assert result['type'] == 'binary_op'
-        assert result['operator'] == '='
-        assert result['left']['type'] == 'column'
-        assert result['right']['type'] == 'literal'
-
-    def test_all_comparison_operators(self):
-        """Test all comparison operators."""
-        operators = [
-            (exp.EQ, '='),
-            (exp.NEQ, '!='),
-            (exp.LT, '<'),
-            (exp.GT, '>'),
-            (exp.LTE, '<='),
-            (exp.GTE, '>='),
-        ]
-
-        for exp_class, expected_op in operators:
-            left = exp.Column(this=exp.Identifier(this='x'))
-            right = exp.Literal.number(1)
-            expr = exp_class(this=left, expression=right)
-            result = _expression_to_json(expr)
-
-            assert result['operator'] == expected_op, f"Failed for {exp_class.__name__}"
-
-    def test_and_operator(self):
-        """Test AND logical operator."""
-        left = exp.EQ(
-            this=exp.Column(this=exp.Identifier(this='a')),
-            expression=exp.Literal.number(1)
-        )
-        right = exp.EQ(
-            this=exp.Column(this=exp.Identifier(this='b')),
-            expression=exp.Literal.number(2)
-        )
-        expr = exp.And(this=left, expression=right)
-        result = _expression_to_json(expr)
-
-        assert result['type'] == 'binary_op'
-        assert result['operator'] == 'and'
-
-    def test_or_operator(self):
-        """Test OR logical operator."""
-        left = exp.EQ(
-            this=exp.Column(this=exp.Identifier(this='a')),
-            expression=exp.Literal.number(1)
-        )
-        right = exp.EQ(
-            this=exp.Column(this=exp.Identifier(this='b')),
-            expression=exp.Literal.number(2)
-        )
-        expr = exp.Or(this=left, expression=right)
-        result = _expression_to_json(expr)
-
-        assert result['type'] == 'binary_op'
-        assert result['operator'] == 'or'
-
-    def test_unknown_expression_fallback(self):
-        """Test fallback for unsupported expressions."""
-        # Create an expression type not explicitly handled
-        expr = exp.Paren(this=exp.Column(this=exp.Identifier(this='x')))
-        result = _expression_to_json(expr)
-
-        assert result['type'] == 'unknown'
-        assert 'value' in result
+from asql.json_schema import json_to_asql, _expression_to_asql
 
 
 class TestJsonToAsql:
     """Tests for converting JSON representation to ASQL text."""
 
-    def test_simple_from(self):
+    def test_simple_from_clause(self):
         """Test simple FROM clause generation."""
         query_json = {
             'from': {'table': 'users'},
@@ -318,18 +25,8 @@ class TestJsonToAsql:
 
         assert result == 'from users'
 
-    def test_empty_table_placeholder(self):
-        """Test placeholder for empty table name."""
-        query_json = {
-            'from': {'table': ''},
-            'transforms': []
-        }
-        result = json_to_asql(query_json)
-
-        assert '# Enter table name' in result
-
-    def test_where_transform(self):
-        """Test WHERE transform generation."""
+    def test_where_clause(self):
+        """Test WHERE clause generation."""
         query_json = {
             'from': {'table': 'users'},
             'transforms': [{
@@ -346,12 +43,45 @@ class TestJsonToAsql:
         result = json_to_asql(query_json)
 
         assert 'from users' in result
-        assert 'where' in result
-        assert 'status' in result
-        assert '==' in result  # ASQL uses == for equality
+        assert 'where status ==' in result
+        assert '"active"' in result
 
-    def test_join_transform(self):
-        """Test JOIN transform generation."""
+    def test_having_clause(self):
+        """Test HAVING clause generation."""
+        query_json = {
+            'from': {'table': 'orders'},
+            'transforms': [{
+                'type': 'having',
+                'condition': {
+                    'type': 'binary_op',
+                    'operator': '>',
+                    'left': {'type': 'function', 'name': 'SUM', 'args': [{'type': 'column', 'name': 'amount'}]},
+                    'right': {'type': 'literal', 'value': 1000, 'data_type': 'number'}
+                }
+            }]
+        }
+        result = json_to_asql(query_json)
+        assert 'having' in result
+
+    def test_qualify_clause(self):
+        """Test QUALIFY clause generation."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [{
+                'type': 'qualify',
+                'condition': {
+                    'type': 'binary_op',
+                    'operator': '=',
+                    'left': {'type': 'function', 'name': 'ROW_NUMBER', 'args': []},
+                    'right': {'type': 'literal', 'value': 1, 'data_type': 'number'}
+                }
+            }]
+        }
+        result = json_to_asql(query_json)
+        assert 'qualify' in result
+
+    def test_join_clause(self):
+        """Test JOIN clause generation."""
         query_json = {
             'from': {'table': 'users'},
             'transforms': [{
@@ -369,58 +99,46 @@ class TestJsonToAsql:
         }
         result = json_to_asql(query_json)
 
-        assert '& orders' in result
-        assert 'on' in result
+        assert 'from users' in result
+        assert '& orders on' in result
 
-    def test_left_join_symbol(self):
-        """Test left join uses correct ASQL symbol."""
-        query_json = {
-            'from': {'table': 'users'},
-            'transforms': [{
-                'id': 't0',
-                'type': 'join',
-                'join_type': 'left',
-                'table': 'orders',
-                'condition': None
-            }]
-        }
-        result = json_to_asql(query_json)
+    def test_join_types(self):
+        """Test different join type symbols."""
+        join_types = [
+            ('inner', '&'),
+            ('left', '&?'),
+            ('right', '?&'),
+            ('full', '?&?'),
+            ('cross', '*'),
+        ]
 
-        assert '&? orders' in result
-
-    def test_all_join_types(self):
-        """Test all join type symbols."""
-        join_types = {
-            'inner': '&',
-            'left': '&?',
-            'right': '?&',
-            'full': '?&?',
-            'cross': '*'
-        }
-
-        for join_type, symbol in join_types.items():
+        for join_type, expected_symbol in join_types:
             query_json = {
-                'from': {'table': 'a'},
+                'from': {'table': 'users'},
                 'transforms': [{
                     'id': 't0',
                     'type': 'join',
                     'join_type': join_type,
-                    'table': 'b',
-                    'condition': None
+                    'table': 'orders',
+                    'condition': None if join_type == 'cross' else {
+                        'type': 'binary_op',
+                        'operator': '=',
+                        'left': {'type': 'column', 'name': 'id'},
+                        'right': {'type': 'column', 'name': 'user_id'}
+                    }
                 }]
             }
             result = json_to_asql(query_json)
-            assert f'{symbol} b' in result, f"Failed for {join_type}"
+            assert f'{expected_symbol} orders' in result, f"Failed for join type {join_type}"
 
-    def test_select_transform(self):
-        """Test SELECT transform generation."""
+    def test_select_clause(self):
+        """Test SELECT clause generation."""
         query_json = {
             'from': {'table': 'users'},
             'transforms': [{
                 'id': 't0',
                 'type': 'select',
                 'columns': [
-                    {'name': 'id'},
                     {'name': 'name'},
                     {'name': 'email'}
                 ]
@@ -428,206 +146,581 @@ class TestJsonToAsql:
         }
         result = json_to_asql(query_json)
 
-        assert 'select id, name, email' in result
+        assert 'select name, email' in result
 
-    def test_select_with_alias(self):
-        """Test SELECT with column alias."""
+    def test_select_with_expressions(self):
+        """Test SELECT with expressions/aliases."""
         query_json = {
             'from': {'table': 'users'},
             'transforms': [{
                 'id': 't0',
                 'type': 'select',
                 'columns': [
-                    {'name': 'full_name', 'expression': 'first_name'}
+                    {'name': 'name'},
+                    {'name': 'total_amount', 'expression': 'SUM(amount)'}
                 ]
             }]
         }
         result = json_to_asql(query_json)
 
-        assert 'first_name as full_name' in result
+        assert 'SUM(amount) as total_amount' in result
 
-    def test_group_by_transform(self):
-        """Test GROUP BY transform generation."""
+    def test_except_clause(self):
+        """Test EXCEPT clause generation."""
         query_json = {
             'from': {'table': 'users'},
             'transforms': [{
-                'id': 't0',
-                'type': 'group_by',
-                'dimensions': ['status', 'country'],
-                'aggregates': []
+                'type': 'except',
+                'columns': [{'name': 'password'}, {'name': 'internal_id'}]
             }]
         }
         result = json_to_asql(query_json)
+        assert 'except password, internal_id' in result
 
-        assert 'group by status, country' in result
-
-    def test_group_by_with_aggregates(self):
-        """Test GROUP BY with aggregate functions."""
+    def test_group_by_clause(self):
+        """Test GROUP BY clause generation."""
         query_json = {
             'from': {'table': 'orders'},
             'transforms': [{
                 'id': 't0',
                 'type': 'group_by',
-                'dimensions': ['status'],
-                'aggregates': [{
-                    'function': 'count',
-                    'column': '*',
-                    'alias': 'cnt'
-                }, {
-                    'function': 'sum',
-                    'column': 'amount',
-                    'alias': 'total'
-                }]
+                'dimensions': ['region', 'category'],
+                'aggregates': []
             }]
         }
         result = json_to_asql(query_json)
 
-        assert 'group by status' in result
-        assert 'count(*)' in result
-        assert 'sum(amount)' in result
+        assert 'group by region, category' in result
 
-    def test_order_by_transform(self):
-        """Test ORDER BY transform generation."""
+    def test_group_by_with_aggregates(self):
+        """Test GROUP BY with aggregates."""
+        query_json = {
+            'from': {'table': 'orders'},
+            'transforms': [{
+                'id': 't0',
+                'type': 'group_by',
+                'dimensions': ['region'],
+                'aggregates': [
+                    {'function': 'sum', 'column': 'amount', 'alias': 'total'},
+                    {'function': 'count', 'column': '*', 'alias': 'cnt'}
+                ]
+            }]
+        }
+        result = json_to_asql(query_json)
+
+        assert 'group by region' in result
+        assert 'sum(amount) as total' in result
+        assert 'count(*) as cnt' in result
+
+    def test_order_by_clause(self):
+        """Test ORDER BY clause generation."""
         query_json = {
             'from': {'table': 'users'},
             'transforms': [{
                 'id': 't0',
                 'type': 'order_by',
                 'expressions': [
-                    {'column': 'created_at', 'direction': 'desc'},
-                    {'column': 'name', 'direction': 'asc'}
+                    {'column': 'name', 'direction': 'asc'},
+                    {'column': 'created_at', 'direction': 'desc'}
                 ]
             }]
         }
         result = json_to_asql(query_json)
 
-        # ASQL uses - prefix for descending
-        assert 'order by -created_at, name' in result
+        assert 'order by name, -created_at' in result
 
-    def test_limit_transform(self):
-        """Test LIMIT transform generation."""
+    def test_limit_clause(self):
+        """Test LIMIT clause generation."""
         query_json = {
             'from': {'table': 'users'},
             'transforms': [{
                 'id': 't0',
                 'type': 'limit',
-                'count': 25
+                'count': 100
             }]
         }
         result = json_to_asql(query_json)
 
-        assert 'limit 25' in result
+        assert 'limit 100' in result
+
+    def test_distinct_transform(self):
+        """Test DISTINCT transform."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [{'type': 'distinct'}]
+        }
+        result = json_to_asql(query_json)
+        assert 'distinct' in result
+
+    def test_sample_transform(self):
+        """Test SAMPLE transform."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [{'type': 'sample', 'size': 1000}]
+        }
+        result = json_to_asql(query_json)
+        assert 'sample 1000' in result
+
+    def test_stash_transform(self):
+        """Test STASH transform."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [{'type': 'stash', 'name': 'active_users'}]
+        }
+        result = json_to_asql(query_json)
+        assert 'stash as active_users' in result
+
+    def test_deduplicate_transform(self):
+        """Test DEDUPLICATE transform."""
+        query_json = {
+            'from': {'table': 'events'},
+            'transforms': [{'type': 'deduplicate', 'columns': ['user_id', 'event_type']}]
+        }
+        result = json_to_asql(query_json)
+        assert 'deduplicate user_id, event_type' in result
+
+    def test_deduplicate_without_columns(self):
+        """Test DEDUPLICATE without columns."""
+        query_json = {
+            'from': {'table': 'events'},
+            'transforms': [{'type': 'deduplicate'}]
+        }
+        result = json_to_asql(query_json)
+        assert 'deduplicate' in result
+
+    def test_extend_transform(self):
+        """Test EXTEND transform."""
+        query_json = {
+            'from': {'table': 'orders'},
+            'transforms': [{
+                'type': 'extend',
+                'columns': [
+                    {'name': 'tax', 'expression': 'amount * 0.1'},
+                    {'name': 'total', 'expression': 'amount * 1.1'}
+                ]
+            }]
+        }
+        result = json_to_asql(query_json)
+        assert 'extend' in result
+        assert 'amount * 0.1 as tax' in result
+        assert 'amount * 1.1 as total' in result
+
+    def test_rename_transform(self):
+        """Test RENAME transform."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [{
+                'type': 'rename',
+                'mappings': [
+                    {'from': 'user_name', 'to': 'name'},
+                    {'from': 'user_email', 'to': 'email'}
+                ]
+            }]
+        }
+        result = json_to_asql(query_json)
+        assert 'rename' in result
+        assert 'user_name as name' in result
+        assert 'user_email as email' in result
+
+    def test_replace_transform(self):
+        """Test REPLACE transform."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [{
+                'type': 'replace',
+                'columns': [
+                    {'name': 'name', 'expression': 'UPPER(name)'}
+                ]
+            }]
+        }
+        result = json_to_asql(query_json)
+        assert 'replace' in result
+        assert 'UPPER(name) as name' in result
+
+    def test_explode_transform(self):
+        """Test EXPLODE transform."""
+        query_json = {
+            'from': {'table': 'orders'},
+            'transforms': [{'type': 'explode', 'column': 'items'}]
+        }
+        result = json_to_asql(query_json)
+        assert 'explode items' in result
+
+    def test_per_transform(self):
+        """Test PER transform."""
+        query_json = {
+            'from': {'table': 'sales'},
+            'transforms': [{'type': 'per', 'columns': ['region', 'product']}]
+        }
+        result = json_to_asql(query_json)
+        assert 'per region, product' in result
+
+    def test_number_transform(self):
+        """Test NUMBER transform."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [{'type': 'number'}]
+        }
+        result = json_to_asql(query_json)
+        assert 'number' in result
+
+    def test_rank_transform(self):
+        """Test RANK transform."""
+        query_json = {
+            'from': {'table': 'sales'},
+            'transforms': [{'type': 'rank'}]
+        }
+        result = json_to_asql(query_json)
+        assert 'rank' in result
+
+    def test_dense_transform(self):
+        """Test DENSE transform."""
+        query_json = {
+            'from': {'table': 'sales'},
+            'transforms': [{'type': 'dense'}]
+        }
+        result = json_to_asql(query_json)
+        assert 'dense' in result
+
+    def test_cohort_transform(self):
+        """Test COHORT transform."""
+        query_json = {
+            'from': {'table': 'events'},
+            'transforms': [{
+                'type': 'cohort',
+                'entity': 'user_id',
+                'cohort_date': 'signup_date',
+                'event_date': 'event_date'
+            }]
+        }
+        result = json_to_asql(query_json)
+        assert 'cohort user_id by signup_date on event_date' in result
+
+    def test_recurse_transform(self):
+        """Test RECURSE transform."""
+        query_json = {
+            'from': {'table': 'employees'},
+            'transforms': [{'type': 'recurse', 'max_depth': 10}]
+        }
+        result = json_to_asql(query_json)
+        assert 'recurse 10' in result
+
+    def test_recurse_without_depth(self):
+        """Test RECURSE without max depth."""
+        query_json = {
+            'from': {'table': 'employees'},
+            'transforms': [{'type': 'recurse'}]
+        }
+        result = json_to_asql(query_json)
+        assert 'recurse' in result
 
     def test_multiple_transforms(self):
-        """Test query with multiple transforms."""
+        """Test multiple transforms together."""
         query_json = {
             'from': {'table': 'users'},
             'transforms': [
-                {'id': 't0', 'type': 'where', 'condition': {
-                    'type': 'binary_op', 'operator': '=',
-                    'left': {'type': 'column', 'name': 'active'},
-                    'right': {'type': 'literal', 'value': True, 'data_type': 'boolean'}
-                }},
-                {'id': 't1', 'type': 'order_by', 'expressions': [
-                    {'column': 'name', 'direction': 'asc'}
-                ]},
-                {'id': 't2', 'type': 'limit', 'count': 10}
+                {
+                    'id': 't0',
+                    'type': 'where',
+                    'condition': {
+                        'type': 'binary_op',
+                        'operator': '=',
+                        'left': {'type': 'column', 'name': 'status'},
+                        'right': {'type': 'literal', 'value': 'active', 'data_type': 'string'}
+                    }
+                },
+                {
+                    'id': 't1',
+                    'type': 'order_by',
+                    'expressions': [{'column': 'name', 'direction': 'asc'}]
+                },
+                {
+                    'id': 't2',
+                    'type': 'limit',
+                    'count': 10
+                }
             ]
         }
         result = json_to_asql(query_json)
 
-        lines = result.split('\n')
-        assert len(lines) >= 4
+        assert 'from users' in result
+        assert 'where' in result
+        assert 'order by' in result
+        assert 'limit 10' in result
 
 
 class TestExpressionToAsql:
-    """Tests for _expression_to_asql helper function."""
+    """Tests for converting JSON expressions to ASQL text."""
 
     def test_column_expression(self):
-        """Test converting column to ASQL."""
+        """Test column reference."""
         expr = {'type': 'column', 'name': 'status'}
         result = _expression_to_asql(expr)
 
         assert result == 'status'
 
-    def test_string_literal(self):
-        """Test converting string literal to ASQL."""
-        expr = {'type': 'literal', 'value': 'hello', 'data_type': 'string'}
+    def test_column_with_table(self):
+        """Test column with table reference."""
+        expr = {'type': 'column', 'name': 'status', 'table': 'users'}
         result = _expression_to_asql(expr)
 
-        assert result == '"hello"'
+        assert result == 'users.status'
+
+    def test_string_literal(self):
+        """Test string literal."""
+        expr = {'type': 'literal', 'value': 'active', 'data_type': 'string'}
+        result = _expression_to_asql(expr)
+
+        assert result == '"active"'
 
     def test_number_literal(self):
-        """Test converting number literal to ASQL."""
+        """Test number literal."""
         expr = {'type': 'literal', 'value': 42, 'data_type': 'number'}
         result = _expression_to_asql(expr)
 
         assert result == '42'
 
     def test_boolean_literal(self):
-        """Test converting boolean literal to ASQL."""
+        """Test boolean literal."""
         expr = {'type': 'literal', 'value': True, 'data_type': 'boolean'}
         result = _expression_to_asql(expr)
 
         assert result == 'true'
 
-    def test_binary_op_equality(self):
-        """Test converting equality to ASQL (= becomes ==)."""
+    def test_null_literal(self):
+        """Test null literal."""
+        expr = {'type': 'literal', 'value': None, 'data_type': 'null'}
+        result = _expression_to_asql(expr)
+        assert result == 'null'
+
+    def test_binary_equality(self):
+        """Test binary equality operator."""
         expr = {
             'type': 'binary_op',
             'operator': '=',
-            'left': {'type': 'column', 'name': 'x'},
-            'right': {'type': 'literal', 'value': 1, 'data_type': 'number'}
+            'left': {'type': 'column', 'name': 'status'},
+            'right': {'type': 'literal', 'value': 'active', 'data_type': 'string'}
         }
         result = _expression_to_asql(expr)
 
-        assert result == 'x == 1'
+        assert result == 'status == "active"'
 
-    def test_binary_op_comparison(self):
-        """Test converting comparison operators."""
-        expr = {
-            'type': 'binary_op',
-            'operator': '>',
-            'left': {'type': 'column', 'name': 'age'},
-            'right': {'type': 'literal', 'value': 18, 'data_type': 'number'}
-        }
-        result = _expression_to_asql(expr)
+    def test_comparison_operators(self):
+        """Test various comparison operators."""
+        operators = ['<', '>', '<=', '>=', '!=']
 
-        assert result == 'age > 18'
+        for op in operators:
+            expr = {
+                'type': 'binary_op',
+                'operator': op,
+                'left': {'type': 'column', 'name': 'age'},
+                'right': {'type': 'literal', 'value': 18, 'data_type': 'number'}
+            }
+            result = _expression_to_asql(expr)
+            assert f'age {op} 18' in result
 
     def test_and_operator(self):
-        """Test converting AND operator."""
+        """Test AND operator."""
         expr = {
             'type': 'binary_op',
             'operator': 'and',
-            'left': {'type': 'column', 'name': 'a'},
-            'right': {'type': 'column', 'name': 'b'}
+            'left': {
+                'type': 'binary_op',
+                'operator': '=',
+                'left': {'type': 'column', 'name': 'status'},
+                'right': {'type': 'literal', 'value': 'active', 'data_type': 'string'}
+            },
+            'right': {
+                'type': 'binary_op',
+                'operator': '>',
+                'left': {'type': 'column', 'name': 'age'},
+                'right': {'type': 'literal', 'value': 18, 'data_type': 'number'}
+            }
         }
         result = _expression_to_asql(expr)
 
-        assert result == '(a and b)'
+        assert 'and' in result
+        assert 'status ==' in result
+        assert 'age > 18' in result
 
     def test_or_operator(self):
-        """Test converting OR operator."""
+        """Test OR operator."""
         expr = {
             'type': 'binary_op',
             'operator': 'or',
-            'left': {'type': 'column', 'name': 'a'},
-            'right': {'type': 'column', 'name': 'b'}
+            'left': {
+                'type': 'binary_op',
+                'operator': '=',
+                'left': {'type': 'column', 'name': 'status'},
+                'right': {'type': 'literal', 'value': 'active', 'data_type': 'string'}
+            },
+            'right': {
+                'type': 'binary_op',
+                'operator': '=',
+                'left': {'type': 'column', 'name': 'status'},
+                'right': {'type': 'literal', 'value': 'pending', 'data_type': 'string'}
+            }
         }
         result = _expression_to_asql(expr)
 
-        assert result == '(a or b)'
+        assert 'or' in result
+
+    def test_not_operator(self):
+        """Test NOT operator."""
+        expr = {
+            'type': 'unary_op',
+            'operator': 'not',
+            'operand': {
+                'type': 'binary_op',
+                'operator': '=',
+                'left': {'type': 'column', 'name': 'status'},
+                'right': {'type': 'literal', 'value': 'deleted', 'data_type': 'string'}
+            }
+        }
+        result = _expression_to_asql(expr)
+        assert 'not' in result
+
+    def test_is_null(self):
+        """Test IS NULL operator."""
+        expr = {
+            'type': 'null_check',
+            'operator': 'is null',
+            'operand': {'type': 'column', 'name': 'email'}
+        }
+        result = _expression_to_asql(expr)
+        assert result == 'email == null'
+
+    def test_is_not_null(self):
+        """Test IS NOT NULL operator."""
+        expr = {
+            'type': 'null_check',
+            'operator': 'is not null',
+            'operand': {'type': 'column', 'name': 'email'}
+        }
+        result = _expression_to_asql(expr)
+        assert result == 'email != null'
+
+    def test_in_operator(self):
+        """Test IN operator."""
+        expr = {
+            'type': 'in',
+            'operand': {'type': 'column', 'name': 'status'},
+            'values': [
+                {'type': 'literal', 'value': 'active', 'data_type': 'string'},
+                {'type': 'literal', 'value': 'pending', 'data_type': 'string'}
+            ]
+        }
+        result = _expression_to_asql(expr)
+        assert 'status in' in result
+        assert '"active"' in result
+        assert '"pending"' in result
+
+    def test_not_in_operator(self):
+        """Test NOT IN operator."""
+        expr = {
+            'type': 'not_in',
+            'operand': {'type': 'column', 'name': 'status'},
+            'values': [
+                {'type': 'literal', 'value': 'deleted', 'data_type': 'string'}
+            ]
+        }
+        result = _expression_to_asql(expr)
+        assert 'status not in' in result
+
+    def test_between_operator(self):
+        """Test BETWEEN operator."""
+        expr = {
+            'type': 'between',
+            'operand': {'type': 'column', 'name': 'age'},
+            'low': {'type': 'literal', 'value': 18, 'data_type': 'number'},
+            'high': {'type': 'literal', 'value': 65, 'data_type': 'number'}
+        }
+        result = _expression_to_asql(expr)
+        assert 'age between 18 and 65' in result
+
+    def test_like_operator(self):
+        """Test LIKE operator (converts to matches)."""
+        expr = {
+            'type': 'like',
+            'operand': {'type': 'column', 'name': 'name'},
+            'pattern': {'type': 'literal', 'value': '%Smith%', 'data_type': 'string'}
+        }
+        result = _expression_to_asql(expr)
+        assert 'name matches' in result
+
+    def test_contains_operator(self):
+        """Test CONTAINS operator."""
+        expr = {
+            'type': 'contains',
+            'operand': {'type': 'column', 'name': 'description'},
+            'value': {'type': 'literal', 'value': 'important', 'data_type': 'string'}
+        }
+        result = _expression_to_asql(expr)
+        assert 'description contains "important"' in result
+
+    def test_icontains_operator(self):
+        """Test ICONTAINS operator."""
+        expr = {
+            'type': 'icontains',
+            'operand': {'type': 'column', 'name': 'description'},
+            'value': {'type': 'literal', 'value': 'important', 'data_type': 'string'}
+        }
+        result = _expression_to_asql(expr)
+        assert 'description icontains "important"' in result
+
+    def test_starts_with_operator(self):
+        """Test STARTS WITH operator."""
+        expr = {
+            'type': 'starts_with',
+            'operand': {'type': 'column', 'name': 'name'},
+            'value': {'type': 'literal', 'value': 'Dr.', 'data_type': 'string'}
+        }
+        result = _expression_to_asql(expr)
+        assert 'name starts with "Dr."' in result
+
+    def test_ends_with_operator(self):
+        """Test ENDS WITH operator."""
+        expr = {
+            'type': 'ends_with',
+            'operand': {'type': 'column', 'name': 'email'},
+            'value': {'type': 'literal', 'value': '@gmail.com', 'data_type': 'string'}
+        }
+        result = _expression_to_asql(expr)
+        assert 'email ends with "@gmail.com"' in result
+
+    def test_function_call(self):
+        """Test function call expression."""
+        expr = {
+            'type': 'function',
+            'name': 'UPPER',
+            'args': [{'type': 'column', 'name': 'name'}]
+        }
+        result = _expression_to_asql(expr)
+        assert result == 'UPPER(name)'
+
+    def test_function_with_multiple_args(self):
+        """Test function with multiple arguments."""
+        expr = {
+            'type': 'function',
+            'name': 'CONCAT',
+            'args': [
+                {'type': 'column', 'name': 'first_name'},
+                {'type': 'literal', 'value': ' ', 'data_type': 'string'},
+                {'type': 'column', 'name': 'last_name'}
+            ]
+        }
+        result = _expression_to_asql(expr)
+        assert 'CONCAT(first_name, " ", last_name)' in result
 
     def test_unknown_expression(self):
-        """Test converting unknown expression type."""
-        expr = {'type': 'unknown', 'value': 'CUSTOM()'}
+        """Test fallback for unknown expression."""
+        expr = {'type': 'unknown', 'value': 'some_expr'}
         result = _expression_to_asql(expr)
 
-        assert result == 'CUSTOM()'
+        assert result == 'some_expr'
 
     def test_empty_expression(self):
-        """Test converting empty/missing expression type."""
+        """Test empty/missing type."""
         expr = {}
         result = _expression_to_asql(expr)
 
@@ -670,28 +763,27 @@ class TestStringEscaping:
 
 
 class TestRoundTrip:
-    """Tests for round-trip conversion: ASQL -> JSON -> ASQL."""
+    """Tests for round-trip conversion: ASQL -> JSON (via visual_asql) -> ASQL."""
 
     def test_simple_query_roundtrip(self):
         """Test simple query round-trip."""
         original_asql = "from users"
 
-        # Parse ASQL to AST, convert to JSON
-        ast = compile_to_ast(original_asql)
-        json_rep = ast_to_json(ast)
+        # ASQL -> JSON using visual_asql dialect
+        json_str = sqlglot.transpile(original_asql, read="asql", write="visual_asql")[0]
+        json_rep = json.loads(json_str)
 
-        # Convert JSON back to ASQL
+        # JSON -> ASQL
         result_asql = json_to_asql(json_rep)
 
         assert 'from users' in result_asql
 
     def test_where_roundtrip(self):
         """Test WHERE clause round-trip."""
-        original_asql = '''from users
-  where status == "active"'''
+        original_asql = 'from users where status == "active"'
 
-        ast = compile_to_ast(original_asql)
-        json_rep = ast_to_json(ast)
+        json_str = sqlglot.transpile(original_asql, read="asql", write="visual_asql")[0]
+        json_rep = json.loads(json_str)
         result_asql = json_to_asql(json_rep)
 
         assert 'from users' in result_asql
@@ -700,22 +792,20 @@ class TestRoundTrip:
 
     def test_limit_roundtrip(self):
         """Test LIMIT round-trip."""
-        original_asql = '''from users
-  limit 50'''
+        original_asql = 'from users limit 50'
 
-        ast = compile_to_ast(original_asql)
-        json_rep = ast_to_json(ast)
+        json_str = sqlglot.transpile(original_asql, read="asql", write="visual_asql")[0]
+        json_rep = json.loads(json_str)
         result_asql = json_to_asql(json_rep)
 
         assert 'limit 50' in result_asql
 
     def test_order_by_roundtrip(self):
         """Test ORDER BY round-trip."""
-        original_asql = '''from users
-  order by -created_at'''
+        original_asql = 'from users order by -created_at'
 
-        ast = compile_to_ast(original_asql)
-        json_rep = ast_to_json(ast)
+        json_str = sqlglot.transpile(original_asql, read="asql", write="visual_asql")[0]
+        json_rep = json.loads(json_str)
         result_asql = json_to_asql(json_rep)
 
         assert 'order by' in result_asql

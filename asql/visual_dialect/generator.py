@@ -1,0 +1,505 @@
+"""
+VisualASQLGenerator - Generates JSON representation from SQLGlot AST.
+
+This generator outputs a structured JSON format suitable for visual query builders,
+with column tracking at each pipeline stage.
+"""
+
+import json
+import typing as t
+
+from sqlglot import exp
+from sqlglot.generator import Generator
+from sqlglot.schema import MappingSchema
+from sqlglot.optimizer.qualify_columns import qualify_columns
+from sqlglot.optimizer.annotate_types import annotate_types
+
+class VisualASQLGenerator(Generator):
+    """Generator that outputs JSON with column tracking at each stage."""
+
+    # Declarative mappings per .cursorrules - use dicts instead of elif chains
+    _SIDE_JOIN_MAP: t.ClassVar[t.Dict[str, str]] = {
+        "LEFT": "left",
+        "RIGHT": "right",
+        "FULL": "full",
+    }
+
+    _KIND_JOIN_MAP: t.ClassVar[t.Dict[str, str]] = {
+        "CROSS": "cross",
+        "INNER": "inner",
+    }
+
+    _BINARY_OP_MAP: t.ClassVar[t.Dict[t.Type[exp.Expression], str]] = {
+        exp.EQ: "=",
+        exp.NEQ: "!=",
+        exp.LT: "<",
+        exp.GT: ">",
+        exp.LTE: "<=",
+        exp.GTE: ">=",
+    }
+
+    def __init__(self, schema: t.Optional[MappingSchema] = None, **kwargs: t.Any) -> None:
+        super().__init__(**kwargs)
+        self._schema = schema
+
+    def generate(
+        self, expression: exp.Expression, copy: bool = True
+    ) -> str:
+        """Generate JSON string from AST."""
+        if copy:
+            expression = expression.copy()
+
+        # Pre-qualify columns and annotate types if schema provided
+        if self._schema and isinstance(expression, exp.Select):
+            try:
+                expression = qualify_columns(
+                    expression, 
+                    schema=self._schema, 
+                    expand_stars=True
+                )
+                expression = annotate_types(expression, schema=self._schema)
+            except (ValueError, KeyError, AttributeError):
+                # If qualification fails due to missing schema info, continue without it
+                pass
+
+        # Build JSON structure
+        result = self._build_json(expression)
+
+        return json.dumps(result, indent=2)
+
+    def _build_json(self, expression: exp.Expression) -> t.Dict[str, t.Any]:
+        """Build JSON representation of query."""
+        if not isinstance(expression, exp.Select):
+            return {"error": f"Expected Select, got {type(expression).__name__}"}
+
+        result: t.Dict[str, t.Any] = {"from": None, "transforms": []}
+        current_columns: t.List[t.Dict[str, t.Any]] = []
+        transform_id = 0
+
+        # FROM clause (uses 'from_' because 'from' is a Python keyword)
+        if from_clause := expression.args.get("from_"):
+            table_expr = from_clause.this
+            if table_expr:
+                table_name = self._get_table_name(table_expr)
+                table_alias = self._get_alias(table_expr)
+                table_cols = self._get_table_columns(table_name)
+                current_columns = table_cols.copy()
+
+                result["from"] = {
+                    "table": table_name,
+                    "alias": table_alias if table_alias != table_name else None,
+                    "output_columns": table_cols,
+                }
+
+        # JOINs - accumulate columns
+        for join in expression.args.get("joins") or []:
+            join_table_expr = join.this
+            join_table = self._get_table_name(join_table_expr)
+            join_alias = self._get_alias(join_table_expr)
+            join_cols = self._get_table_columns(join_table)
+            current_columns.extend(join_cols)
+
+            join_type = self._get_join_type(join)
+            condition = None
+            if on_clause := join.args.get("on"):
+                condition = self._expression_to_json(on_clause)
+
+            result["transforms"].append({
+                "id": f"t{transform_id}",
+                "type": "join",
+                "join_type": join_type,
+                "table": join_table,
+                "alias": join_alias if join_alias != join_table else None,
+                "condition": condition,
+                "output_columns": current_columns.copy(),
+            })
+            transform_id += 1
+
+        # WHERE - columns unchanged
+        if where := expression.args.get("where"):
+            result["transforms"].append({
+                "id": f"t{transform_id}",
+                "type": "where",
+                "condition": self._expression_to_json(where.this),
+                "output_columns": current_columns.copy(),
+            })
+            transform_id += 1
+
+        # GROUP BY - columns change to dimensions + aggregates
+        if group := expression.args.get("group"):
+            dims, aggs = self._extract_group_by_columns(expression, group)
+            current_columns = dims + aggs
+
+            result["transforms"].append({
+                "id": f"t{transform_id}",
+                "type": "group_by",
+                "dimensions": [d["name"] for d in dims],
+                "aggregates": [
+                    {
+                        "function": a.get("function", ""),
+                        "column": a.get("source_column", ""),
+                        "alias": a["name"],
+                    }
+                    for a in aggs
+                ],
+                "output_columns": current_columns.copy(),
+            })
+            transform_id += 1
+
+        # SELECT - explicit columns (only if not SELECT *)
+        elif exprs := expression.args.get("expressions"):
+            if not self._is_select_star(exprs):
+                select_cols = self._extract_select_columns(exprs)
+                current_columns = select_cols
+
+                result["transforms"].append({
+                    "id": f"t{transform_id}",
+                    "type": "select",
+                    "columns": [
+                        {"name": c["name"], "expression": c.get("expression")}
+                        for c in select_cols
+                    ],
+                    "output_columns": current_columns.copy(),
+                })
+                transform_id += 1
+
+        # HAVING - columns unchanged
+        if having := expression.args.get("having"):
+            result["transforms"].append({
+                "id": f"t{transform_id}",
+                "type": "having",
+                "condition": self._expression_to_json(having.this),
+                "output_columns": current_columns.copy(),
+            })
+            transform_id += 1
+
+        # ORDER BY - columns unchanged
+        if order := expression.args.get("order"):
+            result["transforms"].append({
+                "id": f"t{transform_id}",
+                "type": "order_by",
+                "expressions": self._extract_order_columns(order),
+                "output_columns": current_columns.copy(),
+            })
+            transform_id += 1
+
+        # LIMIT - columns unchanged (only if count was successfully parsed)
+        if limit := expression.args.get("limit"):
+            count = self._extract_limit_value(limit)
+            if count is not None:
+                result["transforms"].append({
+                    "id": f"t{transform_id}",
+                    "type": "limit",
+                    "count": count,
+                    "output_columns": current_columns.copy(),
+                })
+                transform_id += 1
+
+        # OFFSET - columns unchanged
+        if offset := expression.args.get("offset"):
+            offset_val = self._extract_offset_value(offset)
+            result["transforms"].append({
+                "id": f"t{transform_id}",
+                "type": "offset",
+                "count": offset_val,
+                "output_columns": current_columns.copy(),
+            })
+            transform_id += 1
+
+        return result
+
+    def _get_table_name(self, table_expr: exp.Expression) -> str:
+        """Extract table name from expression."""
+        if isinstance(table_expr, exp.Table):
+            return table_expr.name
+        if hasattr(table_expr, "name"):
+            return str(table_expr.name)
+        return str(table_expr)
+
+    def _get_alias(self, table_expr: exp.Expression) -> t.Optional[str]:
+        """Extract alias from table expression."""
+        if isinstance(table_expr, exp.Table) and table_expr.alias:
+            return table_expr.alias
+        return None
+
+    def _get_table_columns(self, table_name: str) -> t.List[t.Dict[str, t.Any]]:
+        """Get columns for a table from schema."""
+        if not self._schema:
+            return []
+
+        try:
+            table_expr = exp.to_table(table_name)
+            cols = self._schema.column_names(table_expr)
+            result = []
+            for col in cols:
+                col_type = self._schema.get_column_type(
+                    table_expr, 
+                    exp.column(col)
+                )
+                type_str = str(col_type) if col_type else "UNKNOWN"
+                result.append({
+                    "name": col,
+                    "type": type_str,
+                    "source": table_name,
+                })
+            return result
+        except (KeyError, AttributeError, TypeError, ValueError):
+            # Schema lookup can fail for missing tables, invalid column refs, etc.
+            return []
+
+    def _get_join_type(self, join: exp.Join) -> str:
+        """Extract join type from Join expression using declarative dict lookup."""
+        kind = join.args.get("kind", "")
+        side = join.args.get("side", "")
+
+        if side:
+            if join_type := self._SIDE_JOIN_MAP.get(side.upper()):
+                return join_type
+
+        if kind:
+            if join_type := self._KIND_JOIN_MAP.get(kind.upper()):
+                return join_type
+
+        return "inner"
+
+    def _expression_to_json(self, expr: exp.Expression) -> t.Dict[str, t.Any]:
+        """Convert SQLGlot expression to JSON representation."""
+        if isinstance(expr, exp.Column):
+            result: t.Dict[str, t.Any] = {
+                "type": "column",
+                "name": expr.name,
+            }
+            if expr.table:
+                result["table"] = expr.table
+            if hasattr(expr, "type") and expr.type:
+                result["data_type"] = str(expr.type)
+            return result
+
+        elif isinstance(expr, exp.Literal):
+            value = expr.this
+            if expr.is_number:
+                data_type = "number"
+                try:
+                    typed_value: t.Any = int(value) if "." not in str(value) else float(value)
+                except (ValueError, TypeError):
+                    typed_value = value
+            else:
+                data_type = "string"
+                typed_value = value
+
+            return {"type": "literal", "value": typed_value, "data_type": data_type}
+
+        elif isinstance(expr, exp.Boolean):
+            return {"type": "literal", "value": expr.this, "data_type": "boolean"}
+
+        elif isinstance(expr, exp.Null):
+            return {"type": "literal", "value": None, "data_type": "null"}
+
+        # Binary comparison operators (uses class-level _BINARY_OP_MAP)
+        elif isinstance(expr, (exp.EQ, exp.NEQ, exp.LT, exp.GT, exp.LTE, exp.GTE)):
+            return {
+                "type": "binary_op",
+                "operator": self._BINARY_OP_MAP.get(type(expr), "="),
+                "left": self._expression_to_json(expr.this),
+                "right": self._expression_to_json(expr.expression),
+            }
+
+        # Logical operators
+        elif isinstance(expr, exp.And):
+            return {
+                "type": "binary_op",
+                "operator": "and",
+                "left": self._expression_to_json(expr.this),
+                "right": self._expression_to_json(expr.expression),
+            }
+
+        elif isinstance(expr, exp.Or):
+            return {
+                "type": "binary_op",
+                "operator": "or",
+                "left": self._expression_to_json(expr.this),
+                "right": self._expression_to_json(expr.expression),
+            }
+
+        elif isinstance(expr, exp.Not):
+            return {
+                "type": "unary_op",
+                "operator": "not",
+                "operand": self._expression_to_json(expr.this),
+            }
+
+        # IS NULL / IS NOT NULL
+        elif isinstance(expr, exp.Is):
+            if isinstance(expr.expression, exp.Null):
+                return {
+                    "type": "null_check",
+                    "operator": "is null",
+                    "operand": self._expression_to_json(expr.this),
+                }
+            return {"type": "unknown", "value": str(expr)}
+
+        # IN operator
+        elif isinstance(expr, exp.In):
+            values = []
+            if expr.expressions:
+                values = [self._expression_to_json(e) for e in expr.expressions]
+            return {
+                "type": "in",
+                "operand": self._expression_to_json(expr.this),
+                "values": values,
+            }
+
+        # LIKE operator
+        elif isinstance(expr, exp.Like):
+            return {
+                "type": "like",
+                "operand": self._expression_to_json(expr.this),
+                "pattern": self._expression_to_json(expr.expression),
+            }
+
+        # BETWEEN operator
+        elif isinstance(expr, exp.Between):
+            return {
+                "type": "between",
+                "operand": self._expression_to_json(expr.this),
+                "low": self._expression_to_json(expr.args.get("low")),
+                "high": self._expression_to_json(expr.args.get("high")),
+            }
+
+        # Function calls
+        elif isinstance(expr, exp.Func):
+            args = []
+            for arg in expr.args.values():
+                if arg is not None:
+                    if isinstance(arg, list):
+                        args.extend(self._expression_to_json(a) for a in arg if a)
+                    elif isinstance(arg, exp.Expression):
+                        args.append(self._expression_to_json(arg))
+            
+            return {
+                "type": "function",
+                "name": expr.sql_name(),
+                "args": args,
+            }
+
+        # Parenthesized expression
+        elif isinstance(expr, exp.Paren):
+            return self._expression_to_json(expr.this)
+
+        # Fallback for unsupported expressions
+        else:
+            return {"type": "unknown", "value": str(expr)}
+
+    def _is_select_star(self, exprs: t.List[exp.Expression]) -> bool:
+        """Check if expressions represent SELECT *."""
+        return len(exprs) == 1 and isinstance(exprs[0], exp.Star)
+
+    def _extract_select_columns(
+        self, exprs: t.List[exp.Expression]
+    ) -> t.List[t.Dict[str, t.Any]]:
+        """Extract column info from SELECT expressions."""
+        columns = []
+        for expr in exprs:
+            if isinstance(expr, exp.Alias):
+                col_info: t.Dict[str, t.Any] = {
+                    "name": expr.alias,
+                    "expression": expr.this.sql() if expr.this else None,
+                }
+                if hasattr(expr, "type") and expr.type:
+                    col_info["type"] = str(expr.type)
+                columns.append(col_info)
+            elif isinstance(expr, exp.Column):
+                col_info = {"name": expr.name}
+                if expr.table:
+                    col_info["source"] = expr.table
+                if hasattr(expr, "type") and expr.type:
+                    col_info["type"] = str(expr.type)
+                columns.append(col_info)
+            else:
+                columns.append({
+                    "name": expr.sql(),
+                    "expression": expr.sql(),
+                })
+        return columns
+
+    def _extract_group_by_columns(
+        self, select: exp.Select, group: exp.Group
+    ) -> t.Tuple[t.List[t.Dict[str, t.Any]], t.List[t.Dict[str, t.Any]]]:
+        """Extract dimensions and aggregates from GROUP BY context."""
+        dims: t.List[t.Dict[str, t.Any]] = []
+        aggs: t.List[t.Dict[str, t.Any]] = []
+
+        # Get dimension columns from GROUP BY
+        for expr in group.expressions:
+            if isinstance(expr, exp.Column):
+                dim_info: t.Dict[str, t.Any] = {"name": expr.name}
+                if expr.table:
+                    dim_info["source"] = expr.table
+                if hasattr(expr, "type") and expr.type:
+                    dim_info["type"] = str(expr.type)
+                dims.append(dim_info)
+            else:
+                dims.append({"name": expr.sql()})
+
+        # Get aggregates from SELECT clause
+        for expr in select.args.get("expressions") or []:
+            if isinstance(expr, exp.Alias) and isinstance(expr.this, exp.AggFunc):
+                agg_func = expr.this
+                func_name = agg_func.__class__.__name__.lower()
+                
+                # Get the column being aggregated
+                source_col = ""
+                if agg_func.this:
+                    if isinstance(agg_func.this, exp.Column):
+                        source_col = agg_func.this.name
+                    elif isinstance(agg_func.this, exp.Star):
+                        source_col = "*"
+                    else:
+                        source_col = agg_func.this.sql()
+
+                agg_info: t.Dict[str, t.Any] = {
+                    "name": expr.alias,
+                    "function": func_name,
+                    "source_column": source_col,
+                }
+                if hasattr(expr, "type") and expr.type:
+                    agg_info["type"] = str(expr.type)
+                aggs.append(agg_info)
+
+        return dims, aggs
+
+    def _extract_order_columns(self, order: exp.Order) -> t.List[t.Dict[str, t.Any]]:
+        """Extract order by expressions."""
+        expressions = []
+        for ordered in order.expressions:
+            column = ordered.this
+            column_name = column.name if hasattr(column, "name") else str(column)
+            direction = "desc" if ordered.args.get("desc") else "asc"
+
+            expressions.append({"column": column_name, "direction": direction})
+
+        return expressions
+
+    def _extract_limit_value(self, limit: exp.Limit) -> t.Optional[int]:
+        """Extract limit count value. Returns None if parsing fails."""
+        limit_expr = limit.expression if hasattr(limit, "expression") else limit.this
+        if limit_expr:
+            try:
+                if hasattr(limit_expr, "this"):
+                    return int(limit_expr.this)
+                return int(limit_expr)
+            except (ValueError, AttributeError, TypeError):
+                pass
+        return None
+
+    def _extract_offset_value(self, offset: exp.Offset) -> int:
+        """Extract offset count value."""
+        offset_expr = offset.expression if hasattr(offset, "expression") else offset.this
+        if offset_expr:
+            try:
+                if hasattr(offset_expr, "this"):
+                    return int(offset_expr.this)
+                return int(offset_expr)
+            except (ValueError, AttributeError, TypeError):
+                pass
+        return 0  # Default offset is 0

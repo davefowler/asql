@@ -1,253 +1,12 @@
 """
 JSON Schema for Visual ASQL Editor
 
-Provides bidirectional conversion between SQLGlot AST and JSON representation
-for use in the visual query builder interface.
+Provides conversion from JSON representation to ASQL text.
+For JSON output, use the visual_asql dialect:
+    sqlglot.transpile(sql, read="asql", write="visual_asql")
 """
 
 from typing import Dict, Any, List
-from sqlglot import exp
-
-
-def ast_to_json(ast: exp.Select) -> Dict[str, Any]:
-    """
-    Convert SQLGlot AST to JSON representation for visual editor.
-
-    Args:
-        ast: SQLGlot Select expression
-
-    Returns:
-        Dict with 'from' and 'transforms' keys
-    """
-    transforms: List[Dict[str, Any]] = []
-    query: Dict[str, Any] = {"from": {}, "transforms": transforms}
-
-    # Extract FROM clause (SQLGlot uses 'from_' because 'from' is a Python keyword)
-    if from_clause := ast.args.get("from_"):
-        table = from_clause.this
-        if table:
-            # Table might be wrapped in Table(this=Identifier(...))
-            table_name = table.name if hasattr(table, "name") else str(table)
-            query["from"] = {
-                "table": table_name,
-                "alias": table.alias if hasattr(table, "alias") else None,
-            }
-
-    transform_id = 0
-
-    # Extract WHERE
-    if where := ast.args.get("where"):
-        transforms.append(
-            {
-                "id": f"t{transform_id}",
-                "type": "where",
-                "condition": _expression_to_json(where.this),
-            }
-        )
-        transform_id += 1
-
-    # Extract JOINs
-    if joins := ast.args.get("joins"):
-        for join in joins:
-            # SQLGlot may use 'kind' or 'side' for join type
-            join_kind = join.args.get("kind", "") or join.args.get("side", "")
-            join_kind = join_kind.lower() if join_kind else "inner"
-            table = join.this
-            table_name = table.name if hasattr(table, "name") else str(table)
-
-            condition = None
-            if on_clause := join.args.get("on"):
-                # on_clause is already the condition expression
-                condition = _expression_to_json(on_clause)
-
-            transforms.append(
-                {
-                    "id": f"t{transform_id}",
-                    "type": "join",
-                    "join_type": join_kind,
-                    "table": table_name,
-                    "condition": condition,
-                }
-            )
-            transform_id += 1
-
-    # Extract SELECT (only if not SELECT *)
-    if selections := ast.args.get("expressions"):
-        # Check if it's SELECT *
-        if not (len(selections) == 1 and isinstance(selections[0], exp.Star)):
-            columns = []
-            for sel in selections:
-                if isinstance(sel, exp.Alias):
-                    columns.append(
-                        {
-                            "name": sel.alias,
-                            "expression": (
-                                sel.this.name if hasattr(sel.this, "name") else str(sel.this)
-                            ),
-                        }
-                    )
-                elif hasattr(sel, "name"):
-                    columns.append({"name": sel.name})
-                else:
-                    columns.append({"name": str(sel)})
-
-            transforms.append({"id": f"t{transform_id}", "type": "select", "columns": columns})
-            transform_id += 1
-
-    # Extract GROUP BY
-    if group_by := ast.args.get("group"):
-        dimensions = []
-        for expr in group_by.expressions:
-            if hasattr(expr, "name"):
-                dimensions.append(expr.name)
-            else:
-                dimensions.append(str(expr))
-
-        # Extract aggregates from SELECT when in GROUP BY context
-        aggregates = []
-        if selections := ast.args.get("expressions"):
-            for sel in selections:
-                if isinstance(sel, exp.Alias) and isinstance(sel.this, exp.AggFunc):
-                    func_name = sel.this.__class__.__name__.lower()
-                    # Get the column being aggregated
-                    if sel.this.this and hasattr(sel.this.this, "name"):
-                        column = sel.this.this.name
-                    else:
-                        column = str(sel.this.this) if sel.this.this else "*"
-
-                    aggregates.append({"function": func_name, "column": column, "alias": sel.alias})
-
-        transforms.append(
-            {
-                "id": f"t{transform_id}",
-                "type": "group_by",
-                "dimensions": dimensions,
-                "aggregates": aggregates,
-            }
-        )
-        transform_id += 1
-
-    # Extract ORDER BY
-    if order_by := ast.args.get("order"):
-        expressions = []
-        for ordered in order_by.expressions:
-            column = ordered.this
-            column_name = column.name if hasattr(column, "name") else str(column)
-            direction = "desc" if ordered.args.get("desc") else "asc"
-
-            expressions.append({"column": column_name, "direction": direction})
-
-        transforms.append(
-            {"id": f"t{transform_id}", "type": "order_by", "expressions": expressions}
-        )
-        transform_id += 1
-
-    # Extract LIMIT
-    if limit := ast.args.get("limit"):
-        count = 10
-        # SQLGlot stores limit value in 'expression' attribute
-        limit_expr = limit.expression if hasattr(limit, "expression") else limit.this
-        if limit_expr:
-            try:
-                count = int(limit_expr.this) if hasattr(limit_expr, "this") else int(limit_expr)
-            except (ValueError, AttributeError):
-                count = 10
-
-        transforms.append({"id": f"t{transform_id}", "type": "limit", "count": count})
-        transform_id += 1
-
-    return query
-
-
-def _expression_to_json(expr: exp.Expression) -> Dict[str, Any]:
-    """Convert SQLGlot expression to JSON representation."""
-    if isinstance(expr, exp.Column):
-        return {"type": "column", "name": expr.name}
-
-    elif isinstance(expr, exp.Literal):
-        value = expr.this
-        # Determine data type using SQLGlot's type properties
-        # Note: exp.Literal.this is always a string, so we use is_number property
-        if expr.is_number:
-            data_type = "number"
-            # Convert string to actual numeric type
-            try:
-                typed_value = int(value) if "." not in str(value) else float(value)
-            except (ValueError, TypeError):
-                typed_value = value
-        else:
-            data_type = "string"
-            typed_value = value
-
-        return {"type": "literal", "value": typed_value, "data_type": data_type}
-
-    elif isinstance(expr, exp.EQ):
-        return {
-            "type": "binary_op",
-            "operator": "=",
-            "left": _expression_to_json(expr.this),
-            "right": _expression_to_json(expr.expression),
-        }
-
-    elif isinstance(expr, exp.NEQ):
-        return {
-            "type": "binary_op",
-            "operator": "!=",
-            "left": _expression_to_json(expr.this),
-            "right": _expression_to_json(expr.expression),
-        }
-
-    elif isinstance(expr, exp.LT):
-        return {
-            "type": "binary_op",
-            "operator": "<",
-            "left": _expression_to_json(expr.this),
-            "right": _expression_to_json(expr.expression),
-        }
-
-    elif isinstance(expr, exp.GT):
-        return {
-            "type": "binary_op",
-            "operator": ">",
-            "left": _expression_to_json(expr.this),
-            "right": _expression_to_json(expr.expression),
-        }
-
-    elif isinstance(expr, exp.LTE):
-        return {
-            "type": "binary_op",
-            "operator": "<=",
-            "left": _expression_to_json(expr.this),
-            "right": _expression_to_json(expr.expression),
-        }
-
-    elif isinstance(expr, exp.GTE):
-        return {
-            "type": "binary_op",
-            "operator": ">=",
-            "left": _expression_to_json(expr.this),
-            "right": _expression_to_json(expr.expression),
-        }
-
-    elif isinstance(expr, exp.And):
-        return {
-            "type": "binary_op",
-            "operator": "and",
-            "left": _expression_to_json(expr.this),
-            "right": _expression_to_json(expr.expression),
-        }
-
-    elif isinstance(expr, exp.Or):
-        return {
-            "type": "binary_op",
-            "operator": "or",
-            "left": _expression_to_json(expr.this),
-            "right": _expression_to_json(expr.expression),
-        }
-
-    else:
-        # Fallback for unsupported expressions
-        return {"type": "unknown", "value": str(expr)}
 
 
 def json_to_asql(query_json: Dict[str, Any]) -> str:
@@ -260,7 +19,7 @@ def json_to_asql(query_json: Dict[str, Any]) -> str:
     Returns:
         ASQL query as string
     """
-    lines = []
+    lines: List[str] = []
 
     # FROM clause
     from_clause = query_json.get("from", {})
@@ -274,15 +33,29 @@ def json_to_asql(query_json: Dict[str, Any]) -> str:
     for transform in query_json.get("transforms", []):
         transform_type = transform.get("type")
 
+        # === FILTER TRANSFORMS ===
         if transform_type == "where":
             condition = transform.get("condition", {})
             condition_asql = _expression_to_asql(condition)
             if condition_asql:
                 lines.append(f"  where {condition_asql}")
 
+        elif transform_type == "having":
+            condition = transform.get("condition", {})
+            condition_asql = _expression_to_asql(condition)
+            if condition_asql:
+                lines.append(f"  having {condition_asql}")
+
+        elif transform_type == "qualify":
+            condition = transform.get("condition", {})
+            condition_asql = _expression_to_asql(condition)
+            if condition_asql:
+                lines.append(f"  qualify {condition_asql}")
+
+        # === JOIN TRANSFORMS ===
         elif transform_type == "join":
             join_type = transform.get("join_type", "inner")
-            table = transform.get("table", "")
+            join_table = transform.get("table", "")
             condition = transform.get("condition")
 
             # Map join type to ASQL symbol
@@ -296,25 +69,24 @@ def json_to_asql(query_json: Dict[str, Any]) -> str:
 
             if condition:
                 condition_asql = _expression_to_asql(condition)
-                lines.append(f"  {join_symbol} {table} on {condition_asql}")
+                lines.append(f"  {join_symbol} {join_table} on {condition_asql}")
             else:
-                lines.append(f"  {join_symbol} {table}")
+                lines.append(f"  {join_symbol} {join_table}")
 
+        # === SELECT TRANSFORMS ===
         elif transform_type == "select":
             columns = transform.get("columns", [])
             if columns:
-                column_strs = []
-                for col in columns:
-                    if isinstance(col, dict):
-                        if "expression" in col:
-                            column_strs.append(f"{col['expression']} as {col['name']}")
-                        else:
-                            column_strs.append(col.get("name", ""))
-                    else:
-                        column_strs.append(str(col))
-
+                column_strs = _columns_to_asql(columns)
                 lines.append(f"  select {', '.join(column_strs)}")
 
+        elif transform_type == "except":
+            columns = transform.get("columns", [])
+            if columns:
+                col_names = [c.get("name", c) if isinstance(c, dict) else c for c in columns]
+                lines.append(f"  except {', '.join(col_names)}")
+
+        # === AGGREGATE TRANSFORMS ===
         elif transform_type == "group_by":
             dimensions = transform.get("dimensions", [])
             aggregates = transform.get("aggregates", [])
@@ -338,6 +110,7 @@ def json_to_asql(query_json: Dict[str, Any]) -> str:
                 else:
                     lines.append(f"  group by {dims_str}")
 
+        # === SORT TRANSFORMS ===
         elif transform_type == "order_by":
             expressions = transform.get("expressions", [])
             if expressions:
@@ -353,24 +126,128 @@ def json_to_asql(query_json: Dict[str, Any]) -> str:
 
                 lines.append(f"  order by {', '.join(order_parts)}")
 
+        # === UTILITY TRANSFORMS ===
         elif transform_type == "limit":
             count = transform.get("count", 10)
             lines.append(f"  limit {count}")
 
+        elif transform_type == "offset":
+            count = transform.get("count", 0)
+            lines.append(f"  offset {count}")
+
+        elif transform_type == "distinct":
+            lines.append("  distinct")
+
+        elif transform_type == "sample":
+            size = transform.get("size", 100)
+            lines.append(f"  sample {size}")
+
+        elif transform_type == "stash":
+            name = transform.get("name", "cte")
+            lines.append(f"  stash as {name}")
+
+        elif transform_type == "deduplicate":
+            columns = transform.get("columns", [])
+            if columns:
+                col_names = [c.get("name", c) if isinstance(c, dict) else c for c in columns]
+                lines.append(f"  deduplicate {', '.join(col_names)}")
+            else:
+                lines.append("  deduplicate")
+
+        # === COLUMN TRANSFORMS ===
+        elif transform_type == "extend":
+            columns = transform.get("columns", [])
+            if columns:
+                column_strs = _columns_to_asql(columns)
+                lines.append(f"  extend {', '.join(column_strs)}")
+
+        elif transform_type == "rename":
+            mappings = transform.get("mappings", [])
+            if mappings:
+                rename_strs = []
+                for m in mappings:
+                    old_name = m.get("from", m.get("old", ""))
+                    new_name = m.get("to", m.get("new", ""))
+                    rename_strs.append(f"{old_name} as {new_name}")
+                lines.append(f"  rename {', '.join(rename_strs)}")
+
+        elif transform_type == "replace":
+            columns = transform.get("columns", [])
+            if columns:
+                column_strs = _columns_to_asql(columns)
+                lines.append(f"  replace {', '.join(column_strs)}")
+
+        elif transform_type == "explode":
+            column = transform.get("column", "")
+            lines.append(f"  explode {column}")
+
+        # === WINDOW TRANSFORMS ===
+        elif transform_type == "per":
+            columns = transform.get("columns", [])
+            if columns:
+                col_names = [c.get("name", c) if isinstance(c, dict) else c for c in columns]
+                lines.append(f"  per {', '.join(col_names)}")
+
+        elif transform_type == "number":
+            lines.append("  number")
+
+        elif transform_type == "rank":
+            lines.append("  rank")
+
+        elif transform_type == "dense":
+            lines.append("  dense")
+
+        # === ANALYTICS TRANSFORMS ===
+        elif transform_type == "cohort":
+            entity = transform.get("entity", "")
+            cohort_date = transform.get("cohort_date", "")
+            event_date = transform.get("event_date", "")
+            lines.append(f"  cohort {entity} by {cohort_date} on {event_date}")
+
+        elif transform_type == "recurse":
+            max_depth = transform.get("max_depth")
+            if max_depth:
+                lines.append(f"  recurse {max_depth}")
+            else:
+                lines.append("  recurse")
+
     return "\n".join(lines)
+
+
+def _columns_to_asql(columns: List[Any]) -> List[str]:
+    """Convert column list to ASQL strings."""
+    column_strs = []
+    for col in columns:
+        if isinstance(col, dict):
+            if "expression" in col and col.get("expression"):
+                column_strs.append(f"{col['expression']} as {col['name']}")
+            else:
+                column_strs.append(col.get("name", ""))
+        else:
+            column_strs.append(str(col))
+    return column_strs
 
 
 def _expression_to_asql(expr: Dict[str, Any]) -> str:
     """Convert JSON expression to ASQL text."""
+    if not expr:
+        return ""
+
     expr_type = expr.get("type")
 
     if expr_type == "column":
-        return str(expr.get("name", ""))
+        table = expr.get("table", "")
+        name = expr.get("name", "")
+        if table:
+            return f"{table}.{name}"
+        return str(name)
 
     elif expr_type == "literal":
         value = expr.get("value", "")
         data_type = expr.get("data_type", "string")
 
+        if value is None:
+            return "null"
         if data_type == "string":
             # Escape double quotes to prevent injection, then wrap in double quotes
             escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
@@ -379,9 +256,11 @@ def _expression_to_asql(expr: Dict[str, Any]) -> str:
             return str(value)
         elif data_type == "boolean":
             return str(value).lower()
+        elif data_type == "null":
+            return "null"
         else:
             # Fallback: treat as string and escape properly
-            escaped = str(value).replace('\\', '\\\\').replace('"', '\\"')
+            escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
 
     elif expr_type == "binary_op":
@@ -393,11 +272,93 @@ def _expression_to_asql(expr: Dict[str, Any]) -> str:
         if operator == "=":
             operator = "=="
 
-        # Handle AND/OR
+        # Handle AND/OR with parentheses
         if operator in ("and", "or"):
             return f"({left} {operator} {right})"
 
         return f"{left} {operator} {right}"
+
+    elif expr_type == "unary_op":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        operator = expr.get("operator", "")
+        if operator == "not":
+            return f"not ({operand})"
+        return f"{operator} {operand}"
+
+    # Null checks
+    elif expr_type == "null_check":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        operator = expr.get("operator", "is null")
+        if operator == "is null":
+            return f"{operand} == null"
+        elif operator == "is not null":
+            return f"{operand} != null"
+        return f"{operand} {operator}"
+
+    # IN operator
+    elif expr_type == "in":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        values = expr.get("values", [])
+        value_strs = [_expression_to_asql(v) for v in values]
+        return f"{operand} in ({', '.join(value_strs)})"
+
+    # NOT IN operator
+    elif expr_type == "not_in":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        values = expr.get("values", [])
+        value_strs = [_expression_to_asql(v) for v in values]
+        return f"{operand} not in ({', '.join(value_strs)})"
+
+    # LIKE operator
+    elif expr_type == "like":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        pattern = _expression_to_asql(expr.get("pattern", {}))
+        return f"{operand} matches {pattern}"
+
+    # BETWEEN operator
+    elif expr_type == "between":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        low = _expression_to_asql(expr.get("low", {}))
+        high = _expression_to_asql(expr.get("high", {}))
+        return f"{operand} between {low} and {high}"
+
+    # String operators (ASQL-specific)
+    elif expr_type == "contains":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        value = _expression_to_asql(expr.get("value", {}))
+        return f"{operand} contains {value}"
+
+    elif expr_type == "icontains":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        value = _expression_to_asql(expr.get("value", {}))
+        return f"{operand} icontains {value}"
+
+    elif expr_type == "starts_with":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        value = _expression_to_asql(expr.get("value", {}))
+        return f"{operand} starts with {value}"
+
+    elif expr_type == "istarts_with":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        value = _expression_to_asql(expr.get("value", {}))
+        return f"{operand} istarts with {value}"
+
+    elif expr_type == "ends_with":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        value = _expression_to_asql(expr.get("value", {}))
+        return f"{operand} ends with {value}"
+
+    elif expr_type == "iends_with":
+        operand = _expression_to_asql(expr.get("operand", {}))
+        value = _expression_to_asql(expr.get("value", {}))
+        return f"{operand} iends with {value}"
+
+    # Function call
+    elif expr_type == "function":
+        name = expr.get("name", "")
+        args = expr.get("args", [])
+        arg_strs = [_expression_to_asql(a) for a in args]
+        return f"{name}({', '.join(arg_strs)})"
 
     elif expr_type == "unknown":
         return str(expr.get("value", ""))

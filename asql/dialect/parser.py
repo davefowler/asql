@@ -9,6 +9,9 @@ Key features:
 - Pipeline operators: `from users | where x | group by y`
 - Descending order shorthand: `-column` → `column DESC`
 - Proper pipeline semantics: `group by X | where Y` → CTE + WHERE
+
+Settings can be passed via sqlglot.parse() or sqlglot.transpile():
+    sqlglot.transpile(query, read='asql', asql_auto_spine=True, asql_schema=my_schema)
 """
 
 from __future__ import annotations
@@ -31,6 +34,9 @@ from asql.functions import (
     _build_bucket,
 )
 
+if t.TYPE_CHECKING:
+    from asql.schema import Schema
+
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -46,12 +52,168 @@ def _select_all(table: exp.Expression) -> t.Optional[exp.Select]:
     return exp.select("*").from_(table, copy=False) if table else None
 
 class ASQLParser(Parser):
+    """ASQL Parser with support for ASQL-specific settings.
+    
+    Settings can be passed via kwargs when parsing:
+        sqlglot.parse(query, dialect='asql', asql_auto_spine=True)
+        
+    Available ASQL settings (all prefixed with 'asql_'):
+        asql_auto_spine: bool - Enable gap-filling for date GROUP BY
+        asql_week_start: str - 'monday' or 'sunday'
+        asql_schema: Schema - ASQL schema for FK shorthand, column operators
+        asql_alias_template: str - Template for auto-generated aliases
+        asql_alias_prefixes: dict - Function-to-prefix mapping
+    """
+    
     # Transform keywords that should not be treated as table aliases
     _TRANSFORM_KEYWORDS = frozenset({
         "PER", "STASH", "EXTEND", "EXPLODE", "SAMPLE",
         "RENAME", "REPLACE", "DEDUPLICATE", "NUMBER", "RANK", "DENSE", "COHORT",
         "RECURSE",
     })
+    
+    def __init__(self, **kwargs: t.Any) -> None:
+        """Initialize parser with optional ASQL settings.
+        
+        ASQL-specific kwargs are extracted and stored; others passed to parent.
+        """
+        # Extract ASQL-specific settings (prefixed with 'asql_')
+        self.asql_auto_spine: bool = kwargs.pop("asql_auto_spine", True)
+        self.asql_week_start: str = kwargs.pop("asql_week_start", "monday")
+        self.asql_schema: t.Optional["Schema"] = kwargs.pop("asql_schema", None)
+        self.asql_alias_template: t.Optional[str] = kwargs.pop("asql_alias_template", None)
+        self.asql_alias_prefixes: t.Dict[str, str] = kwargs.pop("asql_alias_prefixes", {})
+        self.asql_alias_templates: t.Dict[str, str] = kwargs.pop("asql_alias_templates", {})
+        self.asql_relative_date_type: str = kwargs.pop("asql_relative_date_type", "timestamp")
+        
+        # Target dialect for dialect-specific transforms (e.g., pivot fallback)
+        # When using transpile(), pass asql_target_dialect to enable all transforms
+        self.asql_target_dialect: t.Optional[str] = kwargs.pop("asql_target_dialect", None)
+        
+        # Skip transforms flag - set True when called from compile() which has its own pipeline
+        self.asql_skip_transforms: bool = kwargs.pop("asql_skip_transforms", False)
+        
+        # Call parent with remaining kwargs
+        super().__init__(**kwargs)
+    
+    def parse(
+        self, raw_tokens: t.List[Token], sql: t.Optional[str] = None
+    ) -> t.List[t.Optional[exp.Expression]]:
+        """Parse tokens and optionally apply ASQL transforms.
+        
+        This overrides the base parse() to apply ASQL-specific transforms
+        after parsing but before returning. This allows `sqlglot.transpile()`
+        to work correctly with ASQL features.
+        
+        When called from compile() (which has its own transform pipeline),
+        transforms are skipped via asql_skip_transforms=True.
+        """
+        # Call parent parse
+        statements = super().parse(raw_tokens, sql)
+        
+        # Skip transforms if called from compile() or if explicitly disabled
+        if self.asql_skip_transforms:
+            return statements
+        
+        # Apply ASQL transforms to each statement
+        transformed = []
+        for stmt in statements:
+            if stmt is not None:
+                stmt = self._apply_asql_transforms(stmt)
+            transformed.append(stmt)
+        
+        return transformed
+    
+    def _apply_asql_transforms(self, stmt: exp.Expression) -> exp.Expression:
+        """Apply ASQL-specific AST transforms after parsing.
+        
+        These transforms expand ASQL syntactic sugar into standard SQL AST.
+        They're applied in order of dependency.
+        
+        Transform order:
+        1. Underscore shorthands (days_since_created_at → DATEDIFF)
+        2. Implicit function aliases (SUM(amount) → SUM(amount) AS sum_amount)
+        3. Auto-aliasing (function calls without explicit aliases)
+        4. FK shorthand (ON user_id → ON orders.user_id = users.id) - needs schema
+        5. Cohort transform (cohort by ... → CTEs and JOINs)
+        6. Pivot fallback (PIVOT → CASE/WHEN for non-native dialects)
+        7. Explode fallback (UNNEST → FLATTEN for Snowflake)
+        8. Column operators (EXCEPT → expand to explicit columns) - needs schema
+        9. Auto-spine (gap-filling CTEs for date GROUP BY)
+        10. Auto-qualify columns (resolve ambiguous columns in JOINs)
+        11. Alias reuse (CTE chain for non-DuckDB dialects)
+        """
+        # Build a CompileSettings-like object from parser settings
+        # This allows reusing the existing transform functions
+        from asql.config import CompileSettings
+        
+        settings = CompileSettings(
+            auto_spine=self.asql_auto_spine,
+            week_start=self.asql_week_start,  # type: ignore
+            schema=self.asql_schema,
+            alias_template=self.asql_alias_template,
+            alias_prefixes=self.asql_alias_prefixes,
+            alias_templates=self.asql_alias_templates,
+            relative_date_type=self.asql_relative_date_type,  # type: ignore
+        )
+        
+        target_dialect = self.asql_target_dialect
+        
+        # Import all transforms
+        from asql.compiler.underscore_shorthands import (
+            apply_since_until_underscore_shorthands,
+            apply_implicit_function_aliases,
+        )
+        from asql.compiler.auto_alias import apply_auto_aliasing
+        from asql.compiler.auto_qualify import auto_qualify_columns
+        from asql.compiler.join_fk_shorthand import transform_fk_shorthand
+        from asql.compiler.cohort_transform import transform_cohort
+        from asql.compiler.pivot_fallback import transform_pivot_for_dialect
+        from asql.compiler.explode_fallback import transform_explode_for_dialect
+        from asql.compiler.column_operators import transform_column_operators_for_dialect
+        from asql.compiler.auto_spine import _apply_auto_spine, _remove_guarantee_wrappers
+        from asql.compiler.alias_reuse import apply_alias_reuse
+        
+        # === Phase 1: Basic transforms (no dialect/schema required) ===
+        stmt = apply_since_until_underscore_shorthands(stmt, settings)
+        stmt = apply_implicit_function_aliases(stmt, settings)
+        stmt = apply_auto_aliasing(stmt, settings)
+        
+        # === Phase 2: Schema-aware transforms (need asql_schema) ===
+        if self.asql_schema is not None:
+            stmt = transform_fk_shorthand(stmt, settings)
+        
+        # Cohort transform (generates CTEs and JOINs)
+        stmt = transform_cohort(stmt, settings)
+        
+        # === Phase 3: Dialect-specific transforms (need asql_target_dialect) ===
+        if target_dialect:
+            # Pivot fallback: PIVOT → CASE/WHEN for non-native dialects
+            stmt = transform_pivot_for_dialect(stmt, target_dialect, settings)
+            
+            # Explode fallback: UNNEST → FLATTEN for Snowflake
+            stmt = transform_explode_for_dialect(stmt, target_dialect)
+            
+            # Column operators: EXCEPT → explicit columns (needs schema for non-native)
+            if self.asql_schema is not None:
+                stmt = transform_column_operators_for_dialect(stmt, target_dialect, settings)
+            
+            # Auto-spine: gap-filling CTEs for date GROUP BY
+            if self.asql_auto_spine:
+                stmt = _apply_auto_spine(stmt, settings, target_dialect)
+            
+            # Remove guarantee wrappers (internal markers used by auto_spine)
+            stmt = _remove_guarantee_wrappers(stmt)
+        
+        # === Phase 4: Final transforms (after all others) ===
+        # Auto-qualify columns in joins (expands SELECT * to table.* for each table)
+        stmt = auto_qualify_columns(stmt)
+        
+        # Alias reuse: CTE chain for non-DuckDB dialects that don't support it natively
+        # This must run last because it wraps the query in CTEs
+        stmt = apply_alias_reuse(stmt, target_dialect)
+        
+        return stmt
     
     # Token types that are join operators (should not be parsed as table aliases)
     _JOIN_OPERATOR_TOKENS = frozenset({
@@ -328,6 +490,7 @@ class ASQLParser(Parser):
         "SELECT": lambda self, query: self._parse_asql_select(query),
         # Core transforms
         "LIMIT": lambda self, query: query.limit(self._parse_limit(skip_limit_token=True), copy=False),
+        "OFFSET": lambda self, query: query.offset(self._parse_number(), copy=False),
         "ORDER BY": lambda self, query: self._parse_asql_order_by(query),
         "GROUP BY": lambda self, query: self._parse_asql_group_by(query),
         "HAVING": lambda self, query: query.having(self._parse_assignment(), copy=False),
@@ -372,6 +535,7 @@ class ASQLParser(Parser):
         TokenType.WHERE: "WHERE",
         TokenType.SELECT: "SELECT",
         TokenType.LIMIT: "LIMIT",
+        TokenType.OFFSET: "OFFSET",
         TokenType.HAVING: "HAVING",
         TokenType.JOIN: "JOIN",
         TokenType.LEFT: "LEFT",
@@ -1776,8 +1940,11 @@ class ASQLParser(Parser):
             self.raise_error("Expected CTE name after 'stash as'")
         
         # Create CTE and continue with SELECT * FROM cte
-        table_alias = exp.to_identifier(alias)
-        return self._build_pipe_cte(query, [exp.Star()], exp.TableAlias(this=table_alias))
+        # Pass the alias name as a string, not TableAlias, so that _build_pipe_cte
+        # creates a proper Table node in FROM (not TableAlias). This is needed for
+        # eliminate_ctes to correctly handle the CTE reference.
+        alias_name = alias.name if hasattr(alias, 'name') else str(alias)
+        return self._build_pipe_cte(query, [exp.Star()], alias_name)
 
     def _parse_asql_join(self, query: exp.Query, kind: str = "INNER") -> exp.Query:
         """Parse JOIN clause with ASQL join operators.

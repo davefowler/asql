@@ -509,6 +509,41 @@ class VisualEditor {
   }
 
   /**
+   * Load query from JSON object directly
+   */
+  loadFromJSON(json) {
+    if (!json || typeof json !== 'object') {
+      this.query = { from: { table: '' }, transforms: [] };
+      this.render();
+      return;
+    }
+
+    this.query = json;
+
+    // Compute max existing transform ID to prevent collisions
+    if (this.query.transforms && this.query.transforms.length > 0) {
+      const maxId = this.query.transforms
+        .map(t => parseInt(String(t.id || '').replace(/^t/, ''), 10))
+        .filter(n => !Number.isNaN(n))
+        .reduce((a, b) => Math.max(a, b), -1);
+      this.nextTransformId = maxId + 1;
+      
+      // Ensure all transforms have unique IDs for event handling
+      this.query.transforms.forEach(transform => {
+        if (!transform.id) {
+          transform.id = `t${this.nextTransformId++}`;
+        }
+      });
+    }
+
+    const fromInput = document.getElementById('from-table');
+    if (fromInput) {
+      fromInput.value = this.query.from?.table || '';
+    }
+    this.render();
+  }
+
+  /**
    * Get ASQL text from current query
    */
   async getASQL() {

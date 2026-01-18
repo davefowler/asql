@@ -1,7 +1,7 @@
 """Reverse translation examples - SQL to ASQL."""
 
 import sqlglot
-import asql as asql_dialect  # noqa: F401  # Register ASQL dialect
+import asql.dialect  # noqa: F401  # Register ASQL dialect with SQLGlot
 
 
 def reverse_compile(sql: str, source_dialect: str) -> str:

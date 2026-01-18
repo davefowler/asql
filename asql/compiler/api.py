@@ -134,7 +134,7 @@ def _maybe_merge_multistatement_stash_ctes(
         if not stash_tail.search(block.strip()):
             continue
 
-        parsed_stmts = sqlglot.parse(block, dialect="asql")
+        parsed_stmts = sqlglot.parse(block, dialect="asql", asql_skip_transforms=True)
         stmt = next((s for s in parsed_stmts if s is not None), None)
         if not isinstance(stmt, exp.Select):
             continue
@@ -146,7 +146,7 @@ def _maybe_merge_multistatement_stash_ctes(
                     collected_ctes.append(cte.copy())
 
     # Parse the final statement.
-    final_statements = sqlglot.parse(blocks[-1], dialect="asql")
+    final_statements = sqlglot.parse(blocks[-1], dialect="asql", asql_skip_transforms=True)
     final_stmt = next((s for s in final_statements if s is not None), None)
     if not final_stmt:
         return None, None
@@ -354,7 +354,7 @@ def compile(
                 if not block.strip():
                     continue
                 try:
-                    parsed = sqlglot.parse(block, dialect="asql")
+                    parsed = sqlglot.parse(block, dialect="asql", asql_skip_transforms=True)
                     statements.extend([s for s in parsed if s is not None])
                 except sqlglot.errors.ParseError as e:
                     raise ASQLSyntaxError(
@@ -391,40 +391,43 @@ def compile(
 
             sqlglot_schema = to_sqlglot_schema(final_settings.schema, dialect=dialect)
 
+            # === Apply ASQL transforms ===
+            # Most transforms are now in the parser (ASQLParser._apply_asql_transforms)
+            # and are applied when asql_skip_transforms=False.
+            #
+            # Since we parse with asql_skip_transforms=True above, we need to apply
+            # transforms here. This maintains backward compatibility with compile().
+            #
+            # TODO: Once we fully migrate to transpile(), delete compile() and let
+            # the parser handle all transforms automatically.
+            
             transformed_stmt = apply_since_until_underscore_shorthands(transformed_stmt, final_settings)
             transformed_stmt = apply_implicit_function_aliases(transformed_stmt, final_settings)
-            transformed_stmt = transform_column_operators_for_dialect(transformed_stmt, dialect, final_settings)
-
-            # Apply auto-aliasing FIRST so auto_spine can use the generated aliases
             transformed_stmt = apply_auto_aliasing(transformed_stmt, final_settings)
-
-            # Expand FK shorthand in JOIN conditions (e.g., ON user_id → ON orders.user_id = users.id)
+            
+            # FK shorthand (schema-aware)
             transformed_stmt = transform_fk_shorthand(transformed_stmt, final_settings)
             
-            # Transform cohort analysis queries (generates CTEs and JOINs)
+            # Cohort transform
             transformed_stmt = transform_cohort(transformed_stmt, final_settings)
-
-            # Transform PIVOT to CASE/WHEN for non-native dialects BEFORE auto_spine
-            # (auto_spine generates CTEs that should have PIVOT already resolved)
-            transformed_stmt = transform_pivot_for_dialect(transformed_stmt, dialect, final_settings)
-
-            # Rewrite EXPLODE joins for dialect-specific SQL (e.g. Snowflake FLATTEN)
-            transformed_stmt = transform_explode_for_dialect(transformed_stmt, dialect)
-
-            if final_settings.auto_spine:
-                original_sql = transformed_stmt.sql()
-                transformed_stmt = _apply_auto_spine(transformed_stmt, final_settings, dialect)
-                # Check if auto-spine was actually applied by comparing SQL
-                if transformed_stmt.sql() != original_sql:
-                    transformations_applied.append("auto_spine")
-
-            # Auto-qualify conflicting column names in joins
+            
+            # Dialect-specific transforms (need target dialect)
+            if dialect:
+                transformed_stmt = transform_pivot_for_dialect(transformed_stmt, dialect, final_settings)
+                transformed_stmt = transform_explode_for_dialect(transformed_stmt, dialect)
+                transformed_stmt = transform_column_operators_for_dialect(transformed_stmt, dialect, final_settings)
+                
+                if final_settings.auto_spine:
+                    original_sql = transformed_stmt.sql()
+                    transformed_stmt = _apply_auto_spine(transformed_stmt, final_settings, dialect)
+                    if transformed_stmt.sql() != original_sql:
+                        transformations_applied.append("auto_spine")
+                
+                transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
+            
+            # Final transforms
             transformed_stmt = auto_qualify_columns(transformed_stmt)
-
-            # Apply alias reuse (allow referencing earlier aliases in SELECT)
             transformed_stmt = apply_alias_reuse(transformed_stmt, dialect)
-
-            transformed_stmt = _remove_guarantee_wrappers(transformed_stmt)
 
             # Use SQLGlot's optimizer framework for conservative cleanup.
             #
@@ -549,6 +552,6 @@ def get_settings_from_query(
     base = base_settings or CompileSettings()
 
     asql_query = _normalize_leading_set_statements(asql_query)
-    statements = sqlglot.parse(asql_query, dialect="asql")
+    statements = sqlglot.parse(asql_query, dialect="asql", asql_skip_transforms=True)
     inline_settings, dialect_override, _ = extract_inline_settings(statements)
     return base.merge_with(inline_settings), dialect_override

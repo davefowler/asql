@@ -198,6 +198,15 @@
         { "name": "count", "type": "integer", "required": true, "widget": "number", "min": 1 }
       ]
     },
+    "offset": {
+      "keywords": ["OFFSET"],
+      "label": "Offset",
+      "category": "utility",
+      "description": "Skip rows before returning results (for pagination)",
+      "parameters": [
+        { "name": "count", "type": "integer", "required": true, "widget": "number", "min": 0 }
+      ]
+    },
     "order_by": {
       "keywords": ["ORDER BY"],
       "label": "Sort",
