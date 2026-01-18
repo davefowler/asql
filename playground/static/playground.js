@@ -715,7 +715,10 @@ async function translateQuery() {
                 if (!data.success) {
                     showError(data.error || 'Failed to parse ASQL');
                 } else {
-                    // Render to output visual editor
+                    // Show JSON in text editor
+                    outputEditor.setValue(JSON.stringify(data.query, null, 2));
+                    outputEditor.setOption('mode', 'application/json');
+                    // Also render to visual editor (for toggle)
                     renderOutputVisual(data.query);
                     updateURL();
                 }
@@ -783,6 +786,10 @@ async function translateQuery() {
                 if (!parseData.success) {
                     showError(parseData.error || 'Failed to parse ASQL');
                 } else {
+                    // Show JSON in text editor
+                    outputEditor.setValue(JSON.stringify(parseData.query, null, 2));
+                    outputEditor.setOption('mode', 'application/json');
+                    // Also render to visual editor (for toggle)
                     renderOutputVisual(parseData.query);
                     updateURL();
                 }
@@ -832,6 +839,10 @@ async function translateQuery() {
                 if (!parseData.success) {
                     showError(parseData.error || 'Failed to parse ASQL');
                 } else {
+                    // Show JSON in text editor
+                    outputEditor.setValue(JSON.stringify(parseData.query, null, 2));
+                    outputEditor.setOption('mode', 'application/json');
+                    // Also render to visual editor (for toggle)
                     renderOutputVisual(parseData.query);
                     updateURL();
                 }
