@@ -602,6 +602,128 @@ function getApiDialect(dialect) {
     return dialect;
 }
 
+// Track what dialect the current input is in (for transpiling when From changes)
+let currentInputDialect = null;
+
+// Transpile the input text to a new dialect when "From" changes
+async function transpileInputToNewDialect(currentInput, newDialect) {
+    // Detect if current input looks like JSON (visual-asql)
+    const isJSON = currentInput.startsWith('{') || currentInput.startsWith('[');
+    
+    // Determine what the current input dialect likely is
+    const previousFromDialect = currentInputDialect || document.getElementById('from-dialect').dataset.previousValue || 'asql';
+    const previousIsAsql = previousFromDialect === 'asql' || previousFromDialect === 'visual-asql';
+    const newIsAsql = newDialect === 'asql' || newDialect === 'visual-asql';
+    
+    // Store the new dialect as current
+    currentInputDialect = newDialect;
+    document.getElementById('from-dialect').dataset.previousValue = newDialect;
+    
+    if (newDialect === 'visual-asql') {
+        // Convert to JSON
+        let asqlText = currentInput;
+        
+        // If previous was SQL, first convert to ASQL
+        if (!previousIsAsql && !isJSON) {
+            const reverseResponse = await fetch('/api/reverse-compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sql: currentInput, source_dialect: previousFromDialect || '' })
+            });
+            const reverseData = await reverseResponse.json();
+            if (reverseData.error) throw new Error(reverseData.error);
+            asqlText = reverseData.asql;
+        }
+        
+        // Now convert ASQL to JSON
+        const response = await fetch('/api/visual/parse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ asql: asqlText })
+        });
+        const data = await response.json();
+        if (data.success) {
+            inputEditor.setValue(JSON.stringify(data.query, null, 2));
+            inputEditor.setOption('mode', 'application/json');
+        } else {
+            throw new Error(data.error || 'Failed to parse to visual');
+        }
+    } else if (newDialect === 'asql') {
+        // Convert to ASQL text
+        if (isJSON) {
+            // JSON to ASQL
+            const json = JSON.parse(currentInput);
+            const response = await fetch('/api/visual/compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: json })
+            });
+            const data = await response.json();
+            if (data.success) {
+                inputEditor.setValue(data.asql);
+                inputEditor.setOption('mode', 'text/x-asql');
+            } else {
+                throw new Error(data.error || 'Failed to compile from visual');
+            }
+        } else if (!previousIsAsql) {
+            // SQL to ASQL
+            const response = await fetch('/api/reverse-compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sql: currentInput, source_dialect: previousFromDialect || '' })
+            });
+            const data = await response.json();
+            if (data.asql) {
+                inputEditor.setValue(data.asql);
+                inputEditor.setOption('mode', 'text/x-asql');
+            } else {
+                throw new Error(data.error || 'Failed to convert to ASQL');
+            }
+        }
+        // If already ASQL, nothing to do
+    } else {
+        // Converting to a SQL dialect
+        let asqlText = currentInput;
+        
+        // First get to ASQL if needed
+        if (isJSON) {
+            const json = JSON.parse(currentInput);
+            const response = await fetch('/api/visual/compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: json })
+            });
+            const data = await response.json();
+            if (!data.success) throw new Error(data.error || 'Failed to compile from visual');
+            asqlText = data.asql;
+        } else if (!previousIsAsql) {
+            // SQL to ASQL first
+            const reverseResponse = await fetch('/api/reverse-compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sql: currentInput, source_dialect: previousFromDialect || '' })
+            });
+            const reverseData = await reverseResponse.json();
+            if (reverseData.error) throw new Error(reverseData.error);
+            asqlText = reverseData.asql;
+        }
+        
+        // Now compile ASQL to target SQL dialect
+        const compileResponse = await fetch('/api/compile', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ asql: asqlText, dialect: newDialect })
+        });
+        const compileData = await compileResponse.json();
+        if (compileData.sql) {
+            inputEditor.setValue(compileData.sql);
+            inputEditor.setOption('mode', 'text/x-sql');
+        } else {
+            throw new Error(compileData.error || 'Failed to compile to SQL');
+        }
+    }
+}
+
 function updateURL() {
     if (!inputEditor) return;
     
@@ -1189,14 +1311,25 @@ document.addEventListener('DOMContentLoaded', function() {
             if (outputEditor) outputEditor.refresh();
         }, 100);
         
-        document.getElementById('from-dialect').addEventListener('change', () => {
+        document.getElementById('from-dialect').addEventListener('change', async () => {
+            const newFromDialect = document.getElementById('from-dialect').value;
+            const currentInput = inputEditor.getValue().trim();
+            
+            // Try to transpile the current input to the new dialect
+            if (currentInput) {
+                try {
+                    await transpileInputToNewDialect(currentInput, newFromDialect);
+                } catch (e) {
+                    console.warn('Quick transpile of input failed:', e);
+                }
+            }
+            
             ensureFromNotPostgresWhenToEmpty();
             updateUITitles();
             translateQuery();
             updateURL();
             // Update visual mode toggle visibility
-            const fromDialect = document.getElementById('from-dialect').value;
-            updateEditorVisibility('input', fromDialect);
+            updateEditorVisibility('input', newFromDialect);
         });
         
         document.getElementById('to-dialect').addEventListener('change', () => {
