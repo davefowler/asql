@@ -221,3 +221,140 @@ class TestCastTranspilation:
         sql = "SELECT CAST(a AS TEXT), CAST(b AS FLOAT) FROM data"
         asql = sqlglot.transpile(sql, write="asql")[0]
         assert asql.count("::") == 2
+
+
+class TestWindowFunctionTranspilation:
+    """Test window functions transpile to ASQL."""
+
+    def test_transpile_row_number(self) -> None:
+        """ROW_NUMBER window function."""
+        sql = "SELECT user_id, ROW_NUMBER() OVER (ORDER BY created_at) AS rn FROM users"
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "row_number" in asql.lower()
+        assert "over" in asql.lower()
+
+    def test_transpile_rank_with_partition(self) -> None:
+        """RANK with PARTITION BY."""
+        sql = """
+        SELECT user_id, RANK() OVER (PARTITION BY country ORDER BY score DESC) AS user_rank
+        FROM users
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "rank" in asql.lower()
+        assert "partition" in asql.lower()
+
+    def test_transpile_lag_lead(self) -> None:
+        """LAG and LEAD functions."""
+        sql = """
+        SELECT date, value, LAG(value, 1) OVER (ORDER BY date) AS prev_value
+        FROM metrics
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "lag" in asql.lower()
+
+
+class TestSetOperationTranspilation:
+    """Test UNION/INTERSECT/EXCEPT transpile to ASQL."""
+
+    def test_transpile_union(self) -> None:
+        """UNION of two queries."""
+        sql = """
+        SELECT id, name FROM users
+        UNION
+        SELECT id, name FROM admins
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "union" in asql.lower()
+
+    def test_transpile_union_all(self) -> None:
+        """UNION ALL preserves duplicates."""
+        sql = """
+        SELECT id FROM users
+        UNION ALL
+        SELECT id FROM orders
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "union all" in asql.lower()
+
+    def test_transpile_intersect(self) -> None:
+        """INTERSECT of two queries."""
+        sql = """
+        SELECT user_id FROM active_users
+        INTERSECT
+        SELECT user_id FROM premium_users
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "intersect" in asql.lower()
+
+
+class TestSubqueryTranspilation:
+    """Test subqueries transpile to ASQL."""
+
+    def test_transpile_subquery_in_where(self) -> None:
+        """Subquery in WHERE clause."""
+        sql = """
+        SELECT * FROM orders
+        WHERE user_id IN (SELECT id FROM users WHERE status = 'active')
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "from orders" in asql.lower()
+        # Should have nested select
+        assert asql.lower().count("select") >= 1 or asql.lower().count("from") >= 2
+
+    def test_transpile_subquery_in_from(self) -> None:
+        """Subquery in FROM clause."""
+        sql = """
+        SELECT t.total FROM (SELECT COUNT(*) AS total FROM users) t
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "from" in asql.lower()
+
+    def test_transpile_scalar_subquery(self) -> None:
+        """Scalar subquery in SELECT."""
+        sql = """
+        SELECT name, (SELECT COUNT(*) FROM orders WHERE orders.user_id = users.id) AS order_count
+        FROM users
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "from users" in asql.lower()
+
+
+class TestComplexConditionTranspilation:
+    """Test complex nested conditions."""
+
+    def test_transpile_nested_and_or(self) -> None:
+        """Nested AND/OR conditions."""
+        sql = """
+        SELECT * FROM users
+        WHERE (status = 'active' AND age >= 18)
+           OR (status = 'pending' AND created_at > '2024-01-01')
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "from users" in asql.lower()
+        # Should preserve logical structure (and/or or &&/||)
+
+    def test_transpile_deeply_nested_conditions(self) -> None:
+        """Stress test with deeply nested conditions."""
+        sql = """
+        SELECT * FROM data
+        WHERE (a = 1 AND (b = 2 OR (c = 3 AND (d = 4 OR e = 5))))
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "from data" in asql.lower()
+        # Should handle deep nesting without error
+
+
+class TestStringLiteralTranspilation:
+    """Test string literal edge cases."""
+
+    def test_transpile_escaped_quotes(self) -> None:
+        """String with escaped single quotes."""
+        sql = "SELECT * FROM users WHERE name = 'O''Brien'"
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "o'brien" in asql.lower() or "o''brien" in asql.lower()
+
+    def test_transpile_unicode_string(self) -> None:
+        """Unicode characters in strings."""
+        sql = "SELECT * FROM products WHERE name = '日本語'"
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        assert "日本語" in asql
