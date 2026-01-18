@@ -602,6 +602,125 @@ function getApiDialect(dialect) {
     return dialect;
 }
 
+// Quick transpile: convert current output content to a new dialect
+async function transpileOutputToNewDialect(currentOutput, newDialect) {
+    const errorDiv = document.getElementById('error');
+    
+    // Detect if current output is JSON (from visual-asql)
+    const isJSON = currentOutput.startsWith('{') || currentOutput.startsWith('[');
+    
+    let sourceContent = currentOutput;
+    let sourceDialect = null; // null = auto-detect
+    
+    // If it's JSON, first convert to ASQL
+    if (isJSON) {
+        try {
+            const json = JSON.parse(currentOutput);
+            const response = await fetch('/api/visual/compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: json })
+            });
+            const data = await response.json();
+            if (data.success) {
+                sourceContent = data.asql;
+                sourceDialect = 'asql';
+            } else {
+                throw new Error(data.error || 'Failed to convert JSON to ASQL');
+            }
+        } catch (e) {
+            console.warn('Failed to parse JSON output:', e);
+            throw e;
+        }
+    }
+    
+    // Now transpile to the new dialect
+    if (newDialect === 'visual-asql') {
+        // Convert to visual JSON
+        const response = await fetch('/api/visual/parse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ asql: sourceContent })
+        });
+        const data = await response.json();
+        if (data.success) {
+            outputEditor.setValue(JSON.stringify(data.query, null, 2));
+            outputEditor.setOption('mode', 'application/json');
+            renderOutputVisual(data.query);
+            if (errorDiv) errorDiv.style.display = 'none';
+        } else {
+            throw new Error(data.error || 'Failed to parse to visual');
+        }
+    } else if (newDialect === 'asql') {
+        // If source is already ASQL, just use it; otherwise reverse-compile
+        if (sourceDialect === 'asql') {
+            outputEditor.setValue(sourceContent);
+            outputEditor.setOption('mode', 'text/x-asql');
+            if (errorDiv) errorDiv.style.display = 'none';
+        } else {
+            const response = await fetch('/api/reverse-compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sql: sourceContent, source_dialect: '' })
+            });
+            const data = await response.json();
+            if (data.asql) {
+                outputEditor.setValue(data.asql);
+                outputEditor.setOption('mode', 'text/x-asql');
+                if (errorDiv) errorDiv.style.display = 'none';
+            } else {
+                throw new Error(data.error || 'Failed to convert to ASQL');
+            }
+        }
+    } else {
+        // Convert to SQL dialect
+        // If source is ASQL, compile it; otherwise transpile SQL to SQL
+        if (sourceDialect === 'asql' || isJSON) {
+            const response = await fetch('/api/compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ asql: sourceContent, dialect: newDialect })
+            });
+            const data = await response.json();
+            if (data.sql) {
+                outputEditor.setValue(data.sql);
+                outputEditor.setOption('mode', 'text/x-sql');
+                if (errorDiv) errorDiv.style.display = 'none';
+            } else {
+                throw new Error(data.error || 'Failed to compile to SQL');
+            }
+        } else {
+            // SQL to SQL - use reverse-compile then compile
+            const reverseResponse = await fetch('/api/reverse-compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sql: sourceContent, source_dialect: '' })
+            });
+            const reverseData = await reverseResponse.json();
+            if (reverseData.error) {
+                throw new Error(reverseData.error);
+            }
+            
+            const compileResponse = await fetch('/api/compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ asql: reverseData.asql, dialect: newDialect })
+            });
+            const compileData = await compileResponse.json();
+            if (compileData.sql) {
+                outputEditor.setValue(compileData.sql);
+                outputEditor.setOption('mode', 'text/x-sql');
+                if (errorDiv) errorDiv.style.display = 'none';
+            } else {
+                throw new Error(compileData.error || 'Failed to compile to SQL');
+            }
+        }
+    }
+    
+    // Update editor visibility for visual-asql toggle
+    updateEditorVisibility('output', newDialect);
+}
+
 function updateURL() {
     if (!inputEditor) return;
     
@@ -1199,10 +1318,24 @@ document.addEventListener('DOMContentLoaded', function() {
             updateEditorVisibility('input', fromDialect);
         });
         
-        document.getElementById('to-dialect').addEventListener('change', () => {
+        document.getElementById('to-dialect').addEventListener('change', async () => {
             ensureFromNotPostgresWhenToEmpty();
             updateUITitles();
-            translateQuery();
+            
+            // Quick transpile: convert current output to new dialect
+            const currentOutput = outputEditor.getValue().trim();
+            const newToDialect = document.getElementById('to-dialect').value;
+            
+            if (currentOutput) {
+                try {
+                    await transpileOutputToNewDialect(currentOutput, newToDialect);
+                } catch (e) {
+                    console.warn('Quick transpile failed, falling back to full translation:', e);
+                    translateQuery();
+                }
+            } else {
+                translateQuery();
+            }
             updateURL();
         });
         
