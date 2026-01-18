@@ -3,6 +3,12 @@ VisualASQLGenerator - Generates JSON representation from SQLGlot AST.
 
 This generator outputs a structured JSON format suitable for visual query builders,
 with column tracking at each pipeline stage.
+
+Output format is always an array of pipelines:
+    [
+        {"name": "cte_name", "from": {...}, "transforms": [...], "set_operation": {...}},
+        {"name": null, "from": {...}, "transforms": [...]}
+    ]
 """
 
 import json
@@ -15,7 +21,7 @@ from sqlglot.optimizer.qualify_columns import qualify_columns
 from sqlglot.optimizer.annotate_types import annotate_types
 
 class VisualASQLGenerator(Generator):
-    """Generator that outputs JSON with column tracking at each stage."""
+    """Generator that outputs JSON array of pipelines with column tracking."""
 
     # Declarative mappings per .cursorrules - use dicts instead of elif chains
     _SIDE_JOIN_MAP: t.ClassVar[t.Dict[str, str]] = {
@@ -38,6 +44,12 @@ class VisualASQLGenerator(Generator):
         exp.GTE: ">=",
     }
 
+    _SET_OP_MAP: t.ClassVar[t.Dict[t.Type[exp.Expression], str]] = {
+        exp.Union: "union",
+        exp.Intersect: "intersect",
+        exp.Except: "except",
+    }
+
     def __init__(self, schema: t.Optional[MappingSchema] = None, **kwargs: t.Any) -> None:
         super().__init__(**kwargs)
         self._schema = schema
@@ -45,34 +57,96 @@ class VisualASQLGenerator(Generator):
     def generate(
         self, expression: exp.Expression, copy: bool = True
     ) -> str:
-        """Generate JSON string from AST."""
+        """Generate JSON string from AST - always outputs array format."""
         if copy:
             expression = expression.copy()
 
-        # Pre-qualify columns and annotate types if schema provided
-        if self._schema and isinstance(expression, exp.Select):
-            try:
-                expression = qualify_columns(
-                    expression, 
-                    schema=self._schema, 
-                    expand_stars=True
-                )
-                expression = annotate_types(expression, schema=self._schema)
-            except (ValueError, KeyError, AttributeError):
-                # If qualification fails due to missing schema info, continue without it
-                pass
-
-        # Build JSON structure
-        result = self._build_json(expression)
+        # Build JSON structure (always an array)
+        result = self._build_pipelines(expression)
 
         return json.dumps(result, indent=2)
 
-    def _build_json(self, expression: exp.Expression) -> t.Dict[str, t.Any]:
-        """Build JSON representation of query."""
-        if not isinstance(expression, exp.Select):
-            return {"error": f"Expected Select, got {type(expression).__name__}"}
+    def _build_pipelines(self, expression: exp.Expression) -> t.List[t.Dict[str, t.Any]]:
+        """Build array of pipeline representations."""
+        pipelines: t.List[t.Dict[str, t.Any]] = []
 
-        result: t.Dict[str, t.Any] = {"from": None, "transforms": []}
+        # Handle CTEs (WITH clause) - note: SQLGlot uses 'with_' not 'with'
+        if isinstance(expression, exp.Select) and expression.args.get("with_"):
+            with_clause = expression.args["with_"]
+            for cte in with_clause.expressions:
+                cte_name = cte.alias
+                cte_query = cte.this
+                if isinstance(cte_query, exp.Select):
+                    pipeline = self._build_single_pipeline(cte_query)
+                    pipeline["name"] = cte_name
+                    pipelines.append(pipeline)
+
+        # Handle set operations (UNION, INTERSECT, EXCEPT)
+        if isinstance(expression, (exp.Union, exp.Intersect, exp.Except)):
+            self._build_set_operation_pipelines(expression, pipelines)
+        elif isinstance(expression, exp.Select):
+            # Pre-qualify columns if schema provided
+            if self._schema:
+                try:
+                    expression = qualify_columns(
+                        expression,
+                        schema=self._schema,
+                        expand_stars=True
+                    )
+                    expression = annotate_types(expression, schema=self._schema)
+                except (ValueError, KeyError, AttributeError):
+                    pass
+
+            pipeline = self._build_single_pipeline(expression)
+            pipeline["name"] = None  # Final output pipeline
+            pipelines.append(pipeline)
+        else:
+            # Unsupported expression type
+            pipelines.append({
+                "name": None,
+                "from": {"table": "", "error": f"Unsupported: {type(expression).__name__}"},
+                "transforms": []
+            })
+
+        return pipelines
+
+    def _build_set_operation_pipelines(
+        self,
+        expression: exp.Expression,
+        pipelines: t.List[t.Dict[str, t.Any]]
+    ) -> None:
+        """Recursively build pipelines for set operations."""
+        if isinstance(expression, (exp.Union, exp.Intersect, exp.Except)):
+            # Process left side
+            left = expression.this
+            if isinstance(left, (exp.Union, exp.Intersect, exp.Except)):
+                self._build_set_operation_pipelines(left, pipelines)
+            elif isinstance(left, exp.Select):
+                pipeline = self._build_single_pipeline(left)
+                pipeline["name"] = None
+
+                # Add set operation info
+                op_type = self._SET_OP_MAP.get(type(expression), "union")
+                is_all = expression.args.get("distinct") is False
+                pipeline["set_operation"] = {"type": op_type, "all": is_all}
+
+                pipelines.append(pipeline)
+
+            # Process right side
+            right = expression.expression
+            if isinstance(right, (exp.Union, exp.Intersect, exp.Except)):
+                self._build_set_operation_pipelines(right, pipelines)
+            elif isinstance(right, exp.Select):
+                pipeline = self._build_single_pipeline(right)
+                pipeline["name"] = None
+                pipelines.append(pipeline)
+
+    def _build_single_pipeline(self, expression: exp.Select) -> t.Dict[str, t.Any]:
+        """Build JSON representation of a single SELECT query."""
+        if not isinstance(expression, exp.Select):
+            return {"from": {"table": "", "error": f"Expected Select, got {type(expression).__name__}"}, "transforms": []}
+
+        result: t.Dict[str, t.Any] = {"name": None, "from": None, "transforms": []}
         current_columns: t.List[t.Dict[str, t.Any]] = []
         transform_id = 0
 

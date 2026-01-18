@@ -7,14 +7,30 @@
 
 class VisualEditor {
   constructor() {
-    this.query = {
+    // Support multiple pipelines (array format)
+    this.pipelines = [{
+      name: null,
       from: { table: '' },
       transforms: []
-    };
+    }];
+    this.currentPipelineIndex = 0;  // Currently active pipeline
     this.operations = [];
     this.schemas = {};
     this.initialized = false;
     this.nextTransformId = 0;  // Counter for unique transform IDs
+  }
+
+  // Getter for backward compatibility
+  get query() {
+    return this.pipelines[this.currentPipelineIndex] || this.pipelines[0];
+  }
+
+  set query(value) {
+    if (Array.isArray(value)) {
+      this.pipelines = value;
+    } else {
+      this.pipelines[this.currentPipelineIndex] = value;
+    }
   }
 
   async init() {
@@ -72,10 +88,65 @@ class VisualEditor {
       addBtn.addEventListener('click', () => this.showAddStepModal());
     }
 
+    // Add pipeline button
+    const addPipelineBtn = document.getElementById('add-pipeline-btn');
+    if (addPipelineBtn) {
+      addPipelineBtn.addEventListener('click', () => this.addPipeline());
+    }
+
     // Modal close
     const modalClose = document.querySelector('#add-step-modal .modal-close');
     if (modalClose) {
       modalClose.addEventListener('click', () => this.hideAddStepModal());
+    }
+  }
+
+  addPipeline(setOperation = null) {
+    const newPipeline = {
+      name: null,
+      from: { table: '' },
+      transforms: []
+    };
+    
+    // If there's a set operation, add it to the previous pipeline
+    if (setOperation && this.pipelines.length > 0) {
+      this.pipelines[this.pipelines.length - 1].set_operation = setOperation;
+    }
+    
+    this.pipelines.push(newPipeline);
+    this.currentPipelineIndex = this.pipelines.length - 1;
+    this.renderAll();
+    this.notifyChange();
+  }
+
+  removePipeline(index) {
+    if (this.pipelines.length <= 1) return; // Keep at least one pipeline
+    
+    // Remove set_operation from previous pipeline if exists
+    if (index > 0 && this.pipelines[index - 1].set_operation) {
+      delete this.pipelines[index - 1].set_operation;
+    }
+    
+    this.pipelines.splice(index, 1);
+    if (this.currentPipelineIndex >= this.pipelines.length) {
+      this.currentPipelineIndex = this.pipelines.length - 1;
+    }
+    this.renderAll();
+    this.notifyChange();
+  }
+
+  setPipelineName(index, name) {
+    if (this.pipelines[index]) {
+      this.pipelines[index].name = name || null;
+      this.notifyChange();
+    }
+  }
+
+  setSetOperation(index, opType, all = false) {
+    if (this.pipelines[index] && index < this.pipelines.length - 1) {
+      this.pipelines[index].set_operation = { type: opType, all };
+      this.renderAll();
+      this.notifyChange();
     }
   }
 
@@ -120,7 +191,8 @@ class VisualEditor {
     }
   }
 
-  addTransform(type) {
+  addTransform(type, pipelineIndex = null) {
+    const idx = pipelineIndex !== null ? pipelineIndex : this.currentPipelineIndex;
     const id = `t${this.nextTransformId++}`;
     const schema = this.schemas[type];
 
@@ -137,18 +209,37 @@ class VisualEditor {
       });
     }
 
-    this.query.transforms.push(transform);
-    this.render();
+    if (this.pipelines[idx]) {
+      this.pipelines[idx].transforms.push(transform);
+    }
+    
+    // Use renderAll if we have multiple pipelines, otherwise just render current
+    if (this.pipelines.length > 1) {
+      this.renderAll();
+    } else {
+      this.render();
+    }
     this.notifyChange();
   }
 
-  removeTransform(id) {
-    this.query.transforms = this.query.transforms.filter(t => t.id !== id);
-    this.render();
+  removeTransform(id, pipelineIndex = null) {
+    const idx = pipelineIndex !== null ? pipelineIndex : this.currentPipelineIndex;
+    
+    if (this.pipelines[idx]) {
+      this.pipelines[idx].transforms = this.pipelines[idx].transforms.filter(t => t.id !== id);
+    }
+    
+    // Use renderAll if we have multiple pipelines, otherwise just render current
+    if (this.pipelines.length > 1) {
+      this.renderAll();
+    } else {
+      this.render();
+    }
     this.notifyChange();
   }
 
   render() {
+    // Render transforms for current pipeline only (for backward compat)
     const container = document.getElementById('transforms-container');
     if (!container) return;
 
@@ -160,7 +251,126 @@ class VisualEditor {
     });
   }
 
-  createBlockElement(transform) {
+  renderAll() {
+    // Render all pipelines (for multi-pipeline support)
+    const container = document.getElementById('transforms-container');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    this.pipelines.forEach((pipeline, pipelineIdx) => {
+      // Pipeline wrapper
+      const pipelineDiv = document.createElement('div');
+      pipelineDiv.className = 'pipeline-block input-pipeline';
+      pipelineDiv.dataset.pipelineIndex = pipelineIdx;
+
+      // Pipeline header with name input
+      const header = document.createElement('div');
+      header.className = 'pipeline-header';
+      
+      // Pipeline name input
+      const nameLabel = document.createElement('span');
+      nameLabel.className = 'pipeline-name-label';
+      nameLabel.textContent = 'Pipeline name (for CTE):';
+      
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'pipeline-name-input';
+      nameInput.placeholder = 'optional (e.g. active_users)';
+      nameInput.value = pipeline.name || '';
+      nameInput.dataset.pipelineIndex = pipelineIdx;
+      nameInput.addEventListener('input', (e) => {
+        this.setPipelineName(pipelineIdx, e.target.value);
+      });
+
+      // Remove pipeline button (only show if more than one pipeline)
+      if (this.pipelines.length > 1) {
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'pipeline-remove-btn';
+        removeBtn.textContent = '×';
+        removeBtn.title = 'Remove pipeline';
+        removeBtn.addEventListener('click', () => this.removePipeline(pipelineIdx));
+        header.appendChild(removeBtn);
+      }
+
+      header.appendChild(nameLabel);
+      header.appendChild(nameInput);
+      pipelineDiv.appendChild(header);
+
+      // FROM block for this pipeline
+      const fromBlock = document.createElement('div');
+      fromBlock.className = 'block from-block';
+      fromBlock.innerHTML = `
+        <div class="block-body">
+          <span class="value-operator">from</span>
+          <input type="text" 
+                 class="pipeline-from-input" 
+                 placeholder="table name"
+                 value="${this.escapeHtml(pipeline.from?.table || '')}"
+                 data-pipeline-index="${pipelineIdx}">
+        </div>
+      `;
+      pipelineDiv.appendChild(fromBlock);
+
+      // Transforms for this pipeline
+      (pipeline.transforms || []).forEach(transform => {
+        const blockEl = this.createBlockElement(transform, pipelineIdx);
+        pipelineDiv.appendChild(blockEl);
+      });
+
+      // Add step button for this pipeline
+      const addStepBtn = document.createElement('button');
+      addStepBtn.className = 'add-step-btn-inline';
+      addStepBtn.textContent = '+ Add Step';
+      addStepBtn.dataset.pipelineIndex = pipelineIdx;
+      addStepBtn.addEventListener('click', () => {
+        this.currentPipelineIndex = pipelineIdx;
+        this.showAddStepModal();
+      });
+      pipelineDiv.appendChild(addStepBtn);
+
+      container.appendChild(pipelineDiv);
+
+      // Set operation between pipelines
+      if (pipelineIdx < this.pipelines.length - 1) {
+        const setOpDiv = document.createElement('div');
+        setOpDiv.className = 'set-operation-selector';
+        
+        const currentOp = pipeline.set_operation?.type || 'union';
+        const isAll = pipeline.set_operation?.all || false;
+        
+        setOpDiv.innerHTML = `
+          <select class="set-op-select" data-pipeline-index="${pipelineIdx}">
+            <option value="union" ${currentOp === 'union' && !isAll ? 'selected' : ''}>UNION</option>
+            <option value="union_all" ${currentOp === 'union' && isAll ? 'selected' : ''}>UNION ALL</option>
+            <option value="intersect" ${currentOp === 'intersect' ? 'selected' : ''}>INTERSECT</option>
+            <option value="except" ${currentOp === 'except' ? 'selected' : ''}>EXCEPT</option>
+          </select>
+        `;
+        container.appendChild(setOpDiv);
+      }
+    });
+
+    // Add new pipeline button
+    const addPipelineDiv = document.createElement('div');
+    addPipelineDiv.className = 'add-pipeline-container';
+    addPipelineDiv.innerHTML = `
+      <button class="add-pipeline-btn" id="add-pipeline-btn-inline">+ Add Pipeline (CTE / Set Operation)</button>
+    `;
+    addPipelineDiv.querySelector('button').addEventListener('click', () => {
+      this.addPipeline({ type: 'union', all: false });
+    });
+    container.appendChild(addPipelineDiv);
+
+    // Update the main FROM input (for first pipeline, backward compat)
+    const mainFromInput = document.getElementById('from-table');
+    if (mainFromInput && this.pipelines[0]) {
+      mainFromInput.value = this.pipelines[0].from?.table || '';
+    }
+  }
+
+  createBlockElement(transform, pipelineIndex = null) {
+    const idx = pipelineIndex !== null ? pipelineIndex : this.currentPipelineIndex;
     const schema = this.schemas[transform.type];
     if (!schema) {
       return this.createErrorBlock(transform, 'Schema not loaded');
@@ -169,6 +379,7 @@ class VisualEditor {
     const block = document.createElement('div');
     block.className = `block transform-block ${transform.type}-block`;
     block.dataset.id = transform.id;
+    block.dataset.pipelineIndex = idx;
 
     // Build header safely to avoid XSS with server-provided strings
     const header = document.createElement('div');
@@ -181,9 +392,10 @@ class VisualEditor {
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'block-delete';
     deleteBtn.dataset.id = transform.id;
+    deleteBtn.dataset.pipelineIndex = idx;
     deleteBtn.textContent = '×';
     deleteBtn.addEventListener('click', () => {
-      this.removeTransform(transform.id);
+      this.removeTransform(transform.id, idx);
     });
     
     header.appendChild(titleSpan);
@@ -457,8 +669,9 @@ class VisualEditor {
    */
   async loadFromASQL(asql) {
     if (!asql.trim()) {
-      this.query = { from: { table: '' }, transforms: [] };
-      this.render();
+      this.pipelines = [{ name: null, from: { table: '' }, transforms: [] }];
+      this.currentPipelineIndex = 0;
+      this.renderAll();
       return;
     }
 
@@ -477,29 +690,7 @@ class VisualEditor {
       const data = await response.json();
 
       if (data.success) {
-        this.query = data.query;
-
-        // Compute max existing transform ID to prevent collisions
-        if (this.query.transforms && this.query.transforms.length > 0) {
-          const maxId = this.query.transforms
-            .map(t => parseInt(String(t.id || '').replace(/^t/, ''), 10))
-            .filter(n => !Number.isNaN(n))
-            .reduce((a, b) => Math.max(a, b), -1);
-          this.nextTransformId = maxId + 1;
-          
-          // Ensure all transforms have unique IDs for event handling
-          this.query.transforms.forEach(transform => {
-            if (!transform.id) {
-              transform.id = `t${this.nextTransformId++}`;
-            }
-          });
-        }
-
-        const fromInput = document.getElementById('from-table');
-        if (fromInput) {
-          fromInput.value = this.query.from?.table || '';
-        }
-        this.render();
+        this.loadFromJSON(data.query);
       } else {
         console.error('Failed to parse ASQL:', data.error);
       }
@@ -509,49 +700,70 @@ class VisualEditor {
   }
 
   /**
-   * Load query from JSON object directly
+   * Load query from JSON object directly (supports both array and single object format)
    */
   loadFromJSON(json) {
-    if (!json || typeof json !== 'object') {
-      this.query = { from: { table: '' }, transforms: [] };
-      this.render();
+    if (!json) {
+      this.pipelines = [{ name: null, from: { table: '' }, transforms: [] }];
+      this.currentPipelineIndex = 0;
+      this.renderAll();
       return;
     }
 
-    this.query = json;
-
-    // Compute max existing transform ID to prevent collisions
-    if (this.query.transforms && this.query.transforms.length > 0) {
-      const maxId = this.query.transforms
-        .map(t => parseInt(String(t.id || '').replace(/^t/, ''), 10))
-        .filter(n => !Number.isNaN(n))
-        .reduce((a, b) => Math.max(a, b), -1);
-      this.nextTransformId = maxId + 1;
-      
-      // Ensure all transforms have unique IDs for event handling
-      this.query.transforms.forEach(transform => {
-        if (!transform.id) {
-          transform.id = `t${this.nextTransformId++}`;
-        }
-      });
+    // Handle both array and single object format
+    if (Array.isArray(json)) {
+      this.pipelines = json.length > 0 ? json : [{ name: null, from: { table: '' }, transforms: [] }];
+    } else if (typeof json === 'object') {
+      this.pipelines = [json];
+    } else {
+      this.pipelines = [{ name: null, from: { table: '' }, transforms: [] }];
     }
 
-    const fromInput = document.getElementById('from-table');
-    if (fromInput) {
-      fromInput.value = this.query.from?.table || '';
+    this.currentPipelineIndex = 0;
+
+    // Compute max existing transform ID across all pipelines to prevent collisions
+    let maxId = -1;
+    this.pipelines.forEach(pipeline => {
+      if (pipeline.transforms && pipeline.transforms.length > 0) {
+        pipeline.transforms.forEach(transform => {
+          const id = parseInt(String(transform.id || '').replace(/^t/, ''), 10);
+          if (!Number.isNaN(id) && id > maxId) {
+            maxId = id;
+          }
+          // Ensure transform has an ID
+          if (!transform.id) {
+            transform.id = `t${++maxId}`;
+          }
+        });
+      }
+    });
+    this.nextTransformId = maxId + 1;
+
+    // Render based on number of pipelines
+    if (this.pipelines.length > 1) {
+      this.renderAll();
+    } else {
+      // Single pipeline - use simple rendering
+      const fromInput = document.getElementById('from-table');
+      if (fromInput && this.pipelines[0]) {
+        fromInput.value = this.pipelines[0].from?.table || '';
+      }
+      this.render();
     }
-    this.render();
   }
 
   /**
-   * Get ASQL text from current query
+   * Get ASQL text from current query (supports multiple pipelines)
    */
   async getASQL() {
     try {
+      // Send array format for multiple pipelines, single object for one
+      const queryData = this.pipelines.length > 1 ? this.pipelines : this.pipelines[0];
+      
       const response = await fetch('/api/visual/compile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: this.query })
+        body: JSON.stringify({ query: queryData })
       });
       
       if (!response.ok) {
@@ -571,6 +783,13 @@ class VisualEditor {
       console.error('Error compiling to ASQL:', error);
       return '';
     }
+  }
+
+  /**
+   * Get JSON representation of current query
+   */
+  getJSON() {
+    return this.pipelines.length > 1 ? this.pipelines : this.pipelines[0];
   }
 
   notifyChange() {
@@ -601,12 +820,40 @@ document.addEventListener('input', (e) => {
   if (!visualEditor || !visualEditor.initialized) return;
 
   const target = e.target;
+  
+  // Handle pipeline FROM inputs
+  if (target.classList.contains('pipeline-from-input')) {
+    const pipelineIndex = parseInt(target.dataset.pipelineIndex);
+    if (!isNaN(pipelineIndex) && visualEditor.pipelines[pipelineIndex]) {
+      visualEditor.pipelines[pipelineIndex].from.table = target.value;
+      visualEditor.notifyChange();
+    }
+    return;
+  }
+  
   const transformId = target.dataset.transformId;
   const param = target.dataset.param;
 
   if (!transformId || !param) return;
 
-  const transform = visualEditor.query.transforms.find(t => t.id === transformId);
+  // Find transform across all pipelines
+  let transform = null;
+  const pipelineIdx = target.dataset.pipelineIndex !== undefined 
+    ? parseInt(target.dataset.pipelineIndex) 
+    : visualEditor.currentPipelineIndex;
+  
+  if (visualEditor.pipelines[pipelineIdx]) {
+    transform = visualEditor.pipelines[pipelineIdx].transforms.find(t => t.id === transformId);
+  }
+  
+  // Fallback: search all pipelines
+  if (!transform) {
+    for (const pipeline of visualEditor.pipelines) {
+      transform = pipeline.transforms.find(t => t.id === transformId);
+      if (transform) break;
+    }
+  }
+  
   if (!transform) return;
 
   // Handle different widget types
@@ -745,6 +992,28 @@ document.addEventListener('click', (e) => {
         visualEditor.render();
         visualEditor.notifyChange();
       }
+    }
+  }
+});
+
+// Change event delegation for select elements (set operations)
+document.addEventListener('change', (e) => {
+  if (!visualEditor || !visualEditor.initialized) return;
+
+  const target = e.target;
+
+  // Handle set operation select
+  if (target.classList.contains('set-op-select')) {
+    const pipelineIndex = parseInt(target.dataset.pipelineIndex);
+    const value = target.value;
+    
+    if (!isNaN(pipelineIndex) && visualEditor.pipelines[pipelineIndex]) {
+      if (value === 'union_all') {
+        visualEditor.pipelines[pipelineIndex].set_operation = { type: 'union', all: true };
+      } else {
+        visualEditor.pipelines[pipelineIndex].set_operation = { type: value, all: false };
+      }
+      visualEditor.notifyChange();
     }
   }
 });

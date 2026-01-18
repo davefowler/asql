@@ -652,6 +652,7 @@ async def parse_to_visual(request: Request):
             return {"success": False, "error": "No ASQL query provided"}
 
         # Convert ASQL to JSON using visual_asql dialect
+        # Now supports CTEs, set operations, and multiple queries
         json_str = sqlglot.transpile(asql_text, read="asql", write="visual_asql")[0]
         query_json = json.loads(json_str)
 

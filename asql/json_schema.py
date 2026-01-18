@@ -4,25 +4,72 @@ JSON Schema for Visual ASQL Editor
 Provides conversion from JSON representation to ASQL text.
 For JSON output, use the visual_asql dialect:
     sqlglot.transpile(sql, read="asql", write="visual_asql")
+
+JSON Format:
+    Always an array of pipelines:
+    [
+        {"name": "cte_name", "from": {...}, "transforms": [...], "set_operation": {...}},
+        {"name": null, "from": {...}, "transforms": [...]}
+    ]
+
+    - name: null for output/unnamed queries, string for CTEs
+    - set_operation: {"type": "union"|"intersect"|"except", "all": bool}
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 
 
-def json_to_asql(query_json: Dict[str, Any]) -> str:
+def json_to_asql(query_json: Union[Dict[str, Any], List[Dict[str, Any]]]) -> str:
     """
     Convert JSON representation to ASQL text.
 
     Args:
-        query_json: Dict with 'from' and 'transforms' keys
+        query_json: Either:
+            - List of pipeline dicts (new format)
+            - Single dict with 'from' and 'transforms' keys (legacy format)
 
     Returns:
         ASQL query as string
     """
+    # Handle legacy single-pipeline format
+    if isinstance(query_json, dict):
+        pipelines = [query_json]
+    else:
+        pipelines = query_json
+
+    if not pipelines:
+        return "from # Enter table name"
+
+    result_parts: List[str] = []
+
+    for i, pipeline in enumerate(pipelines):
+        # Generate ASQL for this pipeline
+        pipeline_asql = _pipeline_to_asql(pipeline)
+
+        # Add stash for named pipelines
+        name = pipeline.get("name")
+        if name:
+            pipeline_asql += f"\n  stash as {name}"
+
+        result_parts.append(pipeline_asql)
+
+        # Handle set operations (UNION, INTERSECT, EXCEPT)
+        set_op = pipeline.get("set_operation")
+        if set_op and i < len(pipelines) - 1:
+            op_type = set_op.get("type", "union").upper()
+            if set_op.get("all"):
+                op_type += " ALL"
+            result_parts.append(op_type)
+
+    return "\n".join(result_parts)
+
+
+def _pipeline_to_asql(pipeline: Dict[str, Any]) -> str:
+    """Convert a single pipeline to ASQL text."""
     lines: List[str] = []
 
     # FROM clause
-    from_clause = query_json.get("from", {})
+    from_clause = pipeline.get("from", {})
     table = from_clause.get("table", "")
     if not table:
         return "from # Enter table name"
@@ -30,7 +77,7 @@ def json_to_asql(query_json: Dict[str, Any]) -> str:
     lines.append(f"from {table}")
 
     # Process transforms
-    for transform in query_json.get("transforms", []):
+    for transform in pipeline.get("transforms", []):
         transform_type = transform.get("type")
 
         # === FILTER TRANSFORMS ===
@@ -365,3 +412,169 @@ def _expression_to_asql(expr: Dict[str, Any]) -> str:
 
     else:
         return ""
+
+
+# ============================================================================
+# Validation Functions
+# ============================================================================
+
+class PipelineValidationError(Exception):
+    """Exception raised for pipeline validation errors."""
+    pass
+
+
+def validate_pipelines(pipelines: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:
+    """
+    Validate pipeline JSON for common errors.
+
+    Args:
+        pipelines: Pipeline(s) to validate
+
+    Returns:
+        List of warning/error messages (empty if valid)
+    """
+    if isinstance(pipelines, dict):
+        pipelines = [pipelines]
+
+    if not pipelines:
+        return ["No pipelines provided"]
+
+    errors: List[str] = []
+
+    # Track defined pipeline names for reference validation
+    defined_names: List[str] = []
+
+    for i, pipeline in enumerate(pipelines):
+        pipeline_label = f"Pipeline {i + 1}"
+        name = pipeline.get("name")
+
+        # Validate pipeline name format
+        if name:
+            if not _is_valid_identifier(name):
+                errors.append(
+                    f"{pipeline_label}: Invalid pipeline name '{name}'. "
+                    "Use only letters, numbers, and underscores."
+                )
+            if name in defined_names:
+                errors.append(
+                    f"{pipeline_label}: Duplicate pipeline name '{name}'. "
+                    "Each CTE must have a unique name."
+                )
+            defined_names.append(name)
+
+        # Validate FROM clause
+        from_clause = pipeline.get("from", {})
+        table = from_clause.get("table", "")
+
+        if not table:
+            errors.append(f"{pipeline_label}: Missing FROM table")
+
+        # Check if FROM references an undefined pipeline
+        if table and table in defined_names:
+            # Valid reference to previous pipeline
+            pass
+        elif table and _looks_like_cte_reference(table, defined_names):
+            # Might be referencing a pipeline defined later
+            pass
+
+        # Validate set_operation on non-last pipeline
+        set_op = pipeline.get("set_operation")
+        if set_op and i == len(pipelines) - 1:
+            errors.append(
+                f"{pipeline_label}: set_operation should not be on the last pipeline"
+            )
+
+    # Check for circular references (basic check)
+    circular_errors = _check_circular_references(pipelines)
+    errors.extend(circular_errors)
+
+    return errors
+
+
+def _is_valid_identifier(name: str) -> bool:
+    """Check if name is a valid SQL identifier."""
+    if not name:
+        return False
+    # Must start with letter or underscore
+    if not (name[0].isalpha() or name[0] == '_'):
+        return False
+    # Rest must be alphanumeric or underscore
+    return all(c.isalnum() or c == '_' for c in name)
+
+
+def _looks_like_cte_reference(table: str, defined_names: List[str]) -> bool:
+    """Check if table name looks like it could be a CTE reference."""
+    # If it's a simple identifier (no dots), it could be a CTE
+    return '.' not in table and _is_valid_identifier(table)
+
+
+def _check_circular_references(pipelines: List[Dict[str, Any]]) -> List[str]:
+    """
+    Check for circular references between pipelines.
+
+    A circular reference occurs when pipeline A references pipeline B,
+    and pipeline B (directly or indirectly) references pipeline A.
+    """
+    errors: List[str] = []
+
+    # Build dependency graph
+    # name -> set of names it references
+    dependencies: Dict[str, set] = {}
+    name_to_idx: Dict[str, int] = {}
+
+    for i, pipeline in enumerate(pipelines):
+        name = pipeline.get("name")
+        if not name:
+            continue
+
+        name_to_idx[name] = i
+        deps: set = set()
+
+        # Check FROM clause
+        from_table = pipeline.get("from", {}).get("table", "")
+        if from_table and _is_valid_identifier(from_table):
+            deps.add(from_table)
+
+        # Check JOIN transforms
+        for transform in pipeline.get("transforms", []):
+            if transform.get("type") == "join":
+                join_table = transform.get("table", "")
+                if join_table and _is_valid_identifier(join_table):
+                    deps.add(join_table)
+
+        dependencies[name] = deps
+
+    # Check for cycles using DFS
+    visited: set = set()
+    rec_stack: set = set()
+
+    def has_cycle(name: str, path: List[str]) -> bool:
+        if name in rec_stack:
+            cycle_start = path.index(name)
+            cycle = path[cycle_start:] + [name]
+            errors.append(
+                f"Circular reference detected: {' -> '.join(cycle)}"
+            )
+            return True
+
+        if name in visited:
+            return False
+
+        visited.add(name)
+        rec_stack.add(name)
+        path.append(name)
+
+        for dep in dependencies.get(name, set()):
+            if dep in dependencies:  # Only check if it's a defined pipeline
+                if has_cycle(dep, path):
+                    return True
+
+        path.pop()
+        rec_stack.remove(name)
+        return False
+
+    for name in dependencies:
+        if name not in visited:
+            has_cycle(name, [])
+
+    return errors

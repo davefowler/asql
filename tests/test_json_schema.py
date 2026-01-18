@@ -9,7 +9,7 @@ the visual_asql dialect.
 import json
 import sqlglot
 
-from asql.json_schema import json_to_asql, _expression_to_asql
+from asql.json_schema import json_to_asql, _expression_to_asql, validate_pipelines
 
 
 class TestJsonToAsql:
@@ -881,3 +881,261 @@ class TestEdgeCases:
 
         # Should not add order by line for empty expressions
         assert 'order by' not in result
+
+
+class TestArrayFormat:
+    """Tests for the new array format (multiple pipelines, CTEs, set operations)."""
+
+    def test_single_pipeline_array(self):
+        """Test single pipeline in array format."""
+        query_json = [
+            {
+                'name': None,
+                'from': {'table': 'users'},
+                'transforms': [{'type': 'limit', 'count': 10}]
+            }
+        ]
+        result = json_to_asql(query_json)
+
+        assert 'from users' in result
+        assert 'limit 10' in result
+
+    def test_multiple_unnamed_pipelines(self):
+        """Test multiple unnamed pipelines (multiple queries)."""
+        query_json = [
+            {
+                'name': None,
+                'from': {'table': 'users'},
+                'transforms': [{'type': 'limit', 'count': 10}]
+            },
+            {
+                'name': None,
+                'from': {'table': 'orders'},
+                'transforms': [{'type': 'limit', 'count': 20}]
+            }
+        ]
+        result = json_to_asql(query_json)
+
+        assert 'from users' in result
+        assert 'limit 10' in result
+        assert 'from orders' in result
+        assert 'limit 20' in result
+
+    def test_named_pipeline_generates_stash(self):
+        """Test named pipelines generate stash statements."""
+        query_json = [
+            {
+                'name': 'active_users',
+                'from': {'table': 'users'},
+                'transforms': [
+                    {'type': 'where', 'condition': {'type': 'binary_op', 'operator': '=', 'left': {'type': 'column', 'name': 'status'}, 'right': {'type': 'literal', 'value': 'active', 'data_type': 'string'}}}
+                ]
+            },
+            {
+                'name': None,
+                'from': {'table': 'active_users'},
+                'transforms': []
+            }
+        ]
+        result = json_to_asql(query_json)
+
+        assert 'from users' in result
+        assert 'stash as active_users' in result
+        assert 'from active_users' in result
+
+    def test_union_set_operation(self):
+        """Test UNION set operation between pipelines."""
+        query_json = [
+            {
+                'name': None,
+                'from': {'table': 'us_customers'},
+                'transforms': [],
+                'set_operation': {'type': 'union', 'all': False}
+            },
+            {
+                'name': None,
+                'from': {'table': 'eu_customers'},
+                'transforms': []
+            }
+        ]
+        result = json_to_asql(query_json)
+
+        assert 'from us_customers' in result
+        assert 'UNION' in result
+        assert 'from eu_customers' in result
+
+    def test_union_all_set_operation(self):
+        """Test UNION ALL set operation."""
+        query_json = [
+            {
+                'name': None,
+                'from': {'table': 'table_a'},
+                'transforms': [],
+                'set_operation': {'type': 'union', 'all': True}
+            },
+            {
+                'name': None,
+                'from': {'table': 'table_b'},
+                'transforms': []
+            }
+        ]
+        result = json_to_asql(query_json)
+
+        assert 'UNION ALL' in result
+
+    def test_intersect_set_operation(self):
+        """Test INTERSECT set operation."""
+        query_json = [
+            {
+                'name': None,
+                'from': {'table': 'table_a'},
+                'transforms': [],
+                'set_operation': {'type': 'intersect', 'all': False}
+            },
+            {
+                'name': None,
+                'from': {'table': 'table_b'},
+                'transforms': []
+            }
+        ]
+        result = json_to_asql(query_json)
+
+        assert 'INTERSECT' in result
+
+    def test_except_set_operation(self):
+        """Test EXCEPT set operation."""
+        query_json = [
+            {
+                'name': None,
+                'from': {'table': 'all_users'},
+                'transforms': [],
+                'set_operation': {'type': 'except', 'all': False}
+            },
+            {
+                'name': None,
+                'from': {'table': 'banned_users'},
+                'transforms': []
+            }
+        ]
+        result = json_to_asql(query_json)
+
+        assert 'EXCEPT' in result
+
+    def test_backward_compatible_with_single_dict(self):
+        """Test backward compatibility with legacy single dict format."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [{'type': 'limit', 'count': 5}]
+        }
+        result = json_to_asql(query_json)
+
+        assert 'from users' in result
+        assert 'limit 5' in result
+
+    def test_cte_with_transforms_and_final_query(self):
+        """Test full CTE pattern with transforms."""
+        query_json = [
+            {
+                'name': 'recent_orders',
+                'from': {'table': 'orders'},
+                'transforms': [
+                    {'type': 'where', 'condition': {'type': 'binary_op', 'operator': '>', 'left': {'type': 'column', 'name': 'created_at'}, 'right': {'type': 'literal', 'value': '2024-01-01', 'data_type': 'string'}}}
+                ]
+            },
+            {
+                'name': None,
+                'from': {'table': 'recent_orders'},
+                'transforms': [
+                    {'type': 'group_by', 'dimensions': ['customer_id'], 'aggregates': [{'function': 'count', 'column': '*', 'alias': 'order_count'}]}
+                ]
+            }
+        ]
+        result = json_to_asql(query_json)
+
+        assert 'from orders' in result
+        assert 'stash as recent_orders' in result
+        assert 'from recent_orders' in result
+        assert 'group by customer_id' in result
+
+
+class TestPipelineValidation:
+    """Tests for pipeline validation."""
+
+    def test_valid_single_pipeline(self):
+        """Test valid single pipeline has no errors."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [{'type': 'limit', 'count': 10}]
+        }
+        errors = validate_pipelines(query_json)
+        assert len(errors) == 0
+
+    def test_valid_cte_pipeline(self):
+        """Test valid CTE pattern has no errors."""
+        query_json = [
+            {'name': 'active_users', 'from': {'table': 'users'}, 'transforms': []},
+            {'name': None, 'from': {'table': 'active_users'}, 'transforms': []}
+        ]
+        errors = validate_pipelines(query_json)
+        assert len(errors) == 0
+
+    def test_missing_from_table(self):
+        """Test validation catches missing FROM table."""
+        query_json = [
+            {'name': None, 'from': {'table': ''}, 'transforms': []}
+        ]
+        errors = validate_pipelines(query_json)
+        assert any('Missing FROM table' in e for e in errors)
+
+    def test_invalid_pipeline_name(self):
+        """Test validation catches invalid pipeline names."""
+        query_json = [
+            {'name': 'invalid name', 'from': {'table': 'users'}, 'transforms': []},
+            {'name': None, 'from': {'table': 'invalid name'}, 'transforms': []}
+        ]
+        errors = validate_pipelines(query_json)
+        assert any('Invalid pipeline name' in e for e in errors)
+
+    def test_duplicate_pipeline_name(self):
+        """Test validation catches duplicate pipeline names."""
+        query_json = [
+            {'name': 'cte1', 'from': {'table': 'users'}, 'transforms': []},
+            {'name': 'cte1', 'from': {'table': 'orders'}, 'transforms': []},
+            {'name': None, 'from': {'table': 'cte1'}, 'transforms': []}
+        ]
+        errors = validate_pipelines(query_json)
+        assert any('Duplicate pipeline name' in e for e in errors)
+
+    def test_circular_reference_direct(self):
+        """Test validation catches direct circular reference."""
+        query_json = [
+            {'name': 'a', 'from': {'table': 'b'}, 'transforms': []},
+            {'name': 'b', 'from': {'table': 'a'}, 'transforms': []},
+            {'name': None, 'from': {'table': 'a'}, 'transforms': []}
+        ]
+        errors = validate_pipelines(query_json)
+        assert any('Circular reference' in e for e in errors)
+
+    def test_circular_reference_indirect(self):
+        """Test validation catches indirect circular reference."""
+        query_json = [
+            {'name': 'a', 'from': {'table': 'c'}, 'transforms': []},
+            {'name': 'b', 'from': {'table': 'a'}, 'transforms': []},
+            {'name': 'c', 'from': {'table': 'b'}, 'transforms': []},
+            {'name': None, 'from': {'table': 'a'}, 'transforms': []}
+        ]
+        errors = validate_pipelines(query_json)
+        assert any('Circular reference' in e for e in errors)
+
+    def test_set_operation_on_last_pipeline(self):
+        """Test validation warns about set_operation on last pipeline."""
+        query_json = [
+            {'name': None, 'from': {'table': 'users'}, 'transforms': [], 'set_operation': {'type': 'union', 'all': False}}
+        ]
+        errors = validate_pipelines(query_json)
+        assert any('set_operation should not be on the last pipeline' in e for e in errors)
+
+    def test_empty_pipelines(self):
+        """Test validation handles empty pipelines list."""
+        errors = validate_pipelines([])
+        assert any('No pipelines provided' in e for e in errors)

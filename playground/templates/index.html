@@ -38,6 +38,15 @@
                             <button id="json-view-btn" class="view-toggle-btn active" title="JSON Text View">{ }</button>
                             <button id="visual-view-btn" class="view-toggle-btn" title="Visual Block View">▦</button>
                         </div>
+                        <!-- Visual style toggle (blocky vs text) -->
+                        <div id="visual-style-toggle" class="visual-style-toggle" style="display: none;">
+                            <button id="blocky-style-btn" class="style-toggle-btn" title="Blocky UI Style">☐</button>
+                            <button id="text-style-btn" class="style-toggle-btn active" title="Text-like Style">≡</button>
+                        </div>
+                        <!-- Show columns toggle -->
+                        <div id="show-columns-toggle" class="show-columns-toggle" style="display: none;">
+                            <button id="show-columns-btn" class="columns-toggle-btn" title="Show output columns">⊞ cols</button>
+                        </div>
                     </div>
                     <button class="copy-btn" onclick="copyInput()" title="Copy">
                         <svg viewBox="0 0 16 16" fill="currentColor">
@@ -58,12 +67,8 @@
                         <div class="visual-editor">
                             <!-- FROM block (always visible) -->
                             <div class="block from-block">
-                                <div class="block-header">
-                                    <span class="block-icon">📁</span>
-                                    <span class="block-title">From</span>
-                                </div>
                                 <div class="block-body">
-                                    <input type="text" id="from-table" placeholder="table_name" class="input-field">
+                                    <span class="value-operator">from</span> <input type="text" id="from-table" placeholder="table_name" class="inline-input">
                                 </div>
                             </div>
 
@@ -73,9 +78,7 @@
                             </div>
 
                             <!-- Add step button -->
-                            <button id="add-step-btn" class="add-step-btn">
-                                <span>+ Add Step</span>
-                            </button>
+                            <button id="add-step-btn" class="add-step-btn">+ add step</button>
                         </div>
                     </div>
                 </div>
@@ -96,6 +99,20 @@
                         <select id="to-dialect">
                             <!-- TO_DIALECT_OPTIONS -->
                         </select>
+                        <!-- Visual mode toggle for output (shown only for visual-asql) -->
+                        <div id="output-visual-mode-toggle" class="visual-mode-toggle" style="display: none;">
+                            <button id="output-json-view-btn" class="view-toggle-btn active" title="JSON Text View">{ }</button>
+                            <button id="output-visual-view-btn" class="view-toggle-btn" title="Visual Block View">▦</button>
+                        </div>
+                        <!-- Visual style toggle for output (blocky vs text) -->
+                        <div id="output-visual-style-toggle" class="visual-style-toggle" style="display: none;">
+                            <button id="output-blocky-style-btn" class="style-toggle-btn" title="Blocky UI Style">☐</button>
+                            <button id="output-text-style-btn" class="style-toggle-btn active" title="Text-like Style">≡</button>
+                        </div>
+                        <!-- Show columns toggle for output -->
+                        <div id="output-show-columns-toggle" class="show-columns-toggle" style="display: none;">
+                            <button id="output-show-columns-btn" class="columns-toggle-btn" title="Show output columns">⊞ cols</button>
+                        </div>
                     </div>
                     <button class="copy-btn" onclick="copyOutput()" title="Copy">
                         <svg viewBox="0 0 16 16" fill="currentColor">
@@ -114,13 +131,10 @@
                     <div id="output-visual-editor-container" style="display: none;">
                         <div class="visual-editor visual-editor-readonly">
                             <div class="block from-block">
-                                <div class="block-header">
-                                    <span class="block-icon">📁</span>
-                                    <span class="block-title">From</span>
-                                </div>
                                 <div class="block-body">
-                                    <input type="text" id="output-from-table" placeholder="table_name" class="input-field" readonly>
+                                    <span class="value-operator">from</span> <span class="value-column" id="output-from-table-display"></span>
                                 </div>
+                                <input type="hidden" id="output-from-table">
                             </div>
                             <div id="output-transforms-container"></div>
                         </div>
