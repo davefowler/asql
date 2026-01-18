@@ -1,6 +1,5 @@
 """Tests for auto-qualification of conflicting column names in joins."""
 
-import pytest
 from asql import compile
 
 

@@ -14,10 +14,12 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from playground import strip_jinja_templates  # exported from playground package
-from asql.reverse_compiler import reverse_compile
-from asql.errors import ASQLCompilationError
-import re
+import re  # noqa: E402
+
+import sqlglot  # noqa: E402
+import asql.dialect  # noqa: F401, E402  # Register ASQL dialect with SQLGlot
+from asql.errors import ASQLCompilationError  # noqa: E402
+from playground import strip_jinja_templates  # noqa: E402  # exported from playground package
 
 
 def generate_fivetran_tests():
@@ -58,10 +60,10 @@ def generate_fivetran_tests():
                 continue
             
             # Try reverse compilation
-            asql = reverse_compile(cleaned, source_dialect='snowflake')
+            asql_result = sqlglot.transpile(cleaned, read='snowflake', write='asql')[0]
             
             # Verify ASQL is not empty
-            if not asql.strip():
+            if not asql_result.strip():
                 failed.append((sql_file.name, 'Generated empty ASQL'))
                 continue
             
@@ -109,9 +111,9 @@ This test file is auto-generated. Run scripts/generate_fivetran_tests.py to rege
 """
 
 import pytest
+import sqlglot
+import asql.dialect  # noqa: F401  # Register ASQL dialect with SQLGlot
 from playground import strip_jinja_templates  # exported from playground package
-from asql.reverse_compiler import reverse_compile
-from asql.errors import ASQLCompilationError
 from pathlib import Path
 
 REAL_EXAMPLES_DIR = Path(__file__).parent.parent / 'examples' / 'real'
@@ -139,8 +141,8 @@ def test_fivetran_example_compiles(filename):
     assert macro_count == 0, f"File {filename} still contains {macro_count} dbt macros"
     
     # Should compile to ASQL
-    asql = reverse_compile(cleaned, source_dialect='snowflake')
-    assert asql.strip(), f"File {filename} generated empty ASQL"
+    asql_result = sqlglot.transpile(cleaned, read='snowflake', write='asql')[0]
+    assert asql_result.strip(), f"File {filename} generated empty ASQL"
 ''')
         
         print(f"\n{'=' * 80}")

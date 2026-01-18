@@ -7,7 +7,6 @@ Tests the comment-related settings:
 These settings help users understand generated SQL and control comment behavior.
 """
 
-import pytest
 from asql import compile, CompileSettings
 
 

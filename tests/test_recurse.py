@@ -1,6 +1,5 @@
 """Tests for recursive query syntax."""
 
-import pytest
 from asql import compile
 
 

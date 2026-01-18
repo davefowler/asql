@@ -15,7 +15,7 @@ from sqlglot import exp
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from asql import compile as compile_asql
+from asql import compile as compile_asql  # noqa: E402
 
 
 def sql_to_asql(sql_content: str) -> Tuple[Optional[str], Optional[str]]:
@@ -327,8 +327,8 @@ def main():
             
             # Test compilation
             try:
-                compiled_sql = compile_asql(asql_content)
-                print(f"✅ Converted and compiles")
+                compile_asql(asql_content)
+                print("✅ Converted and compiles")
                 converted += 1
             except Exception as e:
                 print(f"⚠️  Converted but compilation failed: {e}")
@@ -338,13 +338,13 @@ def main():
             failed.append((sql_file.name, error))
     
     print(f"\n{'='*60}")
-    print(f"Summary:")
+    print("Summary:")
     print(f"  ✅ Converted: {converted}")
     print(f"  ⏭️  Skipped: {skipped}")
     print(f"  ❌ Failed: {len(failed)}")
     
     if failed:
-        print(f"\nFailed conversions:")
+        print("\nFailed conversions:")
         for filename, error in failed[:10]:  # Show first 10
             print(f"  - {filename}: {error}")
         if len(failed) > 10:

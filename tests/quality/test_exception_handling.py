@@ -11,10 +11,9 @@ import sqlglot
 from sqlglot import exp
 
 from asql.compiler.auto_alias import _get_function_name, _render_template
-from asql.reverse_compiler import reverse_compile, detect_dialect
 from asql.compiler.api import get_settings_from_query, compile as asql_compile
-from asql.config import ASQLConfig, CompileSettings
-from asql.errors import ASQLCompilationError, ASQLSyntaxError
+from asql.config import ASQLConfig
+from asql.errors import ASQLSyntaxError
 from pathlib import Path
 import tempfile
 
@@ -60,66 +59,37 @@ class TestGetFunctionNameErrorsSurface:
             _get_function_name(mock_func)
 
 
-class TestExpressionToAsqlErrorsSurface:
-    """Issue #4: _expression_to_asql should surface errors in function handling."""
+class TestTranspileToAsql:
+    """Test SQL to ASQL transpilation via sqlglot.transpile()."""
     
-    def test_malformed_function_in_reverse_compile(self):
-        """Errors in function expression handling should surface."""
-        # This tests that if sql_name() fails on an expression with sql_name attr,
-        # we get an error instead of silent fallback
-        with patch('asql.reverse_compiler._expression_to_asql') as mock:
-            mock.side_effect = RuntimeError("Simulated error in expression handling")
-            
-            # The error should propagate through reverse_compile
-            with pytest.raises((RuntimeError, ASQLCompilationError)):
-                reverse_compile("SELECT test_func() FROM table")
-
-
-class TestCTEParsingErrorsSurface:
-    """Issue #3: CTE parsing errors should surface, not be silently skipped."""
+    def test_transpile_simple_sql(self):
+        """Verify sqlglot.transpile works for SQL to ASQL."""
+        sql = "SELECT id, name FROM users WHERE active = true"
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        
+        assert "from users" in asql.lower()
+        assert "where" in asql.lower()
     
-    def test_cte_processing_works(self):
-        """Verify CTEs are properly processed (not silently skipped)."""
-        # Use a non-empty CTE (with WHERE clause) so it's not squashed
-        result = reverse_compile("""
+    def test_transpile_with_cte(self):
+        """Verify CTEs are properly converted to stash statements."""
+        sql = """
             WITH my_cte AS (SELECT id, name FROM users WHERE active = true)
             SELECT * FROM my_cte
-        """)
-        # If CTEs were silently skipped, we wouldn't see "stash as my_cte"
-        assert "stash as my_cte" in result
+        """
+        asql = sqlglot.transpile(sql, write="asql")[0]
+        # If CTEs are converted, we should see "stash as my_cte"
+        assert "stash as my_cte" in asql.lower()
     
-    def test_cte_attribute_error_surfaces(self):
-        """If CTE processing raises AttributeError, it should propagate."""
-        # Mock the _select_to_asql function to raise during CTE conversion
-        with patch('asql.reverse_compiler._select_to_asql', side_effect=AttributeError("CTE attr error")):
-            with pytest.raises((AttributeError, ASQLCompilationError)):
-                reverse_compile("""
-                    WITH my_cte AS (SELECT * FROM users)
-                    SELECT * FROM my_cte
-                """)
-
-
-class TestDetectDialectErrorsSurface:
-    """Issue #1: detect_dialect should only catch ParseError, not all exceptions."""
+    def test_transpile_invalid_sql_raises_error(self):
+        """Invalid SQL should raise ParseError."""
+        with pytest.raises(sqlglot.errors.ParseError):
+            sqlglot.transpile("SELECT FROM WHERE @@@ !!!", write="asql")
     
-    def test_non_parse_error_surfaces(self):
-        """Non-ParseError exceptions should propagate, not be swallowed."""
-        with patch('sqlglot.parse', side_effect=RuntimeError("Unexpected runtime error")):
-            with pytest.raises(RuntimeError, match="Unexpected runtime error"):
-                detect_dialect("SELECT * FROM users")
-    
-    def test_memory_error_surfaces(self):
-        """MemoryError should propagate, not be swallowed."""
-        with patch('sqlglot.parse', side_effect=MemoryError("Out of memory")):
-            with pytest.raises(MemoryError):
-                detect_dialect("SELECT * FROM users")
-    
-    def test_parse_error_still_handled(self):
-        """ParseError should still be caught (this is expected behavior)."""
-        # This should NOT raise - ParseError is expected during dialect detection
-        result = detect_dialect("THIS IS NOT VALID SQL AT ALL @@@ !!!")
-        # Should return None or a dialect, not raise
-        assert result is None or isinstance(result, str)
+    def test_transpile_empty_returns_empty_list(self):
+        """Empty SQL should return single empty string."""
+        result = sqlglot.transpile("", write="asql")
+        # SQLGlot returns [''] for empty input, not []
+        assert result == ['']
 
 
 class TestGetSettingsFromQueryErrorsSurface:
@@ -157,7 +127,6 @@ class TestJinja2Required:
         # If Jinja2 wasn't installed, importing auto_alias would fail
         from asql.compiler import auto_alias
         # Verify the import is at module level
-        import jinja2
         assert hasattr(auto_alias, 'Environment') or 'jinja2' in str(auto_alias.__dict__.get('_render_template', ''))
     
     def test_render_template_uses_jinja2(self):
@@ -225,35 +194,3 @@ class TestCompilationErrorsNotSwallowed:
         
         with pytest.raises(ASQLSyntaxError):
             asql_compile("   ")
-
-
-class TestFallbackRemovals:
-    """Tests for removed fallback patterns - verify errors are raised."""
-    
-    def test_unknown_function_shorthand_raises_error(self):
-        """Unknown function_shorthand style should raise ValueError."""
-        from asql.reverse_compiler import _format_function_shorthand
-        from asql.config import StyleConfig
-        
-        style = StyleConfig()
-        # Temporarily set an invalid shorthand
-        style.function_shorthand = "invalid_style"  # type: ignore
-        
-        with pytest.raises(ValueError, match="Unknown function_shorthand style"):
-            _format_function_shorthand("sum", "amount", style)
-    
-    def test_valid_function_shorthands_work(self):
-        """Valid function_shorthand styles should work."""
-        from asql.reverse_compiler import _format_function_shorthand
-        from asql.config import StyleConfig
-        
-        style = StyleConfig()
-        
-        style.function_shorthand = "parens"
-        assert _format_function_shorthand("sum", "amount", style) == "sum(amount)"
-        
-        style.function_shorthand = "underscore"
-        assert _format_function_shorthand("sum", "amount", style) == "sum_amount"
-        
-        style.function_shorthand = "space"
-        assert _format_function_shorthand("sum", "amount", style) == "sum amount"

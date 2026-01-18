@@ -1,7 +1,7 @@
 """ASQL Configuration System.
 
 This module provides the configuration system for ASQL:
-1. StyleConfig: Output style preferences (reverse_compile, normalize)
+1. StyleConfig: Output style preferences (transpile to ASQL)
 2. CompileSettings: Compilation behavior settings (affects generated SQL)
 3. ASQLConfig: Complete configuration combining both
 
@@ -159,9 +159,8 @@ DEFAULT_COMPILE_SETTINGS = CompileSettings()
 class StyleConfig:
     """Style configuration options for ASQL output.
     
-    These settings control how ASQL is written when:
-    - Converting SQL to ASQL (reverse_compile)
-    - Normalizing ASQL (normalize)
+    These settings control how ASQL is written when converting SQL to ASQL
+    via sqlglot.transpile(..., write='asql').
     
     Input parsing always accepts all valid syntaxes regardless of these settings.
     """
@@ -258,7 +257,7 @@ class ASQLConfig:
     # Target SQL dialect for compile()
     dialect: str = "snowflake"
     
-    # Style configuration (affects ASQL output in reverse_compile)
+    # Style configuration (affects ASQL output in transpile to ASQL)
     style: StyleConfig = field(default_factory=StyleConfig)
     
     # Compile settings (affects SQL generation)

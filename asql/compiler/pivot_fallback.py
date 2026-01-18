@@ -26,9 +26,6 @@ NATIVE_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake", "bigquery"})
 # BigQuery does NOT support dynamic PIVOT - it requires explicit values
 DYNAMIC_PIVOT_DIALECTS = frozenset({"duckdb", "snowflake"})
 
-# Native PIVOT dialects that require explicit values
-STATIC_ONLY_PIVOT_DIALECTS = frozenset({"bigquery"})
-
 
 def _get_pivot_values_from_schema(
     pivot_col: str,
@@ -93,6 +90,7 @@ def _transform_pivot_to_case_when(
     
     # Build CASE/WHEN expressions for each pivot value
     new_expressions: List[exp.Expression] = []
+    seen_names: set[str] = set()  # Track column names to avoid duplicates
     
     for val in pivot_values:
         # Get the value as string for column alias
@@ -103,6 +101,14 @@ def _transform_pivot_to_case_when(
         
         # Sanitize the value to make it a valid column name
         col_name = re.sub(r'[^a-zA-Z0-9_]', '_', val_str)
+        
+        # Ensure uniqueness (e.g., "a-b" and "a b" both become "a_b")
+        base_name = col_name
+        counter = 1
+        while col_name in seen_names:
+            col_name = f"{base_name}_{counter}"
+            counter += 1
+        seen_names.add(col_name)
         
         for agg_expr in agg_exprs:
             # Handle aliased aggregates (e.g., SUM(amount) AS sum_amount from auto_aliasing)

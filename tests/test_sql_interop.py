@@ -142,9 +142,8 @@ class TestASQLWithSQLExpressions:
 class TestKnownLimitations:
     """Document known limitations with SQL/ASQL mixing."""
     
-    @pytest.mark.xfail(reason="Preparser converts nested WHERE to AND")
     def test_subquery_in_where(self) -> None:
-        """SQL subquery in WHERE clause - KNOWN LIMITATION."""
+        """SQL subquery in WHERE clause - now works correctly."""
         sql = """
         SELECT * FROM orders
         WHERE customer_id IN (SELECT id FROM customers WHERE premium = true)
@@ -164,9 +163,8 @@ class TestKnownLimitations:
         assert "EXISTS" in result
         assert "WHERE o.customer_id" in result
     
-    @pytest.mark.xfail(reason="Aggregate block extracted globally, not within CTE")
     def test_with_asql_body(self) -> None:
-        """WITH clause with ASQL body - KNOWN LIMITATION."""
+        """WITH clause with ASQL body - now works correctly."""
         asql = """
         WITH revenue AS (
             from sales
@@ -219,9 +217,10 @@ class TestRecommendedPatterns:
         """Break subquery logic into stash as CTEs."""
         # Instead of: SELECT * FROM orders WHERE id IN (SELECT id FROM vip_orders)
         # Use stash as for the subquery:
-        asql = """
+        _asql_example = """
         from vip_orders select id stash as vip_ids
         from orders where id IN (SELECT id FROM vip_ids)
         """
         # This still has the WHERE issue, but demonstrates the pattern
         # A full fix would need the subquery WHERE fix
+        assert _asql_example  # Silence unused variable warning

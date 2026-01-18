@@ -1,6 +1,12 @@
 """Reverse translation examples - SQL to ASQL."""
 
-from asql.reverse_compiler import reverse_compile
+import sqlglot
+import asql.dialect  # noqa: F401  # Register ASQL dialect with SQLGlot
+
+
+def reverse_compile(sql: str, source_dialect: str) -> str:
+    """Convert SQL to ASQL using sqlglot.transpile."""
+    return sqlglot.transpile(sql, read=source_dialect, write='asql')[0]
 
 
 def example_bigquery_cte():

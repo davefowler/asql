@@ -2,12 +2,11 @@
 
 import pytest
 from asql import compile
-from asql.errors import ASQLSyntaxError, ASQLCompilationError
+from asql.errors import ASQLSyntaxError
 from tests.fixtures import (
     VALID_ASQL_QUERIES,
     INVALID_ASQL_QUERIES,
     EDGE_CASES,
-    EXAMPLE_SCHEMAS,
 )
 
 

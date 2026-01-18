@@ -1,10 +1,7 @@
 """Tests for auto-aliasing functionality."""
 
-import pytest
 from asql import compile
 from asql.config import CompileSettings, ASQLConfig
-from asql.compiler.auto_alias import apply_auto_aliasing
-from sqlglot import parse_one
 
 
 class TestPhase1PrefixBased:
@@ -140,8 +137,8 @@ class TestEdgeCases:
         """Test complex expressions (no column name) don't get auto-alias."""
         settings = CompileSettings()
         settings.alias_prefixes["sum"] = "sum"
-        asql = "from orders select sum(amount * quantity)"
-        sql = compile(asql, settings=settings)
+        asql_query = "from orders select sum(amount * quantity)"
+        compile(asql_query, settings=settings)
         # Complex expression might not get auto-alias (depends on implementation)
         # This is acceptable - user should provide explicit alias
     

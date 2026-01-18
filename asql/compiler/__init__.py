@@ -5,7 +5,6 @@ This package contains the ASQL→SQL compilation pipeline and related utilities.
 Public API:
 - compile
 - compile_to_ast
-- get_preparsed
 - get_settings_from_query
 
 Implementation submodules:
@@ -15,7 +14,7 @@ Implementation submodules:
 - pivot_fallback: PIVOT to CASE/WHEN for non-native dialects
 """
 
-from asql.compiler.api import compile, compile_to_ast, get_preparsed, get_settings_from_query
+from asql.compiler.api import compile, compile_to_ast, get_settings_from_query
 from asql.compiler.inline_settings import extract_inline_settings, extract_dialect_from_comment
 from asql.compiler.explode_fallback import transform_explode_for_dialect
 from asql.compiler.pivot_fallback import transform_pivot_for_dialect
@@ -43,7 +42,6 @@ from asql.compiler.auto_spine import (
 __all__ = [
     "compile",
     "compile_to_ast",
-    "get_preparsed",
     "get_settings_from_query",
     "extract_inline_settings",
     "extract_dialect_from_comment",

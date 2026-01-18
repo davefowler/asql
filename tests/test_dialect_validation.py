@@ -225,3 +225,26 @@ class TestErrorMessages:
             slice_warnings = [warning for warning in dialect_warnings
                               if 'slice' in str(warning.message).lower() or '#77' in str(warning.message)]
             assert len(slice_warnings) == 0, "Slice syntax should not generate warnings after fix"
+
+
+class TestDialectSchemaSync:
+    """Test that ui-metadata.json stays in sync with parser definitions.
+    
+    NOTE: Main sync tests are in tests/test_schema_sync.py.
+    This is a simple check that the schema file exists and is valid.
+    """
+
+    def test_ui_metadata_exists_and_valid(self) -> None:
+        """ui-metadata.json should exist and be valid JSON."""
+        import json
+        from pathlib import Path
+        
+        schema_path = Path(__file__).parent.parent / "asql" / "ui-metadata.json"
+        assert schema_path.exists(), "asql/ui-metadata.json should exist"
+        
+        with open(schema_path) as f:
+            schema = json.load(f)
+        
+        assert "transforms" in schema
+        assert "operators" in schema
+        assert "joins" in schema

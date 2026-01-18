@@ -5,7 +5,6 @@ using SQLGlot's parsing capabilities, without requiring database connections.
 """
 
 import pytest
-import os
 from pathlib import Path
 from typing import List
 
@@ -14,7 +13,6 @@ from asql.testing.syntax_validator import (
     SUPPORTED_DIALECTS,
     DIALECT_LIMITATIONS,
     validate_syntax,
-    is_feature_supported,
 )
 
 
@@ -216,15 +214,17 @@ class TestExpressionSyntax:
 
 
 class TestQualifySyntax:
-    """Test QUALIFY clause (dialect-specific support)."""
+    """Test QUALIFY clause (dialect-specific support).
+    
+    Note: SQLGlot transpiles QUALIFY to a subquery pattern for dialects that
+    don't support it natively (MySQL, Trino, Postgres, etc.), so QUALIFY
+    actually works across all dialects.
+    """
     
     @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)
     @pytest.mark.parametrize("asql_query", QUALIFY_QUERIES)
     def test_qualify_queries(self, dialect: str, asql_query: str) -> None:
-        """QUALIFY queries - may be unsupported in some dialects."""
-        if not is_feature_supported(dialect, 'qualify_clause'):
-            pytest.xfail(f"{dialect} doesn't support QUALIFY clause natively")
-        
+        """QUALIFY queries work for all dialects (SQLGlot transpiles to subquery where needed)."""
         sql = compile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
         assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"

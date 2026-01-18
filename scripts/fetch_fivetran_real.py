@@ -34,7 +34,7 @@ def fetch_github_api(path: str) -> Optional[Dict]:
         if result.returncode == 0:
             return json.loads(result.stdout)
         return None
-    except:
+    except Exception:
         return None
 
 
@@ -74,7 +74,7 @@ def fetch_sql_content(repo: str, file_path: str) -> Optional[str]:
         if result.returncode == 0 and result.stdout and not result.stdout.startswith("404"):
             return result.stdout
         return None
-    except:
+    except Exception:
         return None
 
 
@@ -124,11 +124,11 @@ def main():
 """
                 
                 filepath.write_text(header + sql_content)
-                print(f"✅ Saved")
+                print("✅ Saved")
                 total_fetched += 1
                 time.sleep(0.3)
             else:
-                print(f"❌ Failed or empty")
+                print("❌ Failed or empty")
             time.sleep(0.2)
     
     print(f"\n{'='*60}")

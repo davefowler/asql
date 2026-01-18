@@ -1,0 +1,792 @@
+/* Visual ASQL Editor - Code-like Pipeline Styles */
+/* Uses same colors as CodeMirror ASQL highlighting */
+
+:root {
+  --asql-red: #c53030;
+  --asql-string: #137333;
+  --asql-number: #1967d2;
+  --asql-variable: #333;
+}
+
+/* Container */
+.visual-editor {
+  padding: 12px;
+  overflow-y: auto;
+  height: 100%;
+  background: #fafafa;
+  font-family: 'Monaco', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.visual-editor-readonly {
+  background: #f8f9fa;
+}
+
+/* Pipeline Blocks - compact, code-like, no left border */
+.block {
+  background: transparent;
+  margin-bottom: 2px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.block:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* No separate header - inline keyword */
+.block-header {
+  display: none;
+}
+
+/* Block body is the main content */
+.block-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* FROM block - same as others */
+.from-block {
+  background: transparent;
+}
+
+.from-block:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* Inline input fields */
+.inline-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--asql-variable);
+  min-width: 80px;
+  outline: none;
+}
+
+.inline-input:focus {
+  border-bottom-color: var(--asql-red);
+  background: rgba(197, 48, 48, 0.03);
+}
+
+.inline-input::placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+/* Syntax highlighting - match CodeMirror exactly */
+
+/* Keywords (from, where, select, etc.) - red, bold */
+.value-operator {
+  color: var(--asql-red);
+  font-weight: 600;
+}
+
+/* String values - green */
+.value-string {
+  color: var(--asql-string);
+}
+
+/* Column/variable names - dark gray */
+.value-column {
+  color: var(--asql-variable);
+}
+
+/* Numbers - blue */
+.value-number {
+  color: var(--asql-number);
+}
+
+/* Delete button - subtle */
+.block-delete {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.block:hover .block-delete {
+  opacity: 1;
+}
+
+.block-delete:hover {
+  color: #e53935;
+}
+
+/* Fields - compact */
+.field {
+  margin: 0;
+  display: inline;
+}
+
+.field label {
+  display: none;
+}
+
+/* Input Fields - inline style */
+.input-field {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: inherit;
+  color: #067d17;
+  outline: none;
+}
+
+.input-field:focus {
+  border-bottom-color: #4CAF50;
+}
+
+/* Expression display - inline */
+.expression-display {
+  display: inline;
+}
+
+/* List items inline */
+.list-items {
+  display: inline;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+.list-item {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  background: none;
+}
+
+.list-item::after {
+  content: ', ';
+  color: #666;
+}
+
+.list-item:last-child::after {
+  content: '';
+}
+
+/* Add Step Button - compact */
+.add-step-btn {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px dashed #aaa;
+  border-radius: 4px;
+  color: #666;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.add-step-btn:hover {
+  background: #f0f0f0;
+  border-color: #666;
+  color: #333;
+}
+
+/* JSON-like condition display */
+.condition-display {
+  color: #333;
+  font-size: 13px;
+}
+
+.condition-display .key {
+  color: #871094;
+}
+
+.condition-display .string {
+  color: #067d17;
+}
+
+.condition-display .operator {
+  color: #0033b3;
+}
+
+/* Operations Grid (Modal) */
+.operations-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.operation-card {
+  padding: 12px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.operation-card:hover {
+  border-color: #4CAF50;
+  background: #f8fff8;
+}
+
+.operation-label {
+  font-weight: 600;
+  color: #0033b3;
+  font-size: 13px;
+}
+
+.operation-description {
+  font-size: 11px;
+  color: #666;
+  margin-top: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Modal Overrides */
+#add-step-modal .modal-content {
+  max-width: 500px;
+  max-height: 70vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#add-step-modal .modal-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+#add-step-modal .modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+#add-step-modal .modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #999;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+#add-step-modal .modal-close:hover {
+  color: #333;
+}
+
+#add-step-modal .modal-body {
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Scrollbar styling */
+.visual-editor::-webkit-scrollbar {
+  width: 6px;
+}
+
+.visual-editor::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.visual-editor::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.visual-editor::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+/* Pipeline blocks (for multiple pipelines/CTEs) */
+.pipeline-block {
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #ddd;
+}
+
+.pipeline-block:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.pipeline-name {
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  font-weight: 600;
+  color: var(--asql-variable);
+}
+
+/* Set operations (UNION, INTERSECT, EXCEPT) */
+.set-operation {
+  text-align: center;
+  padding: 8px;
+  margin: 8px 0;
+  font-weight: 600;
+  color: var(--asql-red);
+  text-transform: uppercase;
+}
+
+/* Input pipeline editing styles */
+.input-pipeline {
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: #fafafa;
+}
+
+.pipeline-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #ddd;
+}
+
+.pipeline-name-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.pipeline-name-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.pipeline-name-input:focus {
+  outline: none;
+  border-color: var(--asql-red);
+}
+
+.pipeline-remove-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.pipeline-remove-btn:hover {
+  color: #e53935;
+}
+
+.pipeline-from-input {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-family: monospace;
+  margin-left: 8px;
+}
+
+.pipeline-from-input:focus {
+  outline: none;
+  border-color: var(--asql-red);
+}
+
+.add-step-btn-inline {
+  display: block;
+  width: 100%;
+  padding: 6px;
+  margin-top: 8px;
+  background: transparent;
+  border: 1px dashed #ccc;
+  border-radius: 3px;
+  color: #666;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.add-step-btn-inline:hover {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+/* Set operation selector between pipelines */
+.set-operation-selector {
+  text-align: center;
+  padding: 4px;
+  margin: 4px 0;
+}
+
+.set-op-select {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-weight: 600;
+  color: var(--asql-red);
+  background: white;
+  cursor: pointer;
+}
+
+.set-op-select:focus {
+  outline: none;
+  border-color: var(--asql-red);
+}
+
+/* Add pipeline button */
+.add-pipeline-container {
+  text-align: center;
+  padding: 8px;
+  margin-top: 8px;
+}
+
+.add-pipeline-btn {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px dashed #ccc;
+  border-radius: 4px;
+  color: #666;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.add-pipeline-btn:hover {
+  background: #f0f0f0;
+  border-color: #999;
+}
+
+/* ============================================================================
+   Visual Style Toggle
+   ============================================================================ */
+
+.visual-style-toggle {
+  display: inline-flex;
+  margin-left: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.style-toggle-btn {
+  padding: 4px 8px;
+  border: none;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+  transition: all 0.15s;
+}
+
+.style-toggle-btn:hover {
+  background: #e8e8e8;
+}
+
+.style-toggle-btn.active {
+  background: var(--asql-red);
+  color: white;
+}
+
+.style-toggle-btn:first-child {
+  border-right: 1px solid #ddd;
+}
+
+/* ============================================================================
+   BLOCKY STYLE - Traditional UI with boxes
+   ============================================================================ */
+
+.visual-style-blocky .visual-editor {
+  background: #f0f4f8;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Blocky blocks have borders and backgrounds */
+.visual-style-blocky .block {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  padding: 0;
+  display: block;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.visual-style-blocky .block:hover {
+  border-color: #bbb;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+/* Show headers in blocky mode */
+.visual-style-blocky .block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e0e0e0;
+  border-radius: 6px 6px 0 0;
+}
+
+.visual-style-blocky .block-title {
+  font-weight: 600;
+  color: var(--asql-red);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.visual-style-blocky .block-body {
+  padding: 12px;
+}
+
+/* FROM block special styling */
+.visual-style-blocky .from-block {
+  background: linear-gradient(135deg, #fff 0%, #f0f7ff 100%);
+  border-left: 4px solid var(--asql-red);
+}
+
+.visual-style-blocky .from-block .block-body::before {
+  content: 'FROM';
+  display: block;
+  font-weight: 600;
+  color: var(--asql-red);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+/* Blocky inputs have full borders */
+.visual-style-blocky .inline-input,
+.visual-style-blocky .pipeline-from-input,
+.visual-style-blocky .pipeline-name-input {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 8px 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.visual-style-blocky .inline-input:focus,
+.visual-style-blocky .pipeline-from-input:focus,
+.visual-style-blocky .pipeline-name-input:focus {
+  background: white;
+  border-color: var(--asql-red);
+  box-shadow: 0 0 0 3px rgba(197, 48, 48, 0.1);
+}
+
+/* Blocky add step button */
+.visual-style-blocky .add-step-btn,
+.visual-style-blocky .add-step-btn-inline {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-top: 12px;
+  background: white;
+  border: 2px dashed #ccc;
+  border-radius: 6px;
+  color: #666;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.visual-style-blocky .add-step-btn:hover,
+.visual-style-blocky .add-step-btn-inline:hover {
+  background: #f8f9fa;
+  border-color: var(--asql-red);
+  color: var(--asql-red);
+}
+
+/* Blocky pipeline blocks */
+.visual-style-blocky .input-pipeline {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.visual-style-blocky .pipeline-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e8e8e8;
+}
+
+.visual-style-blocky .pipeline-name-label {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+/* Blocky set operation */
+.visual-style-blocky .set-operation-selector {
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.visual-style-blocky .set-op-select {
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 2px solid var(--asql-red);
+  background: white;
+}
+
+/* Blocky output visual */
+.visual-style-blocky .pipeline-block {
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.visual-style-blocky .pipeline-name {
+  font-size: 14px;
+  padding: 8px 12px;
+  background: #f0f4f8;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.visual-style-blocky .set-operation {
+  padding: 12px;
+  margin: 16px 0;
+  background: #fff8f8;
+  border-radius: 6px;
+  border: 1px solid #fdd;
+}
+
+/* Blocky delete button */
+.visual-style-blocky .block-delete,
+.visual-style-blocky .pipeline-remove-btn {
+  background: #f8f8f8;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 8px;
+  opacity: 1;
+}
+
+.visual-style-blocky .block-delete:hover,
+.visual-style-blocky .pipeline-remove-btn:hover {
+  background: #fee;
+  border-color: #e53935;
+}
+
+/* ============================================================================
+   TEXT STYLE - Code-like, minimal (default styles above)
+   ============================================================================ */
+
+/* Text style is the default, so these are mostly just ensuring the defaults */
+.visual-style-text .block-header {
+  display: none;
+}
+
+.visual-style-text .block {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* ============================================================================
+   Show Columns Toggle
+   ============================================================================ */
+
+.show-columns-toggle {
+  display: inline-flex;
+  margin-left: 8px;
+}
+
+.columns-toggle-btn {
+  padding: 4px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f5f5f5;
+  cursor: pointer;
+  font-size: 12px;
+  color: #666;
+  transition: all 0.15s;
+}
+
+.columns-toggle-btn:hover {
+  background: #e8e8e8;
+}
+
+.columns-toggle-btn.active {
+  background: var(--asql-number);
+  color: white;
+  border-color: var(--asql-number);
+}
+
+/* ============================================================================
+   Output Columns Display
+   ============================================================================ */
+
+.output-columns {
+  margin: 4px 0 8px 24px;
+  overflow-x: auto;
+}
+
+.output-columns table {
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+}
+
+.output-columns th {
+  padding: 3px 8px;
+  background: #f0f4f8;
+  border: 1px solid #ddd;
+  font-weight: 500;
+  color: var(--asql-variable);
+  white-space: nowrap;
+}
+
+.output-columns th .col-type {
+  font-weight: 400;
+  color: #888;
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+/* Hidden by default */
+.output-columns {
+  display: none;
+}
+
+.show-columns .output-columns {
+  display: block;
+}
+
+/* Blocky style columns */
+.visual-style-blocky .output-columns {
+  margin-left: 12px;
+  margin-top: 8px;
+}
+
+.visual-style-blocky .output-columns th {
+  background: #e8f0f8;
+  border-color: #c8d8e8;
+}

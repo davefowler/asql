@@ -65,8 +65,9 @@ def _infer_join_key(cohort_table: str, activity_table: str, schema: Optional["Sc
         else:
             return condition.right_column
     
-    # Ultimate fallback
-    singular = cohort_table.rstrip('s')
+    # Ultimate fallback - use shared singularization
+    from asql.compiler.join_inference import _singularize
+    singular = _singularize(cohort_table)
     return f"{singular}_id"
 
 

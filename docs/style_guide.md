@@ -40,7 +40,7 @@ from orders
 
 ## Part 1: Configurable Style Settings
 
-These settings are controlled by `StyleConfig` in `asql/config.py` and affect output formatting (via `normalize()` and `reverse_compile()`).
+These settings are controlled by `StyleConfig` in `asql/config.py` and affect output formatting when generating ASQL via `sqlglot.transpile(..., write='asql')`.
 
 ### Equality Operator
 
@@ -730,7 +730,7 @@ This style guide applies to **documentation and examples**. In practice:
 
 ## Implementation Notes
 
-- Style settings are enforced via `normalize()` function
+- Style settings are enforced via `sqlglot.transpile(..., write='asql')` output
 - Documentation examples should follow this guide
 - Users can override via configuration
 - All syntaxes are accepted on input (this guide is about output/preference)

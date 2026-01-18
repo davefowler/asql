@@ -1,7 +1,6 @@
 """Test fixtures and example datasets for ASQL tests."""
 
 import sqlglot
-from sqlglot import exp
 from typing import Optional
 
 # Example table schemas and sample data descriptions

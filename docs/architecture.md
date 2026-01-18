@@ -91,24 +91,47 @@ The `compile()` function is the main entry point for converting ASQL to SQL.
 - Supports all SQLGlot dialects (PostgreSQL, MySQL, BigQuery, Snowflake, etc.)
 - Dialect-specific SQL generation handled automatically by SQLGlot
 
-### 4. Dialect Definition (`asql/dialect.py`)
+### 4. Dialect Definition (`asql/dialect/`)
 
-The `ASQLDialect` class extends SQLGlot's `Dialect` but is currently minimal.
+The ASQL dialect is a full SQLGlot dialect implementation in the `asql/dialect/` package:
 
-**Current Implementation:**
-- Defines keyword mappings (IF → WHERE, PROJECT → SELECT, SORT → ORDER BY, TAKE → LIMIT)
-- Mostly used for keyword recognition, not full parsing
-- The actual parsing is handled by the custom `ASQLParser`
+**Components:**
+- `tokenizer.py`: Token mappings (`|` → PIPE, `#` → COUNT shorthand, etc.)
+- `parser.py`: Full ASQL syntax parsing with TRANSFORM_PARSERS pattern
+- `generator.py`: AST to ASQL string output
+- `dialect.py`: Dialect class registration with SQLGlot
 
-**Note:** The system primarily uses a custom parser rather than fully leveraging SQLGlot's dialect system, as ASQL's syntax is too different from SQL for direct SQLGlot parsing.
+**Key Features:**
+- FROM-first syntax parsing
+- Pipeline operators (`|`, transform chaining)
+- ASQL-specific operators (`&` for joins, `#` for COUNT, `@` for dates)
+- Proper CTE wrapping for pipeline semantics
 
-### 5. Reverse Compiler (`asql/reverse_compiler.py`)
+**Integration:**
+The dialect registers with SQLGlot, enabling standard `sqlglot.transpile()` for both directions:
+```python
+sqlglot.transpile(asql_query, read='asql', write='postgres')  # ASQL → SQL
+sqlglot.transpile(sql_query, write='asql')  # SQL → ASQL
+```
 
-The reverse compiler converts SQL back to ASQL syntax.
+### 5. Generator (`asql/dialect/generator.py`)
 
-**Key Functions:**
-- `reverse_compile()`: Converts SQL to ASQL
-- `detect_dialect()`: Attempts to detect the SQL dialect
+The ASQL Generator converts SQLGlot AST back to ASQL syntax. This integrates with SQLGlot's standard `transpile()` API.
+
+**Key Methods:**
+- `select_sql()`: Generates FROM-first ASQL output
+- `join_sql()`: Converts SQL joins to ASQL symbols (`&`, `&?`, etc.)
+- `with_sql()`: Converts CTEs to `stash as` syntax
+- `cast_sql()`: Generates `::` cast syntax
+
+**Usage:**
+```python
+import sqlglot
+import asql  # Registers the ASQL dialect
+
+# Convert SQL to ASQL
+asql_query = sqlglot.transpile(sql, write='asql')[0]
+```
 
 **Use Cases:**
 - Converting existing SQL queries to ASQL
@@ -172,18 +195,24 @@ ASQL supports `with variable = query` syntax:
 
 ```
 asql/
-├── __init__.py          # Public API (compile, reverse_compile, etc.)
-├── parser.py            # ASQLParser - custom parser for ASQL syntax
-├── compiler.py          # Main compile() function
-├── pipeline.py          # PipelineStep and CTE generation
-├── dialect.py           # ASQLDialect (minimal, mostly keyword mappings)
-├── reverse_compiler.py   # SQL to ASQL conversion
+├── __init__.py          # Public API (compile, etc.)
+├── dialect/             # SQLGlot dialect implementation
+│   ├── __init__.py      # Package exports
+│   ├── tokenizer.py     # ASQLTokenizer - token mappings
+│   ├── parser.py        # ASQLParser - ASQL syntax parsing
+│   ├── generator.py     # ASQLGenerator - AST to ASQL output
+│   └── dialect.py       # ASQL dialect registration
+├── compiler/            # Compilation pipeline
+│   ├── api.py           # Main compile() function
+│   └── ...              # Transform modules
+├── functions.py         # Function registry
+├── config.py            # Configuration classes
 └── errors.py            # Error classes
 
 tests/
 ├── test_parser.py       # Parser tests
-├── test_compiler.py    # Compiler tests
-├── test_pipeline_cte.py # Pipeline/CTE tests
+├── test_compiler.py     # Compiler tests
+├── test_reverse_translation.py  # SQL to ASQL tests
 ├── test_basic.py        # Basic query tests
 ├── test_join.py         # Join tests
 └── ...                  # Additional test files

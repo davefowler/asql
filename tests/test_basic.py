@@ -1,6 +1,5 @@
 """Basic tests to verify setup."""
 
-import pytest
 from asql import compile
 from tests.fixtures import assert_valid_sql, assert_sql_contains
 

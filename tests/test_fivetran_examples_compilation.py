@@ -4,9 +4,8 @@ This test file is auto-generated. Run scripts/generate_fivetran_tests.py to rege
 """
 
 import pytest
+import sqlglot
 from playground import strip_jinja_templates  # exported from playground package
-from asql.reverse_compiler import reverse_compile
-from asql.errors import ASQLCompilationError
 from pathlib import Path
 
 REAL_EXAMPLES_DIR = Path(__file__).parent.parent / 'examples' / 'real'
@@ -90,6 +89,6 @@ def test_fivetran_example_compiles(filename):
     macro_count = len(re.findall(r'\{\{[^}]+\}\}', cleaned)) + len(re.findall(r'\{%[^%]+%\}', cleaned))
     assert macro_count == 0, f"File {filename} still contains {macro_count} dbt macros"
     
-    # Should compile to ASQL
-    asql = reverse_compile(cleaned, source_dialect='snowflake')
+    # Should compile to ASQL using sqlglot.transpile
+    asql = sqlglot.transpile(cleaned, read='snowflake', write='asql')[0]
     assert asql.strip(), f"File {filename} generated empty ASQL"

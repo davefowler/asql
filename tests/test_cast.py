@@ -1,10 +1,8 @@
 """Tests for PostgreSQL-style casting (::) in ASQL."""
 
-import pytest
 import sqlglot
 from sqlglot import exp
 from asql import compile
-from asql.reverse_compiler import reverse_compile
 from tests.fixtures import assert_valid_sql, assert_sql_contains
 
 
@@ -91,12 +89,12 @@ class TestCastOperator:
 
 
 class TestCastReverse:
-    """Test reverse compilation of CAST(... AS ...) to ::."""
+    """Test reverse compilation of CAST(... AS ...) to :: using sqlglot.transpile()."""
     
     def test_cast_to_double_colon_timestamp(self) -> None:
         """Test CAST(... AS TIMESTAMP) converts to ::TIMESTAMP."""
         sql = "SELECT CAST(_fivetran_synced AS TIMESTAMP) AS _fivetran_synced FROM fields"
-        asql = reverse_compile(sql)
+        asql = sqlglot.transpile(sql, write="asql")[0]
         
         assert "::" in asql, f"Expected :: operator in reverse-compiled ASQL: {asql}"
         assert "_fivetran_synced" in asql.lower()
@@ -110,7 +108,7 @@ class TestCastReverse:
     def test_cast_to_double_colon_date(self) -> None:
         """Test CAST(... AS DATE) converts to ::DATE."""
         sql = "SELECT CAST(created_at AS DATE) AS date_day FROM events"
-        asql = reverse_compile(sql)
+        asql = sqlglot.transpile(sql, write="asql")[0]
         assert "::" in asql
         assert "created_at" in asql.lower()
         assert "DATE" in asql.upper()
@@ -118,7 +116,7 @@ class TestCastReverse:
     def test_cast_to_double_colon_int(self) -> None:
         """Test CAST(... AS INT) converts to ::INT."""
         sql = "SELECT CAST(price AS INT) AS price_int FROM products"
-        asql = reverse_compile(sql)
+        asql = sqlglot.transpile(sql, write="asql")[0]
         assert "::" in asql
         assert "price" in asql.lower()
         assert "INT" in asql.upper()
@@ -126,7 +124,7 @@ class TestCastReverse:
     def test_cast_to_double_colon_varchar(self) -> None:
         """Test CAST(... AS VARCHAR) converts to ::VARCHAR."""
         sql = "SELECT CAST(id AS VARCHAR) AS user_id_str FROM users"
-        asql = reverse_compile(sql)
+        asql = sqlglot.transpile(sql, write="asql")[0]
         assert "::" in asql
         assert "id" in asql.lower()
         assert "VARCHAR" in asql.upper()
@@ -134,7 +132,7 @@ class TestCastReverse:
     def test_cast_in_where_clause_reverse(self) -> None:
         """Test CAST in WHERE clause converts correctly."""
         sql = "SELECT * FROM orders WHERE CAST(created_at AS DATE) = '2024-01-01'"
-        asql = reverse_compile(sql)
+        asql = sqlglot.transpile(sql, write="asql")[0]
         
         assert "::" in asql, f"Expected :: operator in reverse-compiled ASQL: {asql}"
         assert "created_at" in asql.lower()
@@ -149,7 +147,7 @@ class TestCastReverse:
     def test_cast_with_alias_reverse(self) -> None:
         """Test CAST with alias converts correctly."""
         sql = "SELECT CAST(amount AS FLOAT) AS amount_float FROM transactions"
-        asql = reverse_compile(sql)
+        asql = sqlglot.transpile(sql, write="asql")[0]
         assert "::" in asql
         assert "amount" in asql.lower()
         assert "FLOAT" in asql.upper()

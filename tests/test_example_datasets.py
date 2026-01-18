@@ -1,6 +1,5 @@
 """Test ASQL with example datasets and real-world scenarios."""
 
-import pytest
 from asql import compile
 
 
