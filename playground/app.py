@@ -651,6 +651,14 @@ async def parse_to_visual(request: Request):
         if not asql_text:
             return {"success": False, "error": "No ASQL query provided"}
 
+        # Check for CTEs/stash which aren't supported in visual mode
+        asql_lower = asql_text.lower()
+        if "stash" in asql_lower or asql_lower.startswith("with "):
+            return {
+                "success": False,
+                "error": "Visual mode doesn't support CTEs (WITH/stash). Try a simpler query starting with FROM."
+            }
+
         # Convert ASQL to JSON using visual_asql dialect
         # Now supports CTEs, set operations, and multiple queries
         json_str = sqlglot.transpile(asql_text, read="asql", write="visual_asql")[0]
@@ -660,7 +668,14 @@ async def parse_to_visual(request: Request):
     except ASQLSyntaxError as e:
         return {"success": False, "error": f"Syntax error: {str(e)}"}
     except Exception as e:
-        return {"success": False, "error": f"Parse error: {str(e)}"}
+        error_msg = str(e)
+        # Provide friendlier error for complex queries
+        if "stash" in error_msg.lower() or "cte" in error_msg.lower():
+            return {
+                "success": False,
+                "error": "Visual mode doesn't support CTEs. Try a simpler query."
+            }
+        return {"success": False, "error": f"Parse error: {error_msg}"}
 
 
 @app.post("/api/visual/compile")
