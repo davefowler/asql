@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Exclude Columns",
+    "desc": "Remove columns with EXCEPT",
+    "query": "-- except removes columns from SELECT *\n-- Useful for hiding sensitive data\nfrom users\n  except password_hash, internal_notes"
+  },
+  {
+    "title": "Rename Columns",
+    "desc": "Rename columns inline",
+    "query": "-- rename changes column names\n-- Can rename multiple columns at once\nfrom users\n  rename id as user_id, name as full_name"
+  },
+  {
+    "title": "Replace Column Values",
+    "desc": "Transform column values inline",
+    "query": "-- replace transforms column values\n-- The column keeps its name but gets new values\nfrom users\n  replace name with upper(name), email with lower(email)"
+  },
+  {
+    "title": "Combined Column Ops",
+    "desc": "Use except, rename, and replace together",
+    "query": "-- Combine column operators in a pipeline\n-- They execute in order: except, rename, replace\nfrom customers\n  except internal_id\n  rename name as customer_name\n  replace email with lower(email)"
+  }
+]

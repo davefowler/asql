@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Pivot Rows to Columns",
+    "desc": "Transform row values into columns",
+    "query": "-- pivot transforms row values into columns\n-- Syntax: pivot aggregate by column values (list of values)\nfrom orders\n  pivot sum(amount) by status values (\"pending\", \"shipped\", \"delivered\")\n  group by customer_id"
+  },
+  {
+    "title": "Unpivot Columns to Rows",
+    "desc": "Transform columns into rows",
+    "query": "-- unpivot turns columns into rows\n-- Useful for normalizing wide tables\nfrom quarterly_metrics\n  unpivot q1, q2, q3, q4 into quarter, value"
+  },
+  {
+    "title": "Explode Array",
+    "desc": "Expand array column into multiple rows",
+    "query": "-- explode expands array elements into rows\n-- Each array element becomes a separate row\nfrom posts\n  explode tags as tag\n  select post_id, title, tag"
+  },
+  {
+    "title": "Explode and Aggregate",
+    "desc": "Explode then count occurrences",
+    "query": "-- Common pattern: explode then aggregate\n-- Find most used tags across all posts\nfrom posts\n  explode tags as tag\n  group by tag (\n    # as post_count\n  )\n  order by -post_count"
+  }
+]

@@ -1,0 +1,177 @@
+[
+  {
+    "title": "Simple Filter",
+    "desc": "Filter users by status",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "users",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "where",
+            "condition": "status = 'active'"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Select Columns",
+    "desc": "Pick specific columns from a table",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "users",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "select",
+            "columns": [
+              {"name": "name", "expression": "name"},
+              {"name": "email", "expression": "email"},
+              {"name": "country", "expression": "country"}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Group and Count",
+    "desc": "Count users by country",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "users",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "group_by",
+            "dimensions": ["country"],
+            "aggregates": [
+              {"function": "count", "column": "*", "alias": "total"}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Sort and Limit",
+    "desc": "Get top 10 users alphabetically",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "users",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "select",
+            "columns": [
+              {"name": "name", "expression": "name"},
+              {"name": "email", "expression": "email"}
+            ]
+          },
+          {
+            "id": "t1",
+            "type": "order_by",
+            "expressions": [{"column": "name", "direction": "asc"}]
+          },
+          {
+            "id": "t2",
+            "type": "limit",
+            "count": 10
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Sales by Region",
+    "desc": "Aggregate sales metrics per region",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "sales",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "group_by",
+            "dimensions": ["region"],
+            "aggregates": [
+              {"function": "sum", "column": "amount", "alias": "total_sales"},
+              {"function": "count", "column": "*", "alias": "orders"},
+              {"function": "avg", "column": "amount", "alias": "avg_order"}
+            ]
+          },
+          {
+            "id": "t1",
+            "type": "order_by",
+            "expressions": [{"column": "total_sales", "direction": "desc"}]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Filter and Aggregate",
+    "desc": "Filter completed orders, then sum by customer",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "orders",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "where",
+            "condition": "status = 'completed'"
+          },
+          {
+            "id": "t1",
+            "type": "group_by",
+            "dimensions": ["customer_id"],
+            "aggregates": [
+              {"function": "sum", "column": "total", "alias": "lifetime_value"},
+              {"function": "count", "column": "*", "alias": "order_count"}
+            ]
+          },
+          {
+            "id": "t2",
+            "type": "order_by",
+            "expressions": [{"column": "lifetime_value", "direction": "desc"}]
+          },
+          {
+            "id": "t3",
+            "type": "limit",
+            "count": 20
+          }
+        ]
+      }
+    ]
+  }
+]

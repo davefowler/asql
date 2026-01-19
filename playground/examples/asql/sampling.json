@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Random Sample",
+    "desc": "Get N random rows from a table",
+    "query": "-- sample N returns N random rows\n-- Useful for data exploration and testing\nfrom orders\n  sample 100"
+  },
+  {
+    "title": "Percentage Sample",
+    "desc": "Get approximately N% of rows",
+    "query": "-- sample N% returns roughly N percent of rows\n-- The exact count varies (it's probabilistic)\nfrom orders\n  sample 10%"
+  },
+  {
+    "title": "Stratified Sample",
+    "desc": "N random rows per category",
+    "query": "-- sample N per column: stratified sampling\n-- Gets N random rows for each distinct value of the column\nfrom products\n  sample 100 per category"
+  },
+  {
+    "title": "Sample with Filter",
+    "desc": "Sample from filtered data",
+    "query": "-- Combine filtering with sampling\n-- Filter first, then sample from the results\nfrom orders\n  where status = \"completed\"\n  sample 500"
+  }
+]

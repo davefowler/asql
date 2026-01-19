@@ -503,7 +503,12 @@ class VisualEditor {
     }
     this.pipelines[pipelineIdx].transforms.splice(index, 0, transform);
     
-    this.render();
+    // Use renderAll if we have multiple pipelines, otherwise just render current
+    if (this.pipelines.length > 1) {
+      this.renderAll();
+    } else {
+      this.render();
+    }
     this.notifyChange();
   }
 
@@ -1392,7 +1397,10 @@ function handleAggregateUpdate(transform, param, target) {
     const funcSelect = aggItem.querySelector('.agg-function');
     if (funcSelect) {
       const colType = visualEditor.getColumnType(target.value, transform.id);
-      const allFunctions = ['count', 'sum', 'avg', 'min', 'max', 'count_distinct', 'stddev', 'variance', 'median'];
+      // Get functions list from schema, with fallback
+      const schema = visualEditor.schemas[transform.type];
+      const aggParam = schema?.parameters?.find(p => p.name === param);
+      const allFunctions = aggParam?.functions || ['count', 'sum', 'avg', 'min', 'max', 'count_distinct'];
       const availableFns = visualEditor.filterAggregatesByType(allFunctions, colType);
       
       // Update options
