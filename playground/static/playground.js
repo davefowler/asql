@@ -15,8 +15,30 @@ function debounce(func, wait) {
     };
 }
 
+/**
+ * Wait for the visual editor to be available and optionally initialized.
+ * Returns true if editor is ready, false if timeout occurred.
+ */
+async function waitForVisualEditor(requireInitialized = false) {
+    let attempts = 0;
+    while (attempts < MAX_VISUAL_EDITOR_WAIT_ATTEMPTS) {
+        if (typeof visualEditor !== 'undefined') {
+            if (!requireInitialized || visualEditor.initialized) {
+                return true;
+            }
+        }
+        await new Promise(r => setTimeout(r, VISUAL_EDITOR_WAIT_INTERVAL_MS));
+        attempts++;
+    }
+    return false;
+}
+
 // ========== Global Variables ==========
 let inputEditor, outputEditor;
+
+// Constants for visual editor initialization polling
+const MAX_VISUAL_EDITOR_WAIT_ATTEMPTS = 50;
+const VISUAL_EDITOR_WAIT_INTERVAL_MS = 50;
 
 // Example arrays - will be set from EXAMPLES_DATA injected by server
 let asqlExamples = [];
@@ -475,14 +497,8 @@ async function updateEditorVisibility(panel, dialect) {
             const showVisualBlocks = visualModePreference === 'visual';
             
             if (showVisualBlocks) {
-                // Wait for visual editor to exist (from visual-editor.js)
-                let waitAttempts = 0;
-                while (typeof visualEditor === 'undefined' && waitAttempts < 50) {
-                    await new Promise(r => setTimeout(r, 50));
-                    waitAttempts++;
-                }
-                
-                // Initialize visual editor if needed
+                // Wait for visual editor to exist and initialize if needed
+                await waitForVisualEditor();
                 if (visualEditor && !visualEditor.initialized) {
                     await visualEditor.init();
                 }
@@ -1761,16 +1777,12 @@ document.addEventListener('DOMContentLoaded', function() {
             loadExamples();
             
             // Async initialization - wait for visual editor if needed
-            (async () => {
-                // Wait for visual editor to be created (from visual-editor.js DOMContentLoaded)
-                const fromDialect = document.getElementById('from-dialect').value;
-                if (fromDialect === 'visual-asql') {
-                    let attempts = 0;
-                    while (!window.visualEditor && attempts < 50) {
-                        await new Promise(r => setTimeout(r, 50));
-                        attempts++;
+                (async () => {
+                    // Wait for visual editor to be created (from visual-editor.js DOMContentLoaded)
+                    const fromDialect = document.getElementById('from-dialect').value;
+                    if (fromDialect === 'visual-asql') {
+                        await waitForVisualEditor();
                     }
-                }
                 
                 await updateUITitles();
                 
