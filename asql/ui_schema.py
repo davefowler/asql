@@ -4,6 +4,7 @@ UI Schema for Visual ASQL Editor
 Reads from ui-metadata.json - a static JSON file with all UI metadata.
 Validation that ui-metadata.json matches the parser is done in tests/test_schema_sync.py.
 """
+# Force reload when ui-metadata.json changes
 
 import json
 from pathlib import Path

@@ -116,7 +116,16 @@ h1 {
 #input-editor, #output-editor {
     flex: 1;
     min-height: 0;
-    overflow: hidden;
+    overflow: auto;
+}
+
+#input-editor-container, #output-editor-container,
+#visual-editor-container, #output-visual-editor-container {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
 }
 
 /* ========== Swap Button ========== */
@@ -645,8 +654,12 @@ button:disabled {
 }
 
 .CodeMirror-scroll {
-    overflow: auto !important;
+    overflow: scroll !important;
     min-height: 0;
+}
+
+.CodeMirror-vscrollbar, .CodeMirror-hscrollbar {
+    display: block !important;
 }
 
 .CodeMirror-scrollbar-filler {

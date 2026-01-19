@@ -75,17 +75,17 @@
   },
 
   "aggregates": {
-    "count": { "label": "count", "description": "Count rows", "allows_distinct": true },
-    "sum": { "label": "sum", "description": "Sum of values", "allows_distinct": true },
-    "avg": { "label": "avg", "description": "Average of values", "allows_distinct": true },
-    "min": { "label": "min", "description": "Minimum value" },
-    "max": { "label": "max", "description": "Maximum value" },
-    "count_distinct": { "label": "count distinct", "description": "Count unique values" },
-    "stddev": { "label": "stddev", "description": "Standard deviation" },
-    "variance": { "label": "variance", "description": "Statistical variance" },
-    "median": { "label": "median", "description": "Median value" },
-    "array_agg": { "label": "array_agg", "description": "Collect values into array" },
-    "string_agg": { "label": "string_agg", "description": "Concatenate values with separator" }
+    "count": { "label": "count", "description": "Count rows", "allows_distinct": true, "types": ["any"] },
+    "count_distinct": { "label": "unique", "description": "Count unique values", "types": ["any"] },
+    "sum": { "label": "sum", "description": "Sum of values", "allows_distinct": true, "types": ["number", "integer", "float"] },
+    "avg": { "label": "avg", "description": "Average of values", "allows_distinct": true, "types": ["number", "integer", "float"] },
+    "min": { "label": "min", "description": "Minimum value", "types": ["any"] },
+    "max": { "label": "max", "description": "Maximum value", "types": ["any"] },
+    "stddev": { "label": "stddev", "description": "Standard deviation", "types": ["number", "integer", "float"] },
+    "variance": { "label": "variance", "description": "Statistical variance", "types": ["number", "integer", "float"] },
+    "median": { "label": "median", "description": "Median value", "types": ["number", "integer", "float"] },
+    "array_agg": { "label": "array_agg", "description": "Collect values into array", "types": ["any"] },
+    "string_agg": { "label": "string_agg", "description": "Concatenate values with separator", "types": ["string"] }
   },
 
   "functions": {
@@ -223,7 +223,7 @@
       "description": "Group rows and compute aggregates",
       "parameters": [
         { "name": "dimensions", "type": "column[]", "required": true, "widget": "list" },
-        { "name": "aggregates", "type": "aggregate[]", "required": false, "widget": "aggregate_list" }
+        { "name": "aggregates", "type": "aggregate[]", "required": false, "widget": "aggregate_list", "functions": ["count", "sum", "avg", "min", "max", "count_distinct", "stddev", "variance", "median"] }
       ]
     },
     "having": {

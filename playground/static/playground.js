@@ -28,6 +28,7 @@ let columnOperatorExamples = [];
 let countInferenceExamples = [];
 let syntaxStylesExamples = [];
 let sqlExamples = [];
+let visualAsqlExamples = [];
 
 // Settings state
 let currentSettings = { compile: {}, style: {} };
@@ -94,6 +95,7 @@ window.initializeExamplesData = function(data) {
     countInferenceExamples = data.count_inference || [];
     syntaxStylesExamples = data.syntax_styles || [];
     sqlExamples = data.sql || [];
+    visualAsqlExamples = data.visual_asql || [];
 };
 
 // Try to load from EXAMPLES_DATA if already defined (inline script ran first)
@@ -403,7 +405,7 @@ function ensureFromNotPostgresWhenToEmpty() {
     }
 }
 
-function updateUITitles() {
+async function updateUITitles() {
     if (!inputEditor || !outputEditor) return;
     
     ensureFromNotPostgresWhenToEmpty();
@@ -412,12 +414,18 @@ function updateUITitles() {
     const toDialect = document.getElementById('to-dialect').value;
     
     // Handle input panel editor switching
-    updateEditorVisibility('input', fromDialect)
-        .catch(err => console.warn('Failed to update input editor visibility', err));
+    try {
+        await updateEditorVisibility('input', fromDialect);
+    } catch (err) {
+        console.warn('Failed to update input editor visibility', err);
+    }
     
     // Handle output panel editor switching
-    updateEditorVisibility('output', toDialect)
-        .catch(err => console.warn('Failed to update output editor visibility', err));
+    try {
+        await updateEditorVisibility('output', toDialect);
+    } catch (err) {
+        console.warn('Failed to update output editor visibility', err);
+    }
     
     // Set CodeMirror modes for text editors
     if (fromDialect === 'visual-asql') {
@@ -467,6 +475,13 @@ async function updateEditorVisibility(panel, dialect) {
             const showVisualBlocks = visualModePreference === 'visual';
             
             if (showVisualBlocks) {
+                // Wait for visual editor to exist (from visual-editor.js)
+                let waitAttempts = 0;
+                while (typeof visualEditor === 'undefined' && waitAttempts < 50) {
+                    await new Promise(r => setTimeout(r, 50));
+                    waitAttempts++;
+                }
+                
                 // Initialize visual editor if needed
                 if (visualEditor && !visualEditor.initialized) {
                     await visualEditor.init();
@@ -479,7 +494,8 @@ async function updateEditorVisibility(panel, dialect) {
                 
                 // If content looks like JSON, parse it; otherwise treat as ASQL
                 if (currentContent.trim() && visualEditor) {
-                    if (currentContent.trim().startsWith('{')) {
+                    const trimmed = currentContent.trim();
+                    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
                         // It's JSON - load directly
                         try {
                             const json = JSON.parse(currentContent);
@@ -546,7 +562,7 @@ async function updateEditorVisibility(panel, dialect) {
                 visualContainer.style.display = 'block';
                 // Render the visual blocks from the current JSON output
                 const currentOutput = outputEditor.getValue().trim();
-                if (currentOutput.startsWith('{')) {
+                if (currentOutput.startsWith('{') || currentOutput.startsWith('[')) {
                     try {
                         const json = JSON.parse(currentOutput);
                         renderOutputVisual(json);
@@ -1061,11 +1077,37 @@ async function translateQuery() {
                 }
             } else {
                 // Normal SQL output
+                let asqlInput = input;
+                
+                // If input is visual-asql (JSON), convert to ASQL text first
+                if (fromDialect === 'visual-asql') {
+                    const inputIsJSON = input.trim().startsWith('{') || input.trim().startsWith('[');
+                    if (inputIsJSON) {
+                        try {
+                            const jsonData = JSON.parse(input);
+                            const compileResponse = await fetch('/api/visual/compile', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ query: jsonData })
+                            });
+                            const compileData = await compileResponse.json();
+                            if (!compileData.success) {
+                                showError(compileData.error || 'Failed to convert visual query');
+                                return;
+                            }
+                            asqlInput = compileData.asql;
+                        } catch (e) {
+                            showError('Invalid JSON in visual-asql input: ' + e.message);
+                            return;
+                        }
+                    }
+                }
+                
                 const compileSettings = getCompileSettings();
                 const response = await fetch('/api/compile', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ asql: input, dialect: getApiDialect(toDialect) || '', settings: compileSettings })
+                    body: JSON.stringify({ asql: asqlInput, dialect: getApiDialect(toDialect) || '', settings: compileSettings })
                 });
                 
                 if (!response.ok) {
@@ -1338,6 +1380,17 @@ function createExampleSection(container, title, description, examples, options =
                 toSelect.value = options.toDialect;
             }
             
+            // If this is a visual-asql example, also load into the visual editor
+            const finalFromDialect = fromSelect.value;
+            if (finalFromDialect === 'visual-asql' && typeof visualEditor !== 'undefined' && visualEditor.initialized) {
+                try {
+                    const jsonData = JSON.parse(example.query);
+                    visualEditor.loadFromJSON(jsonData);
+                } catch (e) {
+                    console.error('Failed to parse visual-asql example JSON:', e);
+                }
+            }
+            
             updateUITitles();
             translateQuery();
             setTimeout(updateURL, 1000);
@@ -1387,6 +1440,11 @@ function loadExamples() {
         createExampleSection(container, 'Syntax Styles Examples',
             'Different syntax styles and shorthand options in ASQL.',
             syntaxStylesExamples, { ensureAsql: true });
+        
+        // Visual ASQL examples - they start in visual-asql format
+        createExampleSection(container, 'Visual ASQL Examples',
+            'Pre-built queries in the visual editor format.',
+            visualAsqlExamples, { toDialect: 'snowflake' });
         
         // Always show SQL examples too - they will set direction to SQL -> ASQL when clicked
         const examplesDiv = createExampleSection(container, 'SQL Translation Examples',
@@ -1700,13 +1758,28 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         try {
-            updateUITitles();
             loadExamples();
-            if (sql_f && !sql_t) {
-                translateQuery();
-            } else if (!sql_f && !sql_t) {
-                translateQuery();
-            }
+            
+            // Async initialization - wait for visual editor if needed
+            (async () => {
+                // Wait for visual editor to be created (from visual-editor.js DOMContentLoaded)
+                const fromDialect = document.getElementById('from-dialect').value;
+                if (fromDialect === 'visual-asql') {
+                    let attempts = 0;
+                    while (!window.visualEditor && attempts < 50) {
+                        await new Promise(r => setTimeout(r, 50));
+                        attempts++;
+                    }
+                }
+                
+                await updateUITitles();
+                
+                if (sql_f && !sql_t) {
+                    translateQuery();
+                } else if (!sql_f && !sql_t) {
+                    translateQuery();
+                }
+            })();
         } catch (e) {
             console.error('Error during initial load:', e);
             try { loadExamples(); } catch (e2) {}
