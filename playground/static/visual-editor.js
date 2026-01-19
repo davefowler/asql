@@ -53,9 +53,13 @@ class VisualEditor {
   async _doInit() {
     try {
       // Load operation metadata and available tables in parallel
+      // Wrap tables fetch in catch so it doesn't fail the whole init
       const [opsResponse, tablesResponse] = await Promise.all([
         fetch('/api/visual/operations'),
-        fetch('/api/schema/tables')
+        fetch('/api/schema/tables').catch(err => {
+          console.warn('Failed to load tables:', err);
+          return null;
+        })
       ]);
       
       if (!opsResponse.ok) {
@@ -66,7 +70,7 @@ class VisualEditor {
       this.operations = opsData.operations || [];
 
       // Store available tables
-      if (tablesResponse.ok) {
+      if (tablesResponse && tablesResponse.ok) {
         const tablesData = await tablesResponse.json();
         this.availableTables = tablesData.tables || [];
       } else {
@@ -893,12 +897,28 @@ class VisualEditor {
   }
 
   /**
+   * Find the pipeline index that contains a given transform ID.
+   * Returns the index or -1 if not found.
+   */
+  findPipelineByTransformId(transformId) {
+    if (!transformId) return -1;
+    return this.pipelines.findIndex(p =>
+      (p.transforms || []).some(t => t.id === transformId)
+    );
+  }
+
+  /**
    * Get the type of a column from available columns
    */
   getColumnType(columnName, transformId, pipelineIndex = null) {
     if (!columnName) return null;
     
-    const idx = pipelineIndex !== null ? pipelineIndex : this.currentPipelineIndex;
+    // Resolve pipeline index - if not provided, try to find by transformId
+    let idx = pipelineIndex !== null ? pipelineIndex : this.currentPipelineIndex;
+    if (pipelineIndex === null && transformId) {
+      const foundIdx = this.findPipelineByTransformId(transformId);
+      if (foundIdx !== -1) idx = foundIdx;
+    }
     const pipeline = this.pipelines[idx];
     if (!pipeline) return null;
 
@@ -1137,7 +1157,12 @@ class VisualEditor {
    * - Previous transforms' output_columns
    */
   getAvailableColumns(transformId, pipelineIndex = null) {
-    const idx = pipelineIndex !== null ? pipelineIndex : this.currentPipelineIndex;
+    // Resolve pipeline index - if not provided, try to find by transformId
+    let idx = pipelineIndex !== null ? pipelineIndex : this.currentPipelineIndex;
+    if (pipelineIndex === null && transformId) {
+      const foundIdx = this.findPipelineByTransformId(transformId);
+      if (foundIdx !== -1) idx = foundIdx;
+    }
     const pipeline = this.pipelines[idx];
     if (!pipeline) return [];
 

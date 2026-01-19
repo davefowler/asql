@@ -183,13 +183,13 @@ class TestRoundTrip:
 class TestVisualASQLExamples:
     """Test Visual ASQL examples are valid JSON and can be compiled."""
     
-    def test_visual_asql_examples_exist(self):
+    def test_visual_asql_examples_exist(self) -> None:
         """Verify Visual ASQL examples are loaded."""
         assert len(VISUAL_ASQL_EXAMPLES) > 0, "No Visual ASQL examples found"
         print(f"\nLoaded {len(VISUAL_ASQL_EXAMPLES)} Visual ASQL examples")
     
     @pytest.mark.parametrize("example", VISUAL_ASQL_EXAMPLES, ids=lambda ex: ex.get("title", "unknown"))
-    def test_visual_asql_example_is_valid_json(self, example):
+    def test_visual_asql_example_is_valid_json(self, example) -> None:
         """Test that Visual ASQL examples have valid JSON query."""
         import json
         
@@ -212,7 +212,7 @@ class TestVisualASQLExamples:
                 pytest.fail(f"Invalid JSON in example '{example.get('title')}': {e}")
     
     @pytest.mark.parametrize("example", VISUAL_ASQL_EXAMPLES, ids=lambda ex: ex.get("title", "unknown"))
-    def test_visual_asql_example_compiles_to_asql(self, example):
+    def test_visual_asql_example_compiles_to_asql(self, example) -> None:
         """Test that Visual ASQL examples can be compiled to ASQL text."""
         import json
         from asql.json_schema import json_to_asql

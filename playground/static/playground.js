@@ -3,7 +3,12 @@
  */
 
 // ========== Utility Functions ==========
-function debounce(func, wait) {
+
+// Constants for visual editor initialization polling
+const MAX_VISUAL_EDITOR_WAIT_ATTEMPTS = 50;
+const VISUAL_EDITOR_WAIT_INTERVAL_MS = 50;
+
+const debounce = (func, wait) => {
     let timeout;
     return function executedFunction(...args) {
         const later = () => {
@@ -13,16 +18,17 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
-}
+};
 
 /**
  * Wait for the visual editor to be available and optionally initialized.
  * Returns true if editor is ready, false if timeout occurred.
  */
-async function waitForVisualEditor(requireInitialized = false) {
+const waitForVisualEditor = async (requireInitialized = false) => {
     let attempts = 0;
     while (attempts < MAX_VISUAL_EDITOR_WAIT_ATTEMPTS) {
-        if (typeof visualEditor !== 'undefined') {
+        // Use truthy check since visualEditor can be null
+        if (visualEditor) {
             if (!requireInitialized || visualEditor.initialized) {
                 return true;
             }
@@ -31,14 +37,10 @@ async function waitForVisualEditor(requireInitialized = false) {
         attempts++;
     }
     return false;
-}
+};
 
 // ========== Global Variables ==========
 let inputEditor, outputEditor;
-
-// Constants for visual editor initialization polling
-const MAX_VISUAL_EDITOR_WAIT_ATTEMPTS = 50;
-const VISUAL_EDITOR_WAIT_INTERVAL_MS = 50;
 
 // Example arrays - will be set from EXAMPLES_DATA injected by server
 let asqlExamples = [];
@@ -1398,7 +1400,7 @@ function createExampleSection(container, title, description, examples, options =
             
             // If this is a visual-asql example, also load into the visual editor
             const finalFromDialect = fromSelect.value;
-            if (finalFromDialect === 'visual-asql' && typeof visualEditor !== 'undefined' && visualEditor.initialized) {
+            if (finalFromDialect === 'visual-asql' && visualEditor && visualEditor.initialized) {
                 try {
                     const jsonData = JSON.parse(example.query);
                     visualEditor.loadFromJSON(jsonData);
@@ -1777,12 +1779,12 @@ document.addEventListener('DOMContentLoaded', function() {
             loadExamples();
             
             // Async initialization - wait for visual editor if needed
-                (async () => {
-                    // Wait for visual editor to be created (from visual-editor.js DOMContentLoaded)
-                    const fromDialect = document.getElementById('from-dialect').value;
-                    if (fromDialect === 'visual-asql') {
-                        await waitForVisualEditor();
-                    }
+            (async () => {
+                // Wait for visual editor to be created (from visual-editor.js DOMContentLoaded)
+                const fromDialect = document.getElementById('from-dialect').value;
+                if (fromDialect === 'visual-asql') {
+                    await waitForVisualEditor();
+                }
                 
                 await updateUITitles();
                 
@@ -1791,7 +1793,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else if (!sql_f && !sql_t) {
                     translateQuery();
                 }
-            })();
+            })().catch(e => console.error('Error during async initialization:', e));
         } catch (e) {
             console.error('Error during initial load:', e);
             try { loadExamples(); } catch (e2) {}
