@@ -38,23 +38,23 @@ from users
 
 ## Features with Known Edge Cases
 
-### 2. Auto-Spine with GROUPING SETS / ROLLUP / CUBE
+### 2. Spine with GROUPING SETS / ROLLUP / CUBE
 
-**Feature**: ASQL automatically adds gap-filling spines for date truncations in GROUP BY.
+**Feature**: ASQL's `spine by` adds gap-filling for date truncations in GROUP BY.
 
-**Issue**: Auto-spine may produce unexpected results with advanced grouping operations:
+**Issue**: Spine may produce unexpected results with advanced grouping operations:
 
 ```asql
 -- This may not work correctly
 from sales
-group by rollup(year(date), month(date)) (
+spine by rollup(year(date), month(date)) (
   sum(amount) ?? 0 as revenue
 )
 ```
 
 **Problem**: 
 - ROLLUP/CUBE produce NULL values with special meaning (subtotals, grand totals)
-- Auto-spine's date range detection may not account for these NULL patterns
+- Spine date range detection may not account for these NULL patterns
 - The cross-join of spine values with ROLLUP patterns can produce invalid combinations
 
 **Current behavior**: Spine attempts to handle ROLLUP/CUBE by including NULL in spines and filtering invalid patterns, but this is not fully tested with all edge cases.
@@ -75,8 +75,8 @@ group by rollup(year(date), month(date)) (
 | Feature | BigQuery | Snowflake | DuckDB | PostgreSQL | MySQL | SQLite | Redshift |
 |---------|----------|-----------|--------|------------|-------|--------|----------|
 | Column operators (`except`, `rename`, `replace`) | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Auto-spine (basic) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Auto-spine with ROLLUP/CUBE | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
+| `spine by` (basic) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ |
+| `spine by` with ROLLUP/CUBE | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ |
 | `generate_series` for spines | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
 | Slice syntax `[1:5]` | 🐛 | 🐛 | ✅ | 🐛 | 🐛 | 🐛 | 🐛 |
 
@@ -141,5 +141,5 @@ Open an issue at: https://github.com/davefowler/asql/issues
 
 - [ ] Add compile-time warnings for features not supported by target dialect - [Issue #81](https://github.com/davefowler/asql/issues/81)
 - [ ] Implement column expansion fallback for dialects without `EXCEPT`/`EXCLUDE` - [Issue #80](https://github.com/davefowler/asql/issues/80)
-- [ ] Add comprehensive ROLLUP/CUBE testing for auto-spine
+- [ ] Add comprehensive ROLLUP/CUBE testing for spine
 - [ ] Document all dialect-specific SQL generation differences

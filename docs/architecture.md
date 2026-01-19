@@ -220,10 +220,10 @@ asql/
 │       └── cohort_transform.py       # Cohort analysis CTEs
 ├── compiler/            # Dialect-aware transforms (transpile stage)
 │   ├── spine.py         # Spine gap-filling (explicit spine())
+│   ├── spine_helpers.py # Helper functions for spine generation
 │   ├── alias_reuse.py   # CTE chain for alias reuse
 │   ├── column_operators.py  # EXCEPT expansion
-│   ├── list_comprehension.py  # DuckDB [x FOR x] conversion
-│   └── auto_spine.py    # Helper functions for spine generation
+│   └── list_comprehension.py  # DuckDB [x FOR x] conversion
 ├── functions.py         # Function registry
 ├── config.py            # Configuration classes
 └── errors.py            # Error classes

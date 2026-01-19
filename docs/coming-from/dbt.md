@@ -42,7 +42,7 @@ If you’re used to leaning on dbt macros for common transformations, the nice s
 | `{{ dbt_utils.generate_surrogate_key([...]) }}` | `key(col1, col2)` | **Planned** (inspired by dbt macros) |
 | `{{ dbt_utils.pivot() }}` | `pivot ... values ('A', 'B')` | Rows to columns (static values list) |
 | `{{ dbt_utils.unpivot() }}` | `unpivot ... into ...` | Columns to rows |
-| `{{ dbt_utils.date_spine() }}` | auto-spine | Gap filling is automatic for date GROUP BYs |
+| `{{ dbt_utils.date_spine() }}` | `spine by month(date)` | Gap-filling with explicit `spine by` syntax |
 | `{{ dbt_utils.deduplicate() }}` | `per id first by -date` | Remove duplicates |
 | `{{ dbt_utils.union_relations() }}` | (future) | Not implemented yet |
 
@@ -96,9 +96,19 @@ from events
 per user_id, event_type first by -created_at
 ```
 
-### `date_spine()` → auto-spine (default)
+### `date_spine()` → `spine by`
 
-ASQL’s compiler already provides **auto-spine** (enabled by default) which gap-fills date group-bys when you filter to a range.
+ASQL's `spine by` syntax provides gap-filling for date group-bys:
+
+```asql
+from orders
+  where order_date >= @2024-01-01 and order_date < @2025-01-01
+  spine by month(order_date) (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+All months appear, even if some have no orders.
 
 ### `pivot()` / `unpivot()` → `pivot` / `unpivot`
 
@@ -184,11 +194,10 @@ first_name ?? nickname ?? 'Unknown'
 
 === "ASQL"
     ```asql
-    -- Auto-spine fills gaps automatically for date GROUP BYs
-    -- when you filter to a date range.
+    -- spine by explicitly enables gap-filling for date columns
     from orders
     where created_at >= @2024-01-01 and created_at < @2025-01-01
-    group by month(created_at) (
+    spine by month(created_at) (
       sum(amount) ?? 0 as revenue
     )
     ```
@@ -217,10 +226,10 @@ first_name ?? nickname ?? 'Unknown'
 
 === "ASQL"
     ```asql
-    # Auto-spine fills gaps automatically for date GROUP BYs
+    # spine by explicitly fills date gaps
     from orders
     where created_at >= @2024-01-01 and created_at < @2025-01-01
-    group by month(created_at) (
+    spine by month(created_at) (
         sum(amount) ?? 0 as revenue  # ?? 0 sets default for filled rows
     )
     ```

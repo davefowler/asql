@@ -100,10 +100,10 @@ This spines the month column (filling date gaps) but NOT the region column.
 |-------------|--------------|
 | Date truncation (`month()`, `year()`, `week()`) | Inferred from WHERE clause date range |
 | Non-date columns | DISTINCT values from **filtered** source data |
-| `guarantee(col, [...])` | Explicit list of values you specify |
+| `guarantee(col, [...])` *(planned)* | Explicit list of values you specify |
 | Multiple columns | Cross-join of all combinations |
 
-**Note:** For non-date columns, the spine respects your WHERE clause. If you filter to `region = 'North America'`, only that region appears in results. Use `guarantee()` to force specific values to appear regardless of filters. See [Guaranteed Groups](concepts/guaranteed-groups.md#how-filters-affect-categorical-spines) for details.
+**Note:** For non-date columns, the spine respects your WHERE clause. If you filter to `region = 'North America'`, only that region appears in results. See [Guaranteed Groups](concepts/guaranteed-groups.md#how-filters-affect-categorical-spines) for details.
 
 ### The `??` Operator
 
@@ -117,18 +117,20 @@ avg(price) ?? null as avg_price  -- null for missing (explicit)
 
 ---
 
-## Explicit Values with guarantee()
+## Explicit Values with guarantee() *(Planned)*
+
+> **Note:** `guarantee()` is a planned feature not yet implemented.
 
 Sometimes you want specific values guaranteed, not just what's in the data.
 
-```asql-play
+```asql
 from orders
   spine by guarantee(status, ['pending', 'processing', 'shipped', 'delivered', 'cancelled']) (
     # ?? 0 as order_count
   )
 ```
 
-All five statuses will appear in results, even if some have zero orders. This is useful for:
+All five statuses will appear in results, even if some have zero orders. This will be useful for:
 
 - Dashboards with fixed categories
 - Reports that need consistent row ordering

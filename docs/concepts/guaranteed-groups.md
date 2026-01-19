@@ -125,7 +125,7 @@ This will **only show North America**—not Europe, Asia, or other regions—bec
 
 **This is usually what you want!** When you filter to North America, you typically want results only for North America.
 
-**Want all regions to appear (even with filtered data)?** Use `guarantee()`:
+**Want all regions to appear (even with filtered data)?** Use `guarantee()` *(planned feature)*:
 
 ```asql
 from orders
@@ -135,13 +135,13 @@ from orders
   )
 ```
 
-Now all four regions appear—North America with actual data, the others with zero revenue.
+When implemented, all four regions will appear—North America with actual data, the others with zero revenue.
 
 | Scenario | Result |
 |----------|--------|
 | `spine by region` with `where region = 'NA'` | Only NA appears |
 | `spine by region` (no filter) | All regions in data appear |
-| `spine by guarantee(region, [...])` | All listed values appear |
+| `spine by guarantee(region, [...])` *(planned)* | All listed values will appear |
 
 ### Multiple Spine Columns
 
@@ -156,20 +156,22 @@ from orders
 
 Every region × month combination will appear.
 
-## Explicit Values with `guarantee()`
+## Explicit Values with `guarantee()` *(Planned)*
+
+> **Note:** `guarantee()` is a planned feature not yet implemented. For now, categorical columns use DISTINCT values from the data.
 
 Specify exactly which values should appear:
 
-```asql-play
+```asql
 from orders
   spine by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
     # ?? 0 as order_count
   )
 ```
 
-This ensures all four statuses appear, even if some have zero orders.
+This will ensure all four statuses appear, even if some have zero orders.
 
-### Use Cases for `guarantee()`
+### Use Cases for `guarantee()` *(when implemented)*
 
 - Fixed categories that should always appear
 - Enum-like values from your data model
@@ -373,7 +375,7 @@ from orders
 
 1. **Always use `??` for aggregates** — Decide what missing means (0? NULL? N/A?)
 2. **Specify date bounds in WHERE** — Helps ASQL generate the right spine
-3. **Use `guarantee()` for fixed categories** — Don't rely on data having all values
+3. **Use categorical spines for enum-like columns** — Groups by DISTINCT values from data
 4. **Filter zeros when needed** — `where revenue > 0` after spine
 5. **Use `spine by` explicitly** — Makes intent clear to readers
 
@@ -402,11 +404,15 @@ from orders
 
 ### Status Dashboard
 
-```asql-play
+```asql
+-- Using categorical spine (groups by DISTINCT values in data)
 from tickets
-  spine by guarantee(status, ['open', 'in_progress', 'resolved', 'closed']) (
+  spine by status (
     # ?? 0 as ticket_count
   )
+
+-- When guarantee() is implemented, you'll be able to specify exact values:
+-- spine by guarantee(status, ['open', 'in_progress', 'resolved', 'closed'])
 ```
 
 ### Sales by Region and Quarter

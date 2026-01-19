@@ -196,7 +196,7 @@ asql.transpile('from users where status == "active" stash as active from active 
 Some ASQL features have limited support across SQL dialects. See [Dialect Limitations](dialect-limitations.md) for details on:
 
 - Column override with `select *` (BigQuery, Snowflake, DuckDB only)
-- Auto-spine edge cases with ROLLUP/CUBE
+- `spine by` edge cases with ROLLUP/CUBE
 - Dialect-specific SQL generation differences
 
 ## Next Steps

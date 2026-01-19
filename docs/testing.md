@@ -165,7 +165,7 @@ When adding new features:
 ```python
 def test_new_feature(self, executor):
     try:
-        sql = compile("from t ...", dialect=executor.dialect)
+        sql = asql.transpile("from t ...", write=executor.dialect)[0]
         rows = executor.execute(sql)
         assert ...
     except Exception as e:

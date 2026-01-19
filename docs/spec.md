@@ -1009,7 +1009,9 @@ from orders
 - **Non-date columns**: Uses DISTINCT values from the source data
 - **Cross-joins multiple columns**: All combinations of dimension values are guaranteed
 
-#### Explicit Values with guarantee()
+#### Explicit Values with guarantee() *(Planned)*
+
+> **Note:** `guarantee()` is a planned feature not yet implemented. For now, use categorical columns directly with `spine by`.
 
 Use `guarantee()` to specify exactly which values should appear:
 

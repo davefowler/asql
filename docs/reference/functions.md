@@ -482,7 +482,9 @@ value::INTEGER?             -- Safe cast (NULL on failure)
 
 ## Special Functions
 
-### guarantee
+### guarantee *(Planned)*
+
+> **Note:** `guarantee()` is a planned feature not yet implemented.
 
 Specify explicit values for group by spine.
 
