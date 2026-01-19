@@ -1,0 +1,26 @@
+[
+  {
+    "title": "BigQuery CTE with Joins",
+    "desc": "Complex query with CTEs and aggregations",
+    "dialect": "bigquery",
+    "query": "WITH active_users AS (\n  SELECT user_id, country, signup_date\n  FROM users\n  WHERE status = 'active' AND signup_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)\n),\nuser_orders AS (\n  SELECT au.user_id, au.country,\n    COUNT(o.order_id) AS order_count,\n    SUM(o.amount) AS total_spent\n  FROM active_users au\n  LEFT JOIN orders o ON au.user_id = o.user_id\n  GROUP BY au.user_id, au.country\n)\nSELECT country,\n  COUNT(*) AS user_count,\n  AVG(order_count) AS avg_orders,\n  SUM(total_spent) AS total_revenue\nFROM user_orders\nGROUP BY country\nORDER BY total_revenue DESC\nLIMIT 10"
+  },
+  {
+    "title": "Redshift Window Functions",
+    "desc": "Running totals with window functions",
+    "dialect": "redshift",
+    "query": "SELECT product_id, category, sale_date, amount,\n  SUM(amount) OVER (\n    PARTITION BY category \n    ORDER BY sale_date \n    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n  ) AS running_total\nFROM sales\nWHERE sale_date >= '2024-01-01'\nORDER BY category, sale_date"
+  },
+  {
+    "title": "PostgreSQL Complex Join",
+    "desc": "Multiple joins with HAVING clause",
+    "dialect": "postgres",
+    "query": "SELECT u.user_id, u.email,\n  COUNT(DISTINCT o.order_id) AS order_count,\n  SUM(o.amount) AS total_spent,\n  AVG(o.amount) AS avg_order_value\nFROM users u\nINNER JOIN orders o ON u.user_id = o.user_id\nLEFT JOIN order_items oi ON o.order_id = oi.order_id\nWHERE u.created_at >= '2024-01-01' AND o.status = 'completed'\nGROUP BY u.user_id, u.email\nHAVING COUNT(DISTINCT o.order_id) > 5\nORDER BY total_spent DESC\nLIMIT 20"
+  },
+  {
+    "title": "Simple SELECT with WHERE",
+    "desc": "Basic filtering example",
+    "dialect": "",
+    "query": "SELECT user_id, email, status\nFROM users\nWHERE status = 'active' AND created_at >= '2024-01-01'\nORDER BY created_at DESC\nLIMIT 100"
+  }
+]

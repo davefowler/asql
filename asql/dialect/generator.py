@@ -152,6 +152,8 @@ class ASQLGenerator(Generator):
         from ... stash as cte
         
         from cte
+        
+        Comments on the WITH clause are preserved at the start of output.
         """
         cte_parts: t.List[str] = []
         
@@ -167,7 +169,10 @@ class ASQLGenerator(Generator):
                 cte_name = self.sql(cte_alias) if cte_alias else ""
                 cte_parts.append(f"{inner_sql} stash as {cte_name}")
         
-        return "\n\n".join(cte_parts)
+        result = "\n\n".join(cte_parts)
+        
+        # Preserve comments from the WITH clause (e.g., header comments before CTEs)
+        return self.maybe_comment(result, expression, separated=True)
     
     def from_sql(self, expression: exp.From) -> str:
         """Generate ASQL-style FROM clause (lowercase 'from')."""

@@ -28,6 +28,7 @@ from .examples import (
     COUNT_INFERENCE_EXAMPLES,
     SYNTAX_STYLES_EXAMPLES,
     SQL_EXAMPLES,
+    VISUAL_ASQL_EXAMPLES,
 )
 from .schema import (
     PLAYGROUND_SCHEMA,
@@ -198,6 +199,7 @@ async def index() -> HTMLResponse:
             "count_inference": COUNT_INFERENCE_EXAMPLES,
             "syntax_styles": SYNTAX_STYLES_EXAMPLES,
             "sql": SQL_EXAMPLES,
+            "visual_asql": VISUAL_ASQL_EXAMPLES,
         }
         examples_json = json.dumps(examples_data)
 

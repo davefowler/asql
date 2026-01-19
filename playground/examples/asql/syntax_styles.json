@@ -1,0 +1,52 @@
+[
+  {
+    "title": "Aggregate Shorthand Styles",
+    "desc": "Three ways to write aggregates: underscore, space, parens",
+    "query": "-- ASQL supports three equivalent aggregate syntaxes:\n-- 1. Underscore shorthand: sum_amount (declarative, matches output column)\n-- 2. Space shorthand: sum amount (natural language feel)\n-- 3. Parens form: sum(amount) (explicit, required for complex expressions)\n-- Each example below shows a different style:\n\n-- Style 1: Underscore shorthand - what you write = output column name\nfrom sales\n  group by region (sum_amount, avg_price)\n  order by -sum_amount;\n\n-- Style 2: Space shorthand - natural language style\nfrom sales\n  group by region (sum amount, avg price);\n\n-- Style 3: Parens form - required for complex expressions\nfrom sales\n  group by region (\n    sum(amount * quantity) as revenue,\n    avg(price / 100) as avg_cents\n  )"
+  },
+  {
+    "title": "When to Use Each Style",
+    "desc": "Guidelines for underscore vs space vs parens",
+    "query": "-- UNDERSCORE: when not aliasing, want declarative continuity\n-- What you write (sum_amount) = what the output column is named\nfrom sales\n  group by region (sum_amount)\n  order by -sum_amount;\n\n-- SPACE or PARENS: when using 'as' alias\nfrom sales\n  group by region (\n    sum amount as revenue,\n    avg(price) as avg_price\n  );\n\n-- PARENS: required for multiple arguments or complex expressions\nfrom sales\n  select\n    max(price, cost) as highest,\n    sum(amount * quantity) as total"
+  },
+  {
+    "title": "Count Shorthand Styles",
+    "desc": "Different ways to write COUNT expressions",
+    "query": "-- # by itself = COUNT(*) row count\nfrom orders\n  group by status (# as total);\n\n-- # with table name = COUNT(DISTINCT primary_key)\nfrom orders\n  group by status (# users as customers);\n\n-- Explicit parens form for full control\nfrom orders\n  group by status (#(distinct product_id) as unique_products)"
+  },
+  {
+    "title": "Equality Operators",
+    "desc": "= (preferred) vs == (also accepted)",
+    "query": "-- Single = is the preferred style (SQL standard)\nfrom users\n  where status = \"active\";\n\n-- Double == also works (familiar to programmers)\nfrom users\n  where status == \"active\"\n\n-- Both produce the same SQL output"
+  },
+  {
+    "title": "Null Coalesce Styles",
+    "desc": "?? operator (preferred) vs coalesce() function",
+    "query": "-- ?? operator - preferred style, more concise\nfrom users\n  select name ?? \"Unknown\" as display_name;\n\n-- Chains naturally for multiple fallbacks\nfrom products\n  select price ?? sale_price ?? 0 as final_price;\n\n-- coalesce() function also works\nfrom users\n  select coalesce(name, \"Unknown\") as display_name"
+  },
+  {
+    "title": "Descending Order Styles",
+    "desc": "- prefix (preferred) vs DESC suffix",
+    "query": "-- Minus prefix - preferred style, cleaner\nfrom users\n  group by country (# as total)\n  order by -total;\n\n-- DESC suffix also works (SQL style)\nfrom users\n  group by country (# as total)\n  order by total DESC;\n\n-- Mix in multi-column sorts\nfrom users\n  order by -created_at, name  -- Newest first, then alphabetical"
+  },
+  {
+    "title": "Conditional Styles",
+    "desc": "Ternary ? : vs when expressions",
+    "query": "-- Ternary for simple binary conditions (preferred)\n-- Syntax: condition ? true_value : false_value\nfrom orders\n  select amount > 1000 ? \"high\" : \"low\" as tier;\n\n-- when for multi-branch conditions (comma-separated branches)\n-- More readable than SQL CASE WHEN\nfrom users\n  select\n    when status\n      is \"active\" then \"Active User\",\n      is \"pending\" then \"Pending\",\n      otherwise \"Unknown\"\n    as status_label"
+  },
+  {
+    "title": "Join Styles",
+    "desc": "Symbolic operators (preferred) vs SQL JOIN keywords",
+    "query": "-- Symbolic operators - preferred, more concise\n-- & = INNER JOIN, &? = LEFT JOIN, ?& = RIGHT JOIN\nfrom orders\n  & customers on orders.customer_id = customers.id;\n\n-- LEFT JOIN: &? (the ? marks the nullable side)\nfrom orders\n  &? customers on orders.customer_id = customers.id;\n\n-- SQL JOIN syntax also works\nfrom orders\n  LEFT JOIN customers on orders.customer_id = customers.id"
+  },
+  {
+    "title": "Pipeline Styles",
+    "desc": "Indentation (preferred) vs pipe operator",
+    "query": "-- Indentation-based pipeline - preferred, cleaner\nfrom users\n  where status = \"active\"\n  group by country (# as total)\n  order by -total;\n\n-- Explicit pipe operator also works\nfrom users\n| where status = \"active\"\n| group by country (# as total)\n| order by -total"
+  },
+  {
+    "title": "CTE Styles",
+    "desc": "stash as (preferred) vs WITH ... AS",
+    "query": "from users  -- ASQL style: stash as creates inline CTEs\n  where status = \"active\"\n  group by country (# as total)\n  stash as by_country     -- Everything above becomes CTE \"by_country\"\n  order by -total;        -- Continue pipeline with the CTE\n\n-- SQL style WITH ... AS also works\nWITH active_users AS (\n  SELECT * FROM users WHERE status = \"active\"\n)\nSELECT country, COUNT(*) as total\nFROM active_users\nGROUP BY country"
+  }
+]

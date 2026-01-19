@@ -146,8 +146,8 @@ def _pipeline_to_asql(pipeline: Dict[str, Any]) -> str:
                     agg_strs = []
                     for agg in aggregates:
                         func = agg.get("function", "count")
-                        col = agg.get("column", "*")
-                        alias = agg.get("alias", f"{func}_{col}")
+                        col = agg.get("column") or "*"  # Empty string -> *
+                        alias = agg.get("alias") or f"{func}_{col}"
                         agg_strs.append(f"{func}({col}) as {alias}")
 
                     aggs_str = ",\n    ".join(agg_strs)
@@ -275,10 +275,19 @@ def _columns_to_asql(columns: List[Any]) -> List[str]:
     return column_strs
 
 
-def _expression_to_asql(expr: Dict[str, Any]) -> str:
-    """Convert JSON expression to ASQL text."""
+def _expression_to_asql(expr: Union[Dict[str, Any], str]) -> str:
+    """Convert JSON expression to ASQL text.
+    
+    Args:
+        expr: Either a dict with 'type' field for structured expressions,
+              or a plain string that gets returned as-is.
+    """
     if not expr:
         return ""
+    
+    # If it's already a string (plain SQL condition), return as-is
+    if isinstance(expr, str):
+        return expr
 
     expr_type = expr.get("type")
 

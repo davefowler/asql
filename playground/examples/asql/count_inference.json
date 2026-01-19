@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Count Rows",
+    "desc": "Basic COUNT(*) with # shorthand",
+    "query": "-- # by itself means COUNT(*) - counts all rows\nfrom orders\n  group by status (\n    # as order_count  -- COUNT(*)\n  )"
+  },
+  {
+    "title": "Count Distinct",
+    "desc": "Count distinct values with # table_name",
+    "query": "-- # followed by table name = COUNT(DISTINCT primary_key)\n-- ASQL infers the primary key from table name\nfrom orders\n  group by status (\n    # as total_orders,      -- COUNT(*) - all rows\n    # users as unique_customers  -- COUNT(DISTINCT user_id)\n  )"
+  },
+  {
+    "title": "Multiple Entity Counts",
+    "desc": "Count different entities in one query",
+    "query": "-- Count multiple distinct entities\nfrom order_items\n  group by category (\n    # as line_items,           -- Total line items\n    # orders as unique_orders, -- Distinct orders\n    # products as unique_products  -- Distinct products\n  )"
+  },
+  {
+    "title": "Explicit Distinct Count",
+    "desc": "Explicit COUNT(DISTINCT column) syntax",
+    "query": "-- For explicit control, use #(distinct column)\nfrom orders\n  group by region (\n    # as total_rows,\n    # users as unique_users,\n    #(distinct product_id) as unique_products_explicit\n  )"
+  }
+]

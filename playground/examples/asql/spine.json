@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Date Spine",
+    "desc": "Ensure all months appear in results, even with zero values",
+    "query": "-- spine by creates gap-filling for time series\n-- Ensures ALL months appear, even those with no data\nfrom orders\n  where created_at >= @2024-01-01\n  spine by month(created_at) (\n    sum_amount,\n    # as order_count\n  )"
+  },
+  {
+    "title": "Spine with Multiple Dimensions",
+    "desc": "Gap-fill dates while also grouping by another column",
+    "query": "-- Combine spine() with regular GROUP BY columns\n-- spine() marks the column for gap-filling\nfrom orders\n  where created_at >= @2024-01-01\n  group by spine(month(created_at)), region (\n    sum_amount,\n    # as order_count\n  )\n  order by month_created_at, region"
+  },
+  {
+    "title": "Weekly Spine",
+    "desc": "Gap-fill by week for weekly reporting",
+    "query": "-- Use week() for weekly time series\n-- All weeks in the date range will appear\nfrom transactions\n  where transaction_date >= @2024-01-01\n  spine by week(transaction_date) (\n    sum_amount as weekly_revenue,\n    # as transaction_count\n  )\n  order by week_transaction_date"
+  },
+  {
+    "title": "Spine with Filters",
+    "desc": "Gap-fill respects WHERE clause date bounds",
+    "query": "-- WHERE clauses help determine spine range\n-- Spine fills gaps within the filtered date range\nfrom sales\n  where sale_date between @2024-01-01 and @2024-06-30\n    and region = \"North America\"\n  spine by month(sale_date) (\n    sum_revenue,\n    avg_order_value\n  )"
+  }
+]

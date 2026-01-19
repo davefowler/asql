@@ -1,0 +1,22 @@
+[
+  {
+    "title": "User Retention Cohort",
+    "desc": "Track monthly active users by signup cohort",
+    "query": "-- cohort by creates cohort analysis\n-- Groups users by when they started, tracks activity over time\nfrom events\n  group by month(event_date) (\n    #(distinct user_id) as active  -- Distinct active users\n  )\n  cohort by month(users.signup_date) on user_id"
+  },
+  {
+    "title": "Revenue Cohort",
+    "desc": "Revenue by first purchase cohort",
+    "query": "-- Track revenue by when customers first purchased\nfrom orders\n  group by month(order_date) (\n    sum_total\n  )\n  cohort by month(customers.first_order_date) on customer_id"
+  },
+  {
+    "title": "Weekly Cohorts",
+    "desc": "Weekly granularity cohort analysis",
+    "query": "-- Use week() for weekly cohorts\nfrom events\n  group by week(event_date) (\n    #(distinct user_id) as active\n  )\n  cohort by week(users.signup_date) on user_id"
+  },
+  {
+    "title": "Segmented Cohorts",
+    "desc": "Cohort analysis by acquisition channel",
+    "query": "-- Add segmentation to cohorts\n-- Compare retention across different channels\nfrom events\n  group by month(event_date) (\n    #(distinct user_id) as active\n  )\n  cohort by users.channel, month(users.signup_date) on user_id"
+  }
+]

@@ -20,6 +20,7 @@ from tests.fixtures import transpile
 # Import examples directly from playground package
 from playground.examples import (
     SQL_EXAMPLES,
+    VISUAL_ASQL_EXAMPLES,
     get_all_examples_flat,
 )
 from playground.schema import PLAYGROUND_SCHEMA
@@ -177,6 +178,62 @@ class TestRoundTrip:
             
         except Exception as e:
             pytest.skip(f"Reverse transpilation not supported for this pattern: {e}")
+
+
+class TestVisualASQLExamples:
+    """Test Visual ASQL examples are valid JSON and can be compiled."""
+    
+    def test_visual_asql_examples_exist(self) -> None:
+        """Verify Visual ASQL examples are loaded."""
+        assert len(VISUAL_ASQL_EXAMPLES) > 0, "No Visual ASQL examples found"
+        print(f"\nLoaded {len(VISUAL_ASQL_EXAMPLES)} Visual ASQL examples")
+    
+    @pytest.mark.parametrize("example", VISUAL_ASQL_EXAMPLES, ids=lambda ex: ex.get("title", "unknown"))
+    def test_visual_asql_example_is_valid_json(self, example) -> None:
+        """Test that Visual ASQL examples have valid JSON query."""
+        import json
+        
+        query = example.get("query", "")
+        assert query, f"Example '{example.get('title')}' has empty query"
+        
+        # Query should be a JSON string (converted by examples.py)
+        if isinstance(query, str):
+            try:
+                parsed = json.loads(query)
+                assert isinstance(parsed, list), "Visual ASQL should be array of pipelines"
+                assert len(parsed) > 0, "Visual ASQL should have at least one pipeline"
+                
+                # Validate basic structure
+                for pipeline in parsed:
+                    assert "from" in pipeline, "Pipeline must have 'from'"
+                    assert "transforms" in pipeline, "Pipeline must have 'transforms'"
+                    
+            except json.JSONDecodeError as e:
+                pytest.fail(f"Invalid JSON in example '{example.get('title')}': {e}")
+    
+    @pytest.mark.parametrize("example", VISUAL_ASQL_EXAMPLES, ids=lambda ex: ex.get("title", "unknown"))
+    def test_visual_asql_example_compiles_to_asql(self, example) -> None:
+        """Test that Visual ASQL examples can be compiled to ASQL text."""
+        import json
+        from asql.json_schema import json_to_asql
+        
+        query = example.get("query", "")
+        if not query:
+            pytest.skip("Empty query")
+        
+        parsed = json.loads(query)
+        
+        try:
+            asql = json_to_asql(parsed)
+            assert asql is not None
+            assert len(asql) > 0
+            
+            # Try to compile the ASQL to SQL
+            result = transpile(asql, dialect="snowflake", pretty=True)
+            assert result is not None
+            
+        except Exception as e:
+            pytest.fail(f"Visual ASQL example '{example.get('title')}' failed to compile: {e}")
 
 
 class TestSQLExamples:
