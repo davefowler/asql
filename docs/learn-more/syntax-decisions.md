@@ -362,10 +362,10 @@ All 6 months appear, even if some have no orders.
 
 **Consideration**: This changes semantics from standard SQL. Users coming from SQL might be surprised. We mitigate this with:
 1. Clear documentation
-2. `SET auto_spine = false` to disable
+2. Explicit `spine by` syntax (use `group by` for no gap-filling)
 3. Optional `guarantee()` for explicit control
 
-**Tradeoff**: Small performance overhead (<5%) for the automatic spine generation.
+**Tradeoff**: Small performance overhead (<5%) for the spine generation.
 
 ---
 

@@ -178,8 +178,7 @@ def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Di
     """
     import sys
     import io
-    from asql import compile
-    from asql.config import CompileSettings
+    import asql
     
     formatted_asql = format_asql_for_docs(asql_query)
     results = {"asql": formatted_asql}
@@ -187,9 +186,6 @@ def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Di
     # Skip compilation if flag is set
     if skip_compilation:
         return results
-    
-    # For docs examples, enable infer_join_keys since we don't have real schemas
-    docs_settings = CompileSettings(infer_join_keys=True)
     
     compilation_errors: list[str] = []
 
@@ -201,7 +197,9 @@ def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Di
                 old_stdout, old_stderr = sys.stdout, sys.stderr
                 sys.stdout = sys.stderr = io.StringIO()
                 try:
-                    sql = compile(formatted_asql, dialect=dialect, settings=docs_settings)
+                    # Use asql.transpile() with infer_join_keys for docs examples
+                    sql_list = asql.transpile(formatted_asql, write=dialect, infer_join_keys=True)
+                    sql = sql_list[0] if sql_list else ""
                 finally:
                     sys.stdout, sys.stderr = old_stdout, old_stderr
             # Pretty-print for docs readability (adds newlines/indentation)

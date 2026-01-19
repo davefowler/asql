@@ -1,6 +1,6 @@
-# Guaranteed Groups
+# Guaranteed Groups (Spine)
 
-One of ASQL's most powerful features is **guaranteed groups**: when you group data, ASQL ensures all expected dimension values appear in results—even if they have no data.
+One of ASQL's most powerful features is **spine gap-filling**: when you group data by dates, ASQL can ensure all expected time periods appear in results—even if they have no data.
 
 This feature embodies the **[Completeness Over Fast Queries](index.md#5-completeness-over-fast-queries)** design value.
 
@@ -28,13 +28,13 @@ But analytics is different. When you build a time-series chart, missing data poi
 - Month-over-month calculations use the wrong prior month
 - The dashboard looks broken
 
-## The Solution
+## The Solution: Explicit Spine
 
-ASQL automatically fills gaps:
+Use `spine by` to explicitly request gap-filling:
 
 ```asql-play
 from orders
-  group by month(order_date) (
+  spine by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -50,34 +50,53 @@ from orders
 
 No dimension tables. No extra CTEs. No post-processing.
 
-## How It Works
+## Spine Syntax
 
-### Date Truncations
+### `spine by` - Full Spine Transform
 
-When you group by a date truncation function (`month()`, `year()`, `week()`, etc.), ASQL:
-
-1. Infers the date range from your WHERE clause
-2. Generates all values in that range
-3. LEFT JOINs your data to the complete range
-4. Fills missing values with NULL (use `??` for defaults)
+Use `spine by` as a transform (like `group by`) to spine all grouped columns:
 
 ```asql
 from orders
   where order_date >= @2024-01-01 and order_date < @2024-07-01
-  group by month(order_date) (
+  spine by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
 
 All months from January to June will appear.
 
+### `spine()` in GROUP BY - Selective Spine
+
+Use `spine()` within a `group by` to spine only specific columns:
+
+```asql
+from orders
+  group by spine(month(order_date)), region (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+This spines the month column (filling date gaps) but NOT the region column (only regions with data appear).
+
+## How It Works
+
+### Date Truncations
+
+When you spine a date truncation function (`month()`, `year()`, `week()`, etc.), ASQL:
+
+1. Infers the date range from your WHERE clause
+2. Generates all values in that range using `generate_series` (or equivalent)
+3. LEFT JOINs your data to the complete range
+4. Fills missing values with NULL (use `??` for defaults)
+
 ### Non-Date Columns
 
-For non-date columns, ASQL uses DISTINCT values from the **filtered** source data:
+For non-date columns, the spine uses DISTINCT values from the **filtered** source data:
 
-```asql-play
+```asql
 from orders
-  group by status (
+  spine by status (
     # ?? 0 as count
   )
 ```
@@ -97,21 +116,21 @@ This means if you filter your data, only values matching that filter will appear
 ```asql
 from orders
   where region = 'North America'
-  group by region (
+  spine by region (
     sum(amount) ?? 0 as revenue
   )
 ```
 
 This will **only show North America**—not Europe, Asia, or other regions—because the spine is generated from the filtered data.
 
-**This is usually what you want!** When you filter to North America, you typically want results only for North America. The spine ensures you see all North American sub-categories (if grouping by something like `state`), but it respects your top-level filter.
+**This is usually what you want!** When you filter to North America, you typically want results only for North America.
 
 **Want all regions to appear (even with filtered data)?** Use `guarantee()`:
 
 ```asql
 from orders
   where region = 'North America'
-  group by guarantee(region, ['North America', 'Europe', 'Asia', 'South America']) (
+  spine by guarantee(region, ['North America', 'Europe', 'Asia', 'South America']) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -120,17 +139,17 @@ Now all four regions appear—North America with actual data, the others with ze
 
 | Scenario | Result |
 |----------|--------|
-| `group by region` with `where region = 'NA'` | Only NA appears |
-| `group by region` (no filter) | All regions in data appear |
-| `group by guarantee(region, [...])` | All listed values appear |
+| `spine by region` with `where region = 'NA'` | Only NA appears |
+| `spine by region` (no filter) | All regions in data appear |
+| `spine by guarantee(region, [...])` | All listed values appear |
 
-### Multiple GROUP BY Columns
+### Multiple Spine Columns
 
-When grouping by multiple columns, ASQL creates all combinations:
+When spining by multiple columns, ASQL creates all combinations:
 
-```asql-play
+```asql
 from orders
-  group by region, month(order_date) (
+  spine by region, month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -143,7 +162,7 @@ Specify exactly which values should appear:
 
 ```asql-play
 from orders
-  group by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
+  spine by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
     # ?? 0 as order_count
   )
 ```
@@ -162,7 +181,7 @@ Use the nullish coalescing operator to provide defaults for missing values:
 
 ```asql-play
 from orders
-  group by month(order_date) (
+  spine by month(order_date) (
     sum(amount) ?? 0 as revenue,        -- Default to 0
     # ?? 0 as orders,            -- Default to 0
     avg(amount) as avg_order            -- Leave as NULL
@@ -171,35 +190,32 @@ from orders
 
 Different columns can have different default behaviors.
 
-## Disabling Guaranteed Groups
+## When NOT to Use Spine
+
+### Regular GROUP BY (No Gap-Filling)
+
+If you don't want gap-filling, just use regular `group by`:
+
+```asql
+from orders
+  group by month(order_date) (
+    sum(amount) as revenue
+  )
+```
+
+This returns only months with actual data—no spine CTEs, no gap-filling.
 
 ### Filter the Results
 
-The most common approach—just filter out zeros:
+If you used spine but want to remove zero rows:
 
-```asql-play
+```asql
 from orders
-  group by month(order_date) (
+  spine by month(order_date) (
     sum(amount) as revenue
   )
   where revenue > 0
 ```
-
-### Disable for a Query
-
-Use a SET statement:
-
-```asql
-SET auto_spine = false;
-from orders
-  group by month(order_date) (
-    sum(amount) as revenue
-  )
-```
-
-### Disable Globally
-
-Configure in your ASQL settings or via API.
 
 ## Understanding the Generated SQL
 
@@ -212,7 +228,7 @@ SET include_transpilation_comments = true;
 
 from orders
   where order_date >= @2024-01-01 and order_date < @2024-07-01
-  group by month(order_date) (
+  spine by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -220,14 +236,13 @@ from orders
 The output will include a helpful explanation:
 
 ```sql
-/* ASQL auto-spine: Gap-filling CTEs were generated to ensure all 
-   expected GROUP BY values appear (even with zero/null aggregates). 
-   Disable with: SET auto_spine = false; */
+/* ASQL spine: Gap-filling CTEs were generated to ensure all 
+   expected time periods appear (even with zero/null aggregates). */
 WITH month_order_date_spine AS (...)
 ...
 ```
 
-This is especially useful when first learning how auto-spine works or when debugging complex queries.
+This is especially useful when first learning how spine works or when debugging complex queries.
 
 ## Technical Details
 
@@ -267,7 +282,7 @@ ASQL generates dialect-appropriate date generation:
 
 ### Spines and Performance
 
-Auto-spine adds minimal overhead (< 5% query time) in most cases. Here's what to expect:
+Spine adds minimal overhead (< 5% query time) in most cases. Here's what to expect:
 
 #### Date Spines: Negligible Cost
 
@@ -298,11 +313,11 @@ This hits your source table, so performance depends on:
 | Large table, no index | Can be slow |
 | Already filtered by WHERE | Usually fast (smaller scan) |
 
-**Tip:** If you're grouping by a categorical column frequently, ensure it's indexed. Most dimension columns (status, region, category) naturally have low cardinality and are fast regardless.
+**Tip:** If you're spining by a categorical column frequently, ensure it's indexed. Most dimension columns (status, region, category) naturally have low cardinality and are fast regardless.
 
-#### Multiple GROUP BY Columns: Cross-Join
+#### Multiple Spine Columns: Cross-Join
 
-When grouping by multiple columns, spines are cross-joined:
+When spining by multiple columns, spines are cross-joined:
 
 ```
 12 months × 5 regions = 60 spine rows
@@ -312,29 +327,17 @@ When grouping by multiple columns, spines are cross-joined:
 
 For typical analytics (monthly/quarterly × reasonable dimensions), this is fine. For high-cardinality combinations, consider whether you really need gap-filling.
 
-#### When to Disable Auto-Spine
+#### When to Use GROUP BY Instead of SPINE BY
 
-Consider `SET auto_spine = false` when:
+Use regular `group by` (not `spine by`) when:
 
-- You're grouping by a high-cardinality column (user_id, order_id) where gap-filling doesn't make sense—you don't want a row for every user with zero orders. Disabling is equivalent to filtering `where count != 0` afterwards, but saves 10-30% query overhead.
+- You're grouping by a high-cardinality column (user_id, order_id) where gap-filling doesn't make sense—you don't want a row for every user with zero orders
 - You specifically don't want gap-filling behavior
-
-#### Multiple GROUP BY Columns
-
-When grouping by many columns, the spines are cross-joined:
-
-```
-12 months × 5 regions = 60 rows
-12 months × 50 states × 20 categories = 12,000 rows
-```
-
-This is still efficient—the cross-join happens on small dimension sets, and the LEFT JOIN uses hash joins. Even for large combinations (millions of rows), expect 20-40% overhead compared to the base query. For materialized views or batch jobs where you genuinely want complete dimension coverage, this is reasonable.
-
-One benefit of auto-spine: you don't need to pre-materialize every dimension combination "just in case." Since downstream queries also get gap-filling automatically, you can let each query fill the gaps it needs rather than over-engineering your data models for completeness upfront.
+- You want maximum performance and don't need completeness
 
 #### The Bottom Line
 
-For typical analytics queries (time-series by month/quarter, categorical breakdowns by region/status/category), auto-spine overhead is **< 5% of query time** and usually unnoticeable. The convenience and correctness benefits far outweigh the cost.
+For typical analytics queries (time-series by month/quarter, categorical breakdowns by region/status/category), spine overhead is **< 5% of query time** and usually unnoticeable. The convenience and correctness benefits far outweigh the cost.
 
 ### Column-to-Column Comparisons in WHERE
 
@@ -371,7 +374,8 @@ from orders
 1. **Always use `??` for aggregates** — Decide what missing means (0? NULL? N/A?)
 2. **Specify date bounds in WHERE** — Helps ASQL generate the right spine
 3. **Use `guarantee()` for fixed categories** — Don't rely on data having all values
-4. **Filter zeros when needed** — `where revenue > 0` after grouping
+4. **Filter zeros when needed** — `where revenue > 0` after spine
+5. **Use `spine by` explicitly** — Makes intent clear to readers
 
 ## Comparison with dbt
 
@@ -389,7 +393,7 @@ ASQL provides this automatically for common patterns.
 ```asql
 from orders
   where order_date >= @2024-01-01 and order_date < @2025-01-01
-  group by month(order_date) (
+  spine by month(order_date) (
     sum(amount) ?? 0 as revenue,
     # ?? 0 as orders
   )
@@ -400,7 +404,7 @@ from orders
 
 ```asql-play
 from tickets
-  group by guarantee(status, ['open', 'in_progress', 'resolved', 'closed']) (
+  spine by guarantee(status, ['open', 'in_progress', 'resolved', 'closed']) (
     # ?? 0 as ticket_count
   )
 ```
@@ -410,11 +414,22 @@ from tickets
 ```asql-play
 from sales
   where year(sale_date) = 2024
-  group by region, quarter(sale_date) (
+  spine by region, quarter(sale_date) (
     sum(amount) ?? 0 as revenue
   )
   order by region, quarter
 ```
+
+### Selective Spine (Date Only)
+
+```asql
+from orders
+  group by spine(month(order_date)), region (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+This fills date gaps but only shows regions with actual data.
 
 ## Next Steps
 

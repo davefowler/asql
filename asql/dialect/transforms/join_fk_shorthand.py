@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from sqlglot import exp
 
-from asql.compiler.join_inference import resolve_join_condition
+from asql.dialect.transforms.join_inference import resolve_join_condition
 
 if TYPE_CHECKING:
     from asql.config import CompileSettings

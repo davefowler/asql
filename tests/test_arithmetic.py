@@ -2,7 +2,7 @@
 
 import sqlglot
 from sqlglot import exp
-from asql import compile
+from tests.fixtures import transpile
 from tests.fixtures import assert_valid_sql, assert_sql_contains
 
 
@@ -16,7 +16,7 @@ class TestArithmeticOperators:
         This is semantically correct, so we verify the output is valid SQL.
         """
         asql = "from users where age + 5 >= 18"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_valid_sql(sql)
         
@@ -35,7 +35,7 @@ class TestArithmeticOperators:
         This is semantically correct, so we verify the output is valid SQL.
         """
         asql = "from users where age - 5 < 18"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert_valid_sql(sql)
         
         # Verify WHERE clause exists with age and < operator
@@ -49,7 +49,7 @@ class TestArithmeticOperators:
     def test_multiplication_in_select(self) -> None:
         """Test multiplication in SELECT clause."""
         asql = "from sales select amount * quantity as total"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "amount", "*", "quantity", "total")
         assert_valid_sql(sql)
@@ -70,21 +70,21 @@ class TestArithmeticOperators:
     def test_division_in_select(self) -> None:
         """Test division in SELECT clause."""
         asql = "from sales select amount / quantity as avg_price"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "amount / quantity" in sql.lower() or "amount / quantity" in sql
         assert "avg_price" in sql.lower()
     
     def test_modulo_in_where(self) -> None:
         """Test modulo operator in WHERE clause."""
         asql = "from users where id % 2 == 0"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "id % 2" in sql.lower() or "id % 2" in sql
         assert "=" in sql
     
     def test_arithmetic_precedence(self) -> None:
         """Test operator precedence: * before +."""
         asql = "from sales select amount * 0.1 + tax as total"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should be: (amount * 0.1) + tax (multiplication before addition)
         assert_sql_contains(sql, "*", "+", "amount", "tax", "total")
@@ -109,7 +109,7 @@ class TestArithmeticOperators:
     def test_arithmetic_with_parentheses(self) -> None:
         """Test arithmetic with parentheses."""
         asql = "from sales select (amount + tax) * 0.1 as discount"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "*", "+", "amount", "tax", "discount")
         assert_valid_sql(sql)
@@ -130,7 +130,7 @@ class TestArithmeticOperators:
     def test_multiple_operations(self) -> None:
         """Test multiple arithmetic operations."""
         asql = "from sales select amount * quantity - discount + tax as total"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "*" in sql
         assert "-" in sql
         assert "+" in sql
@@ -138,7 +138,7 @@ class TestArithmeticOperators:
     def test_arithmetic_in_comparison(self) -> None:
         """Test arithmetic in comparison expressions."""
         asql = "from users where age * 2 > 40"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "age * 2" in sql.lower() or "age * 2" in sql
         assert ">" in sql
     
@@ -149,7 +149,7 @@ class TestArithmeticOperators:
         This is semantically correct, so we verify the output is valid SQL.
         """
         asql = "from users where age + 10 >= 30"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert_valid_sql(sql)
         
         # Verify WHERE clause exists with age and >= operator
@@ -163,7 +163,7 @@ class TestArithmeticOperators:
     def test_arithmetic_in_group_by_aggregation(self) -> None:
         """Test arithmetic in aggregation functions."""
         asql = "from sales group by region ( sum(amount * quantity) as revenue )"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "SUM", "amount", "*", "quantity", "revenue", "region")
         assert_valid_sql(sql)
@@ -180,7 +180,7 @@ class TestArithmeticOperators:
     def test_complex_arithmetic_expression(self) -> None:
         """Test complex arithmetic expression."""
         asql = "from sales select amount * (1 + tax_rate) - discount as final_price"
-        sql = compile(asql)
+        sql = transpile(asql)
         # SQLGlot handles operator precedence correctly
         assert "*" in sql
         assert "+" in sql
@@ -194,7 +194,7 @@ class TestArithmeticOperators:
         This is semantically correct, so we verify the output is valid SQL.
         """
         asql = "from users where balance + -100 >= 0"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_valid_sql(sql)
         
@@ -213,21 +213,21 @@ class TestArithmeticEdgeCases:
     def test_division_by_zero_warning(self) -> None:
         """Test that division by zero doesn't crash (SQL handles it)."""
         asql = "from sales select amount / 0 as invalid"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "/" in sql
         assert "0" in sql
     
     def test_modulo_with_zero(self) -> None:
         """Test modulo with zero."""
         asql = "from users where id % 0 == 0"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "%" in sql
         assert "0" in sql
     
     def test_nested_arithmetic(self) -> None:
         """Test nested arithmetic expressions."""
         asql = "from sales select (amount * quantity) / (1 + tax_rate) as net"
-        sql = compile(asql)
+        sql = transpile(asql)
         # SQLGlot handles operator precedence correctly
         assert "*" in sql
         assert "/" in sql

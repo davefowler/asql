@@ -57,12 +57,11 @@ group by rollup(year(date), month(date)) (
 - Auto-spine's date range detection may not account for these NULL patterns
 - The cross-join of spine values with ROLLUP patterns can produce invalid combinations
 
-**Current behavior**: Auto-spine attempts to handle ROLLUP/CUBE by including NULL in spines and filtering invalid patterns, but this is not fully tested with all edge cases.
+**Current behavior**: Spine attempts to handle ROLLUP/CUBE by including NULL in spines and filtering invalid patterns, but this is not fully tested with all edge cases.
 
-**Workaround**: Disable auto-spine for queries using GROUPING SETS:
+**Workaround**: Use regular `group by` (not `spine by`) for queries using GROUPING SETS:
 
 ```asql
-SET auto_spine = false;
 from sales
 group by rollup(year(date), month(date)) (
   sum(amount) as revenue

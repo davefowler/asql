@@ -1,6 +1,6 @@
 """Test ASQL with example datasets and real-world scenarios."""
 
-from asql import compile
+from tests.fixtures import transpile
 
 
 # Example dataset descriptions (for documentation/testing)
@@ -44,7 +44,7 @@ class TestExampleDatasets:
         """Test common queries on users dataset."""
         queries = EXAMPLE_DATASETS["users"]["sample_queries"]
         for asql in queries:
-            sql = compile(asql)
+            sql = transpile(asql)
             assert sql is not None
             assert "users" in sql.lower()
             assert "SELECT" in sql.upper()
@@ -53,7 +53,7 @@ class TestExampleDatasets:
         """Test common queries on sales dataset."""
         queries = EXAMPLE_DATASETS["sales"]["sample_queries"]
         for asql in queries:
-            sql = compile(asql)
+            sql = transpile(asql)
             assert sql is not None
             assert "sales" in sql.lower()
             assert "SELECT" in sql.upper()
@@ -62,7 +62,7 @@ class TestExampleDatasets:
         """Test common queries on orders dataset."""
         queries = EXAMPLE_DATASETS["orders"]["sample_queries"]
         for asql in queries:
-            sql = compile(asql)
+            sql = transpile(asql)
             assert sql is not None
             assert "orders" in sql.lower()
             assert "SELECT" in sql.upper()
@@ -80,7 +80,7 @@ group by country ( # as total_users, avg(age) as avg_age )
 order by -total_users
 limit 20
 """
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "SELECT" in sql.upper()
         assert "WHERE" in sql.upper()
         assert "GROUP BY" in sql.upper()
@@ -96,7 +96,7 @@ group by region, month ( sum(amount) as revenue, # as orders )
 order by -revenue
 limit 10
 """
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "SELECT" in sql.upper()
         assert "WHERE" in sql.upper()
         assert "GROUP BY" in sql.upper()
@@ -115,7 +115,7 @@ where status in ("active", "pending", "verified")
     and email is not null
     and country not in ("banned_country1", "banned_country2")
 """
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "WHERE" in sql.upper()
         assert "IN" in sql.upper()
         assert "NOT" in sql.upper()
@@ -126,7 +126,7 @@ where status in ("active", "pending", "verified")
         # Note: GROUP BY with function calls requires aggregation
         # Use single-line format (multi-line not fully supported yet)
         asql = "from users group by month(created_at) ( # as signups ) order by -signups"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "GROUP BY" in sql.upper()
         assert "MONTH" in sql.upper() or "month" in sql.lower()
         assert "ORDER BY" in sql.upper()
@@ -140,7 +140,7 @@ group by user_id ( sum(amount) as total_spent )
 order by -total_spent
 limit 100
 """
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "GROUP BY" in sql.upper()
         assert "SUM" in sql.upper()
         assert "ORDER BY" in sql.upper()
@@ -155,7 +155,7 @@ from users
 group by status ( # as count )
 order by -count
 """
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "GROUP BY" in sql.upper()
         assert "COUNT" in sql.upper()
         assert "ORDER BY" in sql.upper()
@@ -172,7 +172,7 @@ group by region (
 )
 order by -revenue
 """
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "WHERE" in sql.upper()
         assert "GROUP BY" in sql.upper()
         assert "SUM" in sql.upper()

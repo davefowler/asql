@@ -198,8 +198,8 @@ from users
 Set compiler options (not CTE variables):
 
 ```asql
-SET auto_spine = false;
 SET dialect = 'postgres';
+SET week_start = 'sunday';
 
 from orders
   group by month(created_at) ( sum(amount) as revenue )
@@ -209,8 +209,7 @@ from orders
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `auto_spine` | bool | `true` | Enable gap-filling for GROUP BY |
-| `dialect` | string | `"snowflake"` | Target SQL dialect |
+| `dialect` | string | `"duckdb"` | Target SQL dialect |
 | `week_start` | string | `"monday"` | Week start day: `"monday"` or `"sunday"` |
 | `relative_date_type` | string | `"timestamp"` | Type for relative dates: `"timestamp"` or `"date"` |
 | `include_transpilation_comments` | bool | `false` | Add explanatory comments about ASQL transformations |
@@ -221,25 +220,40 @@ from orders
 Control how comments appear in the generated SQL:
 
 ```asql
--- Add explanatory comments about ASQL transformations (like auto-spine)
+-- Add explanatory comments about ASQL transformations (like spine)
 SET include_transpilation_comments = true;
 
 -- Strip all source comments from output
 SET passthrough_comments = false;
 
 from orders
-  group by month(order_date) ( sum(amount) as revenue )
+  spine by month(order_date) ( sum(amount) as revenue )
 ```
 
 When `include_transpilation_comments` is enabled, the generated SQL includes helpful comments explaining complex transformations:
 
 ```sql
-/* ASQL auto-spine: Gap-filling CTEs were generated to ensure all 
-   expected GROUP BY values appear (even with zero/null aggregates). 
-   Disable with: SET auto_spine = false; */
+/* ASQL spine: Gap-filling CTEs were generated to ensure all 
+   expected time periods appear (even with zero/null aggregates). */
 WITH month_order_date_spine AS (...)
 ...
 ```
+
+### spine
+
+Gap-filling transform. Use `spine by` as a transform or `spine()` within `group by`:
+
+```asql
+-- spine by: full spine transform
+from orders
+  spine by month(order_date) ( sum(amount) as revenue )
+
+-- spine() in group by: selective spine
+from orders
+  group by spine(month(order_date)), region ( sum(amount) as revenue )
+```
+
+See [Spine (Gap-Filling)](../group_by.md#spine-gap-filling) for details.
 
 ---
 

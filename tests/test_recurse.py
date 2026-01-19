@@ -1,6 +1,6 @@
 """Tests for recursive query syntax."""
 
-from asql import compile
+from tests.fixtures import transpile
 
 
 class TestRecurseCompilation:
@@ -13,7 +13,7 @@ class TestRecurseCompilation:
           where id = 1
           recurse(manager_id)
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         # Should generate WITH RECURSIVE
         assert "WITH RECURSIVE" in result
@@ -29,7 +29,7 @@ class TestRecurseCompilation:
           where id = 1
           recurse(manager_id, 5)
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         assert "WITH RECURSIVE" in result
         assert "_level < 5" in result
@@ -41,7 +41,7 @@ class TestRecurseCompilation:
           where id = 1
           recurse(manager_id)
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         # Default max depth should be 100
         assert "_level < 100" in result
@@ -53,7 +53,7 @@ class TestRecurseCompilation:
           where slug = 'electronics'
           recurse(parent_id)
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         assert "WITH RECURSIVE" in result
         assert "_recurse_categories" in result
@@ -68,7 +68,7 @@ class TestRecurseCompilation:
           order by _level
           limit 10
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         assert "WITH RECURSIVE" in result
         # Case-insensitive check for ORDER BY and LIMIT
@@ -82,7 +82,7 @@ class TestRecurseCompilation:
           where id = 1
           recurse(manager_id, 5)
         """
-        sql = compile(asql, dialect="postgres")
+        sql = transpile(asql, dialect="postgres")
         
         assert "WITH RECURSIVE" in sql
         assert "UNION ALL" in sql
@@ -94,7 +94,7 @@ class TestRecurseCompilation:
           where id = 100
           recurse(parent_id, 10)
         """
-        sql = compile(asql, dialect="bigquery")
+        sql = transpile(asql, dialect="bigquery")
         
         # BigQuery also supports WITH RECURSIVE
         assert "WITH RECURSIVE" in sql
@@ -107,7 +107,7 @@ class TestRecurseCompilation:
           recurse(manager_id)
           select id, name, _level
         """
-        sql = compile(asql, dialect="duckdb")
+        sql = transpile(asql, dialect="duckdb")
         
         # The outer select should include the specified columns
         assert "WITH RECURSIVE" in sql
@@ -123,7 +123,7 @@ class TestRecurseSemantics:
           where department = 'Engineering' and active = true
           recurse(manager_id)
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         # The anchor condition should be in the base case
         assert "department" in result
@@ -136,7 +136,7 @@ class TestRecurseSemantics:
           where id = 1
           recurse(manager_id)
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         # Should join FK column to id
         assert "manager_id" in result
@@ -150,7 +150,7 @@ class TestRecurseSemantics:
           where id = 1
           recurse(manager_id)
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         # Base case starts at 1
         assert "1 AS _level" in result
@@ -167,7 +167,7 @@ class TestRecurseEdgeCases:
         from employees
           recurse(manager_id)
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         # Should still work, using 1=1 as anchor
         assert "WITH RECURSIVE" in result
@@ -179,7 +179,7 @@ class TestRecurseEdgeCases:
           where department = 'Engineering'
           recurse(manager_id, 3)
         """
-        result = compile(asql)
+        result = transpile(asql)
         
         # Should work - creates a forest of trees
         assert "WITH RECURSIVE" in result
@@ -193,7 +193,7 @@ class TestRecurseEdgeCases:
           recurse(manager_id)
         """
         # The == should be transformed to = by the dialect/compiler
-        result = compile(asql)
+        result = transpile(asql)
         
         assert "WITH RECURSIVE" in result
         # == should be converted to =

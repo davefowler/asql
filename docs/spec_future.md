@@ -230,7 +230,7 @@ from date_spine(start = @2024-01-01, end = @2024-12-31, grain = day)
 
 **Why it exists**: Sometimes you want to generate rows without an existing source table (numbers/date dimension).
 
-**Current**: Prefer compiler `auto_spine` (gap-filling for grouped date dimensions) where applicable, or use warehouse-native generators in raw SQL.
+**Current**: Use `spine by` for gap-filling grouped date dimensions, or use warehouse-native generators in raw SQL.
 
 ---
 

@@ -2,7 +2,7 @@
 
 import sqlglot
 from sqlglot import exp
-from asql import compile
+from tests.fixtures import transpile
 from tests.fixtures import assert_valid_sql, assert_sql_contains
 
 
@@ -12,7 +12,7 @@ class TestSlugifyFunction:
     def test_simple_slugify(self) -> None:
         """Test slugify() with a single column."""
         asql = "from products select slugify(name) as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "LOWER", "REGEXP_REPLACE", "TRIM", "name")
         assert_valid_sql(sql)
@@ -25,7 +25,7 @@ class TestSlugifyFunction:
     def test_slugify_lowercase(self) -> None:
         """Test that slugify() converts to lowercase."""
         asql = "from products select slugify(title) as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should use LOWER function
         assert_sql_contains(sql, "LOWER")
@@ -34,7 +34,7 @@ class TestSlugifyFunction:
     def test_slugify_regex_replace(self) -> None:
         """Test that slugify() uses regex to replace non-alphanumeric chars."""
         asql = "from products select slugify(name) as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should use REGEXP_REPLACE
         assert_sql_contains(sql, "REGEXP_REPLACE")
@@ -45,7 +45,7 @@ class TestSlugifyFunction:
     def test_slugify_trim(self) -> None:
         """Test that slugify() trims leading/trailing hyphens."""
         asql = "from products select slugify(name) as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should use TRIM to remove leading/trailing hyphens
         assert_sql_contains(sql, "TRIM")
@@ -55,7 +55,7 @@ class TestSlugifyFunction:
     def test_slugify_with_alias(self) -> None:
         """Test slugify() with explicit alias."""
         asql = "from products select slugify(title) as url_slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "url_slug")
         assert_valid_sql(sql)
@@ -70,7 +70,7 @@ class TestSlugifyFunction:
             slugify(name) as slug,
             price
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "id", "name", "slug", "price")
         assert_sql_contains(sql, "REGEXP_REPLACE", "LOWER", "TRIM")
@@ -82,7 +82,7 @@ class TestSlugifyFunction:
         from products
         where slugify(name) = 'hello-world'
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "WHERE", "REGEXP_REPLACE", "LOWER", "TRIM")
         assert_valid_sql(sql)
@@ -90,15 +90,17 @@ class TestSlugifyFunction:
     def test_slugify_with_concat(self) -> None:
         """Test slugify() with concatenated expressions."""
         asql = "from products select slugify(concat(category, '-', name)) as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
-        assert_sql_contains(sql, "CONCAT", "REGEXP_REPLACE", "LOWER")
+        # DuckDB uses || for concat, others use CONCAT function
+        assert "CONCAT" in sql.upper() or "||" in sql
+        assert_sql_contains(sql, "REGEXP_REPLACE", "LOWER")
         assert_valid_sql(sql)
     
     def test_slugify_with_table_qualification(self) -> None:
         """Test slugify() with table-qualified column."""
         asql = "from products select slugify(products.name) as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "products.name")
         assert_valid_sql(sql)
@@ -111,7 +113,7 @@ class TestSlugifyFunction:
             slugify(name) as name_slug,
             slugify(category) as category_slug
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should have two REGEXP_REPLACE patterns
         sql_lower = sql.lower()
@@ -122,7 +124,7 @@ class TestSlugifyFunction:
     def test_slugify_nested_function(self) -> None:
         """Test slugify() with nested function calls."""
         asql = "from products select slugify(upper(name)) as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should have both UPPER and LOWER
         assert_sql_contains(sql, "UPPER", "LOWER")
@@ -135,7 +137,7 @@ class TestSlugifyCrossDialect:
     def test_slugify_postgresql(self) -> None:
         """Test slugify() compiles to PostgreSQL."""
         asql = "from products select slugify(name) as slug"
-        sql = compile(asql, dialect="postgres")
+        sql = transpile(asql, dialect="postgres")
         
         assert_sql_contains(sql, "REGEXP_REPLACE", "LOWER", "TRIM")
         assert_valid_sql(sql)
@@ -143,7 +145,7 @@ class TestSlugifyCrossDialect:
     def test_slugify_duckdb(self) -> None:
         """Test slugify() compiles to DuckDB."""
         asql = "from products select slugify(name) as slug"
-        sql = compile(asql, dialect="duckdb")
+        sql = transpile(asql, dialect="duckdb")
         
         # DuckDB supports REGEXP_REPLACE
         assert_sql_contains(sql, "REGEXP_REPLACE", "LOWER")
@@ -152,7 +154,7 @@ class TestSlugifyCrossDialect:
     def test_slugify_bigquery(self) -> None:
         """Test slugify() compiles to BigQuery."""
         asql = "from products select slugify(name) as slug"
-        sql = compile(asql, dialect="bigquery")
+        sql = transpile(asql, dialect="bigquery")
         
         # BigQuery supports REGEXP_REPLACE
         assert_sql_contains(sql, "REGEXP_REPLACE", "LOWER")
@@ -161,7 +163,7 @@ class TestSlugifyCrossDialect:
     def test_slugify_snowflake(self) -> None:
         """Test slugify() compiles to Snowflake."""
         asql = "from products select slugify(name) as slug"
-        sql = compile(asql, dialect="snowflake")
+        sql = transpile(asql, dialect="snowflake")
         
         # Snowflake supports REGEXP_REPLACE
         assert_sql_contains(sql, "REGEXP_REPLACE", "LOWER")
@@ -174,14 +176,14 @@ class TestSlugifyEdgeCases:
     def test_slugify_empty_arg(self) -> None:
         """Test that slugify() handles empty strings."""
         asql = "from products select slugify('') as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_valid_sql(sql)
     
     def test_slugify_case_insensitive(self) -> None:
         """Test that SLUGIFY (uppercase) works too."""
         asql = "from products select SLUGIFY(name) as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "REGEXP_REPLACE", "LOWER", "TRIM")
         assert_valid_sql(sql)
@@ -195,7 +197,7 @@ class TestSlugifyEdgeCases:
         order by id
         limit 10
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "WHERE", "ORDER BY", "LIMIT")
         assert_valid_sql(sql)
@@ -203,7 +205,7 @@ class TestSlugifyEdgeCases:
     def test_slugify_with_string_literal(self) -> None:
         """Test slugify() with string literal argument."""
         asql = "from products select slugify('Hello World!') as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "Hello World!")
         assert_valid_sql(sql)
@@ -216,7 +218,7 @@ class TestSlugifyEdgeCases:
             count(*) as product_count
         )
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "GROUP BY", "REGEXP_REPLACE")
         assert_valid_sql(sql)
@@ -227,7 +229,7 @@ class TestSlugifyEdgeCases:
         from products
         order by slugify(name)
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "ORDER BY", "REGEXP_REPLACE")
         assert_valid_sql(sql)
@@ -235,7 +237,7 @@ class TestSlugifyEdgeCases:
     def test_slugify_with_coalesce(self) -> None:
         """Test slugify() with coalesce for NULL handling."""
         asql = "from products select slugify(coalesce(name, 'unknown')) as slug"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "COALESCE", "REGEXP_REPLACE", "LOWER")
         assert_valid_sql(sql)

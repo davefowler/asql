@@ -3,6 +3,88 @@
 import sqlglot
 from typing import Optional
 
+
+
+def transpile(
+    query: str,
+    dialect: str = "duckdb",
+    pretty: bool = False,
+    settings=None,
+    **kwargs,
+) -> str:
+    """Transpile ASQL to SQL using asql.transpile().
+    
+    This is a test helper that wraps asql.transpile() with defaults.
+    Uses the full ASQL pipeline including dialect-aware transforms.
+    
+    Args:
+        query: ASQL query string
+        dialect: Target SQL dialect (default: duckdb)
+        pretty: Format output SQL
+        settings: CompileSettings object (converted to kwargs)
+        **kwargs: Passed to asql.transpile()
+    
+    Returns:
+        SQL string for target dialect
+    """
+    import asql
+    from asql.errors import ASQLSyntaxError
+    from asql.config import CompileSettings
+    
+    if not query or not query.strip():
+        raise ASQLSyntaxError("Empty query")
+    
+    # Convert CompileSettings to kwargs
+    if settings is not None:
+        defaults = CompileSettings()
+        if settings.schema is not None:
+            kwargs.setdefault('schema', settings.schema)
+        if settings.week_start != defaults.week_start:
+            kwargs.setdefault('week_start', settings.week_start)
+        if settings.relative_date_type != defaults.relative_date_type:
+            kwargs.setdefault('relative_date_type', settings.relative_date_type)
+        if settings.alias_template:
+            kwargs.setdefault('alias_template', settings.alias_template)
+        if settings.alias_prefixes:
+            kwargs.setdefault('alias_prefixes', settings.alias_prefixes)
+        if settings.alias_templates:
+            kwargs.setdefault('alias_templates', settings.alias_templates)
+        if settings.infer_join_keys:
+            kwargs.setdefault('infer_join_keys', settings.infer_join_keys)
+        if hasattr(settings, 'include_transpilation_comments'):
+            kwargs.setdefault('include_transpilation_comments', settings.include_transpilation_comments)
+        # Always pass passthrough_comments if it's set (handles False explicitly)
+        kwargs.setdefault('passthrough_comments', settings.passthrough_comments)
+    
+    try:
+        # Use asql.transpile() for full pipeline (including dialect-aware transforms)
+        results = asql.transpile(
+            query,
+            write=dialect,
+            pretty=pretty,
+            **kwargs,
+        )
+        return results[0] if results else ""
+    except sqlglot.errors.ParseError as e:
+        raise ASQLSyntaxError(str(e)) from e
+
+
+def parse_one(query: str, **kwargs) -> sqlglot.exp.Expression:
+    """Parse ASQL to AST.
+    
+    This is a test helper equivalent to sqlglot.parse_one(query, dialect="asql").
+    
+    Args:
+        query: ASQL query string
+        **kwargs: Passed to ASQL dialect constructor
+    
+    Returns:
+        SQLGlot expression AST
+    """
+    from asql import ASQL
+    asql_dialect = ASQL(**kwargs) if kwargs else "asql"
+    return sqlglot.parse_one(query, dialect=asql_dialect)
+
 # Example table schemas and sample data descriptions
 # These are used for testing query generation and validation
 

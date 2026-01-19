@@ -24,9 +24,115 @@
 - Prefer function expressions over function declarations
 - Use Styled Components exclusively for styling (if applicable)
 
+## ⚠️ ASQL Pipeline Architecture (CRITICAL - Know Where Code Belongs)
+
+ASQL uses `asql.transpile()` as the main entry point. This wraps SQLGlot's pipeline with ASQL-specific transforms:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         ASQL Pipeline (asql.transpile)                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐              │
+│  │ ASQL PARSER  │ ───► │  asql.       │ ───► │  GENERATOR   │              │
+│  │              │      │  transpile() │      │  (sqlglot)   │              │
+│  └──────────────┘      └──────────────┘      └──────────────┘              │
+│                                                                             │
+│  Text → AST            AST → AST             AST → SQL Text                │
+│  (ASQL syntax)         (dialect-aware        (target dialect)              │
+│                         transforms)                                         │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ PARSER (asql/dialect/parser.py): Recognize ASQL syntax, build AST          │
+│ - Override _parse_* methods for ASQL-specific syntax                       │
+│ - FUNCTIONS dict for custom functions (prior, next, rolling_avg, etc.)     │
+│ - TRANSFORM_PARSERS for pipeline operators (where, join, group by, etc.)   │
+│ - Post-parse transforms in _parse_statement() that don't need output       │
+│   dialect (underscore shorthands, auto-alias, cohort)                      │
+│ - Creates custom AST nodes (exp.Spine, exp.CohortBy)                       │
+│ - ❌ Should NOT reference output dialect (parser doesn't know target)      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ asql.transpile() (asql/transpile.py): Dialect-aware AST transforms         │
+│ - Transforms that NEED to know the target dialect                          │
+│ - Called AFTER parsing, BEFORE SQL generation                              │
+│ - Transform order: spine → alias_reuse → column_operators → list_comp      │
+│ - Uses compiler modules (asql/compiler/*.py)                               │
+│ - ✅ This is where dialect-specific LOGIC decisions happen                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ GENERATOR (SQLGlot's built-in): Convert AST to SQL string                  │
+│ - Uses target dialect's generator (DuckDB, Postgres, Snowflake, etc.)      │
+│ - TRANSFORMS dict, _*_sql() methods                                        │
+│ - We use SQLGlot's generators as-is, no custom Generator class needed      │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why `asql.transpile()` (Not Just `sqlglot.transpile()`)
+
+`sqlglot.transpile()` only does: parse → generate. It does NOT:
+- Run the optimizer
+- Apply custom AST transforms
+- Handle dialect-specific features like alias reuse or spine gap-filling
+
+ASQL needs transforms that depend on the OUTPUT dialect. These can't go in the parser
+(parser doesn't know target) and shouldn't go in Generator.preprocess() (we want to
+use SQLGlot's generators unchanged). So we put them in `asql.transpile()`.
+
+### Where ASQL Transforms Live
+
+| Transform | Needs Output Dialect? | Location |
+|-----------|----------------------|----------|
+| Underscore shorthands (`days_since_col`) | ❌ No | Parser (`_apply_asql_transforms`) |
+| Auto-aliasing | ❌ No | Parser (`_apply_asql_transforms`) |
+| FK shorthand (`ON user_id`) | ❌ No (needs schema) | Parser (`_apply_asql_transforms`) |
+| Cohort transform | ❌ No | Parser (`_apply_asql_transforms`) |
+| `exp.CohortBy` parsing | ❌ No | Parser (`_parse_asql_cohort`) |
+| `exp.Spine` parsing | ❌ No | Parser (`_parse_asql_group_by`) |
+| Spine gap-filling | ✅ Yes | `asql.transpile()` |
+| Alias reuse (CTE chain) | ✅ Yes | `asql.transpile()` |
+| Column operators (EXCEPT) | ✅ Yes | `asql.transpile()` |
+| List comprehension | ✅ Yes | `asql.transpile()` |
+
+### ASQL Custom AST Nodes (`asql/expressions.py`)
+
+ASQL defines custom Expression subclasses for features that need explicit AST representation:
+
+```python
+# exp.Spine - marks columns for gap-filling
+# Used in: spine(month(created_at)) or spine by month(date) (sum(amount))
+class Spine(exp.Func):
+    arg_types = {"this": True}
+
+# exp.CohortBy - cohort analysis clause  
+# Used in: cohort by month(signup_date) on user_id
+class CohortBy(exp.Expression):
+    arg_types = {"this": True, "granularity": False, "join_key": False, "segments": False}
+```
+
+### Red Flags (Anti-Patterns)
+
+```python
+# ❌ BAD: Parser applying transforms that need output dialect
+def _parse_statement(self):
+    ast = super()._parse_statement()
+    if self.output_dialect == "duckdb":  # Parser doesn't know output!
+        ast = transform_for_duckdb(ast)
+
+# ❌ BAD: Using attributes instead of AST nodes for complex features
+select._cohort_info = {"col": col}  # Hard to inspect, copy, transform
+# ✅ GOOD: Use custom AST node
+select.set("cohort", CohortBy(this=col))
+
+# ❌ BAD: Putting everything in Generator.preprocess()
+class ASQLGenerator(DuckDBGenerator):  # Don't subclass generators!
+    def preprocess(self, ast):
+        ast = transform_spine(ast)  # Wrong place for dialect-aware logic
+```
+
+---
+
 ## ⚠️ SQLGlot Coding Patterns (CRITICAL for dialect code)
 
-When writing code in `asql/dialect.py` or any SQLGlot-related code, **follow SQLGlot's idiomatic patterns**:
+When writing code in `asql/dialect/parser.py` or any SQLGlot-related code, **follow SQLGlot's idiomatic patterns**:
 
 ### 1. Use Declarative Dicts, NOT `elif` Chains
 ```python
@@ -126,16 +232,16 @@ def _parse_thing(self):
 
 ### 8. ASQL-Specific: UI Schema (Separate from Parser)
 
-**The parser (dialect.py) and UI metadata (ui-metadata.json) are intentionally separate:**
+**The parser and UI metadata are intentionally separate:**
 
-- `asql/dialect.py` - Parser logic with simple inline dicts (e.g., `COMPARISON_OPS`, `TRANSFORM_PARSERS`)
+- `asql/dialect/parser.py` - Parser logic with inline dicts (e.g., `COMPARISON_OPS`, `TRANSFORM_PARSERS`)
 - `asql/ui-metadata.json` - Static JSON file with UI metadata (labels, descriptions, parameters)
 - `asql/ui_schema.py` - Thin Python wrapper to load ui-metadata.json
 - `tests/test_schema_sync.py` - Tests that validate JSON keys match parser
 
 **When adding new syntax:**
-1. Add parsing logic to `dialect.py`
-2. Add UI metadata to `ui-metadata.json`
+1. Add parsing logic to `asql/dialect/parser.py`
+2. Add UI metadata to `asql/ui-metadata.json`
 3. Run `./venv/bin/pytest tests/test_schema_sync.py` to verify sync
 
 **Why separate?** The parser needs `TokenType` and `exp.*` classes. The UI needs `label` and `description`. Keeping them separate is simpler than forcing both into one file.

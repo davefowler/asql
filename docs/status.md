@@ -54,7 +54,7 @@
 - **stash as**: `... stash as cte_name` for mid-pipeline CTEs
 
 ### Compile Settings
-- **SET**: `SET auto_spine = true` for inline configuration
+- **SET**: `SET dialect = 'postgres'`, `SET week_start = 'sunday'`, etc.
 
 ### Utility Functions
 - **safe_divide()**: Returns NULL on divide-by-zero
@@ -140,45 +140,45 @@ These features are documented as future/planned work in `docs/spec_future.md` (o
 ## Example Working Queries
 
 ```python
-from asql import compile
+import asql
 
 # Basic query
-compile("from users")
+asql.transpile("from users", write="postgres")[0]
 # → SELECT * FROM users
 
 # Filtering with arithmetic
-compile('from users where age + 5 >= 23')
+asql.transpile('from users where age + 5 >= 23', write="postgres")[0]
 # → SELECT * FROM users WHERE age + 5 >= 23
 
 # Aggregation with block syntax
-compile("from users group by country ( # as total_users, avg(age) as avg_age )")
+asql.transpile("from users group by country ( # as total_users, avg(age) as avg_age )", write="postgres")[0]
 # → SELECT country, COUNT(*) AS total_users, AVG(age) AS avg_age FROM users GROUP BY country
 
 # JOIN (& for INNER, &? for LEFT, ?& for RIGHT, ?&? for FULL, * for CROSS)
-compile("from orders & users on orders.user_id = users.id")
+asql.transpile("from orders & users on orders.user_id = users.id", write="postgres")[0]
 # → SELECT * FROM orders JOIN users ON orders.user_id = users.id
 
 # COALESCE with ??
-compile('from users select name ?? "Unknown" as display_name')
+asql.transpile('from users select name ?? "Unknown" as display_name', write="postgres")[0]
 # → SELECT COALESCE(name, 'Unknown') AS display_name FROM users
 
 # Type casting
-compile("from users select created_at::DATE as signup_date")
+asql.transpile("from users select created_at::DATE as signup_date", write="postgres")[0]
 # → SELECT CAST(created_at AS DATE) AS signup_date FROM users
 
 # Date literal and relative date
-compile("from orders where order_date >= @2024-01-01")
-compile("from orders where created_at >= 7 days ago")
+asql.transpile("from orders where order_date >= @2024-01-01", write="postgres")[0]
+asql.transpile("from orders where created_at >= 7 days ago", write="postgres")[0]
 
 # Window function with per command
-compile("from orders per customer_id first by -order_date")
+asql.transpile("from orders per customer_id first by -order_date", write="postgres")[0]
 # → Keeps most recent order per customer
 
 # Running aggregate
-compile("from transactions order by date select running_sum(amount) as cumulative")
+asql.transpile("from transactions order by date select running_sum(amount) as cumulative", write="postgres")[0]
 
-# CTE with set
-compile('set active = from users where status == "active" from active group by country ( # as total )')
+# CTE with stash as
+asql.transpile('from users where status == "active" stash as active from active group by country ( # as total )', write="postgres")[0]
 ```
 
 ---

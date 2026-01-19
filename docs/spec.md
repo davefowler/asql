@@ -465,20 +465,19 @@ SET passthrough_comments = false;
 from users limit 10
 ```
 
-**`include_transpilation_comments`** (default: `false`): When enabled, ASQL adds explanatory comments about complex transformations like auto-spine:
+**`include_transpilation_comments`** (default: `false`): When enabled, ASQL adds explanatory comments about complex transformations like spine:
 
 ```asql
 SET include_transpilation_comments = true;
 from orders
   where order_date >= @2024-01-01 and order_date < @2024-02-01
-  group by month(order_date) ( sum(amount) as revenue )
+  spine by month(order_date) ( sum(amount) as revenue )
 ```
 
 Output includes helpful explanation:
 ```sql
-/* ASQL auto-spine: Gap-filling CTEs were generated to ensure all 
-   expected GROUP BY values appear (even with zero/null aggregates). 
-   Disable with: SET auto_spine = false; */
+/* ASQL spine: Gap-filling CTEs were generated to ensure all 
+   expected time periods appear (even with zero/null aggregates). */
 WITH month_order_date_spine AS (...)
 ...
 ```
@@ -977,9 +976,32 @@ Avg Users.age by country
 
 **Note**: These are syntactic shortcuts. For complex queries, the explicit `group by` syntax with parentheses (Section 6.1) is recommended for clarity and consistency.
 
-### 6.4 Guaranteed Groups
+### 6.4 Spine (Gap-Filling)
 
-By default, ASQL ensures all expected dimension values appear in grouped results—even if they have no data. This prevents the common analytics bug where missing data creates gaps in charts and incorrect calculations.
+Use `spine by` to ensure all expected dimension values appear in grouped results—even if they have no data. This prevents the common analytics bug where missing data creates gaps in charts and incorrect calculations.
+
+#### `spine by` Syntax
+
+```asql
+-- All months from Jan-Jun will appear, even with zero revenue
+from orders
+  where order_date >= @2024-01-01 and order_date < @2024-07-01
+  spine by month(order_date) (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+#### `spine()` in GROUP BY
+
+Use `spine()` within a `group by` to spine only specific columns:
+
+```asql
+-- Spine dates but NOT regions (only regions with data appear)
+from orders
+  group by spine(month(order_date)), region (
+    sum(amount) ?? 0 as revenue
+  )
+```
 
 #### How It Works
 
@@ -987,45 +1009,33 @@ By default, ASQL ensures all expected dimension values appear in grouped results
 - **Non-date columns**: Uses DISTINCT values from the source data
 - **Cross-joins multiple columns**: All combinations of dimension values are guaranteed
 
-```asql
--- All months from Jan-Jun will appear, even with zero revenue
-from orders
-  where order_date >= @2024-01-01 and order_date < @2024-07-01
-  group by month(order_date) (
-    sum(amount) ?? 0 as revenue
-  )
-```
-
 #### Explicit Values with guarantee()
 
 Use `guarantee()` to specify exactly which values should appear:
 
 ```asql
 from orders
-  group by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
+  spine by guarantee(status, ['pending', 'shipped', 'delivered', 'cancelled']) (
     # ?? 0 as order_count
   )
 ```
 
 This ensures all four statuses appear in results, even if some have zero orders.
 
-#### Disabling Guaranteed Groups
+#### When NOT to Use Spine
 
-**Filter the results** (most common):
+**Use regular `group by` instead of `spine by`** when you don't want gap-filling:
 ```asql
 from orders
   group by month(order_date) ( sum(amount) as revenue )
+```
+
+**Filter the results** if you used spine but want to remove zeros:
+```asql
+from orders
+  spine by month(order_date) ( sum(amount) as revenue )
   where revenue > 0
 ```
-
-**Disable for a query**:
-```asql
-SET auto_spine = false;
-from orders
-  group by month(order_date) ( sum(amount) as revenue )
-```
-
-**Disable globally** via config file or API.
 
 ---
 
@@ -1687,7 +1697,6 @@ The `-` prefix applies only to the column immediately following it.
 
 ASQL supports SQL-style `SET` statements for **compile settings** (not CTE variables). Supported settings:
 
-- `auto_spine` (boolean) — Enable/disable gap-filling for GROUP BY
 - `dialect` (string) — Target SQL dialect
 - `week_start` (string) — `"monday"` or `"sunday"`
 - `relative_date_type` (string) — `"timestamp"` or `"date"`
@@ -1697,8 +1706,8 @@ ASQL supports SQL-style `SET` statements for **compile settings** (not CTE varia
 Examples:
 
 ```asql
-SET auto_spine = false;
 SET dialect = 'postgres';
+SET week_start = 'sunday';
 
 from orders
   where status = "active"
@@ -1712,7 +1721,7 @@ SET include_transpilation_comments = true;
 SET passthrough_comments = false;
 
 from orders
-  group by month(order_date) ( sum(amount) as revenue )
+  spine by month(order_date) ( sum(amount) as revenue )
 ```
 
 **Note**: `set name = <query>` (using `SET` to define a CTE variable) is **not implemented**.

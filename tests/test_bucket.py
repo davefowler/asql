@@ -2,7 +2,7 @@
 
 import sqlglot
 from sqlglot import exp
-from asql import compile
+from tests.fixtures import transpile
 from tests.fixtures import assert_valid_sql, assert_sql_contains
 
 
@@ -14,7 +14,7 @@ class TestBucketExplicitBoundaries:
         asql = """from students
 select *,
   bucket(score, [0, 60, 70, 80, 90, 100], ['F', 'D', 'C', 'B', 'A']) as grade"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "score", "THEN")
         assert_sql_contains(sql, "F", "D", "C", "B", "A")
@@ -30,7 +30,7 @@ select *,
         asql = """from sales
 select *,
   bucket(amount, [0, 100, 500, 1000]) as amount_tier"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "amount", "THEN")
         # Should have auto-generated labels like '0-100', '100-500', etc.
@@ -44,7 +44,7 @@ select *,
         asql = """from products
 select *,
   bucket(price, [0, 10, 50, 100, 500]) as price_tier"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "price")
         assert_valid_sql(sql)
@@ -54,7 +54,7 @@ select *,
         asql = """from temperature_readings
 select *,
   bucket(temp_celsius, [-40, -20, 0, 20, 40]) as temp_category"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "temp_celsius")
         assert_valid_sql(sql)
@@ -64,7 +64,7 @@ select *,
         asql = """from measurements
 select *,
   bucket(value, [0.0, 0.5, 1.0, 1.5, 2.0]) as value_range"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "value")
         assert_valid_sql(sql)
@@ -78,7 +78,7 @@ class TestBucketWidthBased:
         asql = """from data
 select *,
   bucket(value, start=0, end=100, width=10) as value_bucket"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "value")
         # Should generate buckets 0-10, 10-20, ..., 90-100
@@ -91,7 +91,7 @@ select *,
         asql = """from data
 select *,
   bucket(value, start=0, end=25, width=10) as value_bucket"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "value")
         # Should include 0-10, 10-20, 20-25
@@ -105,7 +105,7 @@ class TestBucketInContext:
         """Test bucket in a simple SELECT."""
         asql = """from users
 select name, bucket(age, [0, 18, 30, 50, 100], ['minor', 'young', 'adult', 'senior']) as age_group"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "age")
         assert_sql_contains(sql, "minor", "young", "adult", "senior")
@@ -117,7 +117,7 @@ select name, bucket(age, [0, 18, 30, 50, 100], ['minor', 'young', 'adult', 'seni
 where status = 'completed'
 select *,
   bucket(amount, [0, 100, 500, 1000, 10000]) as amount_tier"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "WHERE", "status")
         assert_sql_contains(sql, "CASE", "WHEN", "amount")
@@ -128,7 +128,7 @@ select *,
         asql = """from orders
 select bucket(total, [0, 50, 100, 500]) as order_tier, count(*) as order_count
 group by bucket(total, [0, 50, 100, 500])"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "total")
         assert_sql_contains(sql, "GROUP BY")
@@ -140,7 +140,7 @@ group by bucket(total, [0, 50, 100, 500])"""
 select
   name,
   bucket(lifetime_value, [0, 100, 1000, 10000, 100000], ['bronze', 'silver', 'gold', 'platinum']) as customer_tier"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "customer_tier")
         assert_sql_contains(sql, "bronze", "silver", "gold", "platinum")
@@ -153,7 +153,7 @@ select
   name,
   bucket(age, [0, 18, 30, 50, 65, 100]) as age_group,
   bucket(income, [0, 30000, 60000, 100000, 200000]) as income_bracket"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should have two CASE expressions
         assert sql.upper().count("CASE") == 2
@@ -168,7 +168,7 @@ class TestBucketBoundaryBehavior:
         """Test that buckets are left-inclusive by default."""
         asql = """from data
 select bucket(value, [0, 10, 20, 30]) as bucket_val"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should use >= for lower bound
         assert_sql_contains(sql, ">=")
@@ -178,7 +178,7 @@ select bucket(value, [0, 10, 20, 30]) as bucket_val"""
         """Test that the last bucket includes the upper boundary."""
         asql = """from data
 select bucket(value, [0, 10, 20]) as bucket_val"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Last bucket should use <= for upper bound
         assert_sql_contains(sql, "<=")
@@ -188,7 +188,7 @@ select bucket(value, [0, 10, 20]) as bucket_val"""
         """Test that values outside boundaries return NULL."""
         asql = """from data
 select bucket(value, [0, 10, 20]) as bucket_val"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should have ELSE NULL
         assert_sql_contains(sql, "ELSE", "NULL")
@@ -202,7 +202,7 @@ class TestBucketDialects:
         """Test bucket compiles to PostgreSQL."""
         asql = """from users
 select bucket(age, [0, 18, 65, 100], ['minor', 'adult', 'senior']) as age_group"""
-        sql = compile(asql, dialect="postgres")
+        sql = transpile(asql, dialect="postgres")
         
         assert_sql_contains(sql, "CASE", "WHEN", "THEN", "ELSE", "END")
         assert_valid_sql(sql)
@@ -211,7 +211,7 @@ select bucket(age, [0, 18, 65, 100], ['minor', 'adult', 'senior']) as age_group"
         """Test bucket compiles to MySQL."""
         asql = """from users
 select bucket(age, [0, 18, 65, 100], ['minor', 'adult', 'senior']) as age_group"""
-        sql = compile(asql, dialect="mysql")
+        sql = transpile(asql, dialect="mysql")
         
         assert_sql_contains(sql, "CASE", "WHEN", "THEN", "ELSE", "END")
         assert_valid_sql(sql)
@@ -220,7 +220,7 @@ select bucket(age, [0, 18, 65, 100], ['minor', 'adult', 'senior']) as age_group"
         """Test bucket compiles to Snowflake."""
         asql = """from users
 select bucket(age, [0, 18, 65, 100], ['minor', 'adult', 'senior']) as age_group"""
-        sql = compile(asql, dialect="snowflake")
+        sql = transpile(asql, dialect="snowflake")
         
         assert_sql_contains(sql, "CASE", "WHEN", "THEN", "ELSE", "END")
         assert_valid_sql(sql)
@@ -229,7 +229,7 @@ select bucket(age, [0, 18, 65, 100], ['minor', 'adult', 'senior']) as age_group"
         """Test bucket compiles to DuckDB."""
         asql = """from users
 select bucket(age, [0, 18, 65, 100], ['minor', 'adult', 'senior']) as age_group"""
-        sql = compile(asql, dialect="duckdb")
+        sql = transpile(asql, dialect="duckdb")
         
         assert_sql_contains(sql, "CASE", "WHEN", "THEN", "ELSE", "END")
         assert_valid_sql(sql)
@@ -242,7 +242,7 @@ class TestBucketEdgeCases:
         """Test bucket with expression as input instead of column."""
         asql = """from orders
 select bucket(total * 1.1, [0, 100, 500, 1000]) as adjusted_tier"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "total", "1.1")
         assert_valid_sql(sql)
@@ -251,7 +251,7 @@ select bucket(total * 1.1, [0, 100, 500, 1000]) as adjusted_tier"""
         """Test bucket with function call as input."""
         asql = """from orders
 select bucket(abs(total), [0, 100, 500, 1000]) as abs_tier"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "ABS")
         assert_valid_sql(sql)
@@ -263,7 +263,7 @@ where status = 'completed'
 select id, bucket(total, [0, 100, 500]) as tier
 order by id
 limit 10"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "WHERE", "status")
         assert_sql_contains(sql, "ORDER BY")
@@ -275,7 +275,7 @@ limit 10"""
         """Test bucket with minimum two boundaries (one bin)."""
         asql = """from data
 select bucket(value, [0, 100]) as single_bucket"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "value")
         assert_sql_contains(sql, "0-100")
@@ -285,7 +285,7 @@ select bucket(value, [0, 100]) as single_bucket"""
         """Test bucket with quoted column names."""
         asql = '''from data
 select bucket("Value Column", [0, 50, 100]) as value_bucket'''
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN")
         assert_valid_sql(sql)
@@ -299,7 +299,7 @@ class TestBucketRealWorldExamples:
         asql = """from students
 select *,
   bucket(score, [0, 60, 70, 80, 90, 100], ['F', 'D', 'C', 'B', 'A']) as grade"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE")
         assert_sql_contains(sql, "WHEN", "score", ">=", "0", "AND", "score", "<", "60", "THEN", "F")
@@ -314,7 +314,7 @@ select
   age,
   bucket(age, [0, 13, 20, 30, 40, 50, 60, 100], 
          ['child', 'teen', 'twenties', 'thirties', 'forties', 'fifties', 'senior']) as demographic"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "age")
         assert_sql_contains(sql, "child", "teen", "twenties", "thirties")
@@ -328,7 +328,7 @@ select
   annual_revenue,
   bucket(annual_revenue, [0, 1000000, 10000000, 100000000, 1000000000],
          ['startup', 'small', 'medium', 'large']) as company_size"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "CASE", "WHEN", "annual_revenue")
         assert_sql_contains(sql, "startup", "small", "medium", "large")

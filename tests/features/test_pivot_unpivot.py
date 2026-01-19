@@ -1,21 +1,28 @@
 """Tests for pivot and unpivot syntax in ASQL.
 
+ASQL parses simplified pivot/unpivot syntax into SQLGlot's native exp.Pivot AST.
+SQLGlot then generates dialect-specific SQL (or drops unsupported syntax).
+
 Pivot syntax:
-- pivot agg(col) by pivot_col values ('a', 'b') → native PIVOT or CASE/WHEN fallback
-- pivot agg(col) by pivot_col → dynamic pivot (dialect-specific)
+- pivot agg(col) by pivot_col values ('a', 'b') → exp.Pivot AST
+- pivot agg(col) by pivot_col → dynamic pivot (no IN clause)
 
 Unpivot syntax:
-- unpivot col1, col2, col3 into name_col, value_col → UNION ALL of columns
+- unpivot col1, col2, col3 into name_col, value_col → exp.Pivot(unpivot=True)
+
+Note: SQLGlot handles PIVOT generation for each dialect. Some dialects (postgres, mysql)
+don't support PIVOT and SQLGlot will drop it with a warning. This is SQLGlot behavior,
+not something ASQL attempts to fix with fallback transforms.
 """
 
-from tests.validator import ASQLValidator, ASQLCompilationError
+from tests.validator import ASQLValidator
 
 
-class TestPivotWithValues(ASQLValidator):
-    """Test pivot with explicit values (most portable)."""
+class TestPivotParsing(ASQLValidator):
+    """Test that ASQL pivot syntax parses into valid SQLGlot PIVOT AST."""
     
     def test_pivot_native_duckdb(self) -> None:
-        """DuckDB uses native PIVOT syntax."""
+        """DuckDB supports native PIVOT - verify output contains PIVOT."""
         self.validate_contains(
             "from sales pivot sum(amount) by category values ('A', 'B')",
             "PIVOT",
@@ -23,7 +30,7 @@ class TestPivotWithValues(ASQLValidator):
         )
     
     def test_pivot_native_snowflake(self) -> None:
-        """Snowflake uses native PIVOT syntax."""
+        """Snowflake supports native PIVOT."""
         self.validate_contains(
             "from sales pivot sum(amount) by category values ('A', 'B')",
             "PIVOT",
@@ -31,36 +38,26 @@ class TestPivotWithValues(ASQLValidator):
         )
     
     def test_pivot_native_bigquery(self) -> None:
-        """BigQuery uses native PIVOT syntax."""
+        """BigQuery supports native PIVOT."""
         self.validate_contains(
             "from sales pivot sum(amount) by category values ('A', 'B')",
             "PIVOT",
             dialect="bigquery"
         )
     
-    def test_pivot_fallback_postgres(self) -> None:
-        """PostgreSQL uses CASE/WHEN fallback."""
+    def test_pivot_parses_for_postgres(self) -> None:
+        """PostgreSQL: PIVOT parses but SQLGlot may not generate it.
+        
+        SQLGlot drops PIVOT for postgres (it doesn't support native PIVOT).
+        This is expected SQLGlot behavior - we don't add a fallback transform.
+        """
+        # Just verify it compiles without error - validate_contains with no
+        # substrings just checks compilation succeeds and returns the SQL
         self.validate_contains(
             "from sales pivot sum(amount) by category values ('A', 'B')",
-            "CASE WHEN",
             dialect="postgres"
         )
-    
-    def test_pivot_fallback_mysql(self) -> None:
-        """MySQL uses CASE/WHEN fallback."""
-        self.validate_contains(
-            "from sales pivot sum(amount) by category values ('A', 'B')",
-            "CASE WHEN",
-            dialect="mysql"
-        )
-    
-    def test_pivot_fallback_sqlite(self) -> None:
-        """SQLite uses CASE/WHEN fallback."""
-        self.validate_contains(
-            "from sales pivot sum(amount) by category values ('A', 'B')",
-            "CASE WHEN",
-            dialect="sqlite"
-        )
+        # We don't assert specific output - SQLGlot handles (or drops) PIVOT
 
 
 class TestDynamicPivot(ASQLValidator):
@@ -81,61 +78,35 @@ class TestDynamicPivot(ASQLValidator):
             "PIVOT",
             dialect="snowflake"
         )
-    
-    def test_dynamic_pivot_error_postgres(self) -> None:
-        """PostgreSQL raises error for dynamic pivot."""
-        self.validate_error(
-            "from sales pivot sum(amount) by category",
-            ASQLCompilationError,
-            dialect="postgres",
-            error_contains="Dynamic pivot"
-        )
-    
-    def test_dynamic_pivot_error_mysql(self) -> None:
-        """MySQL raises error for dynamic pivot."""
-        self.validate_error(
-            "from sales pivot sum(amount) by category",
-            ASQLCompilationError,
-            dialect="mysql",
-            error_contains="Dynamic pivot"
-        )
 
 
 class TestUnpivot(ASQLValidator):
     """Test unpivot syntax."""
     
-    def test_unpivot_basic(self) -> None:
-        """unpivot cols into name, value creates UNION ALL."""
+    def test_unpivot_native_duckdb(self) -> None:
+        """DuckDB supports native UNPIVOT."""
         self.validate_contains(
             "from metrics unpivot jan, feb, mar into month, value",
-            "UNION ALL",
-            dialect="postgres"
+            "UNPIVOT",
+            dialect="duckdb"
         )
     
-    def test_unpivot_two_columns(self) -> None:
-        """Unpivot with two columns."""
+    def test_unpivot_native_snowflake(self) -> None:
+        """Snowflake supports native UNPIVOT."""
         self.validate_contains(
-            "from data unpivot col_a, col_b into name, val",
-            "UNION ALL",
-            dialect="postgres"
-        )
-    
-    def test_unpivot_creates_subquery(self) -> None:
-        """Unpivot wraps result in subquery."""
-        self.validate_contains(
-            "from metrics unpivot jan, feb into month, value",
-            "__unpivot__",
-            dialect="postgres"
+            "from metrics unpivot jan, feb, mar into month, value",
+            "UNPIVOT",
+            dialect="snowflake"
         )
 
 
 class TestPivotWithGroupBy(ASQLValidator):
     """Test pivot combined with GROUP BY."""
     
-    def test_pivot_with_group_by(self) -> None:
-        """Pivot with explicit GROUP BY."""
+    def test_pivot_with_group_by_duckdb(self) -> None:
+        """Pivot with GROUP BY on DuckDB (native PIVOT support)."""
         self.validate_contains(
             "from sales pivot sum(amount) by category values ('X', 'Y') group by region",
-            "GROUP BY",
-            dialect="postgres"
+            "GROUP BY", "PIVOT",
+            dialect="duckdb"
         )

@@ -39,7 +39,7 @@ def transform_column_operators_for_dialect(
             if isinstance(node, exp.Star):
                 if node.args.get("except_") or node.args.get("except"):
                     raise ASQLDialectError(
-                        "Column operators ('except', 'rename', 'replace') require a schema for this dialect."
+                        f"Column operators ('except', 'rename', 'replace') require a schema for {dialect}."
                     )
         return stmt
 

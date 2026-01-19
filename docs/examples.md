@@ -700,10 +700,10 @@ This creates cohorts segmented by acquisition channel, allowing you to compare r
 
 **The easiest way to try these examples is in the [Interactive Playground](https://play.analyticsql.com)**. Just copy any ASQL query from the examples above and paste it into the playground to see the generated SQL in real-time.
 
-You can also use the ASQL compiler in your Python code:
+You can also use ASQL as a Python library:
 
 ```python
-from asql import compile
+import asql
 
 asql_query = """
 from users 
@@ -713,6 +713,6 @@ order by -total_users
 limit 10
 """
 
-sql = compile(asql_query, dialect="postgres")
+sql = asql.transpile(asql_query, write="postgres")[0]
 print(sql)
 ```

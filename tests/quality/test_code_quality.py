@@ -29,21 +29,23 @@ def test_error_classes_exist() -> None:
     assert issubclass(ASQLResolutionError, ASQLError)
 
 
-def test_compile_function_signature() -> None:
-    """Test that compile function has correct signature."""
-    from asql import compile
+def test_transpile_function_signature() -> None:
+    """Test that transpile function has correct signature."""
     import inspect
+    from asql import transpile
     
-    sig = inspect.signature(compile)
+    sig = inspect.signature(transpile)
     params = list(sig.parameters.keys())
     
-    assert "asql_query" in params
-    assert "dialect" in params
+    assert "sql" in params
+    assert "read" in params or "write" in params  # Can have either dialect param
     assert "pretty" in params
     
     # Check return type annotation if present
     if sig.return_annotation != inspect.Signature.empty:
-        assert sig.return_annotation is str
+        ret_ann = sig.return_annotation
+        # Allow List[str] or list type annotations
+        assert "List" in str(ret_ann) or "list" in str(ret_ann).lower()
 
 
 def test_no_syntax_errors_in_code() -> None:
@@ -66,14 +68,13 @@ def test_no_syntax_errors_in_code() -> None:
 
 def test_imports_work() -> None:
     """Test that all imports work correctly."""
-    from asql import compile
-    from asql.compiler import compile as compile_func
+    from tests.fixtures import transpile, parse_one
     from asql.errors import ASQLSyntaxError, ASQLCompilationError
     from asql.dialect import ASQL
     
     # Test that imports don't raise errors
-    assert compile is not None
-    assert compile_func is not None
+    assert transpile is not None
+    assert parse_one is not None
     assert ASQLSyntaxError is not None
     assert ASQLCompilationError is not None
     assert ASQL is not None

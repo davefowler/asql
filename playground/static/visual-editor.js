@@ -82,10 +82,16 @@ class VisualEditor {
       });
     }
 
-    // Add step button
+    // Add step dropdown (main one in header)
     const addBtn = document.getElementById('add-step-btn');
-    if (addBtn) {
-      addBtn.addEventListener('click', () => this.showAddStepModal());
+    if (addBtn && addBtn.tagName === 'SELECT') {
+      this.populateAddStepDropdown(addBtn);
+      addBtn.addEventListener('change', (e) => {
+        if (e.target.value) {
+          this.addTransform(e.target.value);
+          e.target.selectedIndex = 0;
+        }
+      });
     }
 
     // Add pipeline button
@@ -93,12 +99,22 @@ class VisualEditor {
     if (addPipelineBtn) {
       addPipelineBtn.addEventListener('click', () => this.addPipeline());
     }
+  }
 
-    // Modal close
-    const modalClose = document.querySelector('#add-step-modal .modal-close');
-    if (modalClose) {
-      modalClose.addEventListener('click', () => this.hideAddStepModal());
+  // Populate an add-step dropdown with operation options
+  populateAddStepDropdown(select) {
+    // Keep the first option (placeholder) if it exists
+    while (select.options.length > 1) {
+      select.remove(1);
     }
+    
+    this.operations.forEach(op => {
+      const opt = document.createElement('option');
+      opt.value = op.type;
+      opt.textContent = op.label || op.type;
+      opt.title = op.description || '';
+      select.appendChild(opt);
+    });
   }
 
   addPipeline(setOperation = null) {
@@ -147,47 +163,6 @@ class VisualEditor {
       this.pipelines[index].set_operation = { type: opType, all };
       this.renderAll();
       this.notifyChange();
-    }
-  }
-
-  showAddStepModal() {
-    const modal = document.getElementById('add-step-modal');
-    const grid = document.getElementById('operations-grid');
-
-    if (!modal || !grid) return;
-
-    // Clear and populate grid
-    grid.innerHTML = '';
-    this.operations.forEach(op => {
-      const card = document.createElement('div');
-      card.className = 'operation-card';
-      
-      // Build DOM safely to avoid XSS
-      const labelDiv = document.createElement('div');
-      labelDiv.className = 'operation-label';
-      labelDiv.textContent = op.label || '';
-      
-      const descDiv = document.createElement('div');
-      descDiv.className = 'operation-description';
-      descDiv.textContent = op.description || '';
-      
-      card.appendChild(labelDiv);
-      card.appendChild(descDiv);
-      
-      card.addEventListener('click', () => {
-        this.addTransform(op.type);
-        this.hideAddStepModal();
-      });
-      grid.appendChild(card);
-    });
-
-    modal.style.display = 'flex';
-  }
-
-  hideAddStepModal() {
-    const modal = document.getElementById('add-step-modal');
-    if (modal) {
-      modal.style.display = 'none';
     }
   }
 
@@ -318,16 +293,37 @@ class VisualEditor {
         pipelineDiv.appendChild(blockEl);
       });
 
-      // Add step button for this pipeline
-      const addStepBtn = document.createElement('button');
-      addStepBtn.className = 'add-step-btn-inline';
-      addStepBtn.textContent = '+ Add Step';
-      addStepBtn.dataset.pipelineIndex = pipelineIdx;
-      addStepBtn.addEventListener('click', () => {
-        this.currentPipelineIndex = pipelineIdx;
-        this.showAddStepModal();
+      // Add step dropdown for this pipeline
+      const addStepSelect = document.createElement('select');
+      addStepSelect.className = 'add-step-dropdown';
+      addStepSelect.dataset.pipelineIndex = pipelineIdx;
+      
+      // Placeholder option
+      const placeholderOpt = document.createElement('option');
+      placeholderOpt.value = '';
+      placeholderOpt.textContent = '+ add step';
+      placeholderOpt.disabled = true;
+      placeholderOpt.selected = true;
+      addStepSelect.appendChild(placeholderOpt);
+      
+      // Add operation options with descriptions as titles
+      this.operations.forEach(op => {
+        const opt = document.createElement('option');
+        opt.value = op.type;
+        opt.textContent = op.label || op.type;
+        opt.title = op.description || '';
+        addStepSelect.appendChild(opt);
       });
-      pipelineDiv.appendChild(addStepBtn);
+      
+      addStepSelect.addEventListener('change', (e) => {
+        if (e.target.value) {
+          this.currentPipelineIndex = pipelineIdx;
+          this.addTransform(e.target.value, pipelineIdx);
+          // Reset to placeholder
+          e.target.selectedIndex = 0;
+        }
+      });
+      pipelineDiv.appendChild(addStepSelect);
 
       container.appendChild(pipelineDiv);
 

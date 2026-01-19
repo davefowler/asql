@@ -6,13 +6,13 @@ with 'stash as' or 'set' statements.
 """
 
 
-from asql import compile
+from tests.fixtures import transpile
 
 
 def test_simple_pipeline_single_step() -> None:
     """Test simple pipeline with just FROM."""
     asql = "from users"
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Should NOT generate a CTE
     assert "WITH" not in sql.upper()
@@ -23,7 +23,7 @@ def test_simple_pipeline_single_step() -> None:
 def test_pipeline_with_where() -> None:
     """Test pipeline with WHERE clause."""
     asql = 'from users where status == "active"'
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Should NOT generate a CTE
     assert "WITH" not in sql.upper()
@@ -35,7 +35,7 @@ def test_pipeline_with_where() -> None:
 def test_pipeline_with_group_by() -> None:
     """Test pipeline with GROUP BY."""
     asql = 'from users where status == "active" group by country ( # as total_users )'
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # New compiler produces direct SQL without intermediate CTEs
     assert "SELECT" in sql.upper()
@@ -47,7 +47,7 @@ def test_pipeline_with_group_by() -> None:
 def test_pipeline_with_sort() -> None:
     """Test pipeline with SORT."""
     asql = 'from users where status == "active" order by -created_at'
-    sql = compile(asql)
+    sql = transpile(asql)
     
     assert "WITH" not in sql.upper()
     assert "ORDER BY" in sql.upper()
@@ -63,7 +63,7 @@ def test_pipeline_complete() -> None:
     order by -total_users
     limit 10
     """
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Should produce a valid query with all clauses
     assert "SELECT" in sql.upper()
@@ -79,7 +79,7 @@ def test_pipeline_step_naming() -> None:
     from users where status == "active" stash as active_users
     group by country ( # as total_users )
     '''
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Should have a named CTE
     assert "WITH" in sql.upper()
@@ -89,7 +89,7 @@ def test_pipeline_step_naming() -> None:
 def test_pipeline_with_join() -> None:
     """Test pipeline with JOIN."""
     asql = "from users join orders on users.id == orders.user_id"
-    sql = compile(asql)
+    sql = transpile(asql)
     
     assert "WITH" not in sql.upper()
     assert "JOIN" in sql.upper()
@@ -99,7 +99,7 @@ def test_pipeline_with_join() -> None:
 def test_pipeline_multiple_where_clauses() -> None:
     """Test that multiple WHERE clauses are handled."""
     asql = 'from users where status == "active" where age >= 18'
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Should have WHERE clause
     assert "WHERE" in sql.upper()
@@ -112,7 +112,7 @@ def test_build_cte_pipeline() -> None:
     from users where status == "active" stash as active_users
     group by country ( # as total_users )
     '''
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Should have WITH clause
     assert "WITH" in sql.upper()
@@ -122,7 +122,7 @@ def test_build_cte_pipeline() -> None:
 def test_pipeline_single_step_no_cte_needed() -> None:
     """Test that single step queries don't create unnecessary CTEs."""
     asql = "from users"
-    sql = compile(asql)
+    sql = transpile(asql)
     
     assert "WITH" not in sql.upper()
     assert "SELECT" in sql.upper()
@@ -132,7 +132,7 @@ def test_pipeline_single_step_no_cte_needed() -> None:
 def test_pipeline_with_select() -> None:
     """Test pipeline with explicit SELECT."""
     asql = 'from users where status == "active" select name, email'
-    sql = compile(asql)
+    sql = transpile(asql)
     
     assert "SELECT" in sql.upper()
     assert "name" in sql.lower()

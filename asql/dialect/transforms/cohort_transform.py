@@ -49,7 +49,7 @@ def _infer_join_key(cohort_table: str, activity_table: str, schema: Optional["Sc
     1. Schema relationships (explicit, then inferred)
     2. Convention-based guessing ({table}_id pattern)
     """
-    from asql.compiler.join_inference import resolve_join_condition
+    from asql.dialect.transforms.join_inference import resolve_join_condition
     
     condition = resolve_join_condition(
         left_table=activity_table,
@@ -66,7 +66,7 @@ def _infer_join_key(cohort_table: str, activity_table: str, schema: Optional["Sc
             return condition.right_column
     
     # Ultimate fallback - use shared singularization
-    from asql.compiler.join_inference import _singularize
+    from asql.dialect.transforms.join_inference import _singularize
     singular = _singularize(cohort_table)
     return f"{singular}_id"
 
@@ -143,9 +143,9 @@ def transform_cohort(
     stmt: exp.Expression,
     settings: Optional["CompileSettings"] = None,
 ) -> exp.Expression:
-    """Transform a query with cohort info into full cohort analysis SQL.
+    """Transform a query with CohortBy clause into full cohort analysis SQL.
     
-    Looks for _cohort_info attribute set by the dialect parser.
+    Looks for CohortBy expression attached to the query by the parser.
     If found, generates CTEs, JOINs, and modifies GROUP BY/SELECT.
     
     Args:
@@ -155,18 +155,33 @@ def transform_cohort(
     Returns:
         Modified statement with cohort analysis SQL
     """
+    from asql.expressions import CohortBy
+    
     if not isinstance(stmt, exp.Select):
         return stmt
     
-    # Check for cohort info set by parser
-    cohort_info = getattr(stmt, '_cohort_info', None)
-    if not cohort_info:
-        return stmt
+    # Check for CohortBy expression (new AST-based approach)
+    cohort_node = stmt.args.get("cohort")
     
-    granularity = cohort_info.get('granularity')
-    cohort_col = cohort_info.get('cohort_col')
-    explicit_join_key = cohort_info.get('join_key')
-    segments = cohort_info.get('segments', [])
+    # Also support legacy _cohort_info attribute for backward compatibility during migration
+    if cohort_node is None:
+        cohort_info = getattr(stmt, '_cohort_info', None)
+        if cohort_info:
+            # Legacy path - extract from attribute
+            granularity = cohort_info.get('granularity')
+            cohort_col = cohort_info.get('cohort_col')
+            explicit_join_key = cohort_info.get('join_key')
+            segments = cohort_info.get('segments', [])
+        else:
+            return stmt
+    elif isinstance(cohort_node, CohortBy):
+        # New AST-based path
+        granularity = cohort_node.granularity_value
+        cohort_col = cohort_node.cohort_column
+        explicit_join_key = cohort_node.join_key_value
+        segments = cohort_node.args.get("segments") or []
+    else:
+        return stmt
     
     if not granularity or not cohort_col:
         return stmt
@@ -365,8 +380,11 @@ def transform_cohort(
     # 7. Add WITH clause
     stmt.set('with_', with_clause)
     
-    # Clean up the cohort info
-    delattr(stmt, '_cohort_info')
+    # Clean up the cohort info (handle both new and legacy approaches)
+    if stmt.args.get("cohort"):
+        stmt.set("cohort", None)
+    if hasattr(stmt, '_cohort_info'):
+        delattr(stmt, '_cohort_info')
     
     return stmt
 

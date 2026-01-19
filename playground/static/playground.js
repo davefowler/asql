@@ -1158,23 +1158,18 @@ async function translateQuery() {
                 body: JSON.stringify({ sql: input, source_dialect: sourceDialect || '', settings: styleSettings })
             });
             
-            const reverseData = await reverseResponse.json();
-            if (reverseData.error) {
-                showError(reverseData.error);
-                return;
-            }
-            
-            // If output is visual-asql, parse to visual representation
+            // If output is visual-asql, use direct SQL -> Visual JSON conversion
+            // This bypasses ASQL text and preserves CTEs/window functions better
             if (toDialect === 'visual-asql') {
-                const parseResponse = await fetch('/api/visual/parse', {
+                const parseResponse = await fetch('/api/visual/parse-sql', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ asql: reverseData.asql })
+                    body: JSON.stringify({ sql: input, dialect: sourceDialect || '' })
                 });
                 
                 const parseData = await parseResponse.json();
                 if (!parseData.success) {
-                    showError(parseData.error || 'Failed to parse ASQL');
+                    showError(parseData.error || 'Failed to convert SQL to visual format');
                 } else {
                     // Show JSON in text editor
                     outputEditor.setValue(JSON.stringify(parseData.query, null, 2));
@@ -1183,21 +1178,29 @@ async function translateQuery() {
                     renderOutputVisual(parseData.query);
                     updateURL();
                 }
+                return;
+            }
+            
+            const reverseData = await reverseResponse.json();
+            if (reverseData.error) {
+                showError(reverseData.error);
+                return;
+            }
+            
+            // For non-visual output dialects
+            const compileSettings = getCompileSettings();
+            const compileResponse = await fetch('/api/compile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ asql: reverseData.asql, dialect: getApiDialect(toDialect) || '', settings: compileSettings })
+            });
+            
+            const compileData = await compileResponse.json();
+            if (compileData.error) {
+                showError(compileData.error);
             } else {
-                const compileSettings = getCompileSettings();
-                const compileResponse = await fetch('/api/compile', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ asql: reverseData.asql, dialect: getApiDialect(toDialect) || '', settings: compileSettings })
-                });
-                
-                const compileData = await compileResponse.json();
-                if (compileData.error) {
-                    showError(compileData.error);
-                } else {
-                    outputEditor.setValue(compileData.sql);
-                    updateURL();
-                }
+                outputEditor.setValue(compileData.sql);
+                updateURL();
             }
         } else {
             // asql-to-asql mode (includes visual-asql variants)
@@ -1742,6 +1745,14 @@ function renderOutputVisual(query) {
             fromInput.value = tableName;
         }
         
+        // Add pipeline-level comments above FROM if present
+        if (pipeline.comments && pipeline.comments.length > 0) {
+            const commentDiv = document.createElement('div');
+            commentDiv.className = 'pipeline-comment';
+            commentDiv.textContent = '// ' + pipeline.comments.join(' | ');
+            transformsContainer.appendChild(commentDiv);
+        }
+        
         // Show the from block in container
         const fromBlock = document.querySelector('#output-visual-editor-container .from-block');
         if (fromBlock) {
@@ -1750,6 +1761,17 @@ function renderOutputVisual(query) {
             // Add output columns for FROM if present
             let existingCols = fromBlock.querySelector('.output-columns');
             if (existingCols) existingCols.remove();
+            
+            // Add FROM comments if present
+            let existingComment = fromBlock.querySelector('.block-comment');
+            if (existingComment) existingComment.remove();
+            
+            if (pipeline.from?.comments && pipeline.from.comments.length > 0) {
+                const commentDiv = document.createElement('div');
+                commentDiv.className = 'block-comment';
+                commentDiv.textContent = '// ' + pipeline.from.comments.join(' | ');
+                fromBlock.insertBefore(commentDiv, fromBlock.firstChild);
+            }
             
             if (pipeline.from?.output_columns && pipeline.from.output_columns.length > 0) {
                 const colsDiv = document.createElement('div');
@@ -1780,6 +1802,14 @@ function renderOutputVisual(query) {
         const pipelineDiv = document.createElement('div');
         pipelineDiv.className = 'pipeline-block';
         
+        // Pipeline-level comments (header comments)
+        if (pipeline.comments && pipeline.comments.length > 0) {
+            const commentDiv = document.createElement('div');
+            commentDiv.className = 'pipeline-comment';
+            commentDiv.textContent = '// ' + pipeline.comments.join(' | ');
+            pipelineDiv.appendChild(commentDiv);
+        }
+        
         // Pipeline name or "Query N"
         const nameLabel = pipeline.name || (pipelines.length > 1 ? `Query ${idx + 1}` : null);
         if (nameLabel) {
@@ -1789,7 +1819,7 @@ function renderOutputVisual(query) {
             pipelineDiv.appendChild(nameDiv);
         }
         
-        // From block
+        // From block comments
         const tableName = pipeline.from?.table || '';
         if (tableName) {
             const fromDiv = document.createElement('div');
@@ -1842,6 +1872,14 @@ function createOutputBlock(transform) {
     const block = document.createElement('div');
     block.className = `block transform-block ${transform.type}-block`;
     
+    // Add comments if present
+    if (transform.comments && transform.comments.length > 0) {
+        const commentDiv = document.createElement('div');
+        commentDiv.className = 'block-comment';
+        commentDiv.textContent = '// ' + transform.comments.join(' | ');
+        block.appendChild(commentDiv);
+    }
+    
     // No header - just inline content
     const body = document.createElement('div');
     body.className = 'block-body';
@@ -1862,7 +1900,10 @@ function createOutputBlock(transform) {
 
 // Render output columns as a table header row
 function renderOutputColumnsTable(columns) {
-    if (!columns || columns.length === 0) return '';
+    if (!columns || columns.length === 0) {
+        // Return a message when no schema is available
+        return '<span class="no-schema-message">No schema available for this table</span>';
+    }
     
     const headers = columns.map(col => {
         const name = escapeHtmlText(typeof col === 'string' ? col : col.name || '');

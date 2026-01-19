@@ -407,6 +407,16 @@
         { "name": "event_date", "type": "column", "required": true, "widget": "text" }
       ]
     },
+    "spine": {
+      "keywords": ["SPINE"],
+      "label": "Spine",
+      "category": "analytics",
+      "description": "Gap-filling spine for time series with explicit date range",
+      "parameters": [
+        { "name": "columns", "type": "expression[]", "required": true, "widget": "list" },
+        { "name": "aggregations", "type": "expression[]", "required": false, "widget": "list" }
+      ]
+    },
     "recurse": {
       "keywords": ["RECURSE"],
       "label": "Recurse",

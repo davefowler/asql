@@ -95,6 +95,11 @@ class VisualASQLGenerator(Generator):
                     )
                     expression = annotate_types(expression, schema=self._schema)
                 except (ValueError, KeyError, AttributeError):
+                    # Schema lookup/qualification can fail for various reasons
+                    # (missing tables, SELECT *, complex expressions, etc.)
+                    pass
+                except Exception:
+                    # Catch other sqlglot optimizer errors (e.g., OptimizeError)
                     pass
 
             pipeline = self._build_single_pipeline(expression)
@@ -150,6 +155,11 @@ class VisualASQLGenerator(Generator):
         current_columns: t.List[t.Dict[str, t.Any]] = []
         transform_id = 0
 
+        # Extract top-level comments from the SELECT statement
+        pipeline_comments = self._get_comments(expression)
+        if pipeline_comments:
+            result["comments"] = pipeline_comments
+
         # FROM clause (uses 'from_' because 'from' is a Python keyword)
         if from_clause := expression.args.get("from_"):
             table_expr = from_clause.this
@@ -159,11 +169,14 @@ class VisualASQLGenerator(Generator):
                 table_cols = self._get_table_columns(table_name)
                 current_columns = table_cols.copy()
 
+                from_comments = self._get_comments(from_clause) or self._get_comments(table_expr)
                 result["from"] = {
                     "table": table_name,
                     "alias": table_alias if table_alias != table_name else None,
                     "output_columns": table_cols,
                 }
+                if from_comments:
+                    result["from"]["comments"] = from_comments
 
         # JOINs - accumulate columns
         for join in expression.args.get("joins") or []:
@@ -178,7 +191,7 @@ class VisualASQLGenerator(Generator):
             if on_clause := join.args.get("on"):
                 condition = self._expression_to_json(on_clause)
 
-            result["transforms"].append({
+            transform: t.Dict[str, t.Any] = {
                 "id": f"t{transform_id}",
                 "type": "join",
                 "join_type": join_type,
@@ -186,17 +199,24 @@ class VisualASQLGenerator(Generator):
                 "alias": join_alias if join_alias != join_table else None,
                 "condition": condition,
                 "output_columns": current_columns.copy(),
-            })
+            }
+            if comments := self._get_comments(join):
+                transform["comments"] = comments
+            result["transforms"].append(transform)
             transform_id += 1
 
         # WHERE - columns unchanged
         if where := expression.args.get("where"):
-            result["transforms"].append({
+            transform = {
                 "id": f"t{transform_id}",
                 "type": "where",
                 "condition": self._expression_to_json(where.this),
                 "output_columns": current_columns.copy(),
-            })
+            }
+            # Collect all comments from the WHERE clause and its condition tree
+            if comments := self._collect_all_comments(where):
+                transform["comments"] = comments
+            result["transforms"].append(transform)
             transform_id += 1
 
         # GROUP BY - columns change to dimensions + aggregates
@@ -204,7 +224,7 @@ class VisualASQLGenerator(Generator):
             dims, aggs = self._extract_group_by_columns(expression, group)
             current_columns = dims + aggs
 
-            result["transforms"].append({
+            transform = {
                 "id": f"t{transform_id}",
                 "type": "group_by",
                 "dimensions": [d["name"] for d in dims],
@@ -217,7 +237,10 @@ class VisualASQLGenerator(Generator):
                     for a in aggs
                 ],
                 "output_columns": current_columns.copy(),
-            })
+            }
+            if comments := self._get_comments(group):
+                transform["comments"] = comments
+            result["transforms"].append(transform)
             transform_id += 1
 
         # SELECT - explicit columns (only if not SELECT *)
@@ -226,7 +249,13 @@ class VisualASQLGenerator(Generator):
                 select_cols = self._extract_select_columns(exprs)
                 current_columns = select_cols
 
-                result["transforms"].append({
+                # Collect comments from individual select expressions
+                select_comments: t.List[str] = []
+                for expr in exprs:
+                    if expr_comments := self._get_comments(expr):
+                        select_comments.extend(expr_comments)
+
+                transform = {
                     "id": f"t{transform_id}",
                     "type": "select",
                     "columns": [
@@ -234,50 +263,65 @@ class VisualASQLGenerator(Generator):
                         for c in select_cols
                     ],
                     "output_columns": current_columns.copy(),
-                })
+                }
+                if select_comments:
+                    transform["comments"] = select_comments
+                result["transforms"].append(transform)
                 transform_id += 1
 
         # HAVING - columns unchanged
         if having := expression.args.get("having"):
-            result["transforms"].append({
+            transform = {
                 "id": f"t{transform_id}",
                 "type": "having",
                 "condition": self._expression_to_json(having.this),
                 "output_columns": current_columns.copy(),
-            })
+            }
+            if comments := self._get_comments(having):
+                transform["comments"] = comments
+            result["transforms"].append(transform)
             transform_id += 1
 
         # ORDER BY - columns unchanged
         if order := expression.args.get("order"):
-            result["transforms"].append({
+            transform = {
                 "id": f"t{transform_id}",
                 "type": "order_by",
                 "expressions": self._extract_order_columns(order),
                 "output_columns": current_columns.copy(),
-            })
+            }
+            if comments := self._get_comments(order):
+                transform["comments"] = comments
+            result["transforms"].append(transform)
             transform_id += 1
 
         # LIMIT - columns unchanged (only if count was successfully parsed)
         if limit := expression.args.get("limit"):
             count = self._extract_limit_value(limit)
             if count is not None:
-                result["transforms"].append({
+                transform = {
                     "id": f"t{transform_id}",
                     "type": "limit",
                     "count": count,
                     "output_columns": current_columns.copy(),
-                })
+                }
+                if comments := self._get_comments(limit):
+                    transform["comments"] = comments
+                result["transforms"].append(transform)
                 transform_id += 1
 
         # OFFSET - columns unchanged
         if offset := expression.args.get("offset"):
             offset_val = self._extract_offset_value(offset)
-            result["transforms"].append({
+            transform = {
                 "id": f"t{transform_id}",
                 "type": "offset",
                 "count": offset_val,
                 "output_columns": current_columns.copy(),
-            })
+            }
+            if comments := self._get_comments(offset):
+                transform["comments"] = comments
+            result["transforms"].append(transform)
             transform_id += 1
 
         return result
@@ -295,6 +339,29 @@ class VisualASQLGenerator(Generator):
         if isinstance(table_expr, exp.Table) and table_expr.alias:
             return table_expr.alias
         return None
+
+    def _get_comments(self, expr: exp.Expression) -> t.Optional[t.List[str]]:
+        """Extract comments from an expression node."""
+        if hasattr(expr, "comments") and expr.comments:
+            # Clean up comments (strip whitespace, remove empty ones)
+            cleaned = [c.strip() for c in expr.comments if c and c.strip()]
+            return cleaned if cleaned else None
+        return None
+
+    def _collect_all_comments(self, expr: exp.Expression) -> t.List[str]:
+        """Recursively collect all comments from an expression tree."""
+        comments: t.List[str] = []
+        
+        def collect(node: exp.Expression) -> None:
+            if hasattr(node, "comments") and node.comments:
+                for c in node.comments:
+                    if c and c.strip():
+                        comments.append(c.strip())
+            for child in node.iter_expressions():
+                collect(child)
+        
+        collect(expr)
+        return comments
 
     def _get_table_columns(self, table_name: str) -> t.List[t.Dict[str, t.Any]]:
         """Get columns for a table from schema."""

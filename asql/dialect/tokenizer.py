@@ -40,6 +40,7 @@ class ASQLTokenizer(Tokenizer):
         "PER": TokenType.VAR,
         "EXTEND": TokenType.VAR,
         "RECURSE": TokenType.VAR,  # For recursive CTEs
+        "SPINE": TokenType.VAR,    # For explicit spine syntax
         
         # Natural language alternatives
         "OTHERWISE": TokenType.ELSE,  # Alias for ELSE in when expressions

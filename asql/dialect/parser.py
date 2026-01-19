@@ -10,8 +10,10 @@ Key features:
 - Descending order shorthand: `-column` → `column DESC`
 - Proper pipeline semantics: `group by X | where Y` → CTE + WHERE
 
-Settings can be passed via sqlglot.parse() or sqlglot.transpile():
-    sqlglot.transpile(query, read='asql', asql_auto_spine=True, asql_schema=my_schema)
+Settings are passed via the ASQL dialect constructor:
+    from asql.dialect import ASQL
+    asql = ASQL(extend_dialect="postgres", auto_spine=False)
+    sqlglot.transpile(query, read=asql, write="postgres")
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from sqlglot.parser import Parser
 from sqlglot.tokens import Token, TokenType
 
 from asql.dialect.tokenizer import ASQLTokenizer  # noqa: F401
+from asql.expressions import Spine, CohortBy
 from asql.functions import (
     ASQL_FUNCTION_REGISTRY,
     NATURAL_DATE_UNITS,
@@ -35,7 +38,19 @@ from asql.functions import (
 )
 
 if t.TYPE_CHECKING:
-    from asql.schema import Schema
+    pass
+
+
+def _build_spine_expression(args: t.List) -> Spine:
+    """Build a Spine expression from function arguments.
+    
+    spine(month(date)) → Spine(this=month(date))
+    """
+    col = seq_get(args, 0)
+    if col is None:
+        # Return empty Spine - will be caught as invalid
+        return Spine(this=exp.Null())
+    return Spine(this=col)
 
 
 # =============================================================================
@@ -52,168 +67,299 @@ def _select_all(table: exp.Expression) -> t.Optional[exp.Select]:
     return exp.select("*").from_(table, copy=False) if table else None
 
 class ASQLParser(Parser):
-    """ASQL Parser with support for ASQL-specific settings.
+    """ASQL Parser that reads settings from dialect.settings.
     
-    Settings can be passed via kwargs when parsing:
-        sqlglot.parse(query, dialect='asql', asql_auto_spine=True)
-        
-    Available ASQL settings (all prefixed with 'asql_'):
-        asql_auto_spine: bool - Enable gap-filling for date GROUP BY
-        asql_week_start: str - 'monday' or 'sunday'
-        asql_schema: Schema - ASQL schema for FK shorthand, column operators
-        asql_alias_template: str - Template for auto-generated aliases
-        asql_alias_prefixes: dict - Function-to-prefix mapping
+    Settings are passed via the ASQL dialect constructor:
+        asql = ASQL(extend_dialect="postgres", auto_spine=False)
+        sqlglot.transpile(query, read=asql, write="postgres")
+    
+    Or via inline SET statements in the query:
+        SET extend_dialect = 'postgres';
+        SET auto_spine = false;
+        from orders group by month(date)
     """
     
     # Transform keywords that should not be treated as table aliases
     _TRANSFORM_KEYWORDS = frozenset({
         "PER", "STASH", "EXTEND", "EXPLODE", "SAMPLE",
         "RENAME", "REPLACE", "DEDUPLICATE", "NUMBER", "RANK", "DENSE", "COHORT",
-        "RECURSE",
+        "RECURSE", "SPINE",
     })
     
-    def __init__(self, **kwargs: t.Any) -> None:
-        """Initialize parser with optional ASQL settings.
-        
-        ASQL-specific kwargs are extracted and stored; others passed to parent.
-        """
-        # Extract ASQL-specific settings (prefixed with 'asql_')
-        self.asql_auto_spine: bool = kwargs.pop("asql_auto_spine", True)
-        self.asql_week_start: str = kwargs.pop("asql_week_start", "monday")
-        self.asql_schema: t.Optional["Schema"] = kwargs.pop("asql_schema", None)
-        self.asql_alias_template: t.Optional[str] = kwargs.pop("asql_alias_template", None)
-        self.asql_alias_prefixes: t.Dict[str, str] = kwargs.pop("asql_alias_prefixes", {})
-        self.asql_alias_templates: t.Dict[str, str] = kwargs.pop("asql_alias_templates", {})
-        self.asql_relative_date_type: str = kwargs.pop("asql_relative_date_type", "timestamp")
-        
-        # Target dialect for dialect-specific transforms (e.g., pivot fallback)
-        # When using transpile(), pass asql_target_dialect to enable all transforms
-        self.asql_target_dialect: t.Optional[str] = kwargs.pop("asql_target_dialect", None)
-        
-        # Skip transforms flag - set True when called from compile() which has its own pipeline
-        self.asql_skip_transforms: bool = kwargs.pop("asql_skip_transforms", False)
-        
-        # Call parent with remaining kwargs
-        super().__init__(**kwargs)
+    def _get_setting(self, name: str, default: t.Any = None) -> t.Any:
+        """Get a setting from dialect.settings with fallback to default."""
+        if hasattr(self, 'dialect') and self.dialect and hasattr(self.dialect, 'settings'):
+            return self.dialect.settings.get(name, default)
+        return default
+    
+    def _set_setting(self, name: str, value: t.Any) -> None:
+        """Set a setting in dialect.settings (mutates dialect)."""
+        if hasattr(self, 'dialect') and self.dialect and hasattr(self.dialect, 'settings'):
+            self.dialect.settings[name] = value
     
     def parse(
         self, raw_tokens: t.List[Token], sql: t.Optional[str] = None
     ) -> t.List[t.Optional[exp.Expression]]:
-        """Parse tokens and optionally apply ASQL transforms.
+        """Parse tokens and apply ASQL transforms.
         
-        This overrides the base parse() to apply ASQL-specific transforms
-        after parsing but before returning. This allows `sqlglot.transpile()`
-        to work correctly with ASQL features.
-        
-        When called from compile() (which has its own transform pipeline),
-        transforms are skipped via asql_skip_transforms=True.
+        This overrides the base parse() to:
+        1. Process SET statements → mutate dialect.settings
+        2. Apply ASQL-specific transforms
+        3. Remove SET statements from output (they're ASQL config, not SQL)
         """
         # Call parent parse
         statements = super().parse(raw_tokens, sql)
         
-        # Skip transforms if called from compile() or if explicitly disabled
-        if self.asql_skip_transforms:
-            return statements
-        
-        # Apply ASQL transforms to each statement
-        transformed = []
+        # Process statements: extract SETs, apply transforms
+        result = []
         for stmt in statements:
-            if stmt is not None:
-                stmt = self._apply_asql_transforms(stmt)
-            transformed.append(stmt)
+            if stmt is None:
+                result.append(stmt)
+            elif isinstance(stmt, exp.Set):
+                # Process SET statement - mutate dialect settings
+                self._apply_set_to_dialect(stmt)
+                # Don't include SET in output (it's ASQL config, not real SQL)
+            else:
+                # Apply ASQL transforms
+                transformed = self._apply_asql_transforms(stmt)
+                result.append(transformed)
         
-        return transformed
+        return result
+    
+    # Valid values for settings that have constrained options
+    _VALID_WEEK_START = frozenset({"monday", "sunday"})
+    _VALID_RELATIVE_DATE_TYPE = frozenset({"timestamp", "date"})
+    _VALID_EQUALITY = frozenset({"single", "double"})
+    _VALID_COUNT = frozenset({"hash", "function"})
+    _VALID_COALESCE = frozenset({"operator", "function"})
+    _VALID_DESCENDING = frozenset({"prefix", "suffix"})
+    _VALID_CAST = frozenset({"double_colon", "function"})
+    _VALID_QUOTES = frozenset({"double", "single"})
+    _VALID_FUNCTION_SHORTHAND = frozenset({"underscore", "space", "parens"})
+    
+    # PER clause: qualify operations (FIRST/LAST) - maps to (reverse_order,)
+    # FIRST: keep order as-is, LAST: reverse the order
+    _PER_QUALIFY_OPS: t.Dict[t.Tuple[str, ...], bool] = {
+        ("FIRST",): False,  # Don't reverse order
+        ("LAST",): True,    # Reverse order for "last"
+    }
+    
+    # PER clause: window function operations - maps to (expr_class, default_alias)
+    _PER_WINDOW_OPS: t.Dict[t.Tuple[str, ...], t.Tuple[t.Type[exp.Expression], str]] = {
+        ("NUMBER",): (exp.RowNumber, "row_num"),
+        ("RANK",): (exp.Rank, "rank"),
+        ("DENSE", "RANK"): (exp.DenseRank, "dense_rank"),
+        ("DENSE_RANK",): (exp.DenseRank, "dense_rank"),
+    }
+    
+    def _apply_set_to_dialect(self, set_stmt: exp.Set) -> None:
+        """Mutate self.dialect.settings based on SET statement.
+        
+        Handles:
+            SET extend_dialect = 'postgres'
+            SET auto_spine = false
+            SET count_alias_prefix = 'num'  → alias_prefixes['count'] = 'num'
+            SET count_alias_template = '...' → alias_templates['count'] = '...'
+        
+        Validates setting values where applicable.
+        """
+        for item in set_stmt.expressions:
+            if not hasattr(item, 'this') or not isinstance(item.this, exp.EQ):
+                continue
+            
+            eq = item.this
+            key = eq.this.sql().lower().strip('"\'`')
+            value_expr = eq.expression
+            
+            # Extract value
+            if isinstance(value_expr, exp.Boolean):
+                value = value_expr.this
+            elif isinstance(value_expr, exp.Literal):
+                value = value_expr.this.strip('"\'')
+                if isinstance(value, str):
+                    if value.lower() == "true":
+                        value = True
+                    elif value.lower() == "false":
+                        value = False
+            elif isinstance(value_expr, exp.Var):
+                value = value_expr.this
+            else:
+                value = value_expr.sql().strip('"\'')
+            
+            # Handle special key patterns
+            if key == "dialect":
+                # "dialect" is an alias for "extend_dialect"
+                key = "extend_dialect"
+            
+            # Validate constrained settings
+            self._validate_setting_value(key, value)
+            
+            if key.endswith("_alias_prefix"):
+                # e.g., count_alias_prefix = 'num' → alias_prefixes['count'] = 'num'
+                func_name = key[:-13]  # Remove "_alias_prefix"
+                # DEFENSIVE: .copy() prevents mutating SETTING_DEFAULTS shared dict
+                prefixes = self._get_setting("alias_prefixes", {}).copy()
+                prefixes[func_name] = str(value)
+                self._set_setting("alias_prefixes", prefixes)
+            elif key.endswith("_alias_template"):
+                # e.g., count_alias_template = '...' → alias_templates['count'] = '...'
+                func_name = key[:-15]  # Remove "_alias_template"
+                # DEFENSIVE: .copy() prevents mutating SETTING_DEFAULTS shared dict
+                templates = self._get_setting("alias_templates", {}).copy()
+                templates[func_name] = str(value)
+                self._set_setting("alias_templates", templates)
+            else:
+                # Standard setting
+                self._set_setting(key, value)
+    
+    def _validate_setting_value(self, key: str, value: t.Any) -> None:
+        """Validate that a setting value is valid for the given key.
+        
+        Raises ValueError for invalid values.
+        """
+        validators = {
+            "week_start": (self._VALID_WEEK_START, "must be 'monday' or 'sunday'"),
+            "relative_date_type": (self._VALID_RELATIVE_DATE_TYPE, "must be 'timestamp' or 'date'"),
+            "equality": (self._VALID_EQUALITY, "must be 'single' or 'double'"),
+            "count": (self._VALID_COUNT, "must be 'hash' or 'function'"),
+            "coalesce": (self._VALID_COALESCE, "must be 'operator' or 'function'"),
+            "descending": (self._VALID_DESCENDING, "must be 'prefix' or 'suffix'"),
+            "cast": (self._VALID_CAST, "must be 'double_colon' or 'function'"),
+            "quotes": (self._VALID_QUOTES, "must be 'double' or 'single'"),
+            "function_shorthand": (self._VALID_FUNCTION_SHORTHAND, "must be 'underscore', 'space', or 'parens'"),
+        }
+        
+        if key in validators:
+            valid_values, error_msg = validators[key]
+            str_value = str(value).lower() if value is not None else ""
+            if str_value not in valid_values:
+                raise ValueError(f"Invalid value for SET {key}: '{value}' - {error_msg}")
+        
+        # Validate boolean settings
+        boolean_settings = {"auto_spine", "infer_join_keys", "include_transpilation_comments", 
+                          "passthrough_comments", "squash_empty_ctes", "keep_final_empty_cte", 
+                          "ignore_aliases"}
+        if key in boolean_settings and not isinstance(value, bool):
+            raise ValueError(f"Invalid value for SET {key}: '{value}' - must be true or false")
     
     def _apply_asql_transforms(self, stmt: exp.Expression) -> exp.Expression:
         """Apply ASQL-specific AST transforms after parsing.
         
-        These transforms expand ASQL syntactic sugar into standard SQL AST.
-        They're applied in order of dependency.
+        Reads all settings from self.dialect.settings.
         
-        Transform order:
+        Transform order (Phase 1 - no output dialect needed):
         1. Underscore shorthands (days_since_created_at → DATEDIFF)
         2. Implicit function aliases (SUM(amount) → SUM(amount) AS sum_amount)
         3. Auto-aliasing (function calls without explicit aliases)
         4. FK shorthand (ON user_id → ON orders.user_id = users.id) - needs schema
         5. Cohort transform (cohort by ... → CTEs and JOINs)
-        6. Pivot fallback (PIVOT → CASE/WHEN for non-native dialects)
-        7. Explode fallback (UNNEST → FLATTEN for Snowflake)
-        8. Column operators (EXCEPT → expand to explicit columns) - needs schema
-        9. Auto-spine (gap-filling CTEs for date GROUP BY)
-        10. Auto-qualify columns (resolve ambiguous columns in JOINs)
-        11. Alias reuse (CTE chain for non-DuckDB dialects)
+        6. Auto-qualify columns (resolve ambiguous columns in JOINs)
+        
+        Transform order (Phase 2 - generate universal SQL):
+        7. Alias reuse → CTE chains (works on all dialects including DuckDB)
+        8. List comprehension → ARRAY(SELECT...) (works on all dialects)
+        9. Auto-spine → gap-filling CTEs (SQLGlot converts generate_series)
+        10. Remove guarantee wrappers (cleanup)
         """
-        # Build a CompileSettings-like object from parser settings
-        # This allows reusing the existing transform functions
+        # Read settings from dialect
+        schema = self._get_setting("schema")
+        week_start = self._get_setting("week_start", "monday")
+        relative_date_type = self._get_setting("relative_date_type", "timestamp")
+        alias_template = self._get_setting("alias_template")
+        alias_prefixes = self._get_setting("alias_prefixes", {})
+        alias_templates = self._get_setting("alias_templates", {})
+        infer_join_keys = self._get_setting("infer_join_keys", False)
+        
+        # Build CompileSettings object for transform functions
         from asql.config import CompileSettings
         
         settings = CompileSettings(
-            auto_spine=self.asql_auto_spine,
-            week_start=self.asql_week_start,  # type: ignore
-            schema=self.asql_schema,
-            alias_template=self.asql_alias_template,
-            alias_prefixes=self.asql_alias_prefixes,
-            alias_templates=self.asql_alias_templates,
-            relative_date_type=self.asql_relative_date_type,  # type: ignore
+            week_start=week_start,  # type: ignore
+            schema=schema,
+            alias_template=alias_template,
+            alias_prefixes=alias_prefixes,
+            alias_templates=alias_templates,
+            relative_date_type=relative_date_type,  # type: ignore
+            infer_join_keys=infer_join_keys,
+            include_transpilation_comments=self._get_setting("include_transpilation_comments", True),
         )
         
-        target_dialect = self.asql_target_dialect
-        
-        # Import all transforms
-        from asql.compiler.underscore_shorthands import (
+        # Import parser-stage transforms (from asql/dialect/transforms/)
+        from asql.dialect.transforms.underscore_shorthands import (
             apply_since_until_underscore_shorthands,
             apply_implicit_function_aliases,
         )
-        from asql.compiler.auto_alias import apply_auto_aliasing
-        from asql.compiler.auto_qualify import auto_qualify_columns
-        from asql.compiler.join_fk_shorthand import transform_fk_shorthand
-        from asql.compiler.cohort_transform import transform_cohort
-        from asql.compiler.pivot_fallback import transform_pivot_for_dialect
-        from asql.compiler.explode_fallback import transform_explode_for_dialect
-        from asql.compiler.column_operators import transform_column_operators_for_dialect
-        from asql.compiler.auto_spine import _apply_auto_spine, _remove_guarantee_wrappers
-        from asql.compiler.alias_reuse import apply_alias_reuse
+        from asql.dialect.transforms.auto_alias import apply_auto_aliasing
+        from asql.dialect.transforms.auto_qualify import auto_qualify_columns
+        from asql.dialect.transforms.join_fk_shorthand import transform_fk_shorthand
+        from asql.dialect.transforms.cohort_transform import transform_cohort
         
         # === Phase 1: Basic transforms (no dialect/schema required) ===
         stmt = apply_since_until_underscore_shorthands(stmt, settings)
         stmt = apply_implicit_function_aliases(stmt, settings)
         stmt = apply_auto_aliasing(stmt, settings)
         
-        # === Phase 2: Schema-aware transforms (need asql_schema) ===
-        if self.asql_schema is not None:
+        # === Phase 2: Schema-aware transforms (need schema, not dialect) ===
+        if schema is not None:
             stmt = transform_fk_shorthand(stmt, settings)
         
         # Cohort transform (generates CTEs and JOINs)
         stmt = transform_cohort(stmt, settings)
         
-        # === Phase 3: Dialect-specific transforms (need asql_target_dialect) ===
-        if target_dialect:
-            # Pivot fallback: PIVOT → CASE/WHEN for non-native dialects
-            stmt = transform_pivot_for_dialect(stmt, target_dialect, settings)
-            
-            # Explode fallback: UNNEST → FLATTEN for Snowflake
-            stmt = transform_explode_for_dialect(stmt, target_dialect)
-            
-            # Column operators: EXCEPT → explicit columns (needs schema for non-native)
-            if self.asql_schema is not None:
-                stmt = transform_column_operators_for_dialect(stmt, target_dialect, settings)
-            
-            # Auto-spine: gap-filling CTEs for date GROUP BY
-            if self.asql_auto_spine:
-                stmt = _apply_auto_spine(stmt, settings, target_dialect)
-            
-            # Remove guarantee wrappers (internal markers used by auto_spine)
-            stmt = _remove_guarantee_wrappers(stmt)
-        
-        # === Phase 4: Final transforms (after all others) ===
         # Auto-qualify columns in joins (expands SELECT * to table.* for each table)
         stmt = auto_qualify_columns(stmt)
         
-        # Alias reuse: CTE chain for non-DuckDB dialects that don't support it natively
-        # This must run last because it wraps the query in CTEs
-        stmt = apply_alias_reuse(stmt, target_dialect)
+        # List comprehension: Convert to ARRAY(SELECT...) which works everywhere
+        # This is done in parser because it doesn't need output dialect knowledge -
+        # the ARRAY(SELECT...) form works on all dialects. DuckDB post-processing
+        # in list_comprehension.py converts it back to native syntax.
+        stmt = self._transform_list_comprehensions_universal(stmt)
+        
+        # === Dialect-aware transforms moved to asql.transpile() ===
+        # The following transforms need the OUTPUT dialect and run in asql.transpile():
+        # - spine_transform (exp.Spine → gap-filling CTEs)
+        # - alias_reuse (same-row refs → CTEs for non-DuckDB)
+        # - column_operators (* EXCEPT → explicit columns)
         
         return stmt
+    
+    def _transform_list_comprehensions_universal(self, stmt: exp.Expression) -> exp.Expression:
+        """Convert list comprehensions to ARRAY(SELECT...) which works on all dialects.
+        
+        Transforms: [x * 2 FOR x IN arr] → ARRAY(SELECT x * 2 FROM UNNEST(arr) AS x)
+        """
+        for node in stmt.walk():
+            if isinstance(node, exp.Array):
+                exprs = node.expressions
+                if exprs and isinstance(exprs[0], exp.Comprehension):
+                    comp = exprs[0]
+                    converted = self._comprehension_to_array_select(comp)
+                    node.set("expressions", converted.expressions)
+        return stmt
+    
+    def _comprehension_to_array_select(self, comp: exp.Comprehension) -> exp.Array:
+        """Convert exp.Comprehension to ARRAY(SELECT expr FROM UNNEST(arr) AS var)."""
+        select_expr = comp.this
+        var_expr = comp.expression
+        iterator = comp.args.get("iterator")
+        condition = comp.args.get("condition")
+        
+        var_name = var_expr.name if hasattr(var_expr, 'name') else str(var_expr)
+        
+        unnest = exp.Unnest(
+            expressions=[iterator],
+            alias=exp.TableAlias(this=exp.to_identifier(var_name))
+        )
+        
+        select = exp.Select(
+            expressions=[select_expr],
+            from_=exp.From(this=unnest),
+        )
+        
+        if condition:
+            select.set("where", exp.Where(this=condition))
+        
+        return exp.Array(expressions=[select])
     
     # Token types that are join operators (should not be parsed as table aliases)
     _JOIN_OPERATOR_TOKENS = frozenset({
@@ -425,6 +571,16 @@ class ASQLParser(Parser):
         'second', 'seconds'
     })
     
+    # Map SQLGlot date expression types to granularity names
+    _DATE_GRANULARITY_TYPES: dict[type[exp.Expression], str] = {
+        exp.Month: "month",
+        exp.Week: "week",
+        exp.Day: "day",
+        exp.Year: "year",
+        exp.Quarter: "quarter",
+        exp.Hour: "hour",
+    }
+    
     # Use && for AND (like PRQL)
     CONJUNCTION = {
         **Parser.CONJUNCTION,
@@ -524,6 +680,8 @@ class ASQLParser(Parser):
         # Advanced transforms
         "COHORT": lambda self, query: self._parse_asql_cohort(query),
         "RECURSE": lambda self, query: self._parse_asql_recurse(query),
+        # Spine - explicit gap-filling: spine by month(date) (aggs)
+        "SPINE": lambda self, query: self._parse_asql_spine_by(query),
     }
     
     # Single-word transforms for efficient _match_texts lookup
@@ -562,6 +720,8 @@ class ASQLParser(Parser):
         "AVERAGE": exp.Avg.from_arg_list,
         "PRIOR": lambda args: exp.Lag(this=seq_get(args, 0), offset=seq_get(args, 1) or exp.Literal.number(1)),
         "NEXT": lambda args: exp.Lead(this=seq_get(args, 0), offset=seq_get(args, 1) or exp.Literal.number(1)),
+        # Spine function for explicit gap-filling: group by spine(month(date)), region
+        "SPINE": lambda args: _build_spine_expression(args),
     }
 
     def _parse_pivot(self) -> t.Optional[exp.Pivot]:
@@ -739,10 +899,6 @@ class ASQLParser(Parser):
         ):
             self._advance()  # consume WHEN
             return self._parse_when()
-        
-        # Handle # count shorthand
-        if self._curr and self._curr.token_type == TokenType.HASH:
-            return self._parse_count_shorthand()
 
         # FIRST(<expr> ORDER BY ...) should compile to FIRST_VALUE(...) OVER (ORDER BY ...)
         if self._curr and self._curr.token_type == TokenType.FIRST:
@@ -827,15 +983,6 @@ class ASQLParser(Parser):
         
         # Standalone # → COUNT(*)
         return exp.Count(this=exp.Star())
-    
-    def _parse_count_shorthand(self) -> exp.Expression:
-        """Parse ASQL # count shorthand (called from _parse_field).
-        
-        This consumes the # token first, then delegates to the main implementation.
-        """
-        if self._curr and self._curr.token_type == TokenType.HASH:
-            self._advance()  # consume #
-        return self._parse_count_shorthand_from_primary()
 
     def _infer_primary_key_column(self, table_name: str) -> str:
         """Infer PK column name from table name: users → user_id."""
@@ -1182,103 +1329,59 @@ class ASQLParser(Parser):
     def _parse_list_comprehension(self) -> exp.Expression:
         """Parse Python-style list comprehension: [expr for var in arr [if condition]]
         
-        Converts to: ARRAY(SELECT expr FROM UNNEST(arr) AS var [WHERE condition])
+        For DuckDB: keeps as exp.Array(Comprehension) for native [x FOR x IN arr] syntax
+        For others: converts to ARRAY(SELECT expr FROM UNNEST(arr) AS var [WHERE condition])
+        
+        Uses SQLGlot's built-in _parse_comprehension which returns exp.Comprehension.
         """
         self._advance()  # consume [
         
-        # Parse everything up to 'for'
-        expr_tokens: list[Token] = []
-        bracket_depth = 1
-        
-        while self._curr:
-            if self._curr.token_type == TokenType.L_BRACKET:
-                bracket_depth += 1
-                expr_tokens.append(self._curr)
-                self._advance()
-            elif self._curr.token_type == TokenType.R_BRACKET:
-                bracket_depth -= 1
-                if bracket_depth == 0:
-                    break
-                expr_tokens.append(self._curr)
-                self._advance()
-            elif bracket_depth == 1 and (self._curr.token_type == TokenType.FOR or (self._curr.token_type == TokenType.VAR and self._curr.text.upper() == "FOR")):
-                break
-            else:
-                expr_tokens.append(self._curr)
-                self._advance()
-        
-        # Build expression string for parsing
-        expr_str = " ".join(t.text for t in expr_tokens).strip()
-        
-        # Expect 'for'
-        if not (self._curr and (self._curr.token_type == TokenType.FOR or (self._curr.token_type == TokenType.VAR and self._curr.text.upper() == "FOR"))):
-            self.raise_error("Expected 'for' in list comprehension")
-            return exp.Array(expressions=[])
-        self._advance()  # consume 'for'
-        
-        # Parse variable name
-        var_name = self._parse_id_var()
-        if not var_name:
-            self.raise_error("Expected variable name in list comprehension")
-            return exp.Array(expressions=[])
-        
-        # Expect 'in'
-        if not (self._curr and (self._curr.token_type == TokenType.IN or (self._curr.token_type == TokenType.VAR and self._curr.text.upper() == "IN"))):
-            self.raise_error("Expected 'in' in list comprehension")
-            return exp.Array(expressions=[])
-        self._advance()  # consume 'in'
-        
-        # Parse array expression (column name or more complex expression)
-        array_expr = self._parse_column()
-        if not array_expr:
-            self.raise_error("Expected array expression in list comprehension")
-            return exp.Array(expressions=[])
-        
-        # Check for optional 'if' condition
-        condition_expr: t.Optional[exp.Expression] = None
-        if self._curr and self._curr.token_type == TokenType.VAR and self._curr.text.upper() == "IF":
-            self._advance()  # consume 'if'
-            # Parse condition up to ]
-            cond_tokens: list[Token] = []
-            while self._curr and self._curr.token_type != TokenType.R_BRACKET:
-                cond_tokens.append(self._curr)
-                self._advance()
-            if cond_tokens:
-                cond_str = " ".join(t.text for t in cond_tokens).strip()
-                try:
-                    condition_expr = sqlglot.parse_one(cond_str, dialect="asql")
-                except Exception:
-                    try:
-                        condition_expr = sqlglot.parse_one(cond_str)
-                    except Exception:
-                        pass
+        # SQLGlot's _parse_assignment() handles "expr FOR var IN arr [IF cond]" 
+        # and returns exp.Comprehension
+        parsed = self._parse_assignment()
         
         # Expect ]
         if not self._match(TokenType.R_BRACKET):
             self.raise_error("Expected ']' at end of list comprehension")
         
-        # Parse the expression string
-        try:
-            select_expr = sqlglot.parse_one(expr_str, dialect="asql")
-        except Exception:
-            try:
-                select_expr = sqlglot.parse_one(expr_str)
-            except Exception:
-                select_expr = exp.Column(this=exp.Identifier(this=expr_str))
+        # Keep as Comprehension AST - dialect-specific conversion happens in compile()
+        # DuckDB: native [x FOR x IN arr] syntax
+        # Others: ARRAY(SELECT ... FROM UNNEST(...))
+        if isinstance(parsed, exp.Comprehension):
+            return exp.Array(expressions=[parsed])
         
-        # Build ARRAY(SELECT expr FROM UNNEST(arr) AS var [WHERE condition])
+        # Not a comprehension - return as array literal
+        return exp.Array(expressions=[parsed] if parsed else [])
+    
+    def _comprehension_to_array_select(self, comp: exp.Comprehension) -> exp.Expression:
+        """Convert exp.Comprehension to ARRAY(SELECT expr FROM UNNEST(arr) AS var [WHERE cond]).
+        
+        This generates portable SQL that works on Postgres, BigQuery, etc.
+        (DuckDB native syntax is handled by post-processing in list_comprehension.py)
+        """
+        # Extract parts from Comprehension
+        select_expr = comp.this  # The expression to evaluate
+        var_expr = comp.expression  # The loop variable  
+        iterator = comp.args.get("iterator")  # The array to iterate
+        condition = comp.args.get("condition")  # Optional IF condition
+        
+        # Get variable name
+        var_name = var_expr.name if hasattr(var_expr, 'name') else str(var_expr)
+        
+        # Build UNNEST with alias
         unnest = exp.Unnest(
-            expressions=[array_expr],
-            alias=exp.TableAlias(this=exp.to_identifier(var_name.name if hasattr(var_name, 'name') else str(var_name)))
+            expressions=[iterator],
+            alias=exp.TableAlias(this=exp.to_identifier(var_name))
         )
         
+        # Build SELECT
         select = exp.Select(
             expressions=[select_expr],
             from_=exp.From(this=unnest),
         )
         
-        if condition_expr:
-            select.set("where", exp.Where(this=condition_expr))
+        if condition:
+            select.set("where", exp.Where(this=condition))
         
         return exp.Array(expressions=[select])
 
@@ -2171,58 +2274,54 @@ class ASQLParser(Parser):
             return query
         
         # Check for operation type: first/last/number/rank/dense rank
-        order_desc = False
-        alias = None
+        # Use dict lookups instead of elif chains (SQLGlot idiomatic pattern)
         
-        if self._match(TokenType.FIRST) or self._match_text_seq("FIRST"):
-            # per X first by Y → QUALIFY ROW_NUMBER() OVER (PARTITION BY X ORDER BY Y) = 1
-            if not self._match_text_seq("BY"):
-                self.raise_error("Expected BY after FIRST")
-                return query
-            order_expr, order_desc = self._parse_order_col_with_direction()
-            return self._add_qualify_row_number(query, partition_cols, order_expr, order_desc)
-            
-        elif self._match_text_seq("LAST"):
-            # per X last by Y → QUALIFY ROW_NUMBER() OVER (PARTITION BY X ORDER BY Y DESC) = 1
-            # Note: LAST is not a token type, so we use _match_text_seq
-            if not self._match_text_seq("BY"):
-                self.raise_error("Expected BY after LAST")
-                return query
-            order_expr, order_desc = self._parse_order_col_with_direction()
-            # Reverse the order for "last"
-            order_desc = not order_desc
-            return self._add_qualify_row_number(query, partition_cols, order_expr, order_desc)
-            
-        elif self._match_text_seq("DENSE", "RANK") or self._match_text_seq("DENSE_RANK"):
-            # per X dense rank by Y [as alias]
-            if not self._match_text_seq("BY"):
-                self.raise_error("Expected BY after DENSE RANK")
-                return query
-            order_expr, order_desc = self._parse_order_col_with_direction()
-            alias = self._parse_alias_after_as()
-            return self._add_window_to_select(query, exp.DenseRank, partition_cols, order_expr, order_desc, alias or "dense_rank")
-            
-        elif self._match_text_seq("NUMBER"):
-            # per X number by Y [as alias]
-            if not self._match_text_seq("BY"):
-                self.raise_error("Expected BY after NUMBER")
-                return query
-            order_expr, order_desc = self._parse_order_col_with_direction()
-            alias = self._parse_alias_after_as()
-            return self._add_window_to_select(query, exp.RowNumber, partition_cols, order_expr, order_desc, alias or "row_num")
-            
-        elif self._match_text_seq("RANK"):
-            # per X rank by Y [as alias]
-            if not self._match_text_seq("BY"):
-                self.raise_error("Expected BY after RANK")
-                return query
-            order_expr, order_desc = self._parse_order_col_with_direction()
-            alias = self._parse_alias_after_as()
-            return self._add_window_to_select(query, exp.Rank, partition_cols, order_expr, order_desc, alias or "rank")
+        # Check FIRST token type first (it has a dedicated TokenType)
+        if self._match(TokenType.FIRST):
+            return self._handle_per_qualify_op(query, partition_cols, reverse_order=False)
         
-        else:
-            self.raise_error("Expected FIRST, LAST, NUMBER, RANK, or DENSE RANK after partition columns")
+        # Check qualify operations (FIRST, LAST)
+        for tokens, reverse_order in self._PER_QUALIFY_OPS.items():
+            if self._match_text_seq(*tokens):
+                return self._handle_per_qualify_op(query, partition_cols, reverse_order)
+        
+        # Check window operations (NUMBER, RANK, DENSE RANK)
+        for tokens, (expr_class, default_alias) in self._PER_WINDOW_OPS.items():
+            if self._match_text_seq(*tokens):
+                return self._handle_per_window_op(query, partition_cols, expr_class, default_alias)
+        
+        self.raise_error("Expected FIRST, LAST, NUMBER, RANK, or DENSE RANK after partition columns")
+        return query
+    
+    def _handle_per_qualify_op(
+        self,
+        query: exp.Query,
+        partition_cols: t.List[exp.Expression],
+        reverse_order: bool
+    ) -> exp.Query:
+        """Handle PER ... FIRST/LAST BY ... → QUALIFY ROW_NUMBER() = 1."""
+        if not self._match_text_seq("BY"):
+            self.raise_error("Expected BY after FIRST/LAST")
             return query
+        order_expr, order_desc = self._parse_order_col_with_direction()
+        if reverse_order:
+            order_desc = not order_desc
+        return self._add_qualify_row_number(query, partition_cols, order_expr, order_desc)
+    
+    def _handle_per_window_op(
+        self,
+        query: exp.Query,
+        partition_cols: t.List[exp.Expression],
+        expr_class: t.Type[exp.Expression],
+        default_alias: str
+    ) -> exp.Query:
+        """Handle PER ... NUMBER/RANK/DENSE RANK BY ... → add window function to SELECT."""
+        if not self._match_text_seq("BY"):
+            self.raise_error(f"Expected BY after {default_alias.upper()}")
+            return query
+        order_expr, order_desc = self._parse_order_col_with_direction()
+        alias = self._parse_alias_after_as()
+        return self._add_window_to_select(query, expr_class, partition_cols, order_expr, order_desc, alias or default_alias)
     
     def _parse_order_col_with_direction(self) -> t.Tuple[exp.Expression, bool]:
         """Parse order column with optional - prefix for DESC."""
@@ -2354,7 +2453,7 @@ class ASQLParser(Parser):
         return self._add_qualify_row_number(query, partition_cols, order_expr, order_desc)
 
     def _parse_asql_cohort(self, query: exp.Query) -> exp.Query:
-        """Parse cohort by [segments,] <granularity>(<table.column>) [on <join_key>].
+        """Parse cohort by [segments,] <granularity_func>(<table.column>) [on <join_key>].
         
         Syntax:
             cohort by month(users.signup_date)
@@ -2362,65 +2461,45 @@ class ASQLParser(Parser):
             cohort by users.channel, month(users.signup_date) on user_id
             cohort by week(customers.first_order_date) on customer_id
         
-        This stores cohort info on the query for later AST transformation in the compiler.
-        The compiler will generate:
-        - CTEs: cohort_base, cohort_sizes
-        - JOINs to those CTEs
-        - Modified SELECT with cohort_month, period, cohort_size
-        - Modified GROUP BY and ORDER BY
+        The granularity function (month, week, day, etc.) is parsed as a regular 
+        function call - any date function works, not a hardcoded list.
+        
+        Creates a CohortBy expression attached to the query for later transformation.
         """
         if not self._match_text_seq("BY"):
             self.raise_error("Expected BY after COHORT")
             return query
         
-        # Parse optional segment columns before the granularity function
-        # Syntax: cohort by segment1, segment2, month(...)
-        segments: t.List[exp.Expression] = []
+        # Parse comma-separated expressions: segments are columns, last item is granularity function
+        # e.g., "channel, region, month(signup_date)" → segments=[channel, region], granularity_expr=month(signup_date)
+        expressions: t.List[exp.Expression] = []
         
         while True:
-            # Check if this is the granularity function (month/week/day)
-            if self._curr and self._curr.token_type == TokenType.VAR:
-                curr_text = self._curr.text.upper()
-                if curr_text in ("MONTH", "WEEK", "DAY"):
-                    # Check if followed by ( - that means it's the granularity function
-                    next_tok = self._next
-                    if next_tok and next_tok.token_type == TokenType.L_PAREN:
-                        break  # Found granularity function
+            # Parse expression (could be column or function call)
+            expr = self._parse_unary()
+            if not expr:
+                break
+            expressions.append(expr)
             
-            # Try parsing a column as segment
-            col = self._parse_column()
-            if col:
-                segments.append(col)
-                if not self._match(TokenType.COMMA):
-                    break
-            else:
+            # Check for comma (more expressions) vs ON (join key) vs end
+            if not self._match(TokenType.COMMA):
                 break
         
-        # Parse granularity function: month/week/day
-        granularity = None
-        if self._match_text_seq("MONTH"):
-            granularity = "month"
-        elif self._match_text_seq("WEEK"):
-            granularity = "week"
-        elif self._match_text_seq("DAY"):
-            granularity = "day"
-        else:
-            self.raise_error("Expected MONTH, WEEK, or DAY for cohort granularity")
+        if not expressions:
+            self.raise_error("Expected granularity function (e.g., month(date_col)) after COHORT BY")
             return query
         
-        # Parse (table.column)
-        if not self._match(TokenType.L_PAREN):
-            self.raise_error(f"Expected ( after {granularity.upper()}")
-            return query
+        # Last expression should be the granularity function
+        granularity_expr = expressions[-1]
+        segments = expressions[:-1]
         
-        # Parse column reference (may be table.column or just column)
-        cohort_col = self._parse_column()
-        if not cohort_col:
-            self.raise_error("Expected column reference in cohort function")
-            return query
+        # Extract granularity and cohort_col from the function expression
+        granularity, cohort_col = self._extract_granularity_from_expr(granularity_expr)
         
-        if not self._match(TokenType.R_PAREN):
-            self.raise_error("Expected ) after cohort column")
+        if not granularity or not cohort_col:
+            self.raise_error(
+                "Expected granularity function like month(date_col), week(date_col), or day(date_col)"
+            )
             return query
         
         # Parse optional ON join_key
@@ -2430,23 +2509,115 @@ class ASQLParser(Parser):
             if join_key_col:
                 join_key = join_key_col.name if hasattr(join_key_col, 'name') else str(join_key_col.this)
         
-        # Store cohort info on the query for compiler to process
-        # We use a custom annotation that the compiler will look for
-        cohort_info = {
-            "granularity": granularity,
-            "cohort_col": cohort_col,
-            "join_key": join_key,
-            "segments": segments,
-        }
+        # Build CohortBy AST node (replaces old _cohort_info attribute hack)
+        cohort_node = CohortBy(
+            this=granularity_expr,
+            granularity=exp.Literal.string(granularity) if granularity else None,
+            join_key=exp.to_identifier(join_key) if join_key else None,
+            segments=segments if segments else None,
+        )
         
-        # Store as a comment/annotation that survives AST manipulation
-        # The compiler will look for this and apply the cohort transform
-        if not hasattr(query, "_cohort_info"):
-            query._cohort_info = cohort_info
-        else:
-            query._cohort_info = cohort_info
+        # Attach to query using proper args mechanism
+        query.set("cohort", cohort_node)
         
         return query
+    
+    def _parse_asql_spine_by(self, query: exp.Query) -> exp.Query:
+        """Parse spine by <columns> (aggregations).
+        
+        Syntax:
+            spine by month(created_at) (sum(amount))
+            spine by month(date), year(date) (sum(amount), count(*))
+        
+        This is like GROUP BY but wraps each column in Spine() to mark it
+        for gap-filling transformation.
+        
+        Returns a query with GROUP BY containing Spine-wrapped columns.
+        """
+        if not self._match_text_seq("BY"):
+            self.raise_error("Expected BY after SPINE")
+            return query
+        
+        # Parse comma-separated columns (each will be wrapped in Spine)
+        # Use same logic as _parse_asql_group_by but wrap in Spine
+        columns: t.List[exp.Expression] = []
+        
+        while True:
+            # Check if this is start of aggregate block
+            if self._curr and self._curr.token_type == TokenType.L_PAREN:
+                break
+            
+            # Parse spine term (like group-by term)
+            expr = self._parse_group_by_term()
+            if not expr:
+                break
+            
+            # Wrap in Spine
+            columns.append(Spine(this=expr))
+            
+            # After parsing expression, check for aggregate block
+            if self._curr and self._curr.token_type == TokenType.L_PAREN:
+                break
+            
+            # Check for comma vs end
+            if not self._match(TokenType.COMMA):
+                break
+        
+        if not columns:
+            self.raise_error("Expected column expression after SPINE BY")
+            return query
+        
+        # Set GROUP BY with Spine-wrapped columns
+        query.set("group", exp.Group(expressions=columns))
+        
+        # Parse optional aggregations in parens: (sum(amount), count(*))
+        if self._match(TokenType.L_PAREN):
+            aggs = self._parse_csv(self._parse_expression)
+            if not self._match(TokenType.R_PAREN):
+                self.raise_error("Expected ) to close aggregate block")
+            
+            # Replace SELECT * with spine columns + aggs
+            new_select = []
+            for spine_col in columns:
+                # Extract inner expression from Spine for SELECT
+                inner = spine_col.this
+                new_select.append(inner.copy())
+            new_select.extend(aggs)
+            query.select(*new_select, append=False, copy=False)
+        
+        return query
+    
+    def _extract_granularity_from_expr(
+        self, expr: exp.Expression
+    ) -> t.Tuple[t.Optional[str], t.Optional[exp.Expression]]:
+        """Extract granularity name and column from a date function expression.
+        
+        Handles various function expression types:
+        - exp.Month, exp.Week, exp.Day (native SQLGlot date extractors)
+        - exp.Anonymous (generic function call like MONTH(col))
+        - exp.Func subclasses
+        
+        Returns (granularity_name, inner_column) or (None, None) if not a valid function.
+        """
+        # Check native SQLGlot date expression types via dict lookup
+        for exp_type, granularity in self._DATE_GRANULARITY_TYPES.items():
+            if isinstance(expr, exp_type):
+                return (granularity, expr.this)
+        
+        # Handle generic function calls (exp.Anonymous or other Func types)
+        if isinstance(expr, exp.Anonymous):
+            func_name = expr.name.lower()
+            args = expr.expressions
+            if args:
+                return (func_name, args[0])
+        
+        # Handle other Func subclasses that have a name attribute
+        if isinstance(expr, exp.Func):
+            func_name = type(expr).__name__.lower()
+            if expr.this:
+                return (func_name, expr.this)
+        
+        return (None, None)
 
     def _parse_asql_distinct(self, query: exp.Query) -> exp.Query:
         """Parse DISTINCT / DISTINCT ON (...) for ASQL pipelines."""
@@ -2763,10 +2934,6 @@ class ASQLParser(Parser):
         if parsed_multiword is not None:
             return parsed_multiword
 
-        parsed_count = self._parse_asql_count_unary(start_index)
-        if parsed_count is not None:
-            return parsed_count
-
         parsed_relative_date = self._parse_asql_relative_date_unary(start_index)
         if parsed_relative_date is not None:
             return parsed_relative_date
@@ -2795,14 +2962,6 @@ class ASQLParser(Parser):
                 self.raise_error("Expected ) after row number(")
             return self._parse_window(exp.RowNumber())
         self._retreat(row_number_index)
-
-        self._retreat(start_index)
-        return None
-
-    def _parse_asql_count_unary(self, start_index: int) -> t.Optional[exp.Expression]:
-        """Parse COUNT shorthand at expression start (`#`, `#(col)`, `#*`)."""
-        if self._match(TokenType.HASH):
-            return self._parse_count_shorthand_from_primary()
 
         self._retreat(start_index)
         return None

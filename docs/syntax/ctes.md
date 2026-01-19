@@ -2,7 +2,7 @@
 
 ASQL currently provides **one** way to create CTEs (Common Table Expressions): `stash as`.
 
-`SET` is reserved for **compiler settings** (e.g. `SET auto_spine = false;`) and does **not** define CTEs.
+`SET` is reserved for **compiler settings** (e.g. `SET dialect = 'postgres';`) and does **not** define CTEs.
 
 ## Why CTEs Are Often Unnecessary
 
@@ -70,14 +70,13 @@ from regional_revenue
 - **Clear flow**: Data flow is visible
 - **Eye-friendly**: Name appears right before usage
 
-## `set` — Top-Level Variables
 ## `SET` — Compiler settings (not CTEs)
 
 Use `SET` statements to control compiler behavior:
 
 ```asql
-SET auto_spine = false;
 SET dialect = 'postgres';
+SET week_start = 'sunday';
 
 from orders
   group by month(created_at) ( sum(amount) as revenue )

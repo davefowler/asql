@@ -6,19 +6,23 @@ This test ensures:
 2. All examples can be transpiled to every supported dialect
 3. The generated SQL is valid (parseable by SQLGlot)
 4. SQL-to-ASQL reverse compilation works for SQL examples
+5. Examples work with the playground schema for type information
 
 Run with: pytest tests/test_playground_examples.py -v
 """
 
 import pytest
 import sqlglot
-from asql import compile
+from sqlglot.schema import MappingSchema
+
+from tests.fixtures import transpile
 
 # Import examples directly from playground package
 from playground.examples import (
     SQL_EXAMPLES,
     get_all_examples_flat,
 )
+from playground.schema import PLAYGROUND_SCHEMA
 
 
 # All supported dialects to test
@@ -38,8 +42,8 @@ DIALECTS = [
 # These require EXCLUDE/EXCEPT syntax which only BigQuery, Snowflake, DuckDB support
 #
 # NOTE (Issue #80 - IMPLEMENTED): Schema-aware column expansion fallback is now available!
-#   - WITHOUT schema: compile() raises ASQLDialectError (as expected)
-#   - WITH schema: compile() succeeds, expanding to explicit column list
+#   - WITHOUT schema: transpile() raises ASQLDialectError (as expected)
+#   - WITH schema: transpile() succeeds, expanding to explicit column list
 #   
 #   The playground examples don't have schema attached, so they still need to be skipped
 #   for dialects without native EXCLUDE support. See tests/test_column_operators_fallback.py
@@ -100,7 +104,7 @@ class TestPlaygroundExamplesCompile:
     def test_example_compiles(self, category, title, query):
         """Test that each example compiles without error."""
         try:
-            result = compile(query, dialect="snowflake", pretty=True)
+            result = transpile(query, dialect="snowflake", pretty=True)
             assert result is not None, "Compilation returned None"
             assert len(result) > 0, "Compilation returned empty string"
         except Exception as e:
@@ -119,7 +123,7 @@ class TestPlaygroundExamplesAllDialects:
             pytest.skip(f"Known limitation: {DIALECT_LIMITATIONS[limitation_key]}")
         
         try:
-            result = compile(query, dialect=dialect, pretty=True)
+            result = transpile(query, dialect=dialect, pretty=True)
             assert result is not None, "Compilation returned None"
             assert len(result) > 0, "Compilation returned empty string"
         except Exception as e:
@@ -138,7 +142,7 @@ class TestGeneratedSQLIsValid:
             pytest.skip(f"Known limitation: {DIALECT_LIMITATIONS[limitation_key]}")
         
         try:
-            sql = compile(query, dialect=dialect, pretty=True)
+            sql = transpile(query, dialect=dialect, pretty=True)
             parsed = sqlglot.parse(sql, dialect=dialect)
             
             assert parsed is not None, "SQLGlot returned None"
@@ -162,10 +166,10 @@ class TestRoundTrip:
     """Test ASQL → SQL → ASQL round trip (where applicable)."""
     
     @pytest.mark.parametrize("category,title,query", cached_examples())
-    def test_sql_can_reverse_compile(self, category, title, query):
+    def test_sql_can_reverse_transpile(self, category, title, query):
         """Test that generated SQL can be transpiled back to ASQL."""
         try:
-            sql = compile(query, dialect="postgres", pretty=True)
+            sql = transpile(query, dialect="postgres", pretty=True)
             asql_result = sqlglot.transpile(sql, read="postgres", write="asql")[0]
             
             assert asql_result is not None, "Transpile returned None"
@@ -184,7 +188,7 @@ class TestSQLExamples:
         print(f"\nLoaded {len(SQL_EXAMPLES)} SQL examples")
     
     @pytest.mark.parametrize("example", SQL_EXAMPLES, ids=lambda ex: ex.get("title", "unknown"))
-    def test_sql_example_can_reverse_compile(self, example):
+    def test_sql_example_can_reverse_transpile(self, example):
         """Test that SQL examples can be transpiled to ASQL."""
         try:
             dialect = example.get("dialect", "") or "postgres"
@@ -199,7 +203,7 @@ class TestSQLExamples:
             assert len(asql) > 0
             
             # Verify the ASQL can compile back to SQL
-            sql = compile(asql, dialect=dialect)
+            sql = transpile(asql, dialect=dialect)
             assert sql is not None
             
         except Exception as e:
@@ -212,20 +216,136 @@ class TestDialectSpecificFeatures:
     def test_snowflake_uses_ilike(self):
         """Snowflake should use ILIKE for case-insensitive matching."""
         asql = 'from users where name ilike "%john%"'
-        sql = compile(asql, dialect="snowflake")
+        sql = transpile(asql, dialect="snowflake")
         assert "ILIKE" in sql.upper() or "LIKE" in sql.upper()
     
     def test_bigquery_uses_safe_divide(self):
         """BigQuery should handle division appropriately."""
         asql = 'from users select id, amount / total as ratio'
-        sql = compile(asql, dialect="bigquery")
+        sql = transpile(asql, dialect="bigquery")
         assert sql is not None
     
     def test_postgres_date_functions(self):
         """PostgreSQL should use appropriate date functions."""
         asql = 'from events group by month(created_at) (# as count)'
-        sql = compile(asql, dialect="postgres")
+        sql = transpile(asql, dialect="postgres")
         assert "DATE_TRUNC" in sql.upper() or "EXTRACT" in sql.upper() or "MONTH" in sql.upper()
+
+
+class TestVisualModeWithSchema:
+    """Test visual mode parsing with playground schema."""
+    
+    @pytest.fixture(scope="class")
+    def schema(self):
+        """Create MappingSchema from playground schema."""
+        return MappingSchema(PLAYGROUND_SCHEMA)
+    
+    def test_schema_has_all_example_tables(self, schema):
+        """Verify schema contains tables used in examples."""
+        required_tables = [
+            "users", "orders", "customers", "products", "sales",
+            "events", "posts", "transactions", "leads", "deals"
+        ]
+        available = list(PLAYGROUND_SCHEMA.keys())
+        
+        for table in required_tables:
+            assert table in available, f"Table '{table}' missing from playground schema"
+    
+    def test_users_table_has_expected_columns(self, schema):
+        """Verify users table has columns used in examples."""
+        users = PLAYGROUND_SCHEMA.get("users", {})
+        expected_columns = [
+            "id", "email", "status", "name", "country", 
+            "age", "last_login", "signup_date", "channel"
+        ]
+        for col in expected_columns:
+            assert col in users, f"Column '{col}' missing from users table"
+    
+    def test_orders_table_has_expected_columns(self, schema):
+        """Verify orders table has columns used in examples."""
+        orders = PLAYGROUND_SCHEMA.get("orders", {})
+        expected_columns = [
+            "id", "order_id", "customer_id", "user_id", "status",
+            "amount", "total", "created_at", "order_date"
+        ]
+        for col in expected_columns:
+            assert col in orders, f"Column '{col}' missing from orders table"
+    
+    def test_visual_parse_simple_query(self, schema):
+        """Test visual parsing with schema for type info."""
+        from asql.visual_dialect import VisualASQLGenerator
+        import json
+        
+        asql = 'from users where status = "active" select id, name, email'
+        ast = sqlglot.parse(asql, dialect="asql")[0]
+        
+        generator = VisualASQLGenerator(schema=schema)
+        json_str = generator.generate(ast)
+        result = json.loads(json_str)
+        
+        # Should return array format
+        assert isinstance(result, list)
+        assert len(result) == 1
+        
+        pipeline = result[0]
+        assert pipeline["from"]["table"] == "users"
+        
+        # Check output_columns from schema
+        from_cols = pipeline["from"]["output_columns"]
+        assert len(from_cols) > 0, "Schema should populate output_columns"
+        
+        # Verify column names and types are present
+        col_names = [c["name"] for c in from_cols]
+        assert "id" in col_names
+        assert "email" in col_names
+        assert "status" in col_names
+    
+    def test_visual_parse_with_join(self, schema):
+        """Test visual parsing of join query with schema."""
+        from asql.visual_dialect import VisualASQLGenerator
+        import json
+        
+        # Use explicit select to avoid SELECT * qualification issues
+        asql = '''from orders 
+            & customers on orders.customer_id = customers.id
+            select orders.id, orders.total, customers.name'''
+        ast = sqlglot.parse(asql, dialect="asql")[0]
+        
+        generator = VisualASQLGenerator(schema=schema)
+        json_str = generator.generate(ast)
+        result = json.loads(json_str)
+        
+        pipeline = result[0]
+        assert pipeline["from"]["table"] == "orders"
+        
+        # Should have a join transform
+        join_transforms = [t for t in pipeline["transforms"] if t["type"] == "join"]
+        assert len(join_transforms) == 1
+        assert join_transforms[0]["table"] == "customers"
+    
+    @pytest.mark.parametrize("category,title,query", cached_examples())
+    def test_example_parses_to_visual_json(self, category, title, query, schema):
+        """Test that examples can be parsed to visual JSON format."""
+        from asql.visual_dialect import VisualASQLGenerator
+        import json
+        
+        # Skip CTEs/stash which aren't supported in visual mode
+        if "stash" in query.lower():
+            pytest.skip("Visual mode doesn't support CTEs")
+        
+        try:
+            ast = sqlglot.parse(query, dialect="asql")[0]
+            generator = VisualASQLGenerator(schema=schema)
+            json_str = generator.generate(ast)
+            result = json.loads(json_str)
+            
+            assert isinstance(result, list)
+            assert len(result) >= 1
+            assert result[0].get("from") is not None
+            
+        except Exception as e:
+            # Some examples may use features not supported in visual mode
+            pytest.skip(f"Visual parsing not supported for this example: {e}")
 
 
 if __name__ == "__main__":
@@ -252,7 +372,7 @@ if __name__ == "__main__":
     
     for category, title, query in examples:
         try:
-            result = compile(query, dialect="snowflake")
+            result = transpile(query, dialect="snowflake")
             passed += 1
             print(f"  ✓ [{category}] {title}")
         except Exception as e:

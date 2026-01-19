@@ -1,6 +1,6 @@
 """Tests for auto-aliasing functionality."""
 
-from asql import compile
+from tests.fixtures import transpile
 from asql.config import CompileSettings, ASQLConfig
 
 
@@ -12,7 +12,7 @@ class TestPhase1PrefixBased:
         settings = CompileSettings()
         # count(*) should use "num" prefix
         asql = "from orders select count(*)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "COUNT(*) AS num" in sql.upper() or "COUNT(*) AS NUM" in sql.upper()
     
     def test_custom_prefix_via_set(self):
@@ -21,7 +21,7 @@ class TestPhase1PrefixBased:
         SET sum_alias_prefix = 'total';
         from orders select sum(amount)
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "SUM(amount) AS total_amount" in sql.upper() or "SUM(AMOUNT) AS TOTAL_AMOUNT" in sql.upper()
     
     def test_custom_prefix_yaml(self):
@@ -29,7 +29,7 @@ class TestPhase1PrefixBased:
         config = ASQLConfig()
         config.compile.alias_prefixes["sum"] = "total"
         asql = "from orders select sum(amount)"
-        sql = compile(asql, settings=config.compile)
+        sql = transpile(asql, settings=config.compile)
         assert "total_amount" in sql.lower() or "TOTAL_AMOUNT" in sql.upper()
     
     def test_single_arg_function(self):
@@ -37,7 +37,7 @@ class TestPhase1PrefixBased:
         settings = CompileSettings()
         settings.alias_prefixes["sum"] = "sum"
         asql = "from orders select sum(amount)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "sum_amount" in sql.lower() or "SUM_AMOUNT" in sql.upper()
     
     def test_multi_arg_function(self):
@@ -45,7 +45,7 @@ class TestPhase1PrefixBased:
         settings = CompileSettings()
         settings.alias_prefixes["coalesce"] = "coal"
         asql = "from orders select coalesce(amount, 0)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Should generate coal_amount_0 or similar
         assert "coal" in sql.lower() or "COAL" in sql.upper()
     
@@ -54,7 +54,7 @@ class TestPhase1PrefixBased:
         settings = CompileSettings()
         # count(*) should become "num" not "num_*"
         asql = "from orders select count(*)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "AS num" in sql.lower() or "AS NUM" in sql.upper()
         assert "num_*" not in sql.lower()
 
@@ -68,7 +68,7 @@ class TestPhase2TemplateSystem:
         settings.alias_template = "{prefix}_{col}"
         settings.alias_prefixes["sum"] = "sum"
         asql = "from orders select sum(amount)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "sum_amount" in sql.lower() or "SUM_AMOUNT" in sql.upper()
     
     def test_function_specific_template(self):
@@ -77,7 +77,7 @@ class TestPhase2TemplateSystem:
         settings.alias_template = "{prefix}_{col}"  # Default
         settings.alias_templates["count"] = "{prefix}"  # Override for count
         asql = "from orders select count(*)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Should use count template, not default
         assert "AS num" in sql.lower() or "AS NUM" in sql.upper()
     
@@ -87,7 +87,7 @@ class TestPhase2TemplateSystem:
         settings.alias_template = "{prefix|upper}_{col|upper}"
         settings.alias_prefixes["sum"] = "sum"
         asql = "from orders select sum(amount)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "SUM_AMOUNT" in sql.upper()
     
     def test_multi_arg_template(self):
@@ -96,7 +96,7 @@ class TestPhase2TemplateSystem:
         settings.alias_templates["coalesce"] = "{prefix}_{arg1}_{arg2}"
         settings.alias_prefixes["coalesce"] = "coal"
         asql = "from orders select coalesce(amount, 0)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Note: arg2 is a literal (0), so may be empty in template
         assert "coal" in sql.lower() or "COAL" in sql.upper()
     
@@ -105,7 +105,7 @@ class TestPhase2TemplateSystem:
         settings = CompileSettings()
         settings.alias_template = "{func}_{col}"
         asql = "from orders select sum(amount)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Should use func name (sum) and col name (amount)
         assert "sum_amount" in sql.lower() or "SUM_AMOUNT" in sql.upper()
 
@@ -118,7 +118,7 @@ class TestEdgeCases:
         settings = CompileSettings()
         settings.alias_prefixes["sum"] = "sum"
         asql = "from orders select sum(amount) as total"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "AS total" in sql.lower() or "AS TOTAL" in sql.upper()
         # Should not have sum_amount
         assert "sum_amount" not in sql.lower()
@@ -128,7 +128,7 @@ class TestEdgeCases:
         settings = CompileSettings()
         settings.alias_prefixes["count"] = "uniq"
         asql = "from orders select count(distinct customer_id)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "COUNT(DISTINCT" in sql.upper()
         # Should generate alias with distinct
         assert "uniq" in sql.lower() or "UNIQ" in sql.upper()
@@ -138,7 +138,7 @@ class TestEdgeCases:
         settings = CompileSettings()
         settings.alias_prefixes["sum"] = "sum"
         asql_query = "from orders select sum(amount * quantity)"
-        compile(asql_query, settings=settings)
+        transpile(asql_query, settings=settings)
         # Complex expression might not get auto-alias (depends on implementation)
         # This is acceptable - user should provide explicit alias
     
@@ -147,14 +147,14 @@ class TestEdgeCases:
         settings = CompileSettings()
         settings.alias_prefixes["sum"] = "sum"
         asql = "from orders group by customer_id (sum(amount))"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "sum_amount" in sql.lower() or "SUM_AMOUNT" in sql.upper()
     
     def test_row_number_function(self):
         """Test row_number() gets default prefix."""
         settings = CompileSettings()
         asql = "from orders select row_number()"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "row_num" in sql.lower() or "ROW_NUM" in sql.upper()
 
 
@@ -206,7 +206,7 @@ class TestConfigLoading:
         SET alias_template = '{prefix}_{col}';
         from orders select sum(amount)
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "total_amount" in sql.lower() or "TOTAL_AMOUNT" in sql.upper()
 
 
@@ -220,7 +220,7 @@ class TestPrecedence:
         settings.alias_template = "{prefix}_{col}"  # Default template
         settings.alias_templates["count"] = "{prefix}"  # Function-specific template
         asql = "from orders select count(*)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Should use function-specific template (just "num"), not default template
         assert "AS num" in sql.lower() or "AS NUM" in sql.upper()
         assert "num_*" not in sql.lower()
@@ -231,7 +231,7 @@ class TestPrecedence:
         settings.alias_prefixes["count"] = "cnt"  # Custom prefix
         settings.alias_template = "{prefix}"  # Simple template
         asql = "from orders select count(*)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Should use "cnt" not default "num"
         assert "AS cnt" in sql.lower() or "AS CNT" in sql.upper()
 
@@ -253,7 +253,7 @@ class TestIntegration:
             count(*)
         )
         """
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "sum_amount" in sql.lower() or "SUM_AMOUNT" in sql.upper()
         assert "avg_amount" in sql.lower() or "AVG_AMOUNT" in sql.upper()
         assert "num" in sql.lower() or "NUM" in sql.upper()
@@ -267,7 +267,7 @@ class TestIntegration:
         group by customer_id (sum(amount))
         order by -sum_amount
         """
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Should be able to reference sum_amount in ORDER BY
         assert "ORDER BY" in sql.upper()
         assert "sum_amount" in sql.lower() or "SUM_AMOUNT" in sql.upper()
@@ -281,43 +281,43 @@ class TestAliasMappingTable:
     def test_sum_alias(self):
         """Test sum(col) → sum_col."""
         asql = "from orders select sum(amount)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "sum_amount" in sql.lower()
     
     def test_avg_alias(self):
         """Test avg(col) → avg_col."""
         asql = "from orders select avg(price)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "avg_price" in sql.lower()
     
     def test_min_alias(self):
         """Test min(col) → min_col."""
         asql = "from orders select min(created_at)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "min_created_at" in sql.lower()
     
     def test_max_alias(self):
         """Test max(col) → max_col."""
         asql = "from orders select max(amount)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "max_amount" in sql.lower()
     
     def test_count_star_alias(self):
         """Test count(*) → num."""
         asql = "from orders select count(*)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert " num" in sql.lower() or "as num" in sql.lower()
     
     def test_count_column_alias(self):
         """Test count(col) → num_col."""
         asql = "from orders select count(email)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "num_email" in sql.lower()
     
     def test_count_distinct_alias(self):
         """Test count(distinct col) → num_distinct_col."""
         asql = "from orders select count(distinct user_id)"
-        sql = compile(asql)
+        sql = transpile(asql)
         # Default is num_distinct or similar
         assert "distinct" in sql.lower() or "num" in sql.lower()
     
@@ -326,37 +326,37 @@ class TestAliasMappingTable:
     def test_year_alias(self):
         """Test year(col) → year_col."""
         asql = "from orders select year(created_at)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "year_created_at" in sql.lower()
     
     def test_month_alias(self):
         """Test month(col) → month_col."""
         asql = "from orders select month(created_at)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "month_created_at" in sql.lower()
     
     def test_week_alias(self):
         """Test week(col) → week_col."""
         asql = "from orders select week(created_at)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "week_created_at" in sql.lower()
     
     def test_day_alias(self):
         """Test day(col) → day_col."""
         asql = "from orders select day(created_at)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "day_created_at" in sql.lower()
     
     def test_quarter_alias(self):
         """Test quarter(col) → quarter_col."""
         asql = "from orders select quarter(created_at)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "quarter_created_at" in sql.lower()
     
     def test_hour_alias(self):
         """Test hour(col) → hour_col."""
         asql = "from orders select hour(created_at)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "hour_created_at" in sql.lower()
     
     # === String Functions ===
@@ -364,25 +364,25 @@ class TestAliasMappingTable:
     def test_upper_alias(self):
         """Test upper(col) → upper_col."""
         asql = "from users select upper(name)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "upper_name" in sql.lower()
     
     def test_lower_alias(self):
         """Test lower(col) → lower_col."""
         asql = "from users select lower(email)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "lower_email" in sql.lower()
     
     def test_length_alias(self):
         """Test length(col) → length_col."""
         asql = "from users select length(name)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "length_name" in sql.lower()
     
     def test_trim_alias(self):
         """Test trim(col) → trim_col."""
         asql = "from users select trim(name)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "trim_name" in sql.lower()
     
     # === Window Functions ===
@@ -390,7 +390,7 @@ class TestAliasMappingTable:
     def test_row_number_alias(self):
         """Test row_number() → row_num."""
         asql = "from orders select row_number()"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "row_num" in sql.lower()
     
     # === Multi-arg Functions ===
@@ -398,13 +398,13 @@ class TestAliasMappingTable:
     def test_coalesce_alias(self):
         """Test coalesce(a, b) → coalesce_a_b."""
         asql = "from orders select coalesce(amount, 0)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "coalesce" in sql.lower()
     
     def test_concat_alias(self):
         """Test concat(a, b) → concat_a_b."""
         asql = "from users select concat(first_name, last_name)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "concat" in sql.lower()
     
     # === Special Cases ===
@@ -412,14 +412,14 @@ class TestAliasMappingTable:
     def test_explicit_alias_takes_precedence(self):
         """Test explicit AS alias overrides auto-alias."""
         asql = "from orders select sum(amount) as total_revenue"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "total_revenue" in sql.lower()
         assert "sum_amount" not in sql.lower()
     
     def test_multiple_same_function_unique_aliases(self):
         """Test multiple instances of same function get unique aliases."""
         asql = "from orders select sum(amount), sum(quantity)"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "sum_amount" in sql.lower()
         assert "sum_quantity" in sql.lower()
     
@@ -433,14 +433,14 @@ class TestAliasMappingTable:
             count(*)
         )
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "sum_amount" in sql.lower()
         assert "avg_price" in sql.lower()
     
     def test_nested_function_alias(self):
         """Test nested functions get sensible alias."""
         asql = "from orders select round(avg(amount))"
-        sql = compile(asql)
+        sql = transpile(asql)
         # Nested functions should still get some alias
         assert "avg" in sql.lower() or "round" in sql.lower()
 
@@ -454,7 +454,7 @@ class TestTemplateFilters:
         settings.alias_template = "{prefix|lower}_{col|lower}"
         settings.alias_prefixes["SUM"] = "SUM"  # Uppercase prefix
         asql = "from orders select sum(amount)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Result should be lowercase
         assert "sum_amount" in sql.lower()
     
@@ -463,7 +463,7 @@ class TestTemplateFilters:
         settings = CompileSettings()
         settings.alias_template = "{prefix|upper}_{col|upper}"
         asql = "from orders select sum(amount)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         assert "SUM_AMOUNT" in sql.upper()
     
     def test_title_filter(self):
@@ -471,7 +471,7 @@ class TestTemplateFilters:
         settings = CompileSettings()
         settings.alias_template = "{prefix|title}{col|title}"
         asql = "from orders select sum(amount)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Title case: SumAmount
         assert "SumAmount" in sql or "sumamount" in sql.lower()
     
@@ -480,6 +480,6 @@ class TestTemplateFilters:
         settings = CompileSettings()
         settings.alias_template = "{prefix}__{col}"  # Double underscore
         asql = "from orders select sum(amount)"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         # Note: double underscore may be collapsed to single
         assert "sum" in sql.lower() and "amount" in sql.lower()

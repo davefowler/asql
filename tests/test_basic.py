@@ -1,7 +1,6 @@
 """Basic tests to verify setup."""
 
-from asql import compile
-from tests.fixtures import assert_valid_sql, assert_sql_contains
+from tests.fixtures import transpile, assert_valid_sql, assert_sql_contains
 
 
 def test_import() -> None:
@@ -16,10 +15,10 @@ def test_import() -> None:
     assert len(version_parts) >= 2, f"Version should be semver format: {asql.__version__}"
 
 
-def test_basic_compilation() -> None:
-    """Test that basic compilation works and produces valid SQL."""
+def test_basic_transpilation() -> None:
+    """Test that basic transpilation works and produces valid SQL."""
     asql_query = "from users"
-    sql = compile(asql_query)
+    sql = transpile(asql_query)
     
     # Verify SQL is generated
     assert sql is not None
@@ -30,4 +29,3 @@ def test_basic_compilation() -> None:
     
     # Verify SQL is valid (can be parsed)
     assert_valid_sql(sql)
-

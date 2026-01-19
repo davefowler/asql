@@ -34,7 +34,7 @@ from users"""
         "query": """-- Use WHERE to filter rows
 -- ASQL uses = for equality (preferred over ==)
 from users
-  where status = "active"
+  where status = "active";
 
 -- You can also use == (accepted but not preferred)
 from users
@@ -122,7 +122,7 @@ from users
         "desc": "Check for NULL values with IS NULL / IS NOT NULL",
         "query": """-- NULL checking works like standard SQL
 from users
-  where email is not null
+  where email is not null;
 
 -- Check for NULL values
 from users
@@ -142,11 +142,11 @@ from users
         "desc": "Use contains, starts with, ends with instead of LIKE",
         "query": """-- Natural language string matching (preferred over LIKE)
 from users
-  where email contains "@gmail.com"
+  where email contains "@gmail.com";
 
 -- Other string operators
 from users
-  where name starts with "John"
+  where name starts with "John";
 
 from users
   where domain ends with ".com\""""
@@ -156,7 +156,7 @@ from users
         "desc": "Use @ prefix for date literals",
         "query": """-- @ prefix for date literals (clearer than strings)
 from orders
-  where created_at >= @2024-01-01
+  where created_at >= @2024-01-01;
 
 -- Date range with BETWEEN
 from orders
@@ -167,7 +167,7 @@ from orders
         "desc": "Natural date expressions like '7 days ago'",
         "query": """-- Natural language relative dates
 from users
-  where last_login >= 7 days ago
+  where last_login >= 7 days ago;
 
 -- Future dates with 'from now'
 from orders
@@ -420,6 +420,66 @@ from customers
 
 
 # =============================================================================
+# SPINE (GUARANTEED GROUPS) EXAMPLES
+# =============================================================================
+# Gap-filling with spine ensures all time periods appear in results.
+
+SPINE_EXAMPLES: list[Example] = [
+    {
+        "title": "Date Spine",
+        "desc": "Ensure all months appear in results, even with zero values",
+        "query": """-- spine by creates gap-filling for time series
+-- Ensures ALL months appear, even those with no data
+from orders
+  where created_at >= @2024-01-01
+  spine by month(created_at) (
+    sum_amount,
+    # as order_count
+  )"""
+    },
+    {
+        "title": "Spine with Multiple Dimensions",
+        "desc": "Gap-fill dates while also grouping by another column",
+        "query": """-- Combine spine() with regular GROUP BY columns
+-- spine() marks the column for gap-filling
+from orders
+  where created_at >= @2024-01-01
+  group by spine(month(created_at)), region (
+    sum_amount,
+    # as order_count
+  )
+  order by month_created_at, region"""
+    },
+    {
+        "title": "Weekly Spine",
+        "desc": "Gap-fill by week for weekly reporting",
+        "query": """-- Use week() for weekly time series
+-- All weeks in the date range will appear
+from transactions
+  where transaction_date >= @2024-01-01
+  spine by week(transaction_date) (
+    sum_amount as weekly_revenue,
+    # as transaction_count
+  )
+  order by week_transaction_date"""
+    },
+    {
+        "title": "Spine with Filters",
+        "desc": "Gap-fill respects WHERE clause date bounds",
+        "query": """-- WHERE clauses help determine spine range
+-- Spine fills gaps within the filtered date range
+from sales
+  where sale_date between @2024-01-01 and @2024-06-30
+    and region = "North America"
+  spine by month(sale_date) (
+    sum_revenue,
+    avg_order_value
+  )"""
+    },
+]
+
+
+# =============================================================================
 # COHORT ANALYSIS EXAMPLES
 # =============================================================================
 # Cohort-based analytics.
@@ -595,7 +655,7 @@ from orders
         "desc": "= (preferred) vs == (also accepted)",
         "query": """-- Single = is the preferred style (SQL standard)
 from users
-  where status = "active"
+  where status = "active";
 
 -- Double == also works (familiar to programmers)
 from users
@@ -608,11 +668,11 @@ from users
         "desc": "?? operator (preferred) vs coalesce() function",
         "query": """-- ?? operator - preferred style, more concise
 from users
-  select name ?? "Unknown" as display_name
+  select name ?? "Unknown" as display_name;
 
 -- Chains naturally for multiple fallbacks
 from products
-  select price ?? sale_price ?? 0 as final_price
+  select price ?? sale_price ?? 0 as final_price;
 
 -- coalesce() function also works
 from users
@@ -624,12 +684,12 @@ from users
         "query": """-- Minus prefix - preferred style, cleaner
 from users
   group by country (# as total)
-  order by -total
+  order by -total;
 
 -- DESC suffix also works (SQL style)
 from users
   group by country (# as total)
-  order by total DESC
+  order by total DESC;
 
 -- Mix in multi-column sorts
 from users
@@ -659,11 +719,11 @@ from users
         "query": """-- Symbolic operators - preferred, more concise
 -- & = INNER JOIN, &? = LEFT JOIN, ?& = RIGHT JOIN
 from orders
-  & customers on orders.customer_id = customers.id
+  & customers on orders.customer_id = customers.id;
 
 -- LEFT JOIN: &? (the ? marks the nullable side)
 from orders
-  &? customers on orders.customer_id = customers.id
+  &? customers on orders.customer_id = customers.id;
 
 -- SQL JOIN syntax also works
 from orders
@@ -676,7 +736,7 @@ from orders
 from users
   where status = "active"
   group by country (# as total)
-  order by -total
+  order by -total;
 
 -- Explicit pipe operator also works
 from users
@@ -788,6 +848,7 @@ def get_all_examples() -> dict[str, list[Example]]:
         "reshaping": RESHAPING_EXAMPLES,
         "column_operators": COLUMN_OPERATOR_EXAMPLES,
         "count_inference": COUNT_INFERENCE_EXAMPLES,
+        "spine": SPINE_EXAMPLES,
         "cohort": COHORT_EXAMPLES,
         "syntax_styles": SYNTAX_STYLES_EXAMPLES,
     }

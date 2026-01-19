@@ -8,7 +8,7 @@ Run with: pytest tests/test_column_operators_fallback.py -v
 """
 
 import pytest
-from asql import compile
+from tests.fixtures import transpile
 from asql.config import CompileSettings
 from asql.schema import Schema
 from asql.errors import ASQLDialectError
@@ -52,7 +52,7 @@ class TestExceptOperatorWithSchema:
     def test_except_single_column(self, dialect: str, users_schema: Schema) -> None:
         """except single column expands to explicit column list."""
         settings = CompileSettings(schema=users_schema)
-        result = compile('from users except password_hash', dialect=dialect, settings=settings)
+        result = transpile('from users except password_hash', dialect=dialect, settings=settings)
         
         # Should NOT contain EXCEPT syntax
         assert 'EXCEPT' not in result.upper()
@@ -71,7 +71,7 @@ class TestExceptOperatorWithSchema:
     def test_except_multiple_columns(self, dialect: str, users_schema: Schema) -> None:
         """except multiple columns expands correctly."""
         settings = CompileSettings(schema=users_schema)
-        result = compile('from users except password_hash, email', dialect=dialect, settings=settings)
+        result = transpile('from users except password_hash, email', dialect=dialect, settings=settings)
         
         assert 'EXCEPT' not in result.upper()
         
@@ -90,7 +90,7 @@ class TestExceptOperatorWithSchema:
     ) -> None:
         """Dialects with EXCLUDE support should use native syntax."""
         settings = CompileSettings(schema=users_schema)
-        result = compile('from users except password_hash', dialect=dialect, settings=settings)
+        result = transpile('from users except password_hash', dialect=dialect, settings=settings)
         
         # Should use native EXCEPT or EXCLUDE syntax
         assert 'EXCEPT' in result.upper() or 'EXCLUDE' in result.upper()
@@ -103,7 +103,7 @@ class TestExceptOperatorWithoutSchema:
     def test_except_without_schema_raises_error(self, dialect: str) -> None:
         """except without schema raises ASQLDialectError."""
         with pytest.raises(ASQLDialectError) as exc_info:
-            compile('from users except password_hash', dialect=dialect)
+            transpile('from users except password_hash', dialect=dialect)
         
         # Error message should be helpful
         error_msg = str(exc_info.value)
@@ -114,7 +114,7 @@ class TestExceptOperatorWithoutSchema:
     def test_except_without_schema_works_for_supported_dialects(self, dialect: str) -> None:
         """Dialects with EXCLUDE support don't need schema."""
         # Should not raise
-        result = compile('from users except password_hash', dialect=dialect)
+        result = transpile('from users except password_hash', dialect=dialect)
         assert result is not None
         assert 'EXCEPT' in result.upper() or 'EXCLUDE' in result.upper()
 
@@ -126,7 +126,7 @@ class TestRenameOperatorWithSchema:
     def test_rename_column(self, dialect: str, users_schema: Schema) -> None:
         """rename column expands to explicit column list with alias."""
         settings = CompileSettings(schema=users_schema)
-        result = compile('from users rename id as user_id', dialect=dialect, settings=settings)
+        result = transpile('from users rename id as user_id', dialect=dialect, settings=settings)
         
         # Should NOT contain EXCEPT syntax
         assert 'EXCEPT' not in result.upper()
@@ -146,7 +146,7 @@ class TestReplaceOperatorWithSchema:
     def test_replace_column(self, dialect: str, users_schema: Schema) -> None:
         """replace column expands with expression."""
         settings = CompileSettings(schema=users_schema)
-        result = compile('from users replace name with upper(name)', dialect=dialect, settings=settings)
+        result = transpile('from users replace name with upper(name)', dialect=dialect, settings=settings)
         
         # Should NOT contain EXCEPT syntax
         assert 'EXCEPT' not in result.upper()
@@ -163,7 +163,7 @@ class TestCombinedOperatorsWithSchema:
     def test_except_and_rename(self, dialect: str, users_schema: Schema) -> None:
         """except + rename combined works correctly."""
         settings = CompileSettings(schema=users_schema)
-        result = compile(
+        result = transpile(
             'from users except password_hash rename id as user_id', 
             dialect=dialect, 
             settings=settings
@@ -177,7 +177,7 @@ class TestCombinedOperatorsWithSchema:
     def test_except_and_replace(self, dialect: str, users_schema: Schema) -> None:
         """except + replace combined works correctly."""
         settings = CompileSettings(schema=users_schema)
-        result = compile(
+        result = transpile(
             'from users except password_hash replace name with upper(name)', 
             dialect=dialect, 
             settings=settings
@@ -233,7 +233,7 @@ class TestEdgeCases:
         settings = CompileSettings(schema=users_schema)
         # orders table not in schema
         # For supported dialects, this should work with EXCEPT
-        result = compile('from orders except secret_col', dialect='duckdb', settings=settings)
+        result = transpile('from orders except secret_col', dialect='duckdb', settings=settings)
         # DuckDB supports EXCLUDE, so this should use native syntax
         assert 'EXCLUDE' in result.upper() or 'EXCEPT' in result.upper()
     
@@ -243,7 +243,7 @@ class TestEdgeCases:
         settings = CompileSettings(schema=schema)
         
         # For supported dialects, this should still work
-        result = compile('from users except password', dialect='snowflake', settings=settings)
+        result = transpile('from users except password', dialect='snowflake', settings=settings)
         assert 'EXCLUDE' in result.upper() or 'EXCEPT' in result.upper()
 
 

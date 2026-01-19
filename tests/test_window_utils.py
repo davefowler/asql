@@ -1,7 +1,7 @@
 """Tests for window function utilities in ASQL."""
 
 import pytest
-from asql import compile
+from tests.fixtures import transpile
 
 
 class TestQualifyClause:
@@ -14,7 +14,7 @@ class TestQualifyClause:
             select *, row_number() over (partition by customer_id order by -order_date) as rn
             qualify rn == 1
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         # QUALIFY should be in the output for dialects that support it
         # For others, it will be a subquery
@@ -29,7 +29,7 @@ class TestQualifyClause:
             select *, row_number() over (partition by email order by -created_at) as rn
             qualify rn == 1
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -44,7 +44,7 @@ class TestPerCommand:
         from orders
             per customer_id first by -order_date
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -59,7 +59,7 @@ class TestPerCommand:
         from orders
             per customer_id last by order_date
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -72,7 +72,7 @@ class TestPerCommand:
         from orders
             per customer_id number by -order_date
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -84,7 +84,7 @@ class TestPerCommand:
         from employees
             per department rank by -salary
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "RANK()" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -96,7 +96,7 @@ class TestPerCommand:
         from employees
             per department dense rank by -salary
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "DENSE_RANK()" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -107,7 +107,7 @@ class TestPerCommand:
         from orders
             per customer_id number by -order_date as order_num
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "ORDER_NUM" in sql_upper
@@ -118,7 +118,7 @@ class TestPerCommand:
         from events
             per user_id, event_type number by -timestamp
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "USER_ID" in sql_upper
@@ -134,7 +134,7 @@ class TestStandaloneWindowOps:
         from events
             number by -timestamp
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "ORDER BY" in sql_upper
@@ -147,7 +147,7 @@ class TestStandaloneWindowOps:
         from scores
             rank by -score
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "RANK()" in sql_upper
         assert "ORDER BY" in sql_upper
@@ -158,7 +158,7 @@ class TestStandaloneWindowOps:
         from scores
             dense rank by -score
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "DENSE_RANK()" in sql_upper
         assert "ORDER BY" in sql_upper
@@ -174,7 +174,7 @@ class TestDistinctOn:
             distinct on (customer_id)
             order by customer_id, -order_date
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "DISTINCT" in sql_upper
     
@@ -185,7 +185,7 @@ class TestDistinctOn:
             distinct on (user_id, event_type)
             order by user_id, event_type, -timestamp
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "DISTINCT" in sql_upper
 
@@ -200,7 +200,7 @@ class TestPriorNextFunctions:
             order by month
             select month, revenue, prior(revenue) as prev_month
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "LAG" in sql_upper
     
@@ -211,7 +211,7 @@ class TestPriorNextFunctions:
             order by month
             select month, revenue, prior(revenue, 3) as three_months_ago
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "LAG" in sql_upper
         assert "3" in sql
@@ -223,7 +223,7 @@ class TestPriorNextFunctions:
             order by month
             select month, revenue, next(revenue) as next_month
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "LEAD" in sql_upper
     
@@ -234,7 +234,7 @@ class TestPriorNextFunctions:
             order by month
             select month, revenue, next(revenue, 2) as two_months_ahead
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "LEAD" in sql_upper
         assert "2" in sql
@@ -250,7 +250,7 @@ class TestRunningAggregates:
             order by date
             select date, amount, running_sum(amount) as cumulative_total
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "SUM" in sql_upper
         # Should have OVER clause with ROWS UNBOUNDED PRECEDING
@@ -263,7 +263,7 @@ class TestRunningAggregates:
             order by date
             select date, amount, running_avg(amount) as avg_to_date
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "AVG" in sql_upper
         assert "OVER" in sql_upper
@@ -275,7 +275,7 @@ class TestRunningAggregates:
             order by date
             select date, running_count(*) as transaction_number
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "COUNT" in sql_upper
         assert "OVER" in sql_upper
@@ -291,7 +291,7 @@ class TestRollingAggregates:
             order by date
             select date, revenue, rolling_avg(revenue, 7) as seven_day_avg
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "AVG" in sql_upper
         assert "OVER" in sql_upper
@@ -303,7 +303,7 @@ class TestRollingAggregates:
             order by date
             select date, revenue, rolling_sum(revenue, 30) as thirty_day_total
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "SUM" in sql_upper
         assert "OVER" in sql_upper
@@ -318,7 +318,7 @@ class TestWindowFunctionsWithOver:
         from orders
             select *, row_number() over (partition by customer_id order by -order_date) as rn
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "OVER" in sql_upper
@@ -331,7 +331,7 @@ class TestWindowFunctionsWithOver:
         from employees
             select *, rank() over (partition by department order by -salary) as salary_rank
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "RANK" in sql_upper
         assert "OVER" in sql_upper
@@ -342,7 +342,7 @@ class TestWindowFunctionsWithOver:
         from sales
             select *, sum(amount) over (partition by region) as region_total
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "SUM" in sql_upper
         assert "OVER" in sql_upper
@@ -358,7 +358,7 @@ class TestFirstLastFunctions:
         from orders
             select customer_id, first(order_id order by -order_date) as latest_order
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
@@ -369,7 +369,7 @@ class TestFirstLastFunctions:
         from orders
             select customer_id, first(order_id order by order_date) as earliest_order
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
     
@@ -379,7 +379,7 @@ class TestFirstLastFunctions:
         from orders
             select customer_id, last(order_id order by order_date) as latest_order
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper  # Implemented as FIRST_VALUE with reversed order
         assert "ORDER BY" in sql_upper
@@ -394,7 +394,7 @@ class TestArgMaxMinFunctions:
         from orders
             select customer_id, arg_max(order_id, order_date) as latest_order_id
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
@@ -405,7 +405,7 @@ class TestArgMaxMinFunctions:
         from orders
             select customer_id, arg_min(order_id, order_date) as earliest_order_id
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
@@ -422,7 +422,7 @@ class TestFirstLastInGroupBy:
                 first(order_id order by -order_date) as latest_order
             )
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
@@ -436,7 +436,7 @@ class TestFirstLastInGroupBy:
                 last(order_id order by order_date) as earliest_order
             )
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper  # Implemented as FIRST_VALUE with reversed order
         assert "ORDER BY" in sql_upper
@@ -450,7 +450,7 @@ class TestFirstLastInGroupBy:
                 arg_max(order_id, order_date) as latest_order
             )
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
@@ -466,7 +466,7 @@ class TestFirstLastInGroupBy:
                 sum(amount) as total_amount
             )
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
         assert "COUNT" in sql_upper
@@ -484,7 +484,7 @@ class TestDeduplicateBy:
             deduplicate by user_id
             order by -created_at
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -501,7 +501,7 @@ class TestDeduplicateBy:
             deduplicate by user_id, event_type
             order by -created_at
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -516,7 +516,7 @@ class TestDeduplicateBy:
         from events
             deduplicate by user_id, event_type order by -created_at
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -532,7 +532,7 @@ class TestDeduplicateBy:
         from events
             deduplicate by user_id order by created_at
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -548,7 +548,7 @@ class TestDeduplicateBy:
             deduplicate by user_id
         """
         with pytest.raises(ASQLSyntaxError) as exc_info:
-            compile(asql)
+            transpile(asql)
         assert "order by" in str(exc_info.value).lower()
     
     def test_deduplicate_by_equivalent_to_per_first_by(self) -> None:
@@ -561,8 +561,8 @@ class TestDeduplicateBy:
         from events
             per user_id, event_type first by -created_at
         """
-        sql1 = compile(asql1)
-        sql2 = compile(asql2)
+        sql1 = transpile(asql1)
+        sql2 = transpile(asql2)
         # Both should have ROW_NUMBER with PARTITION BY and ORDER BY
         sql1_upper = sql1.upper()
         sql2_upper = sql2.upper()
@@ -586,7 +586,7 @@ class TestIntegrationScenarios:
             select *, row_number() over (partition by customer_id order by -order_date) as rn
             qualify rn == 1
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
@@ -598,7 +598,7 @@ class TestIntegrationScenarios:
             order by date
             select date, revenue, running_sum(revenue) as cumulative
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "SUM" in sql_upper
         assert "OVER" in sql_upper
@@ -614,7 +614,7 @@ class TestIntegrationScenarios:
                 prior(revenue) as prev_month,
                 next(revenue) as next_month
         """
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         assert "LAG" in sql_upper
         assert "LEAD" in sql_upper

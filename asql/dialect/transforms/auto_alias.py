@@ -442,8 +442,7 @@ def apply_auto_aliasing(
     
     result = visit(statement.copy())
     
-    # Preserve custom attributes (like _cohort_info) that don't survive .copy()
-    if hasattr(statement, '_cohort_info'):
-        result._cohort_info = statement._cohort_info
+    # Note: We previously had a hack here to preserve _cohort_info attribute.
+    # Now that cohort uses CohortBy AST node (stored in args), it survives .copy() automatically.
     
     return result

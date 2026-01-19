@@ -1,6 +1,6 @@
 """Tests for shared join inference logic."""
 
-from asql.compiler.join_inference import resolve_join_condition, JoinCondition
+from asql.dialect.transforms.join_inference import resolve_join_condition, JoinCondition
 from asql.schema import Schema, Table, Column, Relationship
 
 

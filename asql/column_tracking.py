@@ -30,13 +30,13 @@ def get_output_columns_for_step(
     Returns:
         List of dicts with column info: [{"name": "col", "type": "VARCHAR", "table": "users"}, ...]
     """
-    from asql.compiler.api import compile_to_ast
+    import sqlglot
 
-    # Compile ASQL to SQL AST
+    # Parse ASQL to AST
     try:
-        ast = compile_to_ast(asql_up_to_step)
-    except ASQLError:
-        # If compilation fails (syntax error, compilation error, etc.), return empty list
+        ast = sqlglot.parse_one(asql_up_to_step, dialect="asql")
+    except (ASQLError, sqlglot.errors.ParseError):
+        # If parsing fails (syntax error, etc.), return empty list
         # This is expected when partial/incomplete ASQL is passed during editing
         return []
 

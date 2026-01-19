@@ -13,9 +13,7 @@ from sqlglot.dialects import Dialects
 
 import sqlglot
 
-from asql import compile
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
-from asql.config import CompileSettings
 from asql.json_schema import json_to_asql
 import json
 
@@ -30,6 +28,12 @@ from .examples import (
     COUNT_INFERENCE_EXAMPLES,
     SYNTAX_STYLES_EXAMPLES,
     SQL_EXAMPLES,
+)
+from .schema import (
+    PLAYGROUND_SCHEMA,
+    get_schema_with_metadata,
+    get_table_names,
+    get_columns_for_table,
 )
 
 
@@ -220,45 +224,66 @@ async def index() -> HTMLResponse:
 
 @app.post("/api/compile")
 async def api_compile(request: CompileRequest) -> dict:
-    """API endpoint to compile ASQL to SQL."""
+    """API endpoint to compile ASQL to SQL.
+    
+    Uses asql.transpile() to apply full ASQL transforms including:
+    - Spine (explicit gap-filling via spine by syntax)
+    - Alias reuse (column references in same SELECT)
+    - List comprehensions (dialect-specific conversion)
+    - Column operators (EXCEPT expansion for non-native dialects)
+    """
     try:
         if not request.asql.strip():
             return {"error": "Empty ASQL query"}
 
-        # Build compile settings from request
-        compile_settings = None
+        # Build settings from request
+        compile_settings = {}
         if request.settings:
-            compile_settings = CompileSettings.from_dict(request.settings)
-
-        sql = compile(
+            compile_settings.update(request.settings)
+        
+        # Use asql.transpile() for full transform support
+        import asql
+        results = asql.transpile(
             request.asql,
-            dialect=request.dialect if request.dialect else None,
+            write=request.dialect,
             pretty=True,
-            settings=compile_settings,
+            **compile_settings,
         )
+        sql = results[0] if results else ""
+        
         return {"sql": sql}
 
     except ASQLSyntaxError as e:
         return {"error": f"Syntax Error: {str(e)}"}
     except ASQLCompilationError as e:
         return {"error": f"Compilation Error: {str(e)}"}
+    except sqlglot.errors.ParseError as e:
+        return {"error": f"Syntax Error: {str(e)}"}
     except Exception as e:
         return {"error": f"Error: {str(e)}"}
 
 
 @app.post("/api/reverse-compile")
 async def api_reverse_compile(request: ReverseCompileRequest) -> dict:
-    """API endpoint to compile SQL to ASQL using sqlglot.transpile()."""
+    """API endpoint to compile SQL to ASQL using sqlglot.transpile().
+    
+    Style settings (equality, count, coalesce, etc.) flow through dialect.settings.
+    """
     try:
         if not request.sql.strip():
             return {"error": "Empty SQL query"}
 
+        # Build ASQL dialect with style settings
+        from asql.dialect import ASQL
+        style_settings = request.settings if request.settings else {}
+        asql_dialect = ASQL(**style_settings)
+        
         # Use sqlglot.transpile to convert SQL to ASQL
         source_dialect = request.source_dialect if request.source_dialect else None
         results = sqlglot.transpile(
             request.sql,
             read=source_dialect,
-            write="asql",
+            write=asql_dialect,
         )
         
         if not results or not results[0]:
@@ -337,13 +362,6 @@ async def api_settings_schema() -> dict:
             "title": "Compile Settings",
             "description": "Settings that affect how ASQL is compiled to SQL",
             "fields": [
-                {
-                    "name": "auto_spine",
-                    "label": "Auto Spine",
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Automatically add gap-filling for date truncations in GROUP BY",
-                },
                 {
                     "name": "week_start",
                     "label": "Week Start",
@@ -639,43 +657,88 @@ async def parse_to_visual(request: Request):
     Convert ASQL text to JSON representation for visual editor.
 
     Request body:
-        {"asql": "from users where status == \"active\""}
+        {"asql": "from users where status == \"active\"", "schema": {...} (optional)}
 
     Response:
         {"success": true, "query": {...}} or {"success": false, "error": "..."}
+    
+    If schema is not provided, uses the built-in playground schema.
     """
     try:
         data = await request.json()
         asql_text = data.get("asql", "").strip()
+        custom_schema = data.get("schema")
 
         if not asql_text:
             return {"success": False, "error": "No ASQL query provided"}
 
-        # Check for CTEs/stash which aren't supported in visual mode
-        asql_lower = asql_text.lower()
-        if "stash" in asql_lower or asql_lower.startswith("with "):
-            return {
-                "success": False,
-                "error": "Visual mode doesn't support CTEs (WITH/stash). Try a simpler query starting with FROM."
-            }
+        # Use custom schema if provided, otherwise use playground schema
+        schema_dict = custom_schema if custom_schema else PLAYGROUND_SCHEMA
 
-        # Convert ASQL to JSON using visual_asql dialect
-        # Now supports CTEs, set operations, and multiple queries
-        json_str = sqlglot.transpile(asql_text, read="asql", write="visual_asql")[0]
+        # Parse ASQL to AST
+        ast = sqlglot.parse(asql_text, dialect="asql")[0]
+
+        # Convert dict schema to MappingSchema for sqlglot
+        from sqlglot.schema import MappingSchema
+        mapping_schema = MappingSchema(schema_dict)
+
+        # Get the visual_asql dialect's generator
+        from asql.visual_dialect import VisualASQLGenerator
+        
+        generator = VisualASQLGenerator(schema=mapping_schema)
+        json_str = generator.generate(ast)
         query_json = json.loads(json_str)
 
         return {"success": True, "query": query_json}
     except ASQLSyntaxError as e:
         return {"success": False, "error": f"Syntax error: {str(e)}"}
     except Exception as e:
+        return {"success": False, "error": f"Parse error: {str(e)}"}
+
+
+@app.post("/api/visual/parse-sql")
+async def parse_sql_to_visual(request: Request):
+    """
+    Convert SQL from any dialect directly to JSON representation for visual editor.
+    
+    This bypasses the ASQL text step, allowing complex CTEs and window functions
+    to be converted directly to visual format.
+
+    Request body:
+        {"sql": "SELECT * FROM users WHERE ...", "dialect": "snowflake"}
+
+    Response:
+        {"success": true, "query": [...]} or {"success": false, "error": "..."}
+    """
+    try:
+        data = await request.json()
+        sql_text = data.get("sql", "").strip()
+        source_dialect = data.get("dialect", "")
+
+        if not sql_text:
+            return {"success": False, "error": "No SQL query provided"}
+
+        # Use sqlglot.transpile to go directly from SQL to visual_asql JSON
+        # This preserves the AST structure without going through ASQL text
+        json_results = sqlglot.transpile(
+            sql_text,
+            read=source_dialect if source_dialect else None,
+            write="visual_asql"
+        )
+        
+        if not json_results or not json_results[0]:
+            return {"success": False, "error": "Failed to convert SQL to visual format"}
+        
+        query_json = json.loads(json_results[0])
+        return {"success": True, "query": query_json}
+        
+    except sqlglot.errors.ParseError as e:
         error_msg = str(e)
-        # Provide friendlier error for complex queries
-        if "stash" in error_msg.lower() or "cte" in error_msg.lower():
-            return {
-                "success": False,
-                "error": "Visual mode doesn't support CTEs. Try a simpler query."
-            }
-        return {"success": False, "error": f"Parse error: {error_msg}"}
+        # Remove ANSI codes
+        error_msg = re.sub(r"\x1b\[[0-9;]*m", "", error_msg)
+        return {"success": False, "error": f"SQL Parse error: {error_msg}"}
+    except Exception as e:
+        return {"success": False, "error": f"Error: {str(e)}"}
 
 
 @app.post("/api/visual/compile")
@@ -731,3 +794,45 @@ async def get_operation_schema(operation_type: str):
         return {"error": f"Unknown operation type: {operation_type}"}
 
     return schema
+
+
+# --- Schema API Endpoints ---
+
+
+@app.get("/api/schema")
+async def api_schema():
+    """
+    Get the playground schema with metadata.
+    
+    Returns all tables and columns used in playground examples,
+    with type information and table metadata.
+    """
+    return {
+        "schema": get_schema_with_metadata(),
+        "tables": get_table_names(),
+    }
+
+
+@app.get("/api/schema/tables")
+async def api_schema_tables():
+    """Get list of all table names."""
+    return {"tables": get_table_names()}
+
+
+@app.get("/api/schema/tables/{table_name}")
+async def api_schema_table(table_name: str):
+    """Get column definitions for a specific table."""
+    columns = get_columns_for_table(table_name)
+    if not columns:
+        return {"error": f"Unknown table: {table_name}"}
+    return {"table": table_name, "columns": columns}
+
+
+@app.get("/api/schema/raw")
+async def api_schema_raw():
+    """
+    Get raw schema in SQLGlot MappingSchema format.
+    
+    This is the format used internally for type inference.
+    """
+    return PLAYGROUND_SCHEMA

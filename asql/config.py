@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 # Registry of known compile settings for SET statement parsing
 KNOWN_COMPILE_SETTINGS = {
-    'auto_spine',
     'week_start', 
     'relative_date_type',
     'dialect',
@@ -44,17 +43,14 @@ class CompileSettings:
     - Can be overridden inline via SET statements
     
     Example inline usage:
-        SET auto_spine = false;
         SET week_start = 'sunday';
         
         from orders
         group by week(created_at) as w (sum(amount) as revenue)
-    """
     
-    # Auto-spine: automatically add gap-filling for date truncations in GROUP BY
-    # When True, date columns in GROUP BY will include all dates in the range
-    # This ensures charts have no gaps and all periods appear even with zero values
-    auto_spine: bool = True  # Default on - filter out zeros if you don't want them
+    Note: Spine (gap-filling) is now explicit via 'spine by' syntax:
+        from orders spine by month(created_at) (sum(amount))
+    """
     
     # Week start day: affects week() function output
     week_start: Literal["monday", "sunday"] = "monday"
@@ -100,7 +96,6 @@ class CompileSettings:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
-            "auto_spine": self.auto_spine,
             "week_start": self.week_start,
             "relative_date_type": self.relative_date_type,
             "infer_join_keys": self.infer_join_keys,
@@ -247,7 +242,7 @@ class ASQLConfig:
         config = ASQLConfig(
             dialect="bigquery",
             style=StyleConfig(equality="single", count="function"),
-            compile=CompileSettings(auto_spine=True)
+            compile=CompileSettings(week_start="sunday")
         )
     """
     

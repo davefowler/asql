@@ -1,6 +1,6 @@
 """Tests for auto-qualification of conflicting column names in joins."""
 
-from asql import compile
+from tests.fixtures import transpile
 
 
 class TestAutoQualifyColumns:
@@ -9,7 +9,7 @@ class TestAutoQualifyColumns:
     def test_select_star_with_join_expands_to_table_star(self) -> None:
         """Test that SELECT * with joins expands to table.* for each table."""
         asql = "from users & orders on users.id = orders.user_id"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should expand SELECT * to users.*, orders.*
         sql_upper = sql.upper()
@@ -21,7 +21,7 @@ class TestAutoQualifyColumns:
     def test_select_star_with_left_join(self) -> None:
         """Test SELECT * with LEFT JOIN."""
         asql = "from users &? orders on users.id = orders.user_id"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         sql_upper = sql.upper()
         assert "LEFT JOIN" in sql_upper
@@ -33,7 +33,7 @@ class TestAutoQualifyColumns:
         asql = """from orders 
             & customers on orders.customer_id = customers.id 
             & order_items on orders.id = order_items.order_id"""
-        sql = compile(asql)
+        sql = transpile(asql)
         
         sql_upper = sql.upper()
         assert "ORDERS.*" in sql_upper or "orders.*" in sql
@@ -43,7 +43,7 @@ class TestAutoQualifyColumns:
     def test_select_star_with_aliases(self) -> None:
         """Test SELECT * with table aliases."""
         asql = "from users &? orders as o on users.id = o.user_id"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         sql_upper = sql.upper()
         assert "LEFT JOIN" in sql_upper
@@ -54,7 +54,7 @@ class TestAutoQualifyColumns:
     def test_no_expansion_without_joins(self) -> None:
         """Test that SELECT * without joins is not expanded."""
         asql = "from users"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         sql_upper = sql.upper()
         assert "SELECT *" in sql_upper or "SELECT  *" in sql_upper
@@ -64,7 +64,7 @@ class TestAutoQualifyColumns:
     def test_explicit_select_not_affected(self) -> None:
         """Test that explicit SELECT columns are not affected."""
         asql = "from users & orders on users.id = orders.user_id select users.name, orders.amount"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         sql_upper = sql.upper()
         assert "SELECT" in sql_upper

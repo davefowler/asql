@@ -1,6 +1,6 @@
 # Analytic SQL Architecture
 
-**Last Updated:** November 16, 2025
+**Last Updated:** January 19, 2026
 
 This document describes the actual implementation of Analytic SQL (ASQL), a pipeline-based query language that transpiles to SQL.
 
@@ -74,22 +74,23 @@ FROM 1_where_status
 GROUP BY country
 ```
 
-### 3. Compiler (`asql/compiler.py`)
+### 3. Transpiler (`asql/transpile.py`)
 
-The `compile()` function is the main entry point for converting ASQL to SQL.
+The `asql.transpile()` function is the main entry point for converting ASQL to SQL.
 
 **Key Responsibilities:**
 - Accept ASQL query string and target dialect
 - Handle multiple queries separated by semicolons
 - Parse each query using `ASQLParser`
-- Extract and merge CTEs from multiple queries
+- Apply dialect-aware transforms (spine, alias_reuse, column_operators, list_comprehension)
 - Generate SQL using SQLGlot's generator
 - Format SQL output (pretty printing)
 
 **Dialect Support:**
 - Uses SQLGlot's dialect system for SQL generation
-- Supports all SQLGlot dialects (PostgreSQL, MySQL, BigQuery, Snowflake, etc.)
-- Dialect-specific SQL generation handled automatically by SQLGlot
+- Full ASQL feature support for primary dialects: DuckDB, PostgreSQL, MySQL, Snowflake, BigQuery, Redshift, Databricks, Trino
+- Other SQLGlot dialects work for basic SQL generation (passthrough mode)
+- Some features have dialect limitations (see `docs/dialect-limitations.md`)
 
 ### 4. Dialect Definition (`asql/dialect/`)
 
@@ -108,10 +109,16 @@ The ASQL dialect is a full SQLGlot dialect implementation in the `asql/dialect/`
 - Proper CTE wrapping for pipeline semantics
 
 **Integration:**
-The dialect registers with SQLGlot, enabling standard `sqlglot.transpile()` for both directions:
+Use `asql.transpile()` for ASQL → SQL conversion:
 ```python
-sqlglot.transpile(asql_query, read='asql', write='postgres')  # ASQL → SQL
-sqlglot.transpile(sql_query, write='asql')  # SQL → ASQL
+import asql
+import sqlglot
+
+# ASQL → PostgreSQL
+asql.transpile(asql_query, write='postgres')[0]
+
+# SQL → ASQL (use sqlglot directly)
+sqlglot.transpile(sql_query, read='postgres', write='asql')[0]
 ```
 
 ### 5. Generator (`asql/dialect/generator.py`)
@@ -195,16 +202,28 @@ ASQL supports `with variable = query` syntax:
 
 ```
 asql/
-├── __init__.py          # Public API (compile, etc.)
+├── __init__.py          # Public API (transpile, etc.)
+├── transpile.py         # Main transpile() function
+├── expressions.py       # Custom AST nodes (Spine, CohortBy)
 ├── dialect/             # SQLGlot dialect implementation
 │   ├── __init__.py      # Package exports
 │   ├── tokenizer.py     # ASQLTokenizer - token mappings
 │   ├── parser.py        # ASQLParser - ASQL syntax parsing
 │   ├── generator.py     # ASQLGenerator - AST to ASQL output
-│   └── dialect.py       # ASQL dialect registration
-├── compiler/            # Compilation pipeline
-│   ├── api.py           # Main compile() function
-│   └── ...              # Transform modules
+│   ├── dialect.py       # ASQL dialect registration
+│   └── transforms/      # Parser-stage transforms (no dialect needed)
+│       ├── underscore_shorthands.py  # days_since_col → DATEDIFF
+│       ├── auto_alias.py             # Automatic column aliasing
+│       ├── auto_qualify.py           # Column qualification in joins
+│       ├── join_fk_shorthand.py      # ON user_id expansion
+│       ├── join_inference.py         # FK relationship inference
+│       └── cohort_transform.py       # Cohort analysis CTEs
+├── compiler/            # Dialect-aware transforms (transpile stage)
+│   ├── spine.py         # Spine gap-filling (explicit spine())
+│   ├── alias_reuse.py   # CTE chain for alias reuse
+│   ├── column_operators.py  # EXCEPT expansion
+│   ├── list_comprehension.py  # DuckDB [x FOR x] conversion
+│   └── auto_spine.py    # Helper functions for spine generation
 ├── functions.py         # Function registry
 ├── config.py            # Configuration classes
 └── errors.py            # Error classes

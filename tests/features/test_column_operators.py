@@ -1,7 +1,7 @@
 """Tests for column operators in ASQL.
 
 Column operators:
-- except col1, col2 → SELECT * EXCEPT(col1, col2)
+- except col1, col2 → SELECT * EXCEPT(col1, col2) (or EXCLUDE on DuckDB)
 - rename col1 as new_col1 → SELECT * EXCEPT(col1), col1 AS new_col1
 - replace col with expr → SELECT * EXCEPT(col), expr AS col
 - extend expr as new_col → SELECT *, expr AS new_col
@@ -11,20 +11,33 @@ from tests.validator import ASQLValidator
 
 
 class TestExceptOperator(ASQLValidator):
-    """Test except column operator."""
+    """Test except column operator.
+    
+    Note: DuckDB/Snowflake use EXCLUDE; BigQuery/Postgres use EXCEPT.
+    """
     
     def test_except_single(self) -> None:
-        """Except single column."""
+        """Except single column (BigQuery uses EXCEPT)."""
         self.validate_contains(
             "from users except email",
-            "EXCEPT", "EMAIL"
+            "EXCEPT", "EMAIL",
+            dialect="bigquery"
         )
     
     def test_except_multiple(self) -> None:
-        """Except multiple columns."""
+        """Except multiple columns (BigQuery uses EXCEPT)."""
         self.validate_contains(
             "from users except email, phone, ssn",
-            "EXCEPT", "EMAIL", "PHONE", "SSN"
+            "EXCEPT", "EMAIL", "PHONE", "SSN",
+            dialect="bigquery"
+        )
+    
+    def test_exclude_duckdb(self) -> None:
+        """DuckDB/Snowflake use EXCLUDE syntax instead of EXCEPT."""
+        self.validate_contains(
+            "from users except email",
+            "EXCLUDE", "EMAIL",
+            dialect="duckdb"
         )
 
 
@@ -33,9 +46,11 @@ class TestRenameOperator(ASQLValidator):
     
     def test_rename_single(self) -> None:
         """Rename single column."""
+        # Use bigquery for EXCEPT syntax
         self.validate_contains(
             "from users rename id as user_id",
-            "USER_ID", "EXCEPT"
+            "USER_ID", "EXCEPT",
+            dialect="bigquery"
         )
     
     def test_rename_multiple(self) -> None:
@@ -51,9 +66,11 @@ class TestReplaceOperator(ASQLValidator):
     
     def test_replace_single(self) -> None:
         """Replace single column."""
+        # Use bigquery for EXCEPT syntax
         self.validate_contains(
             "from users replace name with upper(name)",
-            "UPPER(NAME)", "EXCEPT"
+            "UPPER(NAME)", "EXCEPT",
+            dialect="bigquery"
         )
     
     def test_replace_multiple(self) -> None:
@@ -111,15 +128,19 @@ class TestStarColumnOverride(ASQLValidator):
     """Test SELECT *, expr AS col → SELECT * EXCEPT(col), expr AS col."""
     
     def test_single_override(self) -> None:
-        """Single column override adds EXCEPT."""
+        """Single column override adds EXCEPT (or EXCLUDE on DuckDB)."""
+        # Use bigquery for EXCEPT syntax
         self.validate_contains(
             "from users select *, upper(name) as name",
-            "EXCEPT", "NAME"
+            "EXCEPT", "NAME",
+            dialect="bigquery"
         )
     
     def test_multiple_overrides(self) -> None:
         """Multiple column overrides."""
+        # Use bigquery for EXCEPT syntax
         self.validate_contains(
             "from users select *, upper(name) as name, lower(email) as email",
-            "EXCEPT"
+            "EXCEPT",
+            dialect="bigquery"
         )

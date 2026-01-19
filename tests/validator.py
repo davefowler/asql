@@ -33,7 +33,7 @@ from typing import Dict, Optional, Type, Union
 
 import sqlglot
 
-from asql import compile as asql_compile
+from tests.fixtures import transpile as asql_transpile
 from asql.config import CompileSettings
 from asql.errors import ASQLDialectError, ASQLSyntaxError, ASQLCompilationError
 
@@ -141,14 +141,14 @@ class ASQLValidator(unittest.TestCase):
     # Default target dialect for single-dialect tests
     target_dialect: Optional[str] = None
     
-    # Default compile settings - auto_spine disabled for simpler test output
+    # Default compile settings for simpler test output
     # Note: Using None as default to avoid mutable default argument issues
     settings: Optional[CompileSettings] = None
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.settings is None:
-            self.settings = CompileSettings(auto_spine=False)
+            self.settings = CompileSettings()
     
     def validate_asql(
         self,
@@ -177,7 +177,7 @@ class ASQLValidator(unittest.TestCase):
         settings = settings or self.settings
         
         try:
-            actual_sql = asql_compile(
+            actual_sql = asql_transpile(
                 asql,
                 dialect=dialect,
                 pretty=pretty,
@@ -239,7 +239,7 @@ class ASQLValidator(unittest.TestCase):
                 if isinstance(expected, type) and issubclass(expected, Exception):
                     # Expect an error
                     try:
-                        actual_sql = asql_compile(
+                        actual_sql = asql_transpile(
                             asql,
                             dialect=dialect,
                             pretty=pretty,
@@ -260,7 +260,7 @@ class ASQLValidator(unittest.TestCase):
                 else:
                     # Expect SQL string
                     try:
-                        actual_sql = asql_compile(
+                        actual_sql = asql_transpile(
                             asql,
                             dialect=dialect,
                             pretty=pretty,
@@ -309,7 +309,7 @@ class ASQLValidator(unittest.TestCase):
         settings = settings or self.settings
         
         with self.assertRaises(expected_error) as context:
-            asql_compile(asql, dialect=dialect, settings=settings)
+            asql_transpile(asql, dialect=dialect, settings=settings)
         
         if error_contains:
             self.assertIn(
@@ -344,7 +344,7 @@ class ASQLValidator(unittest.TestCase):
         settings = settings or self.settings
         
         try:
-            actual_sql = asql_compile(asql, dialect=dialect, settings=settings)
+            actual_sql = asql_transpile(asql, dialect=dialect, settings=settings)
         except Exception as e:
             self.fail(
                 f"ASQL compilation failed:\n"
@@ -387,7 +387,7 @@ class ASQLValidator(unittest.TestCase):
         settings = settings or self.settings
         
         try:
-            actual_sql = asql_compile(asql, dialect=dialect, settings=settings)
+            actual_sql = asql_transpile(asql, dialect=dialect, settings=settings)
         except Exception as e:
             self.fail(
                 f"ASQL compilation failed:\n"

@@ -5,7 +5,7 @@ Some tests are marked as expected failures (xfail) to document known limitations
 """
 
 import pytest
-from asql import compile
+from tests.fixtures import transpile
 
 
 class TestPureSQLPassthrough:
@@ -14,7 +14,7 @@ class TestPureSQLPassthrough:
     def test_simple_select(self) -> None:
         """Standard SELECT works."""
         sql = "SELECT * FROM users WHERE active = true"
-        result = compile(sql)
+        result = transpile(sql)
         assert "SELECT" in result
         assert "FROM users" in result
         assert "active" in result
@@ -27,7 +27,7 @@ class TestPureSQLPassthrough:
         )
         SELECT * FROM active_users
         """
-        result = compile(sql)
+        result = transpile(sql)
         assert "WITH active_users AS" in result
         assert "SELECT * FROM active_users" in result
     
@@ -38,7 +38,7 @@ class TestPureSQLPassthrough:
              b AS (SELECT * FROM a)
         SELECT * FROM b
         """
-        result = compile(sql)
+        result = transpile(sql)
         assert "WITH a AS" in result
         assert "b AS" in result
     
@@ -52,7 +52,7 @@ class TestPureSQLPassthrough:
         ) AS user_orders
         WHERE cnt > 5
         """
-        result = compile(sql)
+        result = transpile(sql)
         assert "FROM (" in result or "FROM(" in result
         assert "GROUP BY" in result
     
@@ -63,7 +63,7 @@ class TestPureSQLPassthrough:
         UNION
         SELECT id, name FROM vendors
         """
-        result = compile(sql)
+        result = transpile(sql)
         assert "UNION" in result
     
     def test_sql_window_function(self) -> None:
@@ -74,7 +74,7 @@ class TestPureSQLPassthrough:
             ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) as rn
         FROM orders
         """
-        result = compile(sql)
+        result = transpile(sql)
         assert "ROW_NUMBER()" in result
         assert "PARTITION BY" in result
     
@@ -84,7 +84,7 @@ class TestPureSQLPassthrough:
         SELECT CASE WHEN status = 'active' THEN 1 ELSE 0 END as is_active
         FROM users
         """
-        result = compile(sql)
+        result = transpile(sql)
         assert "CASE" in result
         assert "WHEN" in result
     
@@ -94,7 +94,7 @@ class TestPureSQLPassthrough:
         SELECT * FROM users u,
         LATERAL (SELECT * FROM orders o WHERE o.user_id = u.id LIMIT 3) recent_orders
         """
-        result = compile(sql)
+        result = transpile(sql)
         assert "LATERAL" in result
 
 
@@ -107,7 +107,7 @@ class TestASQLWithSQLExpressions:
         from users
         select CASE WHEN status = 'active' THEN 1 ELSE 0 END as is_active
         """
-        result = compile(asql)
+        result = transpile(asql)
         assert "CASE" in result
         assert "SELECT" in result
     
@@ -118,7 +118,7 @@ class TestASQLWithSQLExpressions:
         join customers on orders.customer_id = customers.id
         select orders.id, customers.name
         """
-        result = compile(asql)
+        result = transpile(asql)
         assert "JOIN" in result
         assert "SELECT" in result
     
@@ -135,7 +135,7 @@ class TestASQLWithSQLExpressions:
         where active
         stash as active_users
         """
-        result = compile(asql)
+        result = transpile(asql)
         assert "WITH active_users AS" in result
 
 
@@ -148,7 +148,7 @@ class TestKnownLimitations:
         SELECT * FROM orders
         WHERE customer_id IN (SELECT id FROM customers WHERE premium = true)
         """
-        result = compile(sql)
+        result = transpile(sql)
         # Should have two separate WHERE clauses
         assert "WHERE premium" in result
     
@@ -159,7 +159,7 @@ class TestKnownLimitations:
         SELECT * FROM customers c
         WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)
         """
-        result = compile(sql)
+        result = transpile(sql)
         assert "EXISTS" in result
         assert "WHERE o.customer_id" in result
     
@@ -172,7 +172,7 @@ class TestKnownLimitations:
         )
         SELECT * FROM revenue
         """
-        result = compile(asql)
+        result = transpile(asql)
         assert "WITH revenue AS" in result
     
     @pytest.mark.xfail(reason="FROM-first only transforms first query in UNION")
@@ -183,7 +183,7 @@ class TestKnownLimitations:
         UNION
         from vendors select id, name
         """
-        result = compile(asql)
+        result = transpile(asql)
         # Both should have SELECT
         assert result.count("SELECT") >= 2
     
@@ -194,7 +194,7 @@ class TestKnownLimitations:
         from users where active stash as active_users
         from active_users group by country (count(*) as cnt)
         """
-        result = compile(asql)
+        result = transpile(asql)
         assert "active_users" in result
 
 
@@ -209,7 +209,7 @@ class TestRecommendedPatterns:
         group by month(created_at) (sum(amount) as revenue)
         stash as revenue_by_month
         """
-        result = compile(asql)
+        result = transpile(asql)
         assert "WITH revenue_by_month AS" in result
         assert "SUM(amount)" in result
     

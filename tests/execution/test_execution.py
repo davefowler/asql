@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 from typing import Any
 
-from asql import compile
+from tests.fixtures import transpile
 from asql.testing.executors import get_available_executors, EXECUTORS
 
 
@@ -36,7 +36,7 @@ class TestBasicExecution:
             rows=[(1, "Alice"), (2, "Bob")],
         )
 
-        sql = compile("from users select name", dialect=executor.dialect)
+        sql = transpile("from users select name", dialect=executor.dialect)
         rows = executor.execute(sql)
 
         assert len(rows) == 2
@@ -51,7 +51,7 @@ class TestBasicExecution:
             rows=[(1, "Alice", 30), (2, "Bob", 25)],
         )
 
-        sql = compile("from users", dialect=executor.dialect)
+        sql = transpile("from users", dialect=executor.dialect)
         columns, rows = executor.execute_and_fetch_columns(sql)
 
         assert len(columns) == 3
@@ -72,7 +72,7 @@ class TestBasicExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from users where status == 'active'", dialect=executor.dialect
         )
         rows = executor.execute(sql)
@@ -91,7 +91,7 @@ class TestBasicExecution:
             rows=[("North", 100), ("North", 50), ("South", 75)],
         )
 
-        sql = compile(
+        sql = transpile(
             "from sales group by region (sum(amount) as total)",
             dialect=executor.dialect,
         )
@@ -114,7 +114,7 @@ class TestBasicExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from sales group by region (sum(amount) as total, avg(amount) as avg_amount, # as count)",
             dialect=executor.dialect,
         )
@@ -136,7 +136,7 @@ class TestBasicExecution:
             rows=[(1, "Alice", 30), (2, "Bob", 25), (3, "Charlie", 35)],
         )
 
-        sql = compile("from users order by age", dialect=executor.dialect)
+        sql = transpile("from users order by age", dialect=executor.dialect)
         rows = executor.execute(sql)
 
         ages = [row[2] for row in rows]
@@ -150,7 +150,7 @@ class TestBasicExecution:
             rows=[(1, "Alice", 30), (2, "Bob", 25), (3, "Charlie", 35)],
         )
 
-        sql = compile("from users order by -age", dialect=executor.dialect)
+        sql = transpile("from users order by -age", dialect=executor.dialect)
         rows = executor.execute(sql)
 
         ages = [row[2] for row in rows]
@@ -164,7 +164,7 @@ class TestBasicExecution:
             rows=[(i, f"User{i}") for i in range(10)],
         )
 
-        sql = compile("from users limit 5", dialect=executor.dialect)
+        sql = transpile("from users limit 5", dialect=executor.dialect)
         rows = executor.execute(sql)
 
         assert len(rows) == 5
@@ -182,7 +182,7 @@ class TestBasicExecution:
             rows=[(1, 1, 100), (2, 1, 50), (3, 2, 75)],
         )
 
-        sql = compile(
+        sql = transpile(
             "from users join orders on users.id == orders.user_id select users.name, orders.total",
             dialect=executor.dialect,
         )
@@ -220,7 +220,7 @@ class TestAliasReuse:
             unit_price * (1 - discount) as discount_price,
             discount_price * quantity as total_price
         """
-        sql = compile(asql, dialect=executor.dialect)
+        sql = transpile(asql, dialect=executor.dialect)
         columns, rows = executor.execute_and_fetch_columns(sql)
 
         # Verify columns exist
@@ -257,7 +257,7 @@ class TestAliasReuse:
             discount_price * quantity as total_price,
             total_price * (1 + tax_rate) as taxed_price
         """
-        sql = compile(asql, dialect=executor.dialect)
+        sql = transpile(asql, dialect=executor.dialect)
         columns, rows = executor.execute_and_fetch_columns(sql)
 
         # Verify all columns exist
@@ -294,7 +294,7 @@ class TestAliasReuse:
             discount_price * quantity as total_price
           where total_price > 100
         """
-        sql = compile(asql, dialect=executor.dialect)
+        sql = transpile(asql, dialect=executor.dialect)
         columns, rows = executor.execute_and_fetch_columns(sql)
 
         # Should only return rows where total_price > 100
@@ -328,7 +328,7 @@ class TestAliasReuse:
             discount_price * quantity as total_price
           order by total_price
         """
-        sql = compile(asql, dialect=executor.dialect)
+        sql = transpile(asql, dialect=executor.dialect)
         columns, rows = executor.execute_and_fetch_columns(sql)
 
         # Should be ordered by total_price ascending
@@ -361,7 +361,7 @@ class TestAliasReuse:
             quantity,
             discount_price * quantity as total_price
         """
-        sql = compile(asql, dialect=executor.dialect)
+        sql = transpile(asql, dialect=executor.dialect)
         columns, rows = executor.execute_and_fetch_columns(sql)
 
         # Verify all columns exist
@@ -410,8 +410,8 @@ class TestAliasReuse:
             retail_price * 0.9 as discounted
         """
         
-        sql1 = compile(asql1, dialect=executor.dialect)
-        sql2 = compile(asql2, dialect=executor.dialect)
+        sql1 = transpile(asql1, dialect=executor.dialect)
+        sql2 = transpile(asql2, dialect=executor.dialect)
         
         # Both should execute successfully
         rows1 = executor.execute(sql1)
@@ -454,7 +454,7 @@ class TestDialectSyntax:
             rows=[],
         )
 
-        sql = compile(asql_query, dialect=executor.dialect)
+        sql = transpile(asql_query, dialect=executor.dialect)
         assert executor.validate_syntax(
             sql
         ), f"Invalid {executor.dialect} SQL: {sql}"
@@ -467,7 +467,7 @@ class TestDialectSyntax:
             rows=[],
         )
 
-        sql = compile("from t select name[1:5] as prefix", dialect=executor.dialect)
+        sql = transpile("from t select name[1:5] as prefix", dialect=executor.dialect)
         # Issue #77 fixed: slice syntax now works for all dialects
         # Preparser converts to SUBSTRING which SQLGlot transpiles correctly
         is_valid = executor.validate_syntax(sql)
@@ -491,7 +491,7 @@ class TestDialectSyntax:
             unit_price * (1 - discount) as discount_price,
             discount_price * quantity as total_price
         """
-        sql = compile(asql, dialect=executor.dialect)
+        sql = transpile(asql, dialect=executor.dialect)
         assert executor.validate_syntax(
             sql
         ), f"Invalid {executor.dialect} SQL for alias reuse: {sql}"
@@ -523,7 +523,7 @@ class TestListComprehensionExecution:
         else:
             pytest.skip("Executor doesn't support array columns")
 
-        sql = compile(
+        sql = transpile(
             "from events select [lower(tag) for tag in tags] as normalized_tags",
             dialect=executor.dialect
         )
@@ -562,7 +562,7 @@ class TestListComprehensionExecution:
         else:
             pytest.skip("Executor doesn't support array columns")
 
-        sql = compile(
+        sql = transpile(
             "from data select [x * 2 for x in numbers if x > 0] as doubled",
             dialect=executor.dialect
         )
@@ -596,7 +596,7 @@ class TestListComprehensionExecution:
         else:
             pytest.skip("Executor doesn't support array columns")
 
-        sql = compile(
+        sql = transpile(
             "from events select [upper(name) for name in names] as upper_names",
             dialect=executor.dialect
         )
@@ -626,7 +626,7 @@ class TestListComprehensionExecution:
         else:
             pytest.skip("Executor doesn't support array columns")
 
-        sql = compile(
+        sql = transpile(
             "from data select [value + 10 for value in values] as incremented",
             dialect=executor.dialect
         )
@@ -657,7 +657,7 @@ class TestListComprehensionExecution:
         else:
             pytest.skip("Executor doesn't support array columns")
 
-        sql = compile(
+        sql = transpile(
             """from events
   select
     event_id,
@@ -695,7 +695,7 @@ class TestExampleFiles:
         
         try:
             # Should compile without raising an exception
-            sql = compile(asql_content, dialect="duckdb")
+            sql = transpile(asql_content, dialect="duckdb")
             
             # Basic sanity checks
             assert sql is not None
@@ -721,7 +721,7 @@ class TestExampleFiles:
         asql_content = example_file.read_text()
         
         try:
-            sql = compile(asql_content, dialect=executor.dialect)
+            sql = transpile(asql_content, dialect=executor.dialect)
         except Exception as e:
             pytest.xfail(f"Example compilation failed: {e}")
             return
@@ -948,7 +948,7 @@ class TestSpineExecution:
         )
 
         # Compile with spine - should fill missing regions with 0
-        sql = compile(
+        sql = transpile(
             "from sales group by region (sum(amount) as total)",
             dialect=executor.dialect,
         )
@@ -967,7 +967,7 @@ class TestSpineExecution:
             rows=[("North", 100), ("North", 50)],
         )
 
-        sql = compile(
+        sql = transpile(
             "from sales group by region (sum(amount) as total)",
             dialect=executor.dialect,
         )
@@ -999,7 +999,7 @@ class TestCTEExecution:
         )
 
         try:
-            sql = compile(
+            sql = transpile(
                 """
                 from users
                 where status == 'active'
@@ -1035,7 +1035,7 @@ class TestWindowFunctionExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from sales select id, region, amount, row_number() over (order by amount) as rn",
             dialect=executor.dialect,
         )
@@ -1057,7 +1057,7 @@ class TestWindowFunctionExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from daily_sales select day, amount, sum(amount) over (order by day) as running_total",
             dialect=executor.dialect,
         )
@@ -1082,7 +1082,7 @@ class TestWindowFunctionExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from scores select player, game, score, rank() over (partition by game order by -score) as game_rank",
             dialect=executor.dialect,
         )
@@ -1109,7 +1109,7 @@ class TestDateFunctionExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from events where event_date >= @2024-06-01",
             dialect=executor.dialect,
         )
@@ -1137,7 +1137,7 @@ class TestStringMatchingExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from users where email contains 'gmail'",
             dialect=executor.dialect,
         )
@@ -1160,7 +1160,7 @@ class TestStringMatchingExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from urls where url starts with 'https'",
             dialect=executor.dialect,
         )
@@ -1180,7 +1180,7 @@ class TestStringMatchingExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from files where filename ends with '.pdf'",
             dialect=executor.dialect,
         )
@@ -1213,7 +1213,7 @@ class TestUnionExecution:
         )
 
         try:
-            sql = compile(
+            sql = transpile(
                 """
                 from customers_us select name
                 union
@@ -1247,7 +1247,7 @@ class TestTernaryExecution:
         )
 
         # Simple single-condition when/then works
-        sql = compile(
+        sql = transpile(
             """
             from users
             select name, age, when age < 18 then 'minor' otherwise 'adult' as category
@@ -1280,7 +1280,7 @@ class TestTernaryExecution:
         try:
             # Use nested when/then for multiple conditions
             # when A then X otherwise (when B then Y otherwise Z)
-            sql = compile(
+            sql = transpile(
                 """
                 from users
                 select name, age, when age < 18 then 'minor' otherwise when age >= 65 then 'senior' otherwise 'adult' as category
@@ -1310,7 +1310,7 @@ class TestTernaryExecution:
         )
 
         # Use standard SQL CASE syntax
-        sql = compile(
+        sql = transpile(
             """
             from orders
             select 
@@ -1339,7 +1339,7 @@ class TestCoalesceExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from users select name, nickname ?? 'No nickname' as display_nick",
             dialect=executor.dialect,
         )
@@ -1367,7 +1367,7 @@ class TestDistinctExecution:
             ],
         )
 
-        sql = compile(
+        sql = transpile(
             "from events select distinct category",
             dialect=executor.dialect,
         )

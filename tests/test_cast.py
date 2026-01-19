@@ -2,7 +2,7 @@
 
 import sqlglot
 from sqlglot import exp
-from asql import compile
+from tests.fixtures import transpile
 from tests.fixtures import assert_valid_sql, assert_sql_contains
 
 
@@ -12,7 +12,7 @@ class TestCastOperator:
     def test_simple_cast_timestamp(self) -> None:
         """Test simple cast to TIMESTAMP."""
         asql = "from fields select _fivetran_synced::TIMESTAMP as _fivetran_synced"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "_fivetran_synced", "TIMESTAMP")
         assert_valid_sql(sql)
@@ -28,28 +28,28 @@ class TestCastOperator:
     def test_cast_to_date(self) -> None:
         """Test cast to DATE."""
         asql = "from events select created_at::DATE as date_day"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "CAST" in sql.upper() or "DATE" in sql.upper()
         assert "created_at" in sql.lower()
     
     def test_cast_to_int(self) -> None:
         """Test cast to INT."""
         asql = "from products select price::INT as price_int"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "CAST" in sql.upper() or "INT" in sql.upper()
         assert "price" in sql.lower()
     
     def test_cast_to_varchar(self) -> None:
         """Test cast to VARCHAR."""
         asql = "from users select id::VARCHAR as user_id_str"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "CAST" in sql.upper() or "VARCHAR" in sql.upper()
         assert "id" in sql.lower()
     
     def test_cast_in_where_clause(self) -> None:
         """Test cast in WHERE clause."""
         asql = 'from orders where created_at::DATE == "2024-01-01"'
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "CAST" in sql.upper() or "DATE" in sql.upper()
         assert "created_at" in sql.lower()
         assert "WHERE" in sql.upper()
@@ -57,14 +57,14 @@ class TestCastOperator:
     def test_cast_with_arithmetic(self) -> None:
         """Test cast with arithmetic operations."""
         asql = "from products select price::INT * 2 as double_price"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "CAST" in sql.upper() or "INT" in sql.upper()
         assert "*" in sql or "MUL" in sql.upper()
     
     def test_cast_chained(self) -> None:
         """Test chained casts (right-associative)."""
         asql = "from fields select value::FLOAT::INT as int_value"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert_sql_contains(sql, "value", "INT", "int_value")
         assert_valid_sql(sql)
@@ -81,7 +81,7 @@ class TestCastOperator:
     def test_cast_in_select_list(self) -> None:
         """Test cast in SELECT list with multiple columns."""
         asql = "from users select name, age::VARCHAR as age_str, email"
-        sql = compile(asql)
+        sql = transpile(asql)
         assert "CAST" in sql.upper() or "VARCHAR" in sql.upper()
         assert "age" in sql.lower()
         assert "name" in sql.lower()
@@ -101,7 +101,7 @@ class TestCastReverse:
         assert "TIMESTAMP" in asql.upper()
         
         # Round-trip test: compile back to SQL
-        round_trip_sql = compile(asql)
+        round_trip_sql = transpile(asql)
         assert_valid_sql(round_trip_sql)
         assert_sql_contains(round_trip_sql, "_fivetran_synced", "TIMESTAMP")
     
@@ -140,7 +140,7 @@ class TestCastReverse:
         assert "where" in asql.lower()
         
         # Round-trip test: compile back to SQL
-        round_trip_sql = compile(asql)
+        round_trip_sql = transpile(asql)
         assert_valid_sql(round_trip_sql)
         assert_sql_contains(round_trip_sql, "created_at", "DATE", "WHERE")
     

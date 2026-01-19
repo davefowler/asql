@@ -6,7 +6,7 @@ from pathlib import Path
 
 from asql.schema import Column, Table, Relationship, Schema
 from asql.config import CompileSettings
-from asql import compile
+from tests.fixtures import transpile
 
 
 class TestColumnDataclass:
@@ -579,7 +579,7 @@ class TestSchemaJoinInference:
         # Compile with schema - should infer ON clause
         # Note: This tests the integration, but the preparser needs both tables
         asql = "from orders & users on orders.user_id = users.id"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         
         assert "JOIN" in sql.upper()
         assert "orders" in sql.lower()
@@ -591,7 +591,7 @@ class TestSchemaJoinInference:
         
         # Without schema, should use convention
         asql = "from orders & users on orders.user_id = users.id"
-        sql = compile(asql, settings=settings)
+        sql = transpile(asql, settings=settings)
         
         assert "JOIN" in sql.upper()
 

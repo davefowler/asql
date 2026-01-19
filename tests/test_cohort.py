@@ -2,7 +2,7 @@
 
 import re
 
-from asql import compile
+from tests.fixtures import transpile
 
 
 def test_basic_cohort():
@@ -11,7 +11,7 @@ def test_basic_cohort():
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date) on user_id"""
     
-    sql = compile(query)
+    sql = transpile(query)
     sql_lower = sql.lower()
     
     # Should generate SQL with cohort CTEs
@@ -47,7 +47,7 @@ def test_cohort_revenue():
 group by month(order_date) (sum(total) as revenue)
 cohort by month(customers.first_order_date) on customer_id"""
     
-    sql = compile(query)
+    sql = transpile(query)
     sql_lower = sql.lower()
     
     # Check CTEs
@@ -68,7 +68,7 @@ def test_cohort_weekly():
 group by week(event_date) (count(distinct user_id) as active)
 cohort by week(users.signup_date) on user_id"""
     
-    sql = compile(query)
+    sql = transpile(query)
     sql_lower = sql.lower()
     
     # Check CTEs
@@ -86,7 +86,7 @@ def test_cohort_with_explicit_join():
 group by month(order_date) (sum(total) as revenue)
 cohort by month(customers.first_order_date) on customer_id"""
     
-    sql = compile(query)
+    sql = transpile(query)
     sql_lower = sql.lower()
     
     # Check CTEs
@@ -106,7 +106,7 @@ def test_cohort_period_calculation():
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date) on user_id"""
     
-    sql = compile(query)
+    sql = transpile(query)
     sql_lower = sql.lower()
     
     # Period should be calculated using EXTRACT and AGE
@@ -125,7 +125,7 @@ def test_cohort_auto_order_by():
 group by month(event_date) (count(distinct user_id) as active)
 cohort by month(users.signup_date) on user_id"""
     
-    sql = compile(query)
+    sql = transpile(query)
     sql_upper = sql.upper()
     
     # Should automatically add ORDER BY

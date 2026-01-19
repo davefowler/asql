@@ -1,6 +1,6 @@
 # Integrating Analytic SQL
 
-**Last Updated:** November 16, 2025
+**Last Updated:** January 18, 2026
 
 This guide shows how to integrate Analytic SQL into your applications and workflows, whether as a Python library or integrated into other tools like dbt, BI platforms, or databases.
 
@@ -11,7 +11,7 @@ This guide shows how to integrate Analytic SQL into your applications and workfl
 The simplest way to use Analytic SQL is as a Python library:
 
 ```python
-from asql import compile
+import asql
 
 # Basic query
 asql_query = """
@@ -22,19 +22,23 @@ order by -total_users
 limit 10
 """
 
-sql = compile(asql_query, dialect="postgres")
+# transpile() returns a list of SQL strings (one per statement)
+sql_list = asql.transpile(asql_query, write="postgres")
+sql = sql_list[0]
 print(sql)
 ```
 
 ### API Reference
 
-#### `compile(asql_query, dialect=None, pretty=False)`
+#### `asql.transpile(sql, read="asql", write="duckdb", pretty=False, schema=None, **kwargs)`
 
-Compiles an ASQL query to SQL.
+Transpiles ASQL to SQL for a target dialect.
 
 **Parameters:**
-- `asql_query` (str): ASQL query string. Can contain multiple queries separated by semicolons.
-- `dialect` (str, optional): Target SQL dialect. Supported dialects include:
+- `sql` (str): ASQL query string. Can contain multiple queries separated by semicolons.
+- `read` (str, optional): Source dialect. Default: `"asql"`. Can also be `"visual_asql"` for JSON-based visual queries.
+- `write` (str, optional): Target SQL dialect. Default: `"duckdb"`. Supported dialects include:
+  - `duckdb` (default)
   - `postgres` / `postgresql`
   - `mysql`
   - `bigquery`
@@ -45,9 +49,11 @@ Compiles an ASQL query to SQL.
   - `mssql` / `sqlserver`
   - And more (see SQLGlot dialects)
 - `pretty` (bool): Whether to format SQL output with indentation. Default: `False`
+- `schema` (dict or Schema, optional): Schema information for column operators, join inference, etc.
+- `**kwargs`: Additional settings passed to the ASQL dialect (e.g., `week_start`, `infer_join_keys`)
 
 **Returns:**
-- `str`: Generated SQL query
+- `List[str]`: List of generated SQL strings (one per statement)
 
 **Raises:**
 - `ASQLSyntaxError`: If ASQL syntax is invalid
@@ -55,13 +61,13 @@ Compiles an ASQL query to SQL.
 
 **Example:**
 ```python
-from asql import compile
+import asql
 
-# Single query
-sql = compile("""
+# Single query - transpile() returns a list, get first element
+sql = asql.transpile("""
 from users
 where status == 'active'
-""", dialect="postgres")
+""", write="postgres")[0]
 
 # Query with CTE using stash as
 multi_query = """
@@ -69,20 +75,19 @@ from users where status == 'active' stash as active_users
 from active_users group by country ( # as total )
 """
 
-sql = compile(multi_query, dialect="bigquery", pretty=True)
+sql = asql.transpile(multi_query, write="bigquery", pretty=True)[0]
 ```
 
 #### SQL to ASQL Conversion
 
-Convert SQL back to ASQL syntax using `sqlglot.transpile()`:
+Convert SQL back to ASQL syntax using `asql.transpile()` with reversed dialects:
 
 **Example:**
 ```python
-import sqlglot
-import asql  # Registers the ASQL dialect
+import asql
 
 sql = "SELECT country, COUNT(*) AS total FROM users WHERE status = 'active' GROUP BY country"
-asql_query = sqlglot.transpile(sql, write='asql')[0]
+asql_query = asql.transpile(sql, read='postgres', write='asql')[0]
 # Returns:
 # from users where status = 'active' group by country select country, COUNT(*) AS total
 ```
@@ -90,23 +95,23 @@ asql_query = sqlglot.transpile(sql, write='asql')[0]
 You can also specify the source dialect for better parsing:
 ```python
 # From BigQuery SQL
-asql_query = sqlglot.transpile(sql, read='bigquery', write='asql')[0]
+asql_query = asql.transpile(sql, read='bigquery', write='asql')[0]
 
 # From PostgreSQL
-asql_query = sqlglot.transpile(sql, read='postgres', write='asql')[0]
+asql_query = asql.transpile(sql, read='postgres', write='asql')[0]
 ```
 
 ### Error Handling
 
 ```python
-from asql import compile
+import asql
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 
 try:
-    sql = compile("""
+    sql = asql.transpile("""
 from users
 where invalid syntax
-""")
+""", write="postgres")[0]
 except ASQLSyntaxError as e:
     print(f"Syntax error: {e}")
 except ASQLCompilationError as e:
@@ -118,7 +123,7 @@ except ASQLCompilationError as e:
 #### Pretty Printing
 
 ```python
-sql = compile(asql_query, dialect="postgres", pretty=True)
+sql = asql.transpile(asql_query, write="postgres", pretty=True)[0]
 # Returns formatted SQL with indentation
 ```
 
@@ -132,7 +137,7 @@ group by country ( # as total )
 
 dialects = ["postgres", "bigquery", "snowflake"]
 for dialect in dialects:
-    sql = compile(asql_query, dialect=dialect)
+    sql = asql.transpile(asql_query, write=dialect)[0]
     print(f"{dialect}: {sql}")
 ```
 
@@ -157,7 +162,7 @@ where category == 'electronics'
 compiled = []
 for query in queries:
     try:
-        sql = compile(query, dialect="postgres")
+        sql = asql.transpile(query, write="postgres")[0]
         compiled.append(sql)
     except ASQLSyntaxError as e:
         print(f"Error in query: {e}")
@@ -210,13 +215,13 @@ Until dbt-asql is released, you can integrate ASQL manually:
 ```python
 # scripts/compile_asql.py
 from pathlib import Path
-from asql import compile
+import asql
 
 def compile_asql_files():
     """Compile .asql files to .sql files for dbt."""
     for asql_file in Path("models").rglob("*.asql"):
         asql_query = asql_file.read_text()
-        sql = compile(asql_query, dialect="postgres")
+        sql = asql.transpile(asql_query, write="postgres")[0]
         sql_file = asql_file.with_suffix(".sql")
         sql_file.write_text(sql)
 
@@ -234,7 +239,7 @@ python scripts/compile_asql.py && dbt run
 ```python
 # models/active_users.py
 def model(dbt, session):
-    from asql import compile
+    import asql
     
     asql_query = """
     from users
@@ -242,7 +247,7 @@ def model(dbt, session):
     group by country ( # as total_users )
     """
     
-    sql = compile(asql_query, dialect=dbt.config.get('target_type', 'postgres'))
+    sql = asql.transpile(asql_query, write=dbt.config.get('target_type', 'postgres'))[0]
     return session.sql(sql)
 ```
 
@@ -254,11 +259,11 @@ Create a wrapper that converts ASQL to SQL for Tableau:
 
 ```python
 # tableau_asql_wrapper.py
-from asql import compile
+import asql
 
 def tableau_query(asql_query, dialect="postgres"):
     """Convert ASQL to SQL for Tableau Custom SQL."""
-    sql = compile(asql_query, dialect=dialect)
+    sql = asql.transpile(asql_query, write=dialect)[0]
     return sql
 
 # Usage in Tableau Custom SQL:
@@ -271,11 +276,11 @@ Create a LookML macro that uses ASQL:
 
 ```python
 # looker_asql_plugin.py
-from asql import compile
+import asql
 
 def compile_asql_for_looker(asql_query, dialect):
     """Compile ASQL for Looker SQL Runner."""
-    return compile(asql_query, dialect=dialect)
+    return asql.transpile(asql_query, write=dialect)[0]
 ```
 
 Then use in LookML:
@@ -296,12 +301,12 @@ Use Python script in Power BI:
 ```python
 # powerbi_asql.py
 import pandas as pd
-from asql import compile
+import asql
 import pyodbc
 
 def execute_asql(asql_query, connection_string, dialect="mssql"):
     """Execute ASQL query in Power BI."""
-    sql = compile(asql_query, dialect=dialect)
+    sql = asql.transpile(asql_query, write=dialect)[0]
     
     conn = pyodbc.connect(connection_string)
     df = pd.read_sql(sql, conn)
@@ -318,7 +323,7 @@ Create a PostgreSQL function that compiles ASQL:
 
 ```python
 # postgres_asql_extension.py
-from asql import compile
+import asql
 import psycopg2
 
 def create_asql_function(conn):
@@ -338,7 +343,7 @@ Create a database driver that accepts ASQL:
 
 ```python
 # asql_driver.py
-from asql import compile
+import asql
 import psycopg2
 
 class ASQLConnection:
@@ -350,7 +355,7 @@ class ASQLConnection:
     
     def execute(self, asql_query):
         """Execute ASQL query."""
-        sql = compile(asql_query, dialect=self.dialect)
+        sql = asql.transpile(asql_query, write=self.dialect)[0]
         cursor = self.conn.cursor()
         cursor.execute(sql)
         return cursor.fetchall()
@@ -373,7 +378,7 @@ Create a REST API that compiles ASQL:
 ```python
 # api.py
 from flask import Flask, request, jsonify
-from asql import compile
+import asql
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 
 app = Flask(__name__)
@@ -387,7 +392,7 @@ def compile_asql():
     pretty = data.get('pretty', False)
     
     try:
-        sql = compile(asql_query, dialect=dialect, pretty=pretty)
+        sql = asql.transpile(asql_query, write=dialect, pretty=pretty)[0]
         return jsonify({'sql': sql})
     except ASQLSyntaxError as e:
         return jsonify({'error': str(e)}), 400
@@ -405,7 +410,8 @@ Create a CLI tool:
 ```python
 # asql_cli.py
 import argparse
-from asql import compile
+import sys
+import asql
 from asql.errors import ASQLSyntaxError
 
 def main():
@@ -424,7 +430,7 @@ def main():
         asql_query = args.query
     
     try:
-        sql = compile(asql_query, dialect=args.dialect, pretty=args.pretty)
+        sql = asql.transpile(asql_query, write=args.dialect, pretty=args.pretty)[0]
         print(sql)
     except ASQLSyntaxError as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -440,12 +446,12 @@ Use in Jupyter notebooks:
 
 ```python
 # jupyter_asql.py
-from asql import compile
+import asql
 from IPython.display import display, Markdown
 
 def asql_query(query, dialect="postgres", show_sql=True):
     """Execute ASQL query in Jupyter."""
-    sql = compile(query, dialect=dialect, pretty=True)
+    sql = asql.transpile(query, write=dialect, pretty=True)[0]
     
     if show_sql:
         display(Markdown(f"**Generated SQL:**\n```sql\n{sql}\n```"))
@@ -477,7 +483,7 @@ export function activate(context: vscode.ExtensionContext) {
         const asqlQuery = editor.document.getText();
         const dialect = vscode.workspace.getConfiguration('asql').get('dialect', 'postgres');
         
-        exec(`python -c "from asql import compile; print(compile('''${asqlQuery}''', dialect='${dialect}'))"`, 
+        exec(`python -c "import asql; print(asql.transpile('''${asqlQuery}''', write='${dialect}')[0])"`, 
             (error, stdout, stderr) => {
                 if (error) {
                     vscode.window.showErrorMessage(`Compilation error: ${stderr}`);
@@ -505,13 +511,13 @@ export function activate(context: vscode.ExtensionContext) {
 Always wrap compilation in try-except blocks:
 
 ```python
-from asql import compile
+import asql
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 
-def safe_compile(asql_query, dialect="postgres"):
-    """Safely compile ASQL with error handling."""
+def safe_transpile(asql_query, dialect="postgres"):
+    """Safely transpile ASQL with error handling."""
     try:
-        return compile(asql_query, dialect=dialect)
+        return asql.transpile(asql_query, write=dialect)[0]
     except ASQLSyntaxError as e:
         # Log syntax errors
         logger.error(f"ASQL syntax error: {e}")
@@ -528,12 +534,12 @@ Cache compiled SQL for frequently used queries:
 
 ```python
 from functools import lru_cache
-from asql import compile
+import asql
 
 @lru_cache(maxsize=100)
-def cached_compile(asql_query, dialect="postgres"):
+def cached_transpile(asql_query, dialect="postgres"):
     """Cache compiled ASQL queries."""
-    return compile(asql_query, dialect=dialect)
+    return asql.transpile(asql_query, write=dialect)[0]
 ```
 
 ### Validation
@@ -541,10 +547,13 @@ def cached_compile(asql_query, dialect="postgres"):
 Validate ASQL before compilation:
 
 ```python
+import asql
+from asql.errors import ASQLSyntaxError
+
 def validate_asql(asql_query):
     """Validate ASQL query syntax."""
     try:
-        compile(asql_query, dialect="postgres")
+        asql.transpile(asql_query, write="postgres")
         return True
     except ASQLSyntaxError:
         return False
@@ -565,7 +574,7 @@ Here's a complete example of integrating ASQL into a data pipeline:
 
 ```python
 # data_pipeline.py
-from asql import compile
+import asql
 import psycopg2
 from typing import List, Dict
 
@@ -578,7 +587,7 @@ class ASQLPipeline:
     
     def execute_query(self, asql_query: str) -> List[Dict]:
         """Execute ASQL query and return results."""
-        sql = compile(asql_query, dialect=self.dialect)
+        sql = asql.transpile(asql_query, write=self.dialect)[0]
         cursor = self.conn.cursor()
         cursor.execute(sql)
         

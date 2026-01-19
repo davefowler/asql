@@ -1,6 +1,6 @@
 # Grouping & Aggregation
 
-ASQL's `group by` works like SQL's—but with guaranteed complete results by default.
+ASQL's `group by` works like SQL's. Use `spine by` when you want guaranteed complete results with gap-filling.
 
 ---
 
@@ -35,7 +35,7 @@ from orders
 
 ---
 
-## Guaranteed Groups
+## Spine (Gap-Filling)
 
 Here's where ASQL differs from SQL.
 
@@ -58,12 +58,14 @@ GROUP BY month;
 
 April and May are missing. This breaks charts, corrupts month-over-month calculations, and causes countless analytics bugs.
 
-### ASQL Guarantees All Values
+### `spine by` Guarantees All Values
+
+Use `spine by` instead of `group by` when you want gap-filling:
 
 ```asql
 from orders
   where order_date >= @2024-01-01 and order_date < @2024-07-01
-  group by month(order_date) (
+  spine by month(order_date) (
     sum(amount) ?? 0 as revenue
   )
 ```
@@ -77,7 +79,20 @@ from orders
 | May   | 0       |
 | Jun   | 1200    |
 
-ASQL automatically generates a "spine" of all expected values and fills in zeros for missing data.
+ASQL generates a "spine" of all expected values and fills in zeros for missing data.
+
+### `spine()` in GROUP BY
+
+Use `spine()` within a `group by` to spine only specific columns:
+
+```asql
+from orders
+  group by spine(month(order_date)), region (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+This spines the month column (filling date gaps) but NOT the region column.
 
 ### How It Works
 
@@ -108,7 +123,7 @@ Sometimes you want specific values guaranteed, not just what's in the data.
 
 ```asql-play
 from orders
-  group by guarantee(status, ['pending', 'processing', 'shipped', 'delivered', 'cancelled']) (
+  spine by guarantee(status, ['pending', 'processing', 'shipped', 'delivered', 'cancelled']) (
     # ?? 0 as order_count
   )
 ```
@@ -121,33 +136,25 @@ All five statuses will appear in results, even if some have zero orders. This is
 
 ---
 
-## Disabling Guaranteed Groups
+## When NOT to Use Spine
 
-### Filter the Results
+### Use Regular GROUP BY
 
-The most common approach—just filter out zeros:
+If you don't want gap-filling, just use `group by`:
 
 ```asql-play
 from orders
   group by month(order_date) ( sum(amount) as revenue )
-  where revenue > 0
 ```
 
-### Disable for a Query
+### Filter the Results
 
-```asql
-SET auto_spine = false;
+If you used spine but want to remove zeros:
+
+```asql-play
 from orders
-  group by month(order_date) ( sum(amount) as revenue )
-```
-
-### Disable Globally
-
-In your config file or via the API:
-
-```yaml
-# asql.config.yaml
-auto_spine: false
+  spine by month(order_date) ( sum(amount) as revenue )
+  where revenue > 0
 ```
 
 ---

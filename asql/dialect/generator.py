@@ -12,12 +12,31 @@ from sqlglot.generator import Generator
 class ASQLGenerator(Generator):
     """Generator for ASQL. Converts SQLGlot AST back to ASQL syntax.
     
+    Settings are read from self.dialect.settings:
+        asql = ASQL(cast="function", equality="double")
+        sqlglot.transpile(sql, read="postgres", write=asql)
+    
+    Style settings:
+        - equality: "single" (=) or "double" (==)
+        - count: "hash" (#) or "function" (count(*))
+        - coalesce: "operator" (??) or "function" (coalesce())
+        - descending: "prefix" (-col) or "suffix" (col DESC)
+        - cast: "double_colon" (::) or "function" (CAST())
+        - quotes: "double" (") or "single" (')
+        - function_shorthand: "underscore", "space", or "parens"
+    
     Handles ASQL-specific output formatting:
-    - CAST(x AS TYPE) → x::TYPE
+    - CAST(x AS TYPE) → x::TYPE (if cast="double_colon")
     - WITH cte AS (...) → from ... stash as cte
     - SELECT * FROM → from
     - Joins with symbols: INNER JOIN → &
     """
+    
+    def _get_setting(self, name: str, default: t.Any = None) -> t.Any:
+        """Get a style setting from dialect.settings with fallback to default."""
+        if hasattr(self, 'dialect') and self.dialect and hasattr(self.dialect, 'settings'):
+            return self.dialect.settings.get(name, default)
+        return default
     
     # Join symbols for ASQL output
     # Maps (side, kind) combinations to ASQL syntax
@@ -32,16 +51,98 @@ class ASQLGenerator(Generator):
         "CROSS": "cross join",
     }
     
+    def count_sql(self, expression: exp.Count) -> str:
+        """Generate count syntax based on settings.
+        
+        If count="hash" (default): #
+        If count="function": COUNT(*)
+        """
+        count_style = self._get_setting("count", "hash")
+        
+        # Check if it's COUNT(*)
+        this = expression.this
+        is_star = isinstance(this, exp.Star) or this is None
+        
+        if count_style == "hash" and is_star:
+            return "#"
+        else:
+            # Standard count function
+            if is_star:
+                return "COUNT(*)"
+            else:
+                return f"COUNT({self.sql(this)})"
+    
+    def coalesce_sql(self, expression: exp.Coalesce) -> str:
+        """Generate coalesce syntax based on settings.
+        
+        If coalesce="operator" (default): a ?? b
+        If coalesce="function": COALESCE(a, b)
+        """
+        coalesce_style = self._get_setting("coalesce", "operator")
+        
+        # Coalesce has 'this' (first arg) and 'expressions' (remaining args)
+        first = expression.this
+        rest = expression.expressions or []
+        
+        all_args = [first] + list(rest) if first else list(rest)
+        args = [self.sql(e) for e in all_args]
+        
+        if coalesce_style == "operator" and len(args) == 2:
+            return f"{args[0]} ?? {args[1]}"
+        else:
+            return f"COALESCE({', '.join(args)})"
+    
+    def eq_sql(self, expression: exp.EQ) -> str:
+        """Generate equality syntax based on settings.
+        
+        If equality="single" (default): a = b
+        If equality="double": a == b
+        """
+        equality_style = self._get_setting("equality", "single")
+        left = self.sql(expression, "this")
+        right = self.sql(expression, "expression")
+        
+        if equality_style == "double":
+            return f"{left} == {right}"
+        else:
+            return f"{left} = {right}"
+    
+    def ordered_sql(self, expression: exp.Ordered) -> str:
+        """Generate ORDER BY column syntax based on settings.
+        
+        If descending="prefix" (default): -col
+        If descending="suffix": col DESC
+        """
+        descending_style = self._get_setting("descending", "prefix")
+        col = self.sql(expression, "this")
+        desc = expression.args.get("desc")
+        
+        if desc:
+            if descending_style == "prefix":
+                return f"-{col}"
+            else:
+                return f"{col} DESC"
+        else:
+            return col
+    
     def cast_sql(self, expression: exp.Cast, safe_prefix: t.Optional[str] = None) -> str:
-        """Generate ASQL :: cast syntax instead of CAST(... AS ...).
+        """Generate ASQL cast syntax based on settings.
+        
+        If cast="double_colon" (default): x::TYPE
+        If cast="function": CAST(x AS TYPE)
         
         Note: safe_prefix (for TRY_CAST) is intentionally ignored - ASQL uses
-        the same :: syntax for both CAST and TRY_CAST, leaving error handling
+        the same syntax for both CAST and TRY_CAST, leaving error handling
         to the target dialect during compilation.
         """
+        cast_style = self._get_setting("cast", "double_colon")
         expr_sql = self.sql(expression, "this")
         type_sql = self.sql(expression, "to")
-        return f"{expr_sql}::{type_sql}"
+        
+        if cast_style == "function":
+            return f"CAST({expr_sql} AS {type_sql})"
+        else:
+            return f"{expr_sql}::{type_sql}"
     
     def with_sql(self, expression: exp.With) -> str:
         """Convert CTEs to stash statements for ASQL output.

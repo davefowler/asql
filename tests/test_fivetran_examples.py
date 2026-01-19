@@ -1,6 +1,6 @@
 """Tests for Fivetran dbt model examples converted to ASQL."""
 
-from asql import compile
+from tests.fixtures import transpile
 
 
 def test_shopify_line_items_structure() -> None:
@@ -10,7 +10,7 @@ def test_shopify_line_items_structure() -> None:
     from stg_shopify_gql__order_line
     join stg_shopify_gql__order on order_line.order_id == order.order_id
     """
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()
@@ -25,7 +25,7 @@ def test_stripe_customer_overview_structure() -> None:
     where balance_transaction_type in ("payment", "charge")
     group by customer_id ( sum(balance_transaction_amount) as total_sales )
     """
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()
@@ -40,7 +40,7 @@ def test_zendesk_ticket_enriched_structure() -> None:
     from int_zendesk__ticket_aggregates
     join int_zendesk__user_aggregates on ticket.requester_id == user_aggregates.user_id
     """
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()
@@ -55,7 +55,7 @@ def test_stripe_balance_transactions_structure() -> None:
     join stg_stripe__charge 
         on charge.balance_transaction_id == balance_transaction.balance_transaction_id
     """
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()
@@ -72,7 +72,7 @@ def test_shopify_customer_cohorts_structure() -> None:
         sum(order_adjusted_total) as total_price_in_month
     )
     """
-    sql = compile(asql)
+    sql = transpile(asql)
     
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()

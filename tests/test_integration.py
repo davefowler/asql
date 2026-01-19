@@ -2,7 +2,7 @@
 
 import pytest
 import sqlglot
-from asql import compile
+from tests.fixtures import transpile
 
 
 class TestSQLGlotIntegration:
@@ -11,7 +11,7 @@ class TestSQLGlotIntegration:
     def test_generated_sql_parses_back(self) -> None:
         """Test that generated SQL can be parsed by SQLGlot."""
         asql = 'from users where status == "active"'
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Try to parse the generated SQL
         try:
@@ -25,7 +25,7 @@ class TestSQLGlotIntegration:
     def test_group_by_sql_parses(self) -> None:
         """Test GROUP BY SQL parses correctly."""
         asql = "from users group by country ( # as total_users )"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         try:
             parsed = sqlglot.parse_one(sql)
@@ -37,7 +37,7 @@ class TestSQLGlotIntegration:
     def test_order_by_sql_parses(self) -> None:
         """Test ORDER BY SQL parses correctly."""
         asql = "from users order by -total_users"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         try:
             parsed = sqlglot.parse_one(sql)
@@ -51,7 +51,7 @@ class TestSQLGlotIntegration:
         asql = 'from users where status == "active"'
         
         for dialect in ["postgres", "mysql", "bigquery", "snowflake"]:
-            sql = compile(asql, dialect=dialect)
+            sql = transpile(asql, dialect=dialect)
             assert sql is not None
             assert len(sql) > 0
             # Should have SELECT and FROM
@@ -65,7 +65,7 @@ class TestSQLStructure:
     def test_select_before_from(self) -> None:
         """Test that queries use CTE-based pipeline structure."""
         asql = "from users"
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         
         # With CTE-based pipeline, should start with WITH or have SELECT in CTE
@@ -75,7 +75,7 @@ class TestSQLStructure:
     def test_where_after_from(self) -> None:
         """Test that WHERE is properly included in CTE."""
         asql = 'from users where status == "active"'
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         
         # With CTE-based pipeline, WHERE should be in the CTE
@@ -89,7 +89,7 @@ class TestSQLStructure:
         """Test GROUP BY SQL structure."""
         import re
         asql = "from users group by country ( # as total_users )"
-        sql = compile(asql)
+        sql = transpile(asql)
         # Strip comments before checking structure
         sql_no_comments = re.sub(r'/\*[^*]*\*/', '', sql)
         sql_upper = sql_no_comments.upper()
@@ -104,7 +104,7 @@ class TestSQLStructure:
     def test_order_by_structure(self) -> None:
         """Test ORDER BY SQL structure."""
         asql = "from users order by -total_users"
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         
         assert "ORDER BY" in sql_upper
@@ -117,7 +117,7 @@ class TestSQLStructure:
     def test_limit_structure(self) -> None:
         """Test LIMIT SQL structure."""
         asql = "from users limit 10"
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         
         assert "LIMIT" in sql_upper
@@ -133,7 +133,7 @@ class TestSQLCorrectness:
     def test_no_duplicate_select(self) -> None:
         """Test that SQL has proper CTE structure."""
         asql = "from users"
-        sql = compile(asql)
+        sql = transpile(asql)
         sql_upper = sql.upper()
         
         # With CTE-based pipeline, should start with WITH or have SELECT
@@ -145,7 +145,7 @@ class TestSQLCorrectness:
     def test_string_quotes_consistent(self) -> None:
         """Test that string literals are properly quoted."""
         asql = 'from users where status == "active"'
-        sql = compile(asql)
+        sql = transpile(asql)
         
         # Should have quotes around 'active'
         assert "'active'" in sql or '"active"' in sql
@@ -153,7 +153,7 @@ class TestSQLCorrectness:
     def test_column_names_preserved(self) -> None:
         """Test that column names are preserved correctly."""
         asql = "from users select name, email"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert "name" in sql.lower()
         assert "email" in sql.lower()
@@ -161,13 +161,13 @@ class TestSQLCorrectness:
     def test_table_name_preserved(self) -> None:
         """Test that table names are preserved correctly."""
         asql = "from users"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert "users" in sql.lower()
     
     def test_aggregation_aliases_preserved(self) -> None:
         """Test that aggregation aliases are preserved."""
         asql = "from users group by country ( # as total_users )"
-        sql = compile(asql)
+        sql = transpile(asql)
         
         assert "total_users" in sql.lower()

@@ -8,7 +8,7 @@ import pytest
 from pathlib import Path
 from typing import List
 
-from asql import compile
+from tests.fixtures import transpile
 from asql.testing.syntax_validator import (
     SUPPORTED_DIALECTS,
     DIALECT_LIMITATIONS,
@@ -148,7 +148,7 @@ class TestCoreSyntax:
     @pytest.mark.parametrize("asql_query", CORE_QUERIES)
     def test_core_queries(self, dialect: str, asql_query: str) -> None:
         """Basic queries should generate valid SQL for all dialects."""
-        sql = compile(asql_query, dialect=dialect)
+        sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
         assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
 
@@ -160,7 +160,7 @@ class TestAggregationSyntax:
     @pytest.mark.parametrize("asql_query", AGGREGATION_QUERIES)
     def test_aggregation_queries(self, dialect: str, asql_query: str) -> None:
         """Aggregation queries should generate valid SQL for all dialects."""
-        sql = compile(asql_query, dialect=dialect)
+        sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
         assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
 
@@ -172,7 +172,7 @@ class TestJoinSyntax:
     @pytest.mark.parametrize("asql_query", JOIN_QUERIES)
     def test_join_queries(self, dialect: str, asql_query: str) -> None:
         """JOIN queries should generate valid SQL for all dialects."""
-        sql = compile(asql_query, dialect=dialect)
+        sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
         assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
 
@@ -184,7 +184,7 @@ class TestWindowSyntax:
     @pytest.mark.parametrize("asql_query", WINDOW_QUERIES)
     def test_window_queries(self, dialect: str, asql_query: str) -> None:
         """Window function queries should generate valid SQL for all dialects."""
-        sql = compile(asql_query, dialect=dialect)
+        sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
         assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
 
@@ -196,7 +196,7 @@ class TestCTESyntax:
     @pytest.mark.parametrize("asql_query", CTE_QUERIES)
     def test_cte_queries(self, dialect: str, asql_query: str) -> None:
         """CTE queries should generate valid SQL for all dialects."""
-        sql = compile(asql_query, dialect=dialect)
+        sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
         assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
 
@@ -208,7 +208,7 @@ class TestExpressionSyntax:
     @pytest.mark.parametrize("asql_query", EXPRESSION_QUERIES)
     def test_expression_queries(self, dialect: str, asql_query: str) -> None:
         """Expression queries should generate valid SQL for all dialects."""
-        sql = compile(asql_query, dialect=dialect)
+        sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
         assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
 
@@ -225,7 +225,7 @@ class TestQualifySyntax:
     @pytest.mark.parametrize("asql_query", QUALIFY_QUERIES)
     def test_qualify_queries(self, dialect: str, asql_query: str) -> None:
         """QUALIFY queries work for all dialects (SQLGlot transpiles to subquery where needed)."""
-        sql = compile(asql_query, dialect=dialect)
+        sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
         assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
 
@@ -263,7 +263,7 @@ class TestExampleFiles:
         for asql_file in example_asql_files:
             try:
                 asql_content = asql_file.read_text()
-                sql = compile(asql_content, dialect=dialect)
+                sql = transpile(asql_content, dialect=dialect)
                 is_valid, error = validate_syntax(sql, dialect)
                 if not is_valid:
                     errors.append(f"{asql_file.name}: Syntax validation error - {error}")
