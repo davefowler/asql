@@ -1098,19 +1098,10 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = VisualEditorV2;
 }
 
-// Global instance - create when DOM is ready
-// This replaces the v1 visualEditor if loaded after
-let visualEditorV2 = null;
+// Global instance - v2 is now the default
+let visualEditor = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Only initialize if v2 flag is set or v1 isn't loaded yet
-  if (typeof USE_VISUAL_EDITOR_V2 !== 'undefined' && USE_VISUAL_EDITOR_V2) {
-    visualEditorV2 = new VisualEditorV2();
-    visualEditorV2.init();
-    
-    // Replace v1 editor reference for backward compatibility
-    if (typeof visualEditor !== 'undefined') {
-      window.visualEditor = visualEditorV2;
-    }
-  }
+  visualEditor = new VisualEditorV2();
+  visualEditor.init();
 });
