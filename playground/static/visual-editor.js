@@ -17,6 +17,10 @@ class VisualEditor {
     this.operations = [];
     this.schemas = {};
     this.availableTables = [];  // Available tables from schema
+    this.aggregates = [];  // Aggregate functions from metadata
+    this.functions = [];   // All functions from metadata
+    this.functionCategories = []; // Function categories for dropdowns
+    this.operators = {};   // Operators from metadata
     this.initialized = false;
     this.initializing = false;  // Prevent double init
     this._initPromise = null;   // Store the init promise for awaiting
@@ -52,12 +56,24 @@ class VisualEditor {
   
   async _doInit() {
     try {
-      // Load operation metadata and available tables in parallel
-      // Wrap tables fetch in catch so it doesn't fail the whole init
-      const [opsResponse, tablesResponse] = await Promise.all([
+      // Load operation metadata, tables, aggregates, and functions in parallel
+      // Wrap optional fetches in catch so they don't fail the whole init
+      const [opsResponse, tablesResponse, aggregatesResponse, functionsResponse, operatorsResponse] = await Promise.all([
         fetch('/api/visual/operations'),
         fetch('/api/schema/tables').catch(err => {
           console.warn('Failed to load tables:', err);
+          return null;
+        }),
+        fetch('/api/visual/aggregates').catch(err => {
+          console.warn('Failed to load aggregates:', err);
+          return null;
+        }),
+        fetch('/api/visual/functions/categories').catch(err => {
+          console.warn('Failed to load functions:', err);
+          return null;
+        }),
+        fetch('/api/visual/operators').catch(err => {
+          console.warn('Failed to load operators:', err);
           return null;
         })
       ]);
@@ -75,6 +91,30 @@ class VisualEditor {
         this.availableTables = tablesData.tables || [];
       } else {
         this.availableTables = [];
+      }
+
+      // Store aggregates
+      if (aggregatesResponse && aggregatesResponse.ok) {
+        const aggData = await aggregatesResponse.json();
+        this.aggregates = aggData.aggregates || [];
+      } else {
+        this.aggregates = [];
+      }
+
+      // Store function categories
+      if (functionsResponse && functionsResponse.ok) {
+        const funcData = await functionsResponse.json();
+        this.functionCategories = funcData.categories || [];
+      } else {
+        this.functionCategories = [];
+      }
+
+      // Store operators
+      if (operatorsResponse && operatorsResponse.ok) {
+        const opData = await operatorsResponse.json();
+        this.operators = opData.operators || {};
+      } else {
+        this.operators = {};
       }
 
       // Load schemas for all operations
@@ -802,15 +842,28 @@ class VisualEditor {
   renderDimensionItem(value, idx, transformId) {
     const { func, column } = this.parseDimensionValue(value);
     const hasFunc = !!func;
-    // Common functions grouped by category
-    const commonFunctions = [
-      // Time functions
-      { group: 'Time', funcs: ['year', 'quarter', 'month', 'week', 'day', 'hour'] },
-      // String functions
-      { group: 'Text', funcs: ['upper', 'lower', 'trim', 'length'] },
-      // Math functions
-      { group: 'Math', funcs: ['abs', 'round', 'floor', 'ceil'] },
-    ];
+    
+    // Use function categories from metadata, with fallback to hardcoded
+    let functionGroups = [];
+    if (this.functionCategories && this.functionCategories.length > 0) {
+      // Filter to useful dimension functions (date, string, math)
+      const usefulCategories = ['date', 'string', 'math'];
+      functionGroups = this.functionCategories
+        .filter(cat => usefulCategories.includes(cat.name))
+        .map(cat => ({
+          group: cat.label,
+          funcs: cat.functions.map(f => f.value)
+        }));
+    }
+    
+    // Fallback if metadata not loaded
+    if (functionGroups.length === 0) {
+      functionGroups = [
+        { group: 'Time', funcs: ['year', 'quarter', 'month', 'week', 'day', 'hour'] },
+        { group: 'Text', funcs: ['upper', 'lower', 'trim', 'length'] },
+        { group: 'Math', funcs: ['abs', 'round', 'floor', 'ceil'] },
+      ];
+    }
     
     return `
       <div class="dimension-item ${hasFunc ? 'has-function' : ''}" data-list-index="${idx}">
@@ -818,7 +871,7 @@ class VisualEditor {
           <span class="dim-func-wrapper">
             <select class="input-field dim-function" data-list-index="${idx}" data-dim-field="function">
               <option value="" ${!hasFunc ? 'selected' : ''}></option>
-              ${commonFunctions.map(group => `
+              ${functionGroups.map(group => `
                 <optgroup label="${group.group}">
                   ${group.funcs.map(fn => `
                     <option value="${fn}" ${func === fn ? 'selected' : ''}>${fn}</option>
@@ -838,7 +891,8 @@ class VisualEditor {
 
   renderAggregateListWidget(transform, param) {
     const aggregates = transform[param.name] ?? [];
-    const allFunctions = param.functions || ['count', 'sum', 'avg', 'min', 'max', 'count_distinct'];
+    // Use metadata-driven aggregates if available, otherwise fallback
+    const allFunctions = param.functions || this.getAvailableAggregates();
     // Functions that don't require a column (can use * or no arg)
     const noColumnFns = ['count'];
 
@@ -1251,11 +1305,28 @@ class VisualEditor {
    * Get display label for aggregate function
    */
   getAggregateFunctionLabel(fn) {
-    const labels = {
-      'count_distinct': 'Unique',
-      'stddev': 'Std Dev',
-    };
-    return labels[fn] || fn.charAt(0).toUpperCase() + fn.slice(1);
+    // Look up in aggregates metadata first
+    if (this.aggregates && this.aggregates.length > 0) {
+      const agg = this.aggregates.find(a => a.value === fn);
+      if (agg && agg.label) {
+        // Title case the label (capitalize each word)
+        return agg.label.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      }
+    }
+    
+    // Fallback: convert underscore to space and title case
+    return fn.replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  /**
+   * Get all available aggregate functions
+   */
+  getAvailableAggregates() {
+    if (this.aggregates && this.aggregates.length > 0) {
+      return this.aggregates.map(a => a.value);
+    }
+    // Fallback
+    return ['count', 'sum', 'avg', 'min', 'max', 'count_distinct', 'stddev', 'variance', 'median'];
   }
 
   escapeHtml(text) {

@@ -798,6 +798,57 @@ async def get_operation_schema(operation_type: str):
     return schema
 
 
+@app.get("/api/visual/aggregates")
+async def list_aggregate_functions():
+    """
+    List all available aggregate functions for the visual editor.
+    
+    Returns aggregates with labels, descriptions, aliases, and type restrictions.
+    """
+    from asql.ui_schema import get_aggregate_options
+    
+    return {"aggregates": get_aggregate_options()}
+
+
+@app.get("/api/visual/functions")
+async def list_functions(category: str = None):
+    """
+    List all available functions for the visual editor.
+    
+    Args:
+        category: Optional filter by category (date, string, window, etc.)
+    
+    Returns functions with labels, descriptions, aliases, and metadata.
+    """
+    from asql.ui_schema import get_function_options
+    
+    return {"functions": get_function_options(category)}
+
+
+@app.get("/api/visual/functions/categories")
+async def list_function_categories():
+    """
+    List function categories with their functions.
+    
+    Used for grouped dropdowns in the visual editor.
+    """
+    from asql.ui_schema import get_function_categories
+    
+    return {"categories": get_function_categories()}
+
+
+@app.get("/api/visual/operators")
+async def list_operators():
+    """
+    List all available operators for the visual editor.
+    
+    Returns operators grouped by type (comparison, string, null, list, logical).
+    """
+    from asql.ui_schema import get_operators
+    
+    return {"operators": get_operators()}
+
+
 # --- Schema API Endpoints ---
 
 

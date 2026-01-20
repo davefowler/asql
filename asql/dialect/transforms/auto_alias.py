@@ -16,6 +16,10 @@ from asql.config import CompileSettings
 
 
 # Default prefixes for common functions
+# These are built-in defaults that provide sensible auto-aliasing out of the box.
+# Users can override these via CompileSettings.alias_prefixes in their config.
+# Note: These are kept here (not in config.py) because they are implementation
+# details of auto-aliasing, not user-facing configuration options.
 DEFAULT_PREFIXES: Dict[str, str] = {
     "count": "num",
     "row_number": "row_num",
