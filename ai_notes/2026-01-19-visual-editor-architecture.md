@@ -749,24 +749,45 @@ The visual editor architecture centers on:
 
 ## Appendix: Expression Type Coverage
 
-### Fully Supported
-- Columns, Literals (number, string, boolean, date)
-- Functions (any with args)
-- Binary operators (+, -, *, /, =, !=, >, <, >=, <=, AND, OR)
-- Unary operators (NOT, negative)
+**Full SQL expression coverage achieved** - everything decomposes into 4 primitives:
+1. **Expression** (recursive wrapper)
+2. **List of expressions** (sortable)
+3. **Enum/dropdown** (select from options)
+4. **Toggle/checkbox** (boolean flag)
 
-### Phase 2 Additions
-- IS NULL / IS NOT NULL (postfix operators)
-- BETWEEN (ternary: value, low, high)
-- IN (list) (value + list of expressions)
-- CASE/WHEN (branches + else)
-- Type casts
+### All Operators via Expand Menu
 
-### Phase 3 Additions
-- Aggregate modifiers (DISTINCT, FILTER, ORDER BY)
-- Window OVER clauses (complex, may use text fallback)
+| Category | Operators | RHS Widget |
+|----------|-----------|------------|
+| Arithmetic | `+`, `-`, `*`, `/` | Single expression |
+| Comparison | `=`, `!=`, `>`, `<`, `>=`, `<=` | Single expression |
+| Logical | `AND`, `OR` | Single expression |
+| Unary | `NOT`, `-` (negative) | N/A (prefix) |
+| Null check | `IS`, `IS NOT` | Single expression (often NULL) |
+| Pattern | `LIKE`, `ILIKE` | Single expression |
+| String | `||` | Single expression |
+| Range | `BETWEEN` | Two expressions with "AND" |
+| Set | `IN` | List of expressions |
+| JSON | `->`, `->>`, `#>` | Single expression |
 
-### Intentionally NOT Supported: Subqueries
+### Complex Constructs (Decomposed)
+
+| Construct | UI Pattern |
+|-----------|------------|
+| **CASE/WHEN** | List of (condition → result) pairs + optional ELSE |
+| **Type casts** | Wrapper + type enum dropdown |
+| **Window OVER** | PARTITION BY list + ORDER BY list + frame enums |
+| **Aggregate DISTINCT** | Checkbox on aggregate |
+| **Aggregate FILTER** | Attached condition expression |
+
+### Functions
+
+All functions follow the same pattern: `func(arg1, arg2, ...)` with recursive expression args.
+- Scalar: `upper()`, `lower()`, `month()`, `abs()`, `coalesce()`, etc.
+- Aggregate: `sum()`, `count()`, `avg()`, `min()`, `max()`, etc.
+- Multi-arg: `coalesce()`, `nullif()`, `greatest()`, `least()` - just functions with N args
+
+### Only Exclusion: Subqueries (By Design)
 
 ASQL's pipeline model **replaces subqueries entirely**. This is a feature, not a limitation.
 

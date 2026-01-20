@@ -162,3 +162,21 @@ def get_operators() -> Dict:
         Dict with operator categories (comparison, string, null, list, logical)
     """
     return get_schema().get("operators", {})
+
+
+def get_metadata() -> Dict:
+    """Get all visual editor metadata in a single call.
+    
+    Returns:
+        Dict with operators, aggregates, functions, transforms, joins, data_types, time_units
+    """
+    schema = get_schema()
+    return {
+        "operators": schema.get("operators", {}),
+        "aggregates": schema.get("aggregates", {}),
+        "functions": schema.get("functions", {}),
+        "transforms": schema.get("transforms", {}),
+        "joins": schema.get("joins", {}),
+        "data_types": schema.get("data_types", []),
+        "time_units": schema.get("time_units", []),
+    }

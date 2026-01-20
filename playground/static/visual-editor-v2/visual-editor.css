@@ -1,0 +1,945 @@
+/**
+ * Visual ASQL Editor v2 - CSS Styles
+ * 
+ * Two modes controlled by top-level class:
+ * - .visual-style-text - Code-like, minimal, inline
+ * - .visual-style-blocky - Visual blocks with backgrounds
+ */
+
+/* ============================================================================
+   CSS Variables
+   ============================================================================ */
+
+:root {
+  --asql-red: #c53030;
+  --asql-string: #137333;
+  --asql-number: #1967d2;
+  --asql-variable: #333;
+  --asql-function: #7c4dff;
+  --asql-operator: #d63384;
+  
+  --bg-hover: rgba(0, 0, 0, 0.03);
+  --border-color: #ddd;
+  --border-radius: 4px;
+}
+
+/* ============================================================================
+   BASE STYLES (shared between modes)
+   ============================================================================ */
+
+.visual-editor {
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  font-family: 'Monaco', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Pipeline container */
+.pipeline-block {
+  margin-bottom: 16px;
+}
+
+.pipeline-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+
+.pipeline-name-label {
+  font-size: 12px;
+  color: #666;
+}
+
+.pipeline-name-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--asql-variable);
+  min-width: 150px;
+}
+
+.pipeline-name-input:focus {
+  outline: none;
+  border-bottom-color: var(--asql-red);
+}
+
+.pipeline-remove-btn {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.pipeline-remove-btn:hover {
+  color: #e53935;
+}
+
+/* Transforms list */
+.transforms-list {
+  min-height: 20px;
+}
+
+/* Block base styles */
+.block {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 8px;
+  margin-bottom: 2px;
+  position: relative;
+}
+
+.block:hover {
+  background: var(--bg-hover);
+}
+
+.block-body {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Drag handle */
+.block-drag-handle,
+.expr-drag-handle {
+  cursor: grab;
+  color: #ccc;
+  font-size: 10px;
+  padding: 2px;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.block:hover .block-drag-handle,
+.expression-item:hover .expr-drag-handle,
+.aggregate-item:hover .expr-drag-handle,
+.order-item:hover .expr-drag-handle {
+  opacity: 1;
+}
+
+.block-drag-handle:active,
+.expr-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Delete button */
+.block-delete {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.block:hover .block-delete {
+  opacity: 1;
+}
+
+.block-delete:hover {
+  color: #e53935;
+}
+
+/* SortableJS ghost states */
+.block-ghost {
+  opacity: 0.4;
+  background: #f0f4f8;
+}
+
+.expr-ghost {
+  opacity: 0.4;
+}
+
+/* Keywords (from, where, select, etc.) */
+.value-operator {
+  color: var(--asql-red);
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+/* Inline inputs */
+.inline-input,
+.inline-select {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--asql-variable);
+  outline: none;
+  min-width: 60px;
+}
+
+.inline-input:focus,
+.inline-select:focus {
+  border-bottom-color: var(--asql-red);
+  background: rgba(197, 48, 48, 0.03);
+}
+
+/* Select dropdowns */
+.pipeline-from-select,
+.add-step-dropdown {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--asql-variable);
+  cursor: pointer;
+  outline: none;
+}
+
+.pipeline-from-select:focus,
+.add-step-dropdown:focus {
+  border-bottom-color: var(--asql-red);
+}
+
+/* Column autocomplete */
+.column-autocomplete {
+  color: var(--asql-variable);
+  min-width: 80px;
+}
+
+.column-autocomplete::-webkit-calendar-picker-indicator {
+  display: none !important;
+}
+
+/* ============================================================================
+   EXPRESSION COMPONENT
+   ============================================================================ */
+
+.expression {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+}
+
+.expr-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+}
+
+.expr-column-container {
+  display: inline;
+}
+
+.expr-column {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--asql-variable);
+  padding: 0 4px;
+  min-width: 60px;
+}
+
+.expr-column:focus {
+  outline: none;
+  border-bottom-color: var(--asql-variable);
+}
+
+.expr-literal {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0 4px;
+  min-width: 40px;
+}
+
+.expr-literal-number {
+  color: var(--asql-number);
+}
+
+.expr-literal-string {
+  color: var(--asql-string);
+}
+
+.expr-literal-null {
+  color: #888;
+  font-style: italic;
+}
+
+.expr-literal:focus {
+  outline: none;
+  border-bottom-color: #666;
+}
+
+/* Function calls */
+.expr-function-call {
+  display: inline-flex;
+  align-items: center;
+}
+
+.expr-func-select {
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--asql-function);
+  cursor: pointer;
+  padding: 0;
+}
+
+.expr-func-select:focus {
+  outline: none;
+}
+
+.expr-paren {
+  color: #888;
+}
+
+.expr-args {
+  display: inline-flex;
+  align-items: center;
+}
+
+.expr-comma {
+  color: #888;
+  margin-right: 4px;
+}
+
+/* Binary operations */
+.expr-binary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.expr-op-select {
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--asql-operator);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.expr-op-select:focus {
+  outline: none;
+}
+
+/* Unary operations */
+.expr-unary {
+  display: inline-flex;
+  align-items: center;
+}
+
+.expr-unary-op {
+  color: var(--asql-operator);
+  margin-right: 4px;
+}
+
+/* Expand button (hover interaction) */
+.expr-expand {
+  display: none;
+  background: #f0f4f8;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  margin-left: 4px;
+}
+
+.expr-node:hover > .expr-expand,
+.expression.expr-hover .expr-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expr-expand:hover {
+  background: #e0e8f0;
+  border-color: #ccc;
+}
+
+/* Remove button */
+.expr-remove {
+  background: none;
+  border: none;
+  color: transparent;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.expression:hover .expr-remove,
+.expression-item:hover .expr-remove,
+.aggregate-item:hover .expr-remove,
+.order-item:hover .expr-remove {
+  color: #aaa;
+}
+
+.expr-remove:hover {
+  color: #e53935 !important;
+}
+
+/* Alias container */
+.expr-alias-container {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.expr-as-toggle {
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.expression:hover .expr-as-toggle,
+.expression-item:hover .expr-as-toggle {
+  opacity: 1;
+}
+
+.expr-alias-container.has-alias .expr-as-toggle {
+  opacity: 1;
+  color: var(--asql-red);
+}
+
+.expr-alias-input {
+  display: none;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--asql-variable);
+  padding: 0 4px;
+  min-width: 60px;
+}
+
+.expr-alias-container.has-alias .expr-alias-input {
+  display: inline;
+}
+
+.expr-alias-input:focus {
+  outline: none;
+  border-bottom-color: var(--asql-variable);
+}
+
+/* Expression expand menu */
+.expr-expand-menu {
+  position: absolute;
+  z-index: 1000;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: 180px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.expr-menu-section {
+  border-bottom: 1px solid #eee;
+}
+
+.expr-menu-section:last-child {
+  border-bottom: none;
+}
+
+.expr-menu-section-header {
+  padding: 8px 12px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #333;
+}
+
+.expr-menu-section-header:hover {
+  background: #f8f8f8;
+}
+
+.expr-menu-submenu {
+  padding-bottom: 4px;
+}
+
+.expr-menu-group-label {
+  padding: 4px 12px;
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.expr-menu-item {
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.expr-menu-item:hover {
+  background: #f0f4f8;
+}
+
+/* ============================================================================
+   EXPRESSION LISTS
+   ============================================================================ */
+
+.expression-list,
+.aggregate-list,
+.order-list {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.expression-item,
+.aggregate-item,
+.order-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.expression-item::after,
+.aggregate-item::after,
+.order-item::after {
+  content: ',';
+  color: #666;
+  margin-left: 2px;
+}
+
+.expression-item:last-of-type::after,
+.aggregate-item:last-of-type::after,
+.order-item:last-of-type::after {
+  content: '';
+}
+
+/* Aggregate specific */
+.aggregate-expr {
+  display: inline-flex;
+  align-items: center;
+}
+
+.agg-function {
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--asql-function);
+  cursor: pointer;
+}
+
+.agg-paren {
+  color: #888;
+}
+
+.agg-alias-container {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+}
+
+.agg-as-toggle {
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.aggregate-item:hover .agg-as-toggle {
+  opacity: 1;
+}
+
+.aggregate-item.has-alias .agg-as-toggle {
+  opacity: 1;
+  color: var(--asql-red);
+}
+
+.agg-alias {
+  display: none;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--asql-variable);
+  padding: 0 4px;
+  min-width: 60px;
+}
+
+.aggregate-item.has-alias .agg-alias {
+  display: inline;
+}
+
+/* Order specific */
+.order-direction {
+  background: #f0f4f8;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.order-direction:hover {
+  background: #e0e8f0;
+}
+
+.order-direction.desc {
+  color: var(--asql-red);
+}
+
+/* Add buttons */
+.list-add-btn,
+.sortable-add-btn {
+  background: none;
+  border: 1px dashed #ccc;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  padding: 4px 12px;
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.list-add-btn:hover,
+.sortable-add-btn:hover {
+  border-color: #888;
+  color: #333;
+  background: #f8f8f8;
+}
+
+/* ============================================================================
+   OUTPUT COLUMNS
+   ============================================================================ */
+
+.output-columns {
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: #f8f9fa;
+  border-top: 1px solid #eee;
+  font-size: 11px;
+}
+
+.output-columns table {
+  border-collapse: collapse;
+}
+
+.output-columns th {
+  padding: 2px 8px;
+  font-weight: 500;
+  color: var(--asql-variable);
+  white-space: nowrap;
+  text-align: left;
+}
+
+.output-columns .col-type {
+  font-weight: 400;
+  color: #888;
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+/* Hidden by default */
+.output-columns {
+  display: none;
+}
+
+.show-columns .output-columns {
+  display: block;
+}
+
+/* ============================================================================
+   SET OPERATIONS
+   ============================================================================ */
+
+.set-operation-selector {
+  padding: 8px 0;
+  text-align: center;
+}
+
+.set-op-select {
+  background: #f0f4f8;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--asql-red);
+  cursor: pointer;
+}
+
+.set-op-select:focus {
+  outline: none;
+  border-color: var(--asql-red);
+}
+
+/* ============================================================================
+   ADD PIPELINE
+   ============================================================================ */
+
+.add-pipeline-container {
+  padding: 12px 0;
+}
+
+.add-pipeline-btn {
+  background: none;
+  border: 1px dashed #ccc;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+  padding: 8px 16px;
+  font-size: 13px;
+  width: 100%;
+  transition: all 0.15s;
+}
+
+.add-pipeline-btn:hover {
+  border-color: #888;
+  color: #333;
+  background: #f8f8f8;
+}
+
+/* ============================================================================
+   ERROR STATES
+   ============================================================================ */
+
+.error-block {
+  background: #fff0f0;
+  border: 1px solid #f0d0d0;
+}
+
+.error {
+  color: #c53030;
+  font-size: 12px;
+}
+
+/* ============================================================================
+   TEXT STYLE MODE (code-like, minimal)
+   ============================================================================ */
+
+.visual-style-text .visual-editor {
+  background: #fafafa;
+}
+
+.visual-style-text .block {
+  background: transparent;
+}
+
+.visual-style-text .value-operator {
+  /* Standard text style */
+}
+
+/* ============================================================================
+   BLOCKY STYLE MODE (visual blocks)
+   ============================================================================ */
+
+.visual-style-blocky .visual-editor {
+  background: #f5f5f5;
+}
+
+.visual-style-blocky .pipeline-block {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.visual-style-blocky .block {
+  background: #f8f9fa;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  border: 1px solid #eee;
+}
+
+.visual-style-blocky .block:hover {
+  background: #f0f4f8;
+  border-color: #ddd;
+}
+
+.visual-style-blocky .from-block {
+  background: #fff8f0;
+  border-color: #f0e0d0;
+}
+
+.visual-style-blocky .value-operator {
+  display: inline-block;
+  background: #fff0f0;
+  border: 1px solid #f0d0d0;
+  border-radius: 4px;
+  padding: 2px 8px;
+  margin-right: 8px;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.visual-style-blocky .inline-input,
+.visual-style-blocky .column-autocomplete,
+.visual-style-blocky .expr-column {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.visual-style-blocky .inline-input:focus,
+.visual-style-blocky .column-autocomplete:focus,
+.visual-style-blocky .expr-column:focus {
+  border-color: var(--asql-variable);
+  box-shadow: 0 0 0 2px rgba(51, 51, 51, 0.1);
+}
+
+.visual-style-blocky .expression-item,
+.visual-style-blocky .aggregate-item,
+.visual-style-blocky .order-item {
+  background: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.visual-style-blocky .expression-item::after,
+.visual-style-blocky .aggregate-item::after,
+.visual-style-blocky .order-item::after {
+  content: '';
+}
+
+.visual-style-blocky .output-columns {
+  background: #f0f4f8;
+  border-radius: 0 0 6px 6px;
+  border-top: 2px solid #e0e0e0;
+  padding: 8px 12px;
+}
+
+.visual-style-blocky .output-columns table {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.visual-style-blocky .output-columns tr {
+  display: contents;
+}
+
+.visual-style-blocky .output-columns th {
+  background: white;
+  border: 1px solid #d8e0e8;
+  border-radius: 4px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.visual-style-blocky .add-step-dropdown {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-top: 8px;
+}
+
+.visual-style-blocky .set-op-select {
+  background: white;
+}
+
+.visual-style-blocky .list-add-btn,
+.visual-style-blocky .sortable-add-btn {
+  background: white;
+}
+
+/* ============================================================================
+   SORTABLE COMPONENT
+   ============================================================================ */
+
+.sortable-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sortable-items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sortable-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+}
+
+.sortable-handle {
+  cursor: grab;
+  color: #ccc;
+  font-size: 10px;
+  user-select: none;
+}
+
+.sortable-handle:active {
+  cursor: grabbing;
+}
+
+.sortable-content {
+  flex: 1;
+}
+
+.sortable-remove {
+  background: none;
+  border: none;
+  color: #ccc;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 14px;
+}
+
+.sortable-remove:hover {
+  color: #e53935;
+}
+
+.sortable-ghost {
+  opacity: 0.4;
+  background: #f0f4f8;
+}
+
+.sortable-chosen {
+  background: #f0f8ff;
+}

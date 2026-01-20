@@ -849,6 +849,19 @@ async def list_operators():
     return {"operators": get_operators()}
 
 
+@app.get("/api/visual/metadata")
+async def get_visual_metadata():
+    """
+    Get all visual editor metadata in a single call.
+    
+    Returns operators, aggregates, functions, transforms, joins, and data types.
+    More efficient than multiple API calls for editor initialization.
+    """
+    from asql.ui_schema import get_metadata
+    
+    return get_metadata()
+
+
 # --- Schema API Endpoints ---
 
 
