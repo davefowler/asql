@@ -76,11 +76,89 @@ def get_aggregate_options() -> List[Dict]:
     options = []
     aggregates = get_schema().get("aggregates", {})
     for name, agg_data in aggregates.items():
-        options.append(
-            {
-                "value": name,
-                "label": agg_data.get("label", name),
-                "description": agg_data.get("description", ""),
-            }
-        )
+        option = {
+            "value": name,
+            "label": agg_data.get("label", name),
+            "description": agg_data.get("description", ""),
+        }
+        # Include additional metadata
+        if "aliases" in agg_data:
+            option["aliases"] = agg_data["aliases"]
+        if "types" in agg_data:
+            option["types"] = agg_data["types"]
+        if agg_data.get("natural_syntax"):
+            option["natural_syntax"] = True
+        options.append(option)
     return options
+
+
+def get_function_options(category: Optional[str] = None) -> List[Dict]:
+    """Get function options for UI dropdown.
+    
+    Args:
+        category: Optional category filter (e.g., 'date', 'window', 'string')
+    
+    Returns:
+        List of function metadata dicts
+    """
+    options = []
+    functions = get_schema().get("functions", {})
+    
+    for cat_name, funcs in functions.items():
+        # Skip if category filter doesn't match
+        if category and cat_name != category:
+            continue
+            
+        for name, func_data in funcs.items():
+            option = {
+                "value": name,
+                "label": func_data.get("label", name),
+                "description": func_data.get("description", ""),
+                "category": cat_name,
+                "args": func_data.get("args", []),
+                "returns": func_data.get("returns", "any"),
+            }
+            # Include additional metadata
+            if "aliases" in func_data:
+                option["aliases"] = func_data["aliases"]
+            if func_data.get("asql_only"):
+                option["asql_only"] = True
+            if func_data.get("natural_syntax"):
+                option["natural_syntax"] = True
+            options.append(option)
+    
+    return options
+
+
+def get_function_categories() -> List[Dict]:
+    """Get function categories with their functions.
+    
+    Returns:
+        List of category dicts with functions
+    """
+    categories = []
+    functions = get_schema().get("functions", {})
+    
+    for cat_name, funcs in functions.items():
+        category = {
+            "name": cat_name,
+            "label": cat_name.replace("_", " ").title(),
+            "functions": []
+        }
+        for name, func_data in funcs.items():
+            category["functions"].append({
+                "value": name,
+                "label": func_data.get("label", name),
+            })
+        categories.append(category)
+    
+    return categories
+
+
+def get_operators() -> Dict:
+    """Get all operator definitions.
+    
+    Returns:
+        Dict with operator categories (comparison, string, null, list, logical)
+    """
+    return get_schema().get("operators", {})

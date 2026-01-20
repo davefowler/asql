@@ -9,12 +9,64 @@ import json
 from pathlib import Path
 
 
-
 def get_schema():
     """Load ui-metadata.json."""
     schema_path = Path(__file__).parent.parent / "asql" / "ui-metadata.json"
     with open(schema_path) as f:
         return json.load(f)
+
+
+def get_all_schema_functions():
+    """Get all function names from ui-metadata.json (flattened across categories).
+    
+    Returns:
+        tuple: (primary_funcs set, all_with_aliases set)
+        - primary_funcs: Set of primary function names (uppercase)
+        - all_with_aliases: Set of all function names including aliases (uppercase)
+    """
+    schema = get_schema()
+    functions = schema.get("functions", {})
+    
+    primary_funcs = set()
+    all_with_aliases = set()
+    
+    for category, funcs in functions.items():
+        for func_name, func_data in funcs.items():
+            upper_name = func_name.upper()
+            primary_funcs.add(upper_name)
+            all_with_aliases.add(upper_name)
+            
+            # Include aliases
+            aliases = func_data.get("aliases", [])
+            for alias in aliases:
+                all_with_aliases.add(alias.upper())
+    
+    return primary_funcs, all_with_aliases
+
+
+def get_all_schema_aggregates():
+    """Get all aggregate names from ui-metadata.json.
+    
+    Returns:
+        tuple: (primary_aggs set, all_with_aliases set)
+    """
+    schema = get_schema()
+    aggregates = schema.get("aggregates", {})
+    
+    primary_aggs = set()
+    all_with_aliases = set()
+    
+    for agg_name, agg_data in aggregates.items():
+        upper_name = agg_name.upper()
+        primary_aggs.add(upper_name)
+        all_with_aliases.add(upper_name)
+        
+        # Include aliases
+        aliases = agg_data.get("aliases", [])
+        for alias in aliases:
+            all_with_aliases.add(alias.upper())
+    
+    return primary_aggs, all_with_aliases
 
 
 class TestTransformsSync:
@@ -193,9 +245,13 @@ class TestFunctionsSync:
         # Check key ASQL functions are present (not all aliases, just primary ones)
         expected_asql_funcs = {
             "DAYS_SINCE", "WEEKS_SINCE", "MONTHS_SINCE", "YEARS_SINCE",
+            "HOURS_SINCE", "MINUTES_SINCE", "SECONDS_SINCE",
             "DAYS_UNTIL", "WEEKS_UNTIL", "MONTHS_UNTIL", "YEARS_UNTIL",
-            "RUNNING_SUM", "RUNNING_AVG", "ROLLING_SUM", "ROLLING_AVG",
-            "FILL_FORWARD", "FILL_BACKWARD"
+            "HOURS_UNTIL", "MINUTES_UNTIL", "SECONDS_UNTIL",
+            "RUNNING_SUM", "RUNNING_AVG", "RUNNING_COUNT", "RUNNING_MIN", "RUNNING_MAX",
+            "ROLLING_SUM", "ROLLING_AVG", "ROLLING_COUNT", "ROLLING_MIN", "ROLLING_MAX",
+            "FILL_FORWARD", "FILL_BACKWARD",
+            "ARG_MAX", "ARG_MIN", "BUCKET"
         }
         
         for func in expected_asql_funcs:
@@ -206,7 +262,7 @@ class TestFunctionsSync:
         schema = get_schema()
         functions = schema.get("functions", {})
         
-        expected_categories = {"date", "string", "math", "conditional", "window"}
+        expected_categories = {"date", "string", "math", "conditional", "window", "special"}
         actual_categories = set(functions.keys())
         
         missing = expected_categories - actual_categories
@@ -222,6 +278,119 @@ class TestFunctionsSync:
                 assert "label" in func, f"Function '{category}.{name}' missing label"
                 assert "description" in func, f"Function '{category}.{name}' missing description"
                 assert "args" in func, f"Function '{category}.{name}' missing args"
+    
+    def test_asql_function_registry_in_schema(self):
+        """All ASQL_FUNCTION_REGISTRY entries should have ui-metadata.json entries.
+        
+        This ensures the central function registry is completely documented.
+        Aliases are allowed to map to a primary function entry.
+        """
+        from asql.functions import ASQL_FUNCTION_REGISTRY
+        
+        _, all_with_aliases = get_all_schema_functions()
+        
+        # Get all ASQL function names from the registry
+        registry_funcs = set(ASQL_FUNCTION_REGISTRY.keys())
+        
+        # Each registry function should be in schema (as primary or alias)
+        missing = registry_funcs - all_with_aliases
+        assert not missing, (
+            f"ASQL_FUNCTION_REGISTRY functions missing from ui-metadata.json: {missing}\n"
+            "Add these functions to the appropriate category in asql/ui-metadata.json"
+        )
+    
+    def test_natural_agg_funcs_in_schema(self):
+        """All NATURAL_AGG_FUNCS should be in ui-metadata.json.
+        
+        These functions support natural syntax like 'sum amount'.
+        """
+        from asql.functions import NATURAL_AGG_FUNCS
+        
+        _, all_with_aliases = get_all_schema_functions()
+        primary_aggs, agg_with_aliases = get_all_schema_aggregates()
+        
+        # Combine functions and aggregates
+        all_schema = all_with_aliases | agg_with_aliases
+        
+        # Get all natural agg function names
+        natural_funcs = set(NATURAL_AGG_FUNCS.keys())
+        
+        # Each natural function should be in schema (as primary or alias)
+        missing = natural_funcs - all_schema
+        assert not missing, (
+            f"NATURAL_AGG_FUNCS missing from ui-metadata.json: {missing}\n"
+            "Add these functions to the appropriate category in asql/ui-metadata.json"
+        )
+    
+    def test_schema_functions_have_parser_support(self):
+        """All ui-metadata.json functions should be supported by the parser.
+        
+        Ensures no orphaned entries in the metadata that don't actually work.
+        """
+        from asql.functions import ASQL_FUNCTION_REGISTRY
+        from asql.dialect import ASQLParser
+        
+        # Get ASQL-specific function names
+        asql_funcs = set(ASQL_FUNCTION_REGISTRY.keys())
+        # FUNCTION_PARSERS contains functions with custom parsing (like BUCKET)
+        function_parsers = set(ASQLParser.FUNCTION_PARSERS.keys())
+        
+        # Get schema functions marked as asql_only
+        schema = get_schema()
+        functions = schema.get("functions", {})
+        
+        asql_only_funcs = set()
+        for category, funcs in functions.items():
+            for func_name, func_data in funcs.items():
+                if func_data.get("asql_only"):
+                    asql_only_funcs.add(func_name.upper())
+                    # Also check aliases
+                    for alias in func_data.get("aliases", []):
+                        asql_only_funcs.add(alias.upper())
+        
+        # All ASQL-only functions should exist in ASQL_FUNCTION_REGISTRY or FUNCTION_PARSERS
+        # (parser base functions like UPPER, LOWER don't need to be in registry)
+        asql_supported = asql_funcs | function_parsers
+        missing = asql_only_funcs - asql_supported
+        assert not missing, (
+            f"ui-metadata.json ASQL-only functions missing from parser: {missing}\n"
+            "Either add these to asql/functions.py or parser FUNCTION_PARSERS, "
+            "or remove asql_only flag"
+        )
+    
+    def test_aggregate_aliases_documented(self):
+        """Aggregate aliases should be documented in ui-metadata.json."""
+        schema = get_schema()
+        aggregates = schema.get("aggregates", {})
+        
+        # These are the expected aliases based on the parser
+        expected_aliases = {
+            "sum": ["total"],
+            "avg": ["average"],
+            "min": ["minimum"],
+            "max": ["maximum"],
+        }
+        
+        for agg_name, expected in expected_aliases.items():
+            if agg_name in aggregates:
+                actual = aggregates[agg_name].get("aliases", [])
+                for alias in expected:
+                    assert alias in actual, (
+                        f"Aggregate '{agg_name}' missing alias '{alias}' in ui-metadata.json"
+                    )
+    
+    def test_window_function_aliases_documented(self):
+        """Window function aliases (prior, next) should be documented."""
+        schema = get_schema()
+        window_funcs = schema.get("functions", {}).get("window", {})
+        
+        # Check lag -> prior alias
+        lag_aliases = window_funcs.get("lag", {}).get("aliases", [])
+        assert "prior" in lag_aliases, "lag function missing 'prior' alias"
+        
+        # Check lead -> next alias
+        lead_aliases = window_funcs.get("lead", {}).get("aliases", [])
+        assert "next" in lead_aliases, "lead function missing 'next' alias"
 
 
 class TestSchemaStructure:
