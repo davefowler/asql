@@ -1,5 +1,81 @@
 [
   {
+    "title": "Complete Analytics Dashboard",
+    "desc": "Showcases all visual editor features: joins, filters, functions, aggregates, grouping, sorting",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "orders",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "join",
+            "join_type": "inner",
+            "table": "customers",
+            "condition": "orders.customer_id = customers.id"
+          },
+          {
+            "id": "t1",
+            "type": "join",
+            "join_type": "left",
+            "table": "products",
+            "condition": "orders.product_id = products.id"
+          },
+          {
+            "id": "t2",
+            "type": "where",
+            "condition": "orders.status = 'completed' AND orders.total > 50"
+          },
+          {
+            "id": "t3",
+            "type": "extend",
+            "columns": [
+              "year(orders.created_at) as order_year",
+              "month(orders.created_at) as order_month",
+              "upper(customers.country) as country_code"
+            ]
+          },
+          {
+            "id": "t4",
+            "type": "group_by",
+            "dimensions": ["order_year", "order_month", "country_code", "products.category"],
+            "aggregates": [
+              {"function": "count", "column": "*", "alias": "total_orders"},
+              {"function": "sum", "column": "orders.total", "alias": "revenue"},
+              {"function": "avg", "column": "orders.total", "alias": "avg_order_value"},
+              {"function": "min", "column": "orders.total", "alias": "smallest_order"},
+              {"function": "max", "column": "orders.total", "alias": "largest_order"},
+              {"function": "count_distinct", "column": "customers.id", "alias": "unique_customers"}
+            ]
+          },
+          {
+            "id": "t5",
+            "type": "having",
+            "condition": "total_orders >= 5 AND revenue > 1000"
+          },
+          {
+            "id": "t6",
+            "type": "order_by",
+            "expressions": [
+              {"column": "order_year", "direction": "desc"},
+              {"column": "order_month", "direction": "desc"},
+              {"column": "revenue", "direction": "desc"}
+            ]
+          },
+          {
+            "id": "t7",
+            "type": "limit",
+            "count": 100
+          }
+        ]
+      }
+    ]
+  },
+  {
     "title": "Simple Filter",
     "desc": "Filter users by status",
     "dialect": "visual-asql",
