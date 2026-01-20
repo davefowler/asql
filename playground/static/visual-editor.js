@@ -777,8 +777,17 @@ class VisualEditor {
   renderListWidget(transform, param) {
     const items = transform[param.name] ?? [];
     const isColumnType = param.type === 'column[]' || param.name === 'dimensions' || param.name === 'columns';
-    // Use expression-style rendering (boxed, one per line) only for GROUP BY dimensions
-    const useExpressionStyle = param.name === 'dimensions';
+    
+    // Use expression-style rendering for:
+    // - GROUP BY dimensions
+    // - SELECT columns (type: expression[])
+    // - Any param with type 'expression[]'
+    const useExpressionStyle = param.name === 'dimensions' || 
+                               param.type === 'expression[]' ||
+                               param.name === 'columns'; // SELECT uses 'columns'
+    
+    // SELECT columns should show aliases
+    const showAlias = param.name === 'columns' && transform.type === 'select';
     
     // Helper to extract string value from item (could be object or string)
     const getItemValue = (item) => {
@@ -790,15 +799,41 @@ class VisualEditor {
       return '';
     };
     
+    // For expression-style items, use the shared expression item component
+    if (useExpressionStyle) {
+      const containerClass = param.name === 'dimensions' ? 'dimension-items' : 'expression-items';
+      const itemClass = param.name === 'dimensions' ? 'dimension-item' : 'expression-item';
+      const dataPrefix = param.name === 'dimensions' ? 'dim' : 'expr';
+      
+      return `
+        <div class="field">
+          <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
+          ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
+          <div class="${containerClass}" data-param="${param.name}" data-transform-id="${transform.id}">
+            ${items.map((item, idx) => this.renderExpressionItem({
+              value: item,
+              idx,
+              transformId: transform.id,
+              itemClass,
+              dataPrefix,
+              showAlias,
+              functionCategories: ['date', 'string', 'math']
+            })).join('')}
+            <button class="list-add-btn" data-param="${param.name}" data-transform-id="${transform.id}">
+              + Add
+            </button>
+          </div>
+        </div>
+      `;
+    }
+    
+    // Simple list items (non-expression)
     return `
       <div class="field">
         <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
         ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
-        <div class="list-items ${useExpressionStyle ? 'dimension-items' : ''}" data-param="${param.name}" data-transform-id="${transform.id}">
+        <div class="list-items" data-param="${param.name}" data-transform-id="${transform.id}">
           ${items.map((item, idx) => {
-            if (useExpressionStyle) {
-              return this.renderDimensionItem(getItemValue(item), idx, transform.id);
-            }
             const itemValue = getItemValue(item);
             return `
             <div class="list-item">
@@ -822,34 +857,38 @@ class VisualEditor {
   }
 
   /**
-   * Parse a dimension value to extract function and column
-   * e.g., "month(date)" -> { func: "month", column: "date" }
-   * e.g., "region" -> { func: null, column: "region" }
+   * Parse an expression value to extract function, column, and alias
+   * e.g., "month(date)" -> { func: "month", column: "date", alias: null }
+   * e.g., "region" -> { func: null, column: "region", alias: null }
+   * e.g., { expression: "month(date)", name: "signup_month" } -> { func: "month", column: "date", alias: "signup_month" }
    */
-  parseDimensionValue(value) {
-    if (!value) return { func: null, column: '' };
+  parseExpressionValue(value) {
+    if (!value) return { func: null, column: '', alias: null };
+    
+    // Handle object format (SELECT columns use {expression, name})
+    if (typeof value === 'object') {
+      const expr = value.expression || value.name || '';
+      const alias = value.name && value.expression && value.name !== value.expression ? value.name : null;
+      const parsed = this.parseExpressionValue(expr);
+      return { ...parsed, alias: alias || parsed.alias };
+    }
     
     const match = value.match(/^(\w+)\((.+)\)$/);
     if (match) {
-      return { func: match[1].toLowerCase(), column: match[2] };
+      return { func: match[1].toLowerCase(), column: match[2], alias: null };
     }
-    return { func: null, column: value };
+    return { func: null, column: value, alias: null };
   }
 
   /**
-   * Render a dimension/column item with optional function wrapper
+   * Get function groups for dropdowns
+   * @param {string[]} categories - Which categories to include (e.g., ['date', 'string', 'math'])
    */
-  renderDimensionItem(value, idx, transformId) {
-    const { func, column } = this.parseDimensionValue(value);
-    const hasFunc = !!func;
-    
-    // Use function categories from metadata, with fallback to hardcoded
+  getFunctionGroups(categories = ['date', 'string', 'math']) {
     let functionGroups = [];
     if (this.functionCategories && this.functionCategories.length > 0) {
-      // Filter to useful dimension functions (date, string, math)
-      const usefulCategories = ['date', 'string', 'math'];
       functionGroups = this.functionCategories
-        .filter(cat => usefulCategories.includes(cat.name))
+        .filter(cat => categories.includes(cat.name))
         .map(cat => ({
           group: cat.label,
           funcs: cat.functions.map(f => f.value)
@@ -864,12 +903,57 @@ class VisualEditor {
         { group: 'Math', funcs: ['abs', 'round', 'floor', 'ceil'] },
       ];
     }
+    return functionGroups;
+  }
+
+  /**
+   * Render a reusable expression item with optional function wrapper and alias
+   * Used by: SELECT columns, GROUP BY dimensions, EXTEND columns
+   * @param {object} options
+   * @param {string|object} options.value - The expression value (string or {expression, name})
+   * @param {number} options.idx - Index in the list
+   * @param {string} options.transformId - Transform ID for column autocomplete
+   * @param {string} options.itemClass - CSS class for the item (e.g., 'expression-item', 'dimension-item')
+   * @param {string} options.dataPrefix - Data attribute prefix (e.g., 'expr', 'dim')
+   * @param {boolean} options.showAlias - Whether to show alias input (default: false)
+   * @param {string[]} options.functionCategories - Which function categories to show
+   */
+  renderExpressionItem(options) {
+    const {
+      value,
+      idx,
+      transformId,
+      itemClass = 'expression-item',
+      dataPrefix = 'expr',
+      showAlias = false,
+      functionCategories = ['date', 'string', 'math']
+    } = options;
+    
+    const { func, column, alias } = this.parseExpressionValue(value);
+    const hasFunc = !!func;
+    const hasAlias = !!alias;
+    const functionGroups = this.getFunctionGroups(functionCategories);
+    
+    // Generate default alias based on expression
+    const defaultAlias = func ? `${func}_${column}` : column;
+    
+    const aliasHtml = showAlias ? `
+      <span class="expr-alias-wrapper" data-${dataPrefix}-index="${idx}" data-default-alias="${this.escapeHtml(defaultAlias)}">
+        <span class="expr-as-toggle" data-${dataPrefix}-index="${idx}">as</span>
+        <input type="text"
+               class="input-field expr-alias"
+               placeholder="${this.escapeHtml(defaultAlias || 'alias')}"
+               value="${this.escapeHtml(alias || '')}"
+               data-${dataPrefix}-index="${idx}"
+               data-${dataPrefix}-field="alias">
+      </span>
+    ` : '';
     
     return `
-      <div class="dimension-item ${hasFunc ? 'has-function' : ''}" data-list-index="${idx}">
-        <span class="dimension-expr">
-          <span class="dim-func-wrapper">
-            <select class="input-field dim-function" data-list-index="${idx}" data-dim-field="function">
+      <div class="${itemClass} ${hasFunc ? 'has-function' : ''} ${hasAlias ? 'has-alias' : ''}" data-list-index="${idx}">
+        <span class="expr-content">
+          <span class="expr-func-wrapper">
+            <select class="input-field expr-function" data-list-index="${idx}" data-${dataPrefix}-field="function">
               <option value="" ${!hasFunc ? 'selected' : ''}></option>
               ${functionGroups.map(group => `
                 <optgroup label="${group.group}">
@@ -879,14 +963,70 @@ class VisualEditor {
                 </optgroup>
               `).join('')}
             </select>
-            <span class="dim-paren dim-open-paren">(</span>
+            <span class="expr-paren expr-open-paren">(</span>
           </span>
-          ${this.renderColumnInput(column, 'column', { 'list-index': idx, 'dim-field': 'column' }, transformId)}
-          <span class="dim-paren dim-close-paren">)</span>
+          ${this.renderColumnInput(column, 'column', { 'list-index': idx, [`${dataPrefix}-field`]: 'column' }, transformId)}
+          <span class="expr-paren expr-close-paren">)</span>
         </span>
+        ${aliasHtml}
         <button class="list-item-remove" data-list-index="${idx}">×</button>
       </div>
     `;
+  }
+
+  /**
+   * Render an expression list widget (for SELECT, GROUP BY dimensions, etc.)
+   */
+  renderExpressionListWidget(transform, param, options = {}) {
+    const items = transform[param.name] ?? [];
+    const {
+      itemClass = 'expression-item',
+      dataPrefix = 'expr',
+      showAlias = false,
+      functionCategories = ['date', 'string', 'math'],
+      containerClass = 'expression-items'
+    } = options;
+    
+    return `
+      <div class="field">
+        <label>${this.escapeHtml(param.label)}${param.required ? ' *' : ''}</label>
+        ${param.help ? `<p class="help">${this.escapeHtml(param.help)}</p>` : ''}
+        <div class="${containerClass}" data-param="${param.name}" data-transform-id="${transform.id}">
+          ${items.map((item, idx) => this.renderExpressionItem({
+            value: item,
+            idx,
+            transformId: transform.id,
+            itemClass,
+            dataPrefix,
+            showAlias,
+            functionCategories
+          })).join('')}
+          <button class="list-add-btn" data-param="${param.name}" data-transform-id="${transform.id}">
+            + Add
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Legacy alias for backward compatibility during refactoring
+  parseDimensionValue(value) {
+    return this.parseExpressionValue(value);
+  }
+
+  /**
+   * Render a dimension/column item with optional function wrapper (legacy, uses new shared code)
+   */
+  renderDimensionItem(value, idx, transformId) {
+    return this.renderExpressionItem({
+      value,
+      idx,
+      transformId,
+      itemClass: 'dimension-item',
+      dataPrefix: 'dim',
+      showAlias: false,
+      functionCategories: ['date', 'string', 'math']
+    });
   }
 
   renderAggregateListWidget(transform, param) {
@@ -1433,9 +1573,40 @@ function handleListUpdate(transform, param, target) {
   const items = transform[param] || [];
   const index = parseInt(target.dataset.listIndex);
   
-  // Check if this is a dimension with function wrapper
+  // Check if this is a dimension with function wrapper (legacy)
   const dimField = target.dataset.dimField;
-  if (dimField) {
+  // Check if this is an expression item (new unified component)
+  const exprField = target.dataset.exprField;
+  
+  // Handle expression items (new pattern)
+  if (exprField) {
+    const currentItem = items[index];
+    const parsed = visualEditor.parseExpressionValue(currentItem);
+    
+    if (exprField === 'function') {
+      const newFunc = target.value;
+      const exprItem = target.closest('.expression-item, .dimension-item');
+      
+      if (newFunc) {
+        // Update the expression with new function
+        const newExpr = `${newFunc}(${parsed.column})`;
+        items[index] = updateExpressionItem(currentItem, newExpr, parsed.alias);
+        if (exprItem) exprItem.classList.add('has-function');
+      } else {
+        // Remove function, just use column
+        items[index] = updateExpressionItem(currentItem, parsed.column, parsed.alias);
+        if (exprItem) exprItem.classList.remove('has-function');
+      }
+    } else if (exprField === 'column') {
+      const newExpr = parsed.func ? `${parsed.func}(${target.value})` : target.value;
+      items[index] = updateExpressionItem(currentItem, newExpr, parsed.alias);
+    } else if (exprField === 'alias') {
+      items[index] = updateExpressionItem(currentItem, 
+        parsed.func ? `${parsed.func}(${parsed.column})` : parsed.column, 
+        target.value || null);
+    }
+  } else if (dimField) {
+    // Legacy dimension handling
     const currentValue = items[index] || '';
     const { func: currentFunc, column: currentColumn } = visualEditor.parseDimensionValue(currentValue);
     
@@ -1462,6 +1633,19 @@ function handleListUpdate(transform, param, target) {
   }
   
   transform[param] = items;
+}
+
+// Helper to update expression item preserving object format if needed
+function updateExpressionItem(currentItem, newExpression, newAlias) {
+  // If current item is an object (SELECT columns), maintain object format
+  if (typeof currentItem === 'object' && currentItem !== null) {
+    return {
+      expression: newExpression,
+      name: newAlias || newExpression
+    };
+  }
+  // Otherwise just return the expression (dimensions, etc.)
+  return newExpression;
 }
 
 // Aggregate update handler
@@ -1555,6 +1739,10 @@ document.addEventListener('click', (e) => {
         // Add order expression
         if (!transform[param]) transform[param] = [];
         transform[param].push({ column: '', direction: 'asc' });
+      } else if (param === 'columns' && transform.type === 'select') {
+        // Add SELECT column - use object format to support aliases
+        if (!transform[param]) transform[param] = [];
+        transform[param].push({ expression: '', name: '' });
       } else {
         // Add list item
         if (!transform[param]) transform[param] = [];
@@ -1591,9 +1779,35 @@ document.addEventListener('click', (e) => {
     }
   }
 
+  // "as" toggle for expression items (SELECT columns) - toggle alias visibility
+  if (target.classList.contains('expr-as-toggle')) {
+    const exprItem = target.closest('.expression-item');
+    const wrapper = target.closest('.expr-alias-wrapper');
+    const aliasInput = exprItem?.querySelector('.expr-alias');
+    
+    if (exprItem && aliasInput) {
+      const hasAlias = exprItem.classList.toggle('has-alias');
+      
+      if (hasAlias) {
+        // If toggling on and no value, use default alias
+        if (!aliasInput.value && wrapper?.dataset.defaultAlias) {
+          aliasInput.value = wrapper.dataset.defaultAlias;
+          // Trigger input event to save the value
+          aliasInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        // Focus the input
+        setTimeout(() => aliasInput.focus(), 50);
+      } else {
+        // If toggling off, clear the alias
+        aliasInput.value = '';
+        aliasInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+  }
+
   // List remove button
   if (target.classList.contains('list-item-remove')) {
-    const listItem = target.closest('.list-item, .aggregate-item, .order-item');
+    const listItem = target.closest('.list-item, .aggregate-item, .order-item, .expression-item, .dimension-item');
     if (!listItem) return;
 
     const container = target.closest('[data-param][data-transform-id]');
@@ -1684,6 +1898,52 @@ document.addEventListener('change', (e) => {
     } else {
       items[index] = currentColumn;
       if (dimItem) dimItem.classList.remove('has-function');
+    }
+    
+    visualEditor.notifyChange();
+  }
+  
+  // Handle expression function select (SELECT columns, EXTEND, etc.)
+  if (target.classList.contains('expr-function')) {
+    const container = target.closest('[data-param][data-transform-id]');
+    if (!container) return;
+    
+    const transformId = container.dataset.transformId;
+    const param = container.dataset.param;
+    const index = parseInt(target.dataset.listIndex);
+    
+    // Find transform
+    let transform = null;
+    for (const pipeline of visualEditor.pipelines) {
+      transform = pipeline.transforms.find(t => t.id === transformId);
+      if (transform) break;
+    }
+    
+    if (!transform || !transform[param]) return;
+    
+    const items = transform[param];
+    const currentItem = items[index];
+    const parsed = visualEditor.parseExpressionValue(currentItem);
+    const newFunc = target.value;
+    const exprItem = target.closest('.expression-item');
+    
+    let newExpr;
+    if (newFunc) {
+      newExpr = `${newFunc}(${parsed.column})`;
+      if (exprItem) exprItem.classList.add('has-function');
+    } else {
+      newExpr = parsed.column;
+      if (exprItem) exprItem.classList.remove('has-function');
+    }
+    
+    // Preserve object format for SELECT columns
+    if (typeof currentItem === 'object' && currentItem !== null) {
+      items[index] = {
+        expression: newExpr,
+        name: parsed.alias || newExpr
+      };
+    } else {
+      items[index] = newExpr;
     }
     
     visualEditor.notifyChange();

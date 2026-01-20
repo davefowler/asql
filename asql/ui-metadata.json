@@ -202,7 +202,7 @@
       "category": "select",
       "description": "Choose which columns to return",
       "parameters": [
-        { "name": "columns", "type": "expression[]", "required": true, "widget": "list" }
+        { "name": "columns", "type": "expression[]", "required": true, "widget": "list", "help": "Column names or expressions like month(date), upper(name)" }
       ]
     },
     "limit": {

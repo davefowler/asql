@@ -389,6 +389,7 @@
 
 .list-item:hover .list-item-remove,
 .aggregate-item:hover .list-item-remove,
+.expression-item:hover .list-item-remove,
 .dimension-item:hover .list-item-remove,
 .order-item:hover .list-item-remove {
   color: #aaa;
@@ -398,13 +399,19 @@
   color: #333 !important;
 }
 
-/* Dimension items - with optional function wrapper */
+/* ============================================================================
+   Expression Items - Shared component for function(column) AS alias pattern
+   Used by: SELECT columns, GROUP BY dimensions, EXTEND columns
+   ============================================================================ */
+
+.expression-items,
 .dimension-items {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
+.expression-item,
 .dimension-item {
   display: inline-flex;
   align-items: center;
@@ -413,10 +420,13 @@
   padding: 0;
 }
 
+.expression-item::after,
 .dimension-item::after {
   content: '';
 }
 
+/* Expression content box (contains function + column) */
+.expr-content,
 .dimension-expr {
   display: inline-flex;
   align-items: center;
@@ -426,11 +436,15 @@
   padding: 2px 6px;
 }
 
+/* Function wrapper */
+.expr-func-wrapper,
 .dim-func-wrapper {
   display: inline-flex;
   align-items: center;
 }
 
+/* Function dropdown */
+.expr-function,
 .dim-function {
   font-weight: 500;
   color: #0066cc;
@@ -441,11 +455,13 @@
   cursor: pointer;
 }
 
+.expr-function option[value=""],
 .dim-function option[value=""] {
   color: #ccc;
 }
 
-/* Hide parens when no function selected */
+/* Parentheses - hide when no function selected */
+.expr-paren,
 .dim-paren {
   color: #666;
   font-weight: 500;
@@ -456,16 +472,69 @@
 }
 
 /* Show parens when function is selected */
+.expression-item.has-function .expr-paren,
 .dimension-item.has-function .dim-paren {
   opacity: 1;
   width: auto;
 }
 
+.expression-item.has-function .expr-open-paren,
 .dimension-item.has-function .dim-open-paren {
   margin-left: 2px;
 }
 
-/* Blocky style for dimensions */
+/* Alias wrapper for expression items */
+.expr-alias-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+/* "as" toggle - hidden by default, shown on hover or when has alias */
+.expr-as-toggle {
+  color: #ccc;
+  font-weight: 500;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  user-select: none;
+}
+
+.expression-item:hover .expr-as-toggle {
+  opacity: 1;
+}
+
+.expr-as-toggle:hover {
+  color: #0066cc;
+}
+
+/* When has alias, show "as" and input */
+.expression-item.has-alias .expr-as-toggle {
+  opacity: 1;
+  color: #0066cc;
+}
+
+/* Hide alias input when no alias */
+.expr-alias {
+  width: 0;
+  opacity: 0;
+  padding: 0 !important;
+  border: none !important;
+  transition: width 0.15s, opacity 0.15s, padding 0.15s;
+}
+
+/* Show alias input when has alias */
+.expression-item.has-alias .expr-alias {
+  width: auto;
+  opacity: 1;
+  padding: 0 4px !important;
+  border-bottom: 1px dashed #ccc !important;
+}
+
+/* Blocky style for expression items */
+.visual-style-blocky .expr-content,
 .visual-style-blocky .dimension-expr {
   background: #f0f4f8;
   border: 1px solid #d0d8e0;
@@ -473,8 +542,35 @@
   padding: 4px 10px;
 }
 
+.visual-style-blocky .expr-function,
 .visual-style-blocky .dim-function {
   color: #0066cc;
+}
+
+.visual-style-blocky .expr-as-toggle {
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #ccc;
+}
+
+.visual-style-blocky .expression-item:hover .expr-as-toggle {
+  background: #e8f0ff;
+}
+
+.visual-style-blocky .expression-item.has-alias .expr-as-toggle {
+  background: #e8f0ff;
+  color: #0066cc;
+}
+
+.visual-style-blocky .expr-alias {
+  background: #f8fafc;
+  border-radius: 4px;
+}
+
+.visual-style-blocky .expression-item.has-alias .expr-alias {
+  border: 1px solid #d8e0e8 !important;
+  padding: 4px 8px !important;
 }
 
 /* Aggregate items - function call style */

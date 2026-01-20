@@ -173,5 +173,236 @@
         ]
       }
     ]
+  },
+  {
+    "title": "Customer Orders Report",
+    "desc": "Join customers with orders, aggregate and filter high-value customers",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "customers",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "join",
+            "join_type": "left",
+            "table": "orders",
+            "condition": "customers.id = orders.customer_id"
+          },
+          {
+            "id": "t1",
+            "type": "where",
+            "condition": "orders.created_at >= '2024-01-01'"
+          },
+          {
+            "id": "t2",
+            "type": "group_by",
+            "dimensions": ["customers.id", "customers.name", "customers.email"],
+            "aggregates": [
+              {"function": "count", "column": "*", "alias": "order_count"},
+              {"function": "sum", "column": "orders.total", "alias": "total_spent"},
+              {"function": "avg", "column": "orders.total", "alias": "avg_order"},
+              {"function": "max", "column": "orders.created_at", "alias": "last_order"}
+            ]
+          },
+          {
+            "id": "t3",
+            "type": "having",
+            "condition": "total_spent > 1000"
+          },
+          {
+            "id": "t4",
+            "type": "order_by",
+            "expressions": [{"column": "total_spent", "direction": "desc"}]
+          },
+          {
+            "id": "t5",
+            "type": "limit",
+            "count": 50
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Product Performance Analysis",
+    "desc": "Multi-join analysis of products, orders, and categories",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "products",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "join",
+            "join_type": "inner",
+            "table": "categories",
+            "condition": "products.category_id = categories.id"
+          },
+          {
+            "id": "t1",
+            "type": "join",
+            "join_type": "left",
+            "table": "order_items",
+            "condition": "products.id = order_items.product_id"
+          },
+          {
+            "id": "t2",
+            "type": "join",
+            "join_type": "left",
+            "table": "orders",
+            "condition": "order_items.order_id = orders.id"
+          },
+          {
+            "id": "t3",
+            "type": "where",
+            "condition": "orders.status = 'completed' OR orders.id IS NULL"
+          },
+          {
+            "id": "t4",
+            "type": "group_by",
+            "dimensions": ["categories.name", "products.name", "products.price"],
+            "aggregates": [
+              {"function": "count", "column": "order_items.id", "alias": "times_ordered"},
+              {"function": "sum", "column": "order_items.quantity", "alias": "total_units"},
+              {"function": "sum", "column": "order_items.subtotal", "alias": "revenue"},
+              {"function": "avg", "column": "order_items.quantity", "alias": "avg_qty_per_order"}
+            ]
+          },
+          {
+            "id": "t5",
+            "type": "order_by",
+            "expressions": [
+              {"column": "categories.name", "direction": "asc"},
+              {"column": "revenue", "direction": "desc"}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Monthly Revenue by Channel",
+    "desc": "Time-series aggregation with multiple dimensions and metrics",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "orders",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "join",
+            "join_type": "inner",
+            "table": "customers",
+            "condition": "orders.customer_id = customers.id"
+          },
+          {
+            "id": "t1",
+            "type": "where",
+            "condition": "orders.status IN ('completed', 'shipped')"
+          },
+          {
+            "id": "t2",
+            "type": "group_by",
+            "dimensions": ["month(orders.created_at)", "customers.acquisition_channel"],
+            "aggregates": [
+              {"function": "sum", "column": "orders.total", "alias": "revenue"},
+              {"function": "count", "column": "*", "alias": "order_count"},
+              {"function": "count_distinct", "column": "orders.customer_id", "alias": "unique_customers"},
+              {"function": "avg", "column": "orders.total", "alias": "avg_order_value"}
+            ]
+          },
+          {
+            "id": "t3",
+            "type": "having",
+            "condition": "order_count >= 10"
+          },
+          {
+            "id": "t4",
+            "type": "order_by",
+            "expressions": [
+              {"column": "month(orders.created_at)", "direction": "asc"},
+              {"column": "revenue", "direction": "desc"}
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Employee Sales Leaderboard",
+    "desc": "Complex join with filters, aggregation, and ranking",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "employees",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "join",
+            "join_type": "inner",
+            "table": "departments",
+            "condition": "employees.department_id = departments.id"
+          },
+          {
+            "id": "t1",
+            "type": "join",
+            "join_type": "left",
+            "table": "sales",
+            "condition": "employees.id = sales.employee_id"
+          },
+          {
+            "id": "t2",
+            "type": "where",
+            "condition": "employees.status = 'active' AND sales.sale_date >= '2024-01-01'"
+          },
+          {
+            "id": "t3",
+            "type": "group_by",
+            "dimensions": ["departments.name", "employees.id", "employees.name"],
+            "aggregates": [
+              {"function": "sum", "column": "sales.amount", "alias": "total_sales"},
+              {"function": "count", "column": "sales.id", "alias": "deal_count"},
+              {"function": "avg", "column": "sales.amount", "alias": "avg_deal_size"},
+              {"function": "max", "column": "sales.amount", "alias": "largest_deal"}
+            ]
+          },
+          {
+            "id": "t4",
+            "type": "having",
+            "condition": "deal_count > 0"
+          },
+          {
+            "id": "t5",
+            "type": "order_by",
+            "expressions": [
+              {"column": "departments.name", "direction": "asc"},
+              {"column": "total_sales", "direction": "desc"}
+            ]
+          },
+          {
+            "id": "t6",
+            "type": "limit",
+            "count": 100
+          }
+        ]
+      }
+    ]
   }
 ]
