@@ -71,7 +71,11 @@ pip install -e ./integrations/dbt-asql
 
 ## Usage
 
-### 1. Create `.asql` models
+### Option 1: CLI Preprocessor (Recommended)
+
+The CLI approach compiles `.asql` files to `.sql` before running dbt.
+
+**1. Create `.asql` models**
 
 ```
 models/
@@ -81,7 +85,7 @@ models/
     └── revenue.asql        # ASQL model ✨
 ```
 
-### 2. Write ASQL
+**2. Write ASQL**
 
 ```asql
 -- models/marts/revenue.asql
@@ -92,18 +96,49 @@ from stg_orders
   group by region ( sum(amount) as revenue )
 ```
 
-### 3. Run dbt as usual
+**3. Compile and run**
 
 ```bash
+# Compile .asql → .sql
+dbt-asql compile
+
+# Run dbt as usual
 dbt run
 ```
 
-dbt-asql automatically:
-1. Detects `.asql` files
-2. Compiles ASQL → SQL
-3. Expands `{{ variable }}` → `{{ var('variable') }}`
-4. Resolves table names → `{{ ref('...') }}`
-5. Passes result to dbt
+**CLI Commands:**
+
+```bash
+# Compile all .asql files to .sql
+dbt-asql compile
+
+# Compile with specific dialect
+dbt-asql compile --dialect snowflake
+
+# Clean generated .sql files
+dbt-asql clean
+
+# Show help
+dbt-asql --help
+```
+
+### Option 2: Jinja Extension
+
+For inline ASQL in `.sql` files, use the `{% asql %}` tags:
+
+```sql
+-- models/marts/revenue.sql
+
+{% asql %}
+SET materialized = table;
+
+from stg_orders
+  where status = 'completed'
+  group by region ( sum(amount) as revenue )
+{% endasql %}
+```
+
+This approach works automatically when dbt-asql is installed.
 
 ## Syntax Reference
 
@@ -144,12 +179,35 @@ Jinja conditionals work unchanged:
 
 ## How It Works
 
-1. **File Detection**: dbt-asql hooks into dbt's model loading
-2. **ASQL Compilation**: `.asql` files are compiled to SQL using the ASQL compiler
-3. **Manifest Lookup**: Table names are matched against dbt's manifest to identify model refs
-4. **Variable Expansion**: `{{ var }}` syntax is expanded to `{{ var('var') }}`
-5. **Config Extraction**: `SET` statements become `{{ config(...) }}`
-6. **Jinja Passthrough**: `{% %}` blocks are preserved for dbt to process
+### CLI Preprocessor
+
+1. **File Discovery**: Scans `models/` for `.asql` files
+2. **ASQL Compilation**: Compiles each file to SQL using the ASQL compiler
+3. **Manifest Lookup**: Reads `target/manifest.json` to identify model refs
+4. **Variable Expansion**: `{{ var }}` → `{{ var('var') }}`
+5. **Config Extraction**: `SET` statements → `{{ config(...) }}`
+6. **Output**: Creates `.sql` file alongside each `.asql` file
+
+### Jinja Extension
+
+1. **Environment Patch**: Adds `{% asql %}` tag to dbt's Jinja environment
+2. **Block Parsing**: Captures content between `{% asql %}` and `{% endasql %}`
+3. **Compilation**: Compiles ASQL → SQL inline
+4. **Passthrough**: Returns SQL for dbt to process
+
+## Technical Notes
+
+### Why a CLI instead of native dbt plugin?
+
+dbt's current plugin API (`dbtPlugin`) is designed for injecting nodes into the DAG, not for custom file extensions. The file extension handling is hardcoded in `dbt/parser/read_files.py` and only supports `.sql` and `.py` for models.
+
+We've explored three approaches:
+
+1. **CLI Preprocessor** ✅ — Works with any dbt version, no patches needed
+2. **Jinja Extension** ✅ — Requires `{% asql %}` wrappers, but works automatically
+3. **dbt Core PR** ⏳ — Feature request for plugin hooks for custom extensions
+
+See the [research document](../../ai_notes/2026-01-07-dbt-plugin-api-research.md) for details.
 
 ## Development
 
@@ -162,17 +220,20 @@ cd asql
 ./venv/bin/pip install -e ./integrations/dbt-asql
 
 # Run tests
-./venv/bin/pytest integrations/dbt-asql/tests/
+./venv/bin/pytest integrations/dbt-asql/tests/ -v
 ```
 
 ## Roadmap
 
-- [ ] Basic `.asql` file support
-- [ ] Automatic `ref()` resolution
-- [ ] Variable syntax expansion
-- [ ] `SET` → `config()` conversion
+- [x] Basic ASQL → SQL compilation
+- [x] Automatic `ref()` resolution from manifest
+- [x] Variable syntax expansion (`{{ x }}` → `{{ var('x') }}`)
+- [x] `SET` → `config()` conversion
+- [x] CLI preprocessor (`dbt-asql compile`)
+- [x] Jinja extension (`{% asql %}...{% endasql %}`)
 - [ ] Publish to PyPI
 - [ ] VS Code extension support for `.asql` in dbt projects
+- [ ] Watch mode for auto-compilation
 
 ## Related
 
@@ -183,4 +244,3 @@ cd asql
 ## License
 
 MIT — Same as ASQL
-

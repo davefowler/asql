@@ -8,10 +8,18 @@ This module handles:
 4. Resolving table names → {{ ref('...') }}
 """
 
-import re
-from typing import Optional
+from __future__ import annotations
 
-from asql import compile as asql_compile
+import re
+from typing import Optional, Union
+
+try:
+    from asql import compile as asql_compile
+except ImportError as e:
+    raise ImportError(
+        "Failed to import the asql package. "
+        "Please install it with: pip install asql"
+    ) from e
 
 
 def compile_asql_model(
@@ -29,6 +37,9 @@ def compile_asql_model(
         
     Returns:
         SQL code with dbt Jinja expressions
+        
+    Raises:
+        Exception: If ASQL compilation fails
     """
     # Step 1: Extract and convert SET statements to config
     config, remaining_code = _extract_config(asql_code)
@@ -88,7 +99,7 @@ def _extract_config(code: str) -> tuple[dict, str]:
     return config, '\n'.join(lines)
 
 
-def _parse_value(value: str) -> str | int | float | bool | list:
+def _parse_value(value: str) -> Union[str, int, float, bool, list[str]]:
     """Parse a config value from string."""
     value = value.strip().rstrip(';')
     
@@ -139,8 +150,8 @@ def _extract_jinja(code: str) -> tuple[str, dict]:
     Returns:
         (code_with_placeholders, {placeholder: original_jinja})
     """
-    placeholders = {}
-    counter = [0]  # Use list to allow mutation in closure
+    placeholders: dict[str, str] = {}
+    counter: list[int] = [0]  # Use list to allow mutation in closure
     
     def replace(match: re.Match) -> str:
         key = f"__JINJA_{counter[0]}__"
@@ -213,6 +224,8 @@ def _resolve_refs(sql: str, known_models: set[str]) -> str:
     Replace table names with {{ ref('...') }} if they're known models.
     
     Uses regex to find FROM/JOIN clauses and check table names.
+    Note: This is a simplified implementation that handles common cases.
+    It may not handle complex SQL patterns like CTEs or multiline FROM clauses.
     """
     def replace_table(match: re.Match) -> str:
         keyword = match.group(1)  # FROM or JOIN
@@ -231,4 +244,3 @@ def _resolve_refs(sql: str, known_models: set[str]) -> str:
     # Match FROM table or JOIN table (not already using ref/source)
     pattern = r'\b(FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
     return re.sub(pattern, replace_table, sql, flags=re.IGNORECASE)
-
