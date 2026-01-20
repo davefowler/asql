@@ -185,7 +185,7 @@
   font-size: inherit;
   color: var(--asql-variable);
   outline: none;
-  min-width: 60px;
+  min-width: 1ch;
 }
 
 .inline-input:focus,
@@ -216,7 +216,7 @@
 /* Column autocomplete */
 .column-autocomplete {
   color: var(--asql-variable);
-  min-width: 80px;
+  min-width: 1ch;
 }
 
 .column-autocomplete::-webkit-calendar-picker-indicator {
@@ -253,7 +253,7 @@
   font-size: inherit;
   color: var(--asql-variable);
   padding: 0 4px;
-  min-width: 60px;
+  min-width: 1ch;
 }
 
 .expr-column:focus {
@@ -268,7 +268,7 @@
   font-family: inherit;
   font-size: inherit;
   padding: 0 4px;
-  min-width: 40px;
+  min-width: 1ch;
 }
 
 .expr-literal-number {
@@ -441,7 +441,7 @@
   font-size: inherit;
   color: var(--asql-variable);
   padding: 0 4px;
-  min-width: 60px;
+  min-width: 1ch;
 }
 
 .expr-alias-container.has-alias .expr-alias-input {
@@ -595,7 +595,7 @@
   font-size: inherit;
   color: var(--asql-variable);
   padding: 0 4px;
-  min-width: 60px;
+  min-width: 1ch;
 }
 
 .aggregate-item.has-alias .agg-alias {
