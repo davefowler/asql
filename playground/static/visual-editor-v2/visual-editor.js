@@ -76,6 +76,9 @@ class VisualEditorV2 {
       // Load transform schemas
       await this.loadSchemas();
 
+      // Load columns for any existing pipelines
+      await this.loadMissingColumns();
+
       this.initialized = true;
       this.renderAll();
     } catch (error) {
@@ -106,12 +109,17 @@ class VisualEditorV2 {
    * Render all pipelines
    */
   renderAll() {
-    const container = document.getElementById('transforms-container');
+    // Use the parent .visual-editor container, not just transforms-container
+    // This allows v2 to take over the full visual editor area
+    let container = document.getElementById('transforms-container');
     if (!container) return;
 
     // Clean up old instances
     this.cleanup();
     container.innerHTML = '';
+
+    // Hide the static HTML elements that conflict with v2
+    this.hideStaticElements();
 
     this.pipelines.forEach((pipeline, pipelineIdx) => {
       const pipelineEl = this.renderPipeline(pipeline, pipelineIdx);
@@ -128,6 +136,24 @@ class VisualEditorV2 {
   }
 
   /**
+   * Hide static HTML elements that conflict with v2's rendering
+   */
+  hideStaticElements() {
+    // Hide the static FROM block (v2 renders its own)
+    // The static block has class "block from-block"
+    const staticFromBlock = document.querySelector('#visual-editor-container > .visual-editor > .block.from-block');
+    if (staticFromBlock) {
+      staticFromBlock.style.display = 'none';
+    }
+
+    // Hide the static add-step dropdown (v2 renders its own)
+    const staticAddStep = document.getElementById('add-step-btn');
+    if (staticAddStep) {
+      staticAddStep.style.display = 'none';
+    }
+  }
+
+  /**
    * Render a single pipeline
    */
   renderPipeline(pipeline, pipelineIdx) {
@@ -135,8 +161,15 @@ class VisualEditorV2 {
     div.className = 'pipeline-block input-pipeline';
     div.dataset.pipelineIndex = pipelineIdx;
 
-    // Header with name input
-    div.appendChild(this.renderPipelineHeader(pipeline, pipelineIdx));
+    // Remove button (if multiple pipelines)
+    if (this.pipelines.length > 1) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'pipeline-remove-btn';
+      removeBtn.textContent = '×';
+      removeBtn.title = 'Remove pipeline';
+      removeBtn.addEventListener('click', () => this.removePipeline(pipelineIdx));
+      div.appendChild(removeBtn);
+    }
 
     // FROM block
     div.appendChild(this.renderFromBlock(pipeline, pipelineIdx));
@@ -148,42 +181,6 @@ class VisualEditorV2 {
     div.appendChild(this.renderAddStepDropdown(pipelineIdx));
 
     return div;
-  }
-
-  /**
-   * Render pipeline header with name input
-   */
-  renderPipelineHeader(pipeline, pipelineIdx) {
-    const header = document.createElement('div');
-    header.className = 'pipeline-header';
-
-    // Remove button (if multiple pipelines)
-    if (this.pipelines.length > 1) {
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'pipeline-remove-btn';
-      removeBtn.textContent = '×';
-      removeBtn.title = 'Remove pipeline';
-      removeBtn.addEventListener('click', () => this.removePipeline(pipelineIdx));
-      header.appendChild(removeBtn);
-    }
-
-    const label = document.createElement('span');
-    label.className = 'pipeline-name-label';
-    label.textContent = 'Pipeline name (for CTE):';
-    header.appendChild(label);
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'pipeline-name-input';
-    input.placeholder = 'optional (e.g. active_users)';
-    input.value = pipeline.name || '';
-    input.addEventListener('input', (e) => {
-      pipeline.name = e.target.value || null;
-      this.notifyChange();
-    });
-    header.appendChild(input);
-
-    return header;
   }
 
   /**
@@ -219,8 +216,16 @@ class VisualEditorV2 {
       select.appendChild(opt);
     });
 
-    select.addEventListener('change', (e) => {
-      pipeline.from = { table: e.target.value };
+    select.addEventListener('change', async (e) => {
+      const tableName = e.target.value;
+      pipeline.from = { table: tableName };
+      
+      // Fetch table columns from schema API
+      if (tableName) {
+        await this.loadTableColumns(pipeline, tableName);
+      }
+      
+      this.renderAll();
       this.notifyChange();
     });
 
@@ -233,6 +238,27 @@ class VisualEditorV2 {
     }
 
     return block;
+  }
+
+  /**
+   * Load columns for a table from the schema API
+   */
+  async loadTableColumns(pipeline, tableName) {
+    try {
+      const response = await fetch(`/api/schema/tables/${encodeURIComponent(tableName)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.columns && typeof data.columns === 'object') {
+          // API returns {name: type} object format
+          pipeline.from.output_columns = Object.entries(data.columns).map(([name, type]) => ({
+            name,
+            type
+          }));
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load table columns:', error);
+    }
   }
 
   /**
@@ -1031,7 +1057,7 @@ class VisualEditorV2 {
   /**
    * Set query data (for loading saved queries)
    */
-  setQuery(data) {
+  async setQuery(data) {
     if (Array.isArray(data)) {
       this.pipelines = data;
     } else if (data && typeof data === 'object') {
@@ -1047,7 +1073,22 @@ class VisualEditorV2 {
       });
     });
 
+    // Load columns for tables that don't have them
+    await this.loadMissingColumns();
+
     this.renderAll();
+  }
+
+  /**
+   * Load columns for any tables that are missing output_columns
+   */
+  async loadMissingColumns() {
+    const promises = this.pipelines.map(async (pipeline) => {
+      if (pipeline.from?.table && !pipeline.from.output_columns) {
+        await this.loadTableColumns(pipeline, pipeline.from.table);
+      }
+    });
+    await Promise.all(promises);
   }
 
   /**
@@ -1055,6 +1096,110 @@ class VisualEditorV2 {
    */
   getQuery() {
     return this.pipelines.length === 1 ? this.pipelines[0] : this.pipelines;
+  }
+
+  /**
+   * Load query from JSON object (API expected by playground.js)
+   */
+  async loadFromJSON(json) {
+    if (!json) {
+      this.pipelines = [{ name: null, from: { table: '' }, transforms: [] }];
+      this.currentPipelineIndex = 0;
+      this.renderAll();
+      return;
+    }
+
+    // Handle both array and single object format
+    if (Array.isArray(json)) {
+      this.pipelines = json.length > 0 ? json : [{ name: null, from: { table: '' }, transforms: [] }];
+    } else if (typeof json === 'object') {
+      this.pipelines = [json];
+    } else {
+      this.pipelines = [{ name: null, from: { table: '' }, transforms: [] }];
+    }
+
+    this.currentPipelineIndex = 0;
+
+    // Ensure transform IDs exist
+    this.pipelines.forEach(pipeline => {
+      (pipeline.transforms || []).forEach(t => {
+        if (!t.id) {
+          t.id = `t${this.nextTransformId++}`;
+        }
+      });
+    });
+
+    // Load columns for tables
+    await this.loadMissingColumns();
+
+    this.renderAll();
+  }
+
+  /**
+   * Load query from ASQL text (API expected by playground.js)
+   */
+  async loadFromASQL(asql) {
+    if (!asql || !asql.trim()) {
+      this.pipelines = [{ name: null, from: { table: '' }, transforms: [] }];
+      this.currentPipelineIndex = 0;
+      this.renderAll();
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/visual/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asql })
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to parse ASQL: HTTP', response.status);
+        return;
+      }
+      
+      const data = await response.json();
+
+      if (data.success) {
+        await this.loadFromJSON(data.query);
+      } else {
+        console.error('Failed to parse ASQL:', data.error);
+      }
+    } catch (error) {
+      console.error('Error parsing ASQL:', error);
+    }
+  }
+
+  /**
+   * Get ASQL text from current query (API expected by playground.js)
+   */
+  async getASQL() {
+    try {
+      const queryData = this.pipelines.length > 1 ? this.pipelines : this.pipelines[0];
+      
+      const response = await fetch('/api/visual/compile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: queryData })
+      });
+      
+      if (!response.ok) {
+        console.error('Failed to compile ASQL: HTTP', response.status);
+        return '';
+      }
+      
+      const data = await response.json();
+
+      if (data.success) {
+        return data.asql;
+      } else {
+        console.error('Failed to compile ASQL:', data.error);
+        return '';
+      }
+    } catch (error) {
+      console.error('Error compiling ASQL:', error);
+      return '';
+    }
   }
 
   /**
