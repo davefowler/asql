@@ -97,7 +97,8 @@ class SortableList {
     if (rendered instanceof HTMLElement) {
       content.appendChild(rendered);
     } else if (typeof rendered === 'string') {
-      content.innerHTML = rendered;
+      // Use textContent for safety - prevents XSS when renderItem returns user data
+      content.textContent = rendered;
     }
     wrapper.appendChild(content);
 

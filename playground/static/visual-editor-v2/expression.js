@@ -23,7 +23,7 @@ class Expression {
    */
   constructor(options) {
     this.value = this.parseValue(options.value);
-    this.id = options.id || `expr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    this.id = options.id || `expr-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     this.showAlias = options.showAlias ?? false;
     this.functionCategories = options.functionCategories || ['date', 'string', 'math'];
     this.onChange = options.onChange || (() => {});
@@ -782,6 +782,29 @@ class Expression {
    */
   notifyChange() {
     this.onChange(this.toOutput());
+  }
+
+  /**
+   * Clean up event listeners and timeouts to prevent memory leaks
+   */
+  destroy() {
+    // Clear hover timeout
+    if (this.hoverTimeout) {
+      clearTimeout(this.hoverTimeout);
+      this.hoverTimeout = null;
+    }
+
+    // Remove any expand menus that might be open
+    document.querySelectorAll('.expr-expand-menu').forEach(m => m.remove());
+
+    // Clear element reference
+    if (this.element) {
+      this.element = null;
+    }
+
+    // Clear callback references
+    this.onChange = () => {};
+    this.onRemove = null;
   }
 }
 
