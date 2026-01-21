@@ -33,6 +33,9 @@ class VisualASQLGenerator(Generator):
     _KIND_JOIN_MAP: t.ClassVar[t.Dict[str, str]] = {
         "CROSS": "cross",
         "INNER": "inner",
+        "LEFT": "left",
+        "RIGHT": "right",
+        "FULL": "full",
     }
 
     _BINARY_OP_MAP: t.ClassVar[t.Dict[t.Type[exp.Expression], str]] = {

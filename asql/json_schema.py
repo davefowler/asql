@@ -352,10 +352,7 @@ def _expression_to_asql(expr: Union[Dict[str, Any], str]) -> str:
         if operator == "=":
             operator = "=="
 
-        # Handle AND/OR with parentheses
-        if operator in ("and", "or"):
-            return f"({left} {operator} {right})"
-
+        # AND/OR don't need parentheses - ASQL handles precedence correctly
         return f"{left} {operator} {right}"
 
     elif expr_type == "unary_op":
