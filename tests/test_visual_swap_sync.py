@@ -15,6 +15,106 @@ import sqlglot
 # Import ASQL dialects to register them with sqlglot
 import asql.dialect  # noqa: F401 - registers 'asql' dialect
 import asql.visual_dialect  # noqa: F401 - registers 'visual_asql' dialect
+from asql.json_schema import json_to_asql
+
+
+def normalize_visual_json(data):
+    """Extract only semantic content from Visual JSON for comparison.
+    
+    Ignores metadata fields like 'id', 'output_columns', 'alias: null' that
+    are added by the generator but don't affect the query semantics.
+    """
+    if isinstance(data, list):
+        return [normalize_visual_json(p) for p in data]
+    
+    if not isinstance(data, dict):
+        return data
+    
+    result = {}
+    
+    # From clause - just table name
+    if 'from' in data:
+        f = data['from']
+        result['from'] = f.get('table') if isinstance(f, dict) else f
+    
+    # Name (for CTEs) - ignore auto-generated __tmp names
+    name = data.get('name')
+    if name and not name.startswith('__tmp'):
+        result['name'] = name
+    
+    # Transforms - extract semantic content
+    if 'transforms' in data:
+        result['transforms'] = []
+        for t in data['transforms']:
+            ttype = t.get('type')
+            
+            # Skip SELECT * transforms (semantically equivalent to no select)
+            if ttype == 'select':
+                columns = t.get('columns', [])
+                # If all columns are just '*', skip this transform
+                if all(_is_star_column(c) for c in columns):
+                    continue
+            
+            nt = {'type': ttype}
+            
+            # Condition - normalize to string for comparison
+            if 'condition' in t:
+                cond = t['condition']
+                if isinstance(cond, dict):
+                    nt['condition'] = _condition_to_string(cond)
+                else:
+                    nt['condition'] = cond
+            
+            # Copy other semantic fields
+            for key in ['join_type', 'table', 'dimensions', 'aggregates', 
+                        'columns', 'expressions', 'count']:
+                if key in t:
+                    nt[key] = t[key]
+            
+            result['transforms'].append(nt)
+    
+    return result
+
+
+def _is_star_column(col):
+    """Check if a column represents SELECT *."""
+    if isinstance(col, dict):
+        name = col.get('name', '')
+        return name == '*'
+    return col == '*'
+
+
+def _condition_to_string(cond):
+    """Convert structured condition to normalized string."""
+    if isinstance(cond, str):
+        return cond
+    if not isinstance(cond, dict):
+        return str(cond)
+    
+    ctype = cond.get('type')
+    
+    if ctype == 'column':
+        table = cond.get('table', '')
+        name = cond.get('name', '')
+        return f'{table}.{name}' if table else name
+    
+    if ctype == 'literal':
+        val = cond.get('value')
+        dtype = cond.get('data_type')
+        if dtype == 'string':
+            return f"'{val}'"
+        return str(val)
+    
+    if ctype == 'binary_op':
+        left = _condition_to_string(cond.get('left', {}))
+        right = _condition_to_string(cond.get('right', {}))
+        op = cond.get('operator', '=')
+        # Normalize == to =
+        if op == '==':
+            op = '='
+        return f'{left} {op} {right}'
+    
+    return str(cond)
 
 
 # Visual ASQL examples for testing
@@ -492,3 +592,258 @@ class TestSqlSemanticPreservation:
         print(f"\nFilter/sort preservation:")
         print(f"  Original: {sql1}")
         print(f"  Round-trip: {sql2}")
+
+
+class TestVisualAsqlSemanticRoundTrip:
+    """Tests that Visual ASQL → ASQL text → Visual ASQL preserves semantic content.
+    
+    This tests the internal round-trip within ASQL, not SQL dialect conversions.
+    The semantic content should be identical after round-trip.
+    """
+
+    def _assert_semantic_match(self, original_json, name=""):
+        """Helper to test semantic round-trip."""
+        # Normalize original
+        orig_norm = normalize_visual_json(original_json)
+        
+        # Round-trip: Visual JSON -> ASQL text -> Visual JSON
+        asql_text = json_to_asql(original_json)
+        results = sqlglot.transpile(asql_text, read='asql', write='visual_asql')
+        roundtrip_json = json.loads(results[0])
+        rt_norm = normalize_visual_json(roundtrip_json)
+        
+        # Compare normalized versions
+        orig_str = json.dumps(orig_norm, sort_keys=True)
+        rt_str = json.dumps(rt_norm, sort_keys=True)
+        
+        assert orig_str == rt_str, (
+            f"Semantic mismatch in {name}:\n"
+            f"  Original:   {orig_str}\n"
+            f"  Round-trip: {rt_str}"
+        )
+
+    def test_simple_filter_roundtrip(self):
+        """Test simple WHERE clause round-trip."""
+        query = [{
+            'from': {'table': 'users'},
+            'transforms': [
+                {'type': 'where', 'condition': "status = 'active'"}
+            ]
+        }]
+        self._assert_semantic_match(query, "simple filter")
+
+    def test_group_by_roundtrip(self):
+        """Test GROUP BY with aggregates round-trip."""
+        query = [{
+            'from': {'table': 'orders'},
+            'transforms': [
+                {'type': 'group_by', 'dimensions': ['customer_id', 'status'],
+                 'aggregates': [
+                     {'function': 'count', 'column': '*', 'alias': 'total'},
+                     {'function': 'sum', 'column': 'amount', 'alias': 'revenue'}
+                 ]}
+            ]
+        }]
+        self._assert_semantic_match(query, "group by")
+
+    def test_join_roundtrip(self):
+        """Test JOIN round-trip."""
+        query = [{
+            'from': {'table': 'orders'},
+            'transforms': [
+                {'type': 'join', 'join_type': 'inner', 'table': 'customers',
+                 'condition': "orders.customer_id = customers.id"},
+                {'type': 'where', 'condition': "orders.total > 100"}
+            ]
+        }]
+        self._assert_semantic_match(query, "join")
+
+    def test_order_and_limit_roundtrip(self):
+        """Test ORDER BY and LIMIT round-trip."""
+        query = [{
+            'from': {'table': 'users'},
+            'transforms': [
+                {'type': 'order_by', 'expressions': [
+                    {'column': 'name', 'direction': 'asc'},
+                    {'column': 'created_at', 'direction': 'desc'}
+                ]},
+                {'type': 'limit', 'count': 50}
+            ]
+        }]
+        self._assert_semantic_match(query, "order and limit")
+
+    def test_cte_roundtrip(self):
+        """Test CTE (named pipeline) round-trip."""
+        query = [
+            {
+                'name': 'active_users',
+                'from': {'table': 'users'},
+                'transforms': [
+                    {'type': 'where', 'condition': "status = 'active'"}
+                ]
+            },
+            {
+                'from': {'table': 'active_users'},
+                'transforms': [
+                    {'type': 'group_by', 'dimensions': ['country'],
+                     'aggregates': [{'function': 'count', 'column': '*', 'alias': 'total'}]}
+                ]
+            }
+        ]
+        self._assert_semantic_match(query, "CTE")
+
+    def test_complex_pipeline_roundtrip(self):
+        """Test complex pipeline with multiple transforms round-trip.
+        
+        Note: Uses unqualified column names because ASQL strips table qualifiers
+        from GROUP BY dimensions and aggregate columns during transpilation.
+        """
+        query = [{
+            'from': {'table': 'orders'},
+            'transforms': [
+                {'type': 'join', 'join_type': 'left', 'table': 'customers',
+                 'condition': "orders.customer_id = customers.id"},
+                {'type': 'where', 'condition': "orders.status = 'completed'"},
+                {'type': 'group_by', 'dimensions': ['country'],
+                 'aggregates': [
+                     {'function': 'count', 'column': '*', 'alias': 'order_count'},
+                     {'function': 'sum', 'column': 'total', 'alias': 'revenue'}
+                 ]},
+                {'type': 'order_by', 'expressions': [{'column': 'revenue', 'direction': 'desc'}]},
+                {'type': 'limit', 'count': 10}
+            ]
+        }]
+        self._assert_semantic_match(query, "complex pipeline")
+
+    @pytest.mark.xfail(reason="ASQL transpiler creates extra __tmp CTEs for multi-CTE queries")
+    def test_multi_cte_roundtrip(self):
+        """Test multiple CTEs round-trip.
+        
+        Known issue: ASQL creates extra intermediate CTEs (__tmp1, etc.) when
+        transpiling multi-CTE queries, which breaks the round-trip.
+        """
+        query = [
+            {
+                'name': 'filtered',
+                'from': {'table': 'orders'},
+                'transforms': [
+                    {'type': 'join', 'join_type': 'inner', 'table': 'customers',
+                     'condition': "orders.customer_id = customers.id"},
+                    {'type': 'where', 'condition': "orders.status = 'completed'"}
+                ]
+            },
+            {
+                'name': 'aggregated',
+                'from': {'table': 'filtered'},
+                'transforms': [
+                    {'type': 'group_by', 'dimensions': ['country'],
+                     'aggregates': [{'function': 'sum', 'column': 'total', 'alias': 'revenue'}]}
+                ]
+            },
+            {
+                'from': {'table': 'aggregated'},
+                'transforms': [
+                    {'type': 'where', 'condition': 'revenue > 1000'},
+                    {'type': 'order_by', 'expressions': [{'column': 'revenue', 'direction': 'desc'}]}
+                ]
+            }
+        ]
+        self._assert_semantic_match(query, "multi CTE")
+
+
+class TestSqlIdentityRoundTrip:
+    """Tests that Visual ASQL → SQL → Visual ASQL → SQL produces identical SQL.
+    
+    This ensures that converting to SQL and back doesn't lose or change information.
+    """
+
+    def _assert_sql_identity(self, visual_json, dialect='snowflake', name=""):
+        """Helper to test SQL identity after round-trip."""
+        # Step 1: Visual JSON → SQL
+        json_str = json.dumps(visual_json)
+        results1 = sqlglot.transpile(json_str, read='visual_asql', write=dialect)
+        sql1 = results1[0]
+        
+        # Step 2: SQL → Visual JSON
+        results2 = sqlglot.transpile(sql1, read=dialect, write='visual_asql')
+        visual_json2 = json.loads(results2[0])
+        
+        # Step 3: Visual JSON → SQL (again)
+        json_str2 = json.dumps(visual_json2)
+        results3 = sqlglot.transpile(json_str2, read='visual_asql', write=dialect)
+        sql2 = results3[0]
+        
+        # Normalize for comparison
+        def normalize(sql):
+            try:
+                parsed = sqlglot.parse_one(sql, dialect=dialect)
+                return parsed.sql(dialect=dialect, pretty=False)
+            except:
+                return sql.strip()
+        
+        sql1_norm = normalize(sql1)
+        sql2_norm = normalize(sql2)
+        
+        assert sql1_norm == sql2_norm, (
+            f"SQL not identical after round-trip ({name}):\n"
+            f"  SQL1: {sql1_norm}\n"
+            f"  SQL2: {sql2_norm}"
+        )
+
+    def test_simple_filter_sql_identity(self):
+        """Test simple WHERE produces identical SQL."""
+        query = [{'from': {'table': 'users'},
+                  'transforms': [{'type': 'where', 'condition': "status = 'active'"}]}]
+        self._assert_sql_identity(query, name="simple filter")
+
+    def test_compound_filter_sql_identity(self):
+        """Test compound WHERE with AND produces identical SQL."""
+        query = [{'from': {'table': 'users'},
+                  'transforms': [{'type': 'where', 'condition': "status = 'active' and age > 18"}]}]
+        self._assert_sql_identity(query, name="compound filter")
+
+    def test_group_by_sql_identity(self):
+        """Test GROUP BY produces identical SQL."""
+        query = [{'from': {'table': 'orders'},
+                  'transforms': [{'type': 'group_by', 'dimensions': ['country'],
+                                  'aggregates': [{'function': 'count', 'column': '*', 'alias': 'total'}]}]}]
+        self._assert_sql_identity(query, name="group by")
+
+    def test_join_sql_identity(self):
+        """Test JOIN produces identical SQL."""
+        query = [{'from': {'table': 'orders'},
+                  'transforms': [
+                      {'type': 'join', 'join_type': 'left', 'table': 'customers',
+                       'condition': 'orders.customer_id = customers.id'},
+                      {'type': 'where', 'condition': 'orders.total > 100'}
+                  ]}]
+        self._assert_sql_identity(query, name="join")
+
+    def test_order_limit_sql_identity(self):
+        """Test ORDER BY + LIMIT produces identical SQL."""
+        query = [{'from': {'table': 'users'},
+                  'transforms': [
+                      {'type': 'order_by', 'expressions': [{'column': 'name', 'direction': 'desc'}]},
+                      {'type': 'limit', 'count': 10}
+                  ]}]
+        self._assert_sql_identity(query, name="order + limit")
+
+    def test_cte_sql_identity(self):
+        """Test CTE produces identical SQL."""
+        query = [
+            {'name': 'active', 'from': {'table': 'users'},
+             'transforms': [{'type': 'where', 'condition': "status = 'active'"}]},
+            {'from': {'table': 'active'},
+             'transforms': [{'type': 'limit', 'count': 10}]}
+        ]
+        self._assert_sql_identity(query, name="CTE")
+
+    @pytest.mark.parametrize("dialect", ["snowflake", "postgres", "duckdb"])
+    def test_sql_identity_across_dialects(self, dialect):
+        """Test SQL identity works across different dialects."""
+        query = [{'from': {'table': 'users'},
+                  'transforms': [
+                      {'type': 'where', 'condition': "status = 'active'"},
+                      {'type': 'limit', 'count': 10}
+                  ]}]
+        self._assert_sql_identity(query, dialect=dialect, name=f"dialect {dialect}")
