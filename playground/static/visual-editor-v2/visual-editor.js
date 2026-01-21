@@ -418,7 +418,9 @@ class VisualEditorV2 {
     if (param.min !== undefined) input.min = param.min;
     if (param.max !== undefined) input.max = param.max;
     input.addEventListener('input', (e) => {
-      transform[param.name] = parseInt(e.target.value, 10) || 0;
+      const val = e.target.value.trim();
+      // Use undefined for empty values so optional fields can be cleared
+      transform[param.name] = val === '' ? undefined : (parseInt(val, 10) || 0);
       this.notifyChange();
     });
     return input;
@@ -1010,9 +1012,17 @@ class VisualEditorV2 {
   removePipeline(pipelineIdx) {
     if (this.pipelines.length <= 1) return;
 
-    // Remove set operation from previous pipeline
+    // Preserve set_operation when removing a middle pipeline
+    const removedSetOp = this.pipelines[pipelineIdx]?.set_operation;
     if (pipelineIdx > 0) {
-      delete this.pipelines[pipelineIdx - 1].set_operation;
+      if (pipelineIdx < this.pipelines.length - 1) {
+        // Middle pipeline: carry forward its set_operation to previous pipeline
+        this.pipelines[pipelineIdx - 1].set_operation = 
+          removedSetOp || { type: 'union', all: false };
+      } else {
+        // Last pipeline: remove set_operation from previous
+        delete this.pipelines[pipelineIdx - 1].set_operation;
+      }
     }
 
     this.pipelines.splice(pipelineIdx, 1);
@@ -1055,6 +1065,27 @@ class VisualEditorV2 {
   }
 
   /**
+   * Normalize transform IDs and update nextTransformId to avoid collisions
+   */
+  normalizeTransformIds() {
+    let maxId = -1;
+    this.pipelines.forEach(pipeline => {
+      (pipeline.transforms || []).forEach(t => {
+        if (!t.id) {
+          t.id = `t${this.nextTransformId++}`;
+        }
+        const match = /^t(\d+)$/.exec(t.id);
+        if (match) {
+          maxId = Math.max(maxId, parseInt(match[1], 10));
+        }
+      });
+    });
+    if (maxId >= 0) {
+      this.nextTransformId = Math.max(this.nextTransformId, maxId + 1);
+    }
+  }
+
+  /**
    * Set query data (for loading saved queries)
    */
   async setQuery(data) {
@@ -1064,14 +1095,8 @@ class VisualEditorV2 {
       this.pipelines = [data];
     }
     
-    // Ensure transform IDs exist
-    this.pipelines.forEach(pipeline => {
-      (pipeline.transforms || []).forEach(t => {
-        if (!t.id) {
-          t.id = `t${this.nextTransformId++}`;
-        }
-      });
-    });
+    // Normalize transform IDs to avoid collisions
+    this.normalizeTransformIds();
 
     // Load columns for tables that don't have them
     await this.loadMissingColumns();
@@ -1120,14 +1145,8 @@ class VisualEditorV2 {
 
     this.currentPipelineIndex = 0;
 
-    // Ensure transform IDs exist
-    this.pipelines.forEach(pipeline => {
-      (pipeline.transforms || []).forEach(t => {
-        if (!t.id) {
-          t.id = `t${this.nextTransformId++}`;
-        }
-      });
-    });
+    // Normalize transform IDs to avoid collisions
+    this.normalizeTransformIds();
 
     // Load columns for tables
     await this.loadMissingColumns();
@@ -1217,7 +1236,7 @@ class VisualEditorV2 {
    */
   cleanup() {
     this.expressionInstances.forEach(expr => {
-      // Expression cleanup if needed
+      if (expr.destroy) expr.destroy();
     });
     this.expressionInstances.clear();
 
