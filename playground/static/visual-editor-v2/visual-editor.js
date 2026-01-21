@@ -76,9 +76,6 @@ class VisualEditorV2 {
       // Load transform schemas
       await this.loadSchemas();
 
-      // Load columns for any existing pipelines
-      await this.loadMissingColumns();
-
       this.initialized = true;
       this.renderAll();
     } catch (error) {
@@ -184,81 +181,84 @@ class VisualEditorV2 {
   }
 
   /**
-   * Render FROM block with table selector
+   * Render FROM block using the same schema-driven approach as transforms
    */
   renderFromBlock(pipeline, pipelineIdx) {
-    const block = document.createElement('div');
-    block.className = 'block from-block';
+    const schema = this.schemas['from'];
+    
+    // Ensure pipeline.from exists
+    if (!pipeline.from) {
+      pipeline.from = { table: '' };
+    }
+    
+    // Create a transform-like object for the schema-driven renderer
+    const fromTransform = {
+      type: 'from',
+      id: `from-${pipelineIdx}`,
+      ...pipeline.from
+    };
 
+    const block = document.createElement('div');
+    block.className = 'block from-block transform-block';
+    block.dataset.id = fromTransform.id;
+    block.dataset.pipelineIndex = pipelineIdx;
+
+    // No drag handle for from (not sortable per schema)
+    const isSortable = schema?.sortable !== false;
+    if (isSortable) {
+      const handle = document.createElement('span');
+      handle.className = 'block-drag-handle';
+      handle.innerHTML = '⋮⋮';
+      handle.title = 'Drag to reorder';
+      block.appendChild(handle);
+    }
+
+    // Body with keyword and parameters
     const body = document.createElement('div');
     body.className = 'block-body';
 
+    // Keyword
     const keyword = document.createElement('span');
     keyword.className = 'value-operator';
-    keyword.textContent = 'from';
+    keyword.textContent = schema?.label?.toLowerCase() || 'from';
     body.appendChild(keyword);
 
-    const select = document.createElement('select');
-    select.className = 'pipeline-from-select';
-    select.dataset.pipelineIndex = pipelineIdx;
+    // Parameters from schema
+    if (schema?.parameters) {
+      schema.parameters.forEach(param => {
+        // Link changes back to pipeline.from
+        const paramProxy = new Proxy(fromTransform, {
+          set: (obj, prop, value) => {
+            obj[prop] = value;
+            pipeline.from[prop] = value;
+            return true;
+          }
+        });
+        body.appendChild(this.renderParameter(paramProxy, param, pipelineIdx));
+      });
+    } else {
+      // Fallback if no schema - render basic table select
+      body.appendChild(this.renderTableSelect(pipeline.from, { name: 'table' }, pipelineIdx));
+    }
 
-    // Add options
-    const emptyOpt = document.createElement('option');
-    emptyOpt.value = '';
-    emptyOpt.textContent = 'select table...';
-    select.appendChild(emptyOpt);
-
-    this.availableTables.forEach(table => {
-      const opt = document.createElement('option');
-      opt.value = table;
-      opt.textContent = table;
-      opt.selected = pipeline.from?.table === table;
-      select.appendChild(opt);
-    });
-
-    select.addEventListener('change', async (e) => {
-      const tableName = e.target.value;
-      pipeline.from = { table: tableName };
-      
-      // Fetch table columns from schema API
-      if (tableName) {
-        await this.loadTableColumns(pipeline, tableName);
-      }
-      
-      this.renderAll();
-      this.notifyChange();
-    });
-
-    body.appendChild(select);
     block.appendChild(body);
 
-    // Output columns if available
+    // No delete button for from (not deletable per schema)
+    const isDeletable = schema?.deletable !== false;
+    if (isDeletable) {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'block-delete';
+      deleteBtn.textContent = '×';
+      deleteBtn.title = 'Remove step';
+      block.appendChild(deleteBtn);
+    }
+
+    // Output columns if available (will be populated by backend during transpile)
     if (pipeline.from?.output_columns) {
       block.appendChild(this.renderOutputColumns(pipeline.from.output_columns));
     }
 
     return block;
-  }
-
-  /**
-   * Load columns for a table from the schema API
-   */
-  async loadTableColumns(pipeline, tableName) {
-    try {
-      const response = await fetch(`/api/schema/tables/${encodeURIComponent(tableName)}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.columns && typeof data.columns === 'object') {
-          // API returns {name: type} object format
-          pipeline.from.output_columns = Object.entries(data.columns).map(([name, type]) => ({
-            name,
-            type
-          }));
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to load table columns:', error);
-    }
   }
 
   /**
@@ -384,11 +384,42 @@ class VisualEditorV2 {
       case 'order_list':
         container.appendChild(this.renderOrderList(transform, param, pipelineIdx));
         break;
+      case 'table_select':
+        container.appendChild(this.renderTableSelect(transform, param, pipelineIdx));
+        break;
       default:
         container.textContent = `[${widget}]`;
     }
 
     return container;
+  }
+
+  /**
+   * Render table select dropdown
+   */
+  renderTableSelect(transform, param, pipelineIdx) {
+    const select = document.createElement('select');
+    select.className = 'inline-select table-select';
+
+    const emptyOpt = document.createElement('option');
+    emptyOpt.value = '';
+    emptyOpt.textContent = 'select table...';
+    select.appendChild(emptyOpt);
+
+    this.availableTables.forEach(table => {
+      const opt = document.createElement('option');
+      opt.value = table;
+      opt.textContent = table;
+      opt.selected = transform[param.name] === table;
+      select.appendChild(opt);
+    });
+
+    select.addEventListener('change', (e) => {
+      transform[param.name] = e.target.value;
+      this.notifyChange();
+    });
+
+    return select;
   }
 
   /**
@@ -1073,22 +1104,7 @@ class VisualEditorV2 {
       });
     });
 
-    // Load columns for tables that don't have them
-    await this.loadMissingColumns();
-
     this.renderAll();
-  }
-
-  /**
-   * Load columns for any tables that are missing output_columns
-   */
-  async loadMissingColumns() {
-    const promises = this.pipelines.map(async (pipeline) => {
-      if (pipeline.from?.table && !pipeline.from.output_columns) {
-        await this.loadTableColumns(pipeline, pipeline.from.table);
-      }
-    });
-    await Promise.all(promises);
   }
 
   /**
@@ -1128,9 +1144,6 @@ class VisualEditorV2 {
         }
       });
     });
-
-    // Load columns for tables
-    await this.loadMissingColumns();
 
     this.renderAll();
   }

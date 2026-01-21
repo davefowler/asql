@@ -769,6 +769,128 @@ async def compile_from_visual(request: Request):
         return {"success": False, "error": f"Compilation error: {str(e)}"}
 
 
+@app.post("/api/visual/transpile")
+async def transpile_from_visual(request: Request):
+    """
+    Full transpile from visual JSON: JSON → ASQL → SQL, with column tracking.
+    
+    This is the main endpoint for the visual editor. It:
+    1. Converts visual JSON to ASQL
+    2. Transpiles ASQL to target SQL dialect
+    3. Enriches the visual JSON with output_columns at each step
+    
+    Request body:
+        {
+            "query": {"from": {"table": "orders"}, "transforms": [...]},
+            "target_dialect": "duckdb"  // optional, defaults to "duckdb"
+        }
+    
+    Response:
+        {
+            "success": true,
+            "asql": "from orders...",
+            "sql": "SELECT * FROM orders...",
+            "enriched_query": {...}  // query with output_columns populated
+        }
+    """
+    try:
+        data = await request.json()
+        query_json = data.get("query", {})
+        target_dialect = data.get("target_dialect", "duckdb")
+        
+        if not query_json:
+            return {"success": False, "error": "No query provided"}
+        
+        # Step 1: Convert JSON to ASQL
+        asql_text = json_to_asql(query_json)
+        
+        # Step 2: Transpile to target dialect with schema
+        from sqlglot.schema import MappingSchema
+        schema = MappingSchema(PLAYGROUND_SCHEMA)
+        
+        result = asql.transpile(
+            asql_text,
+            read="asql",
+            write=target_dialect,
+            schema=schema,
+        )
+        sql_text = result[0] if result else ""
+        
+        # Step 3: Enrich query with column info
+        # Parse the ASQL to get column information at each step
+        enriched_query = enrich_query_with_columns(query_json, asql_text, schema)
+        
+        return {
+            "success": True,
+            "asql": asql_text,
+            "sql": sql_text,
+            "enriched_query": enriched_query
+        }
+    except ASQLSyntaxError as e:
+        return {"success": False, "error": f"Syntax error: {str(e)}"}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": f"Transpile error: {str(e)}"}
+
+
+def enrich_query_with_columns(query_json: dict, asql_text: str, schema) -> dict:
+    """
+    Enrich visual JSON with output_columns at each step.
+    
+    Uses the schema to determine what columns are available after each transform.
+    """
+    import copy
+    enriched = copy.deepcopy(query_json)
+    
+    # Handle array of pipelines
+    pipelines = enriched if isinstance(enriched, list) else [enriched]
+    
+    for pipeline in pipelines:
+        if not pipeline.get("from", {}).get("table"):
+            continue
+            
+        table_name = pipeline["from"]["table"]
+        
+        # Get initial columns from schema
+        table_schema = schema.get_table(table_name)
+        if table_schema:
+            # Table schema returns column info
+            columns = []
+            for col_name in table_schema.columns:
+                col_type = table_schema.columns[col_name].type if hasattr(table_schema.columns[col_name], 'type') else 'unknown'
+                columns.append({"name": col_name, "type": str(col_type)})
+            pipeline["from"]["output_columns"] = columns
+            
+            # For now, propagate the same columns to transforms
+            # A more sophisticated implementation would track column changes through each step
+            current_columns = columns
+            for transform in pipeline.get("transforms", []):
+                # Basic column tracking - can be enhanced
+                transform_type = transform.get("type")
+                
+                if transform_type == "select":
+                    # Select modifies columns - would need expression parsing
+                    pass
+                elif transform_type == "join":
+                    # Join adds columns from joined table
+                    join_table = transform.get("table")
+                    if join_table:
+                        join_schema = schema.get_table(join_table)
+                        if join_schema:
+                            for col_name in join_schema.columns:
+                                col_type = join_schema.columns[col_name].type if hasattr(join_schema.columns[col_name], 'type') else 'unknown'
+                                current_columns.append({"name": f"{join_table}.{col_name}", "type": str(col_type)})
+                elif transform_type == "group_by":
+                    # Group by changes columns to dimensions + aggregates
+                    pass
+                
+                # Set output columns for this transform
+                transform["output_columns"] = current_columns.copy()
+    
+    return enriched if isinstance(query_json, list) else pipelines[0]
+
+
 @app.get("/api/visual/operations")
 async def list_visual_operations():
     """

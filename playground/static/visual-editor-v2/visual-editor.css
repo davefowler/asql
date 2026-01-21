@@ -30,6 +30,7 @@
 .visual-editor {
   padding: 12px;
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1;
   min-height: 0;
   font-family: 'Monaco', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
@@ -92,12 +93,11 @@
 
 /* Block base styles */
 .block {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  display: block;
   padding: 4px 8px;
   margin-bottom: 2px;
   position: relative;
+  max-width: 100%;
 }
 
 .block:hover {
@@ -105,15 +105,40 @@
 }
 
 .block-body {
-  flex: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
 }
 
-/* Drag handle */
-.block-drag-handle,
+/* Drag handle - absolute top left, show on hover */
+.block-drag-handle {
+  position: absolute;
+  top: 4px;
+  left: 2px;
+  cursor: grab;
+  color: #ccc;
+  font-size: 12px;
+  padding: 2px;
+  user-select: none;
+  transition: opacity 0.15s, color 0.15s;
+  opacity: 0;
+}
+
+.block:hover .block-drag-handle {
+  opacity: 1;
+}
+
+.block-drag-handle:hover {
+  color: #666;
+}
+
+.block-drag-handle:active {
+  cursor: grabbing;
+  color: #333;
+}
+
+/* Expression/list item drag handles - show on hover */
 .expr-drag-handle {
   cursor: grab;
   color: #ccc;
@@ -124,37 +149,43 @@
   transition: opacity 0.15s;
 }
 
-.block:hover .block-drag-handle,
 .expression-item:hover .expr-drag-handle,
 .aggregate-item:hover .expr-drag-handle,
 .order-item:hover .expr-drag-handle {
   opacity: 1;
 }
 
-.block-drag-handle:active,
 .expr-drag-handle:active {
   cursor: grabbing;
 }
 
-/* Delete button */
-.block-delete {
-  background: none;
-  border: none;
+/* Delete button - absolute top right, show on hover */
+.block-delete,
+.visual-style-blocky .block-delete {
+  position: absolute !important;
+  top: 4px !important;
+  right: 4px !important;
+  background: none !important;
+  border: none !important;
   color: #ccc;
   cursor: pointer;
-  padding: 0 4px;
-  font-size: 16px;
+  padding: 2px 4px !important;
+  font-size: 14px;
   line-height: 1;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, color 0.15s;
+  border-radius: 0 !important;
 }
 
-.block:hover .block-delete {
+.block:hover .block-delete,
+.visual-style-blocky .block:hover .block-delete {
   opacity: 1;
 }
 
-.block-delete:hover {
+.block-delete:hover,
+.visual-style-blocky .block-delete:hover {
   color: #e53935;
+  background: none !important;
 }
 
 /* SortableJS ghost states */
@@ -185,7 +216,8 @@
   font-size: inherit;
   color: var(--asql-variable);
   outline: none;
-  min-width: 1ch;
+  field-sizing: content;
+  min-width: 2ch;
 }
 
 .inline-input:focus,
@@ -216,7 +248,8 @@
 /* Column autocomplete */
 .column-autocomplete {
   color: var(--asql-variable);
-  min-width: 1ch;
+  field-sizing: content;
+  min-width: 2ch;
 }
 
 .column-autocomplete::-webkit-calendar-picker-indicator {
@@ -232,6 +265,8 @@
   align-items: center;
   gap: 2px;
   position: relative;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .expr-node {
@@ -253,7 +288,8 @@
   font-size: inherit;
   color: var(--asql-variable);
   padding: 0 4px;
-  min-width: 1ch;
+  field-sizing: content;
+  min-width: 2ch;
 }
 
 .expr-column:focus {
@@ -268,7 +304,8 @@
   font-family: inherit;
   font-size: inherit;
   padding: 0 4px;
-  min-width: 1ch;
+  field-sizing: content;
+  min-width: 2ch;
 }
 
 .expr-literal-number {
@@ -303,6 +340,8 @@
   color: var(--asql-function);
   cursor: pointer;
   padding: 0;
+  field-sizing: content;
+  min-width: 2ch;
 }
 
 .expr-func-select:focus {
@@ -328,6 +367,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  flex-wrap: wrap;
 }
 
 .expr-op-select {
@@ -337,7 +377,9 @@
   font-size: inherit;
   color: var(--asql-operator);
   cursor: pointer;
-  padding: 0 4px;
+  padding: 0 2px;
+  field-sizing: content;
+  min-width: 2ch;
 }
 
 .expr-op-select:focus {
@@ -441,7 +483,8 @@
   font-size: inherit;
   color: var(--asql-variable);
   padding: 0 4px;
-  min-width: 1ch;
+  field-sizing: content;
+  min-width: 2ch;
 }
 
 .expr-alias-container.has-alias .expr-alias-input {
@@ -519,6 +562,17 @@
   gap: 4px;
 }
 
+/* Aggregate list gets parentheses wrapper in text mode */
+.visual-style-text .aggregate-list::before {
+  content: '(';
+  color: #888;
+}
+
+.visual-style-text .aggregate-list::after {
+  content: ')';
+  color: #888;
+}
+
 .expression-item,
 .aggregate-item,
 .order-item {
@@ -527,6 +581,30 @@
   gap: 4px;
   padding: 2px 4px;
   border-radius: 3px;
+}
+
+/* Text mode: no boxes around individual items */
+.visual-style-text .expression-item,
+.visual-style-text .aggregate-item,
+.visual-style-text .order-item {
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+/* Text mode: clean inline styling for aggregate inputs */
+.visual-style-text .agg-function,
+.visual-style-text .aggregate-item .column-autocomplete {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  border-radius: 0;
+  padding: 0 4px;
+}
+
+.visual-style-text .aggregate-expr {
+  background: transparent;
+  border: none;
 }
 
 .expression-item::after,
@@ -556,6 +634,8 @@
   font-size: inherit;
   color: var(--asql-function);
   cursor: pointer;
+  field-sizing: content;
+  min-width: 2ch;
 }
 
 .agg-paren {
@@ -595,7 +675,8 @@
   font-size: inherit;
   color: var(--asql-variable);
   padding: 0 4px;
-  min-width: 1ch;
+  field-sizing: content;
+  min-width: 2ch;
 }
 
 .aggregate-item.has-alias .agg-alias {
@@ -782,14 +863,25 @@
 .visual-style-blocky .block {
   background: #f8f9fa;
   border-radius: 6px;
-  padding: 8px 12px;
+  padding: 8px 24px 8px 20px; /* Extra padding for drag handle (left) and delete (right) */
   margin-bottom: 4px;
   border: 1px solid #eee;
+  position: relative;
 }
 
 .visual-style-blocky .block:hover {
   background: #f0f4f8;
   border-color: #ddd;
+}
+
+.visual-style-blocky .block-drag-handle {
+  top: 8px;
+  left: 6px;
+}
+
+.visual-style-blocky .block-delete {
+  top: 6px !important;
+  right: 6px !important;
 }
 
 .visual-style-blocky .from-block {
@@ -798,18 +890,19 @@
 }
 
 .visual-style-blocky .value-operator {
-  display: inline-block;
-  background: #fff0f0;
-  border: 1px solid #f0d0d0;
-  border-radius: 4px;
-  padding: 2px 8px;
-  margin-right: 8px;
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.5px;
+  /* Override v1 CSS - just red text, no background box */
+  display: inline;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-right: 4px;
+  text-transform: lowercase;
+  font-size: inherit;
+  letter-spacing: normal;
 }
 
 .visual-style-blocky .inline-input,
+.visual-style-blocky .inline-select,
 .visual-style-blocky .column-autocomplete,
 .visual-style-blocky .expr-column {
   background: white;
@@ -819,19 +912,74 @@
 }
 
 .visual-style-blocky .inline-input:focus,
+.visual-style-blocky .inline-select:focus,
 .visual-style-blocky .column-autocomplete:focus,
 .visual-style-blocky .expr-column:focus {
   border-color: var(--asql-variable);
   box-shadow: 0 0 0 2px rgba(51, 51, 51, 0.1);
 }
 
+/* Keep operator selects compact in blocky mode */
+.visual-style-blocky .expr-op-select {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 2px 4px;
+  min-width: 0;
+}
+
 .visual-style-blocky .expression-item,
-.visual-style-blocky .aggregate-item,
 .visual-style-blocky .order-item {
   background: #f8f9fa;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
   padding: 4px 8px;
+}
+
+/* Aggregate items - no individual boxes, just clean inline */
+.visual-style-blocky .aggregate-item {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 4px 0;
+}
+
+/* Aggregate inputs in blocky mode - transparent to blend with container */
+.visual-style-blocky .agg-function {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  border-radius: 0;
+  padding: 0 4px;
+}
+
+.visual-style-blocky .aggregate-item .column-autocomplete {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  border-radius: 0;
+  padding: 0 4px;
+}
+
+.visual-style-blocky .agg-alias {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed #ccc;
+  border-radius: 0;
+  padding: 0 4px;
+}
+
+/* Aggregate list container - left border to separate from dimensions */
+.visual-style-blocky .aggregate-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding-left: 16px;
+  border-left: 3px solid #ddd;
+  margin-left: 0;
+  width: 100%;
 }
 
 .visual-style-blocky .expression-item::after,
