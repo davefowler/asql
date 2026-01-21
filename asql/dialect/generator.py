@@ -30,7 +30,44 @@ class ASQLGenerator(Generator):
     - WITH cte AS (...) → from ... stash as cte
     - SELECT * FROM → from
     - Joins with symbols: INNER JOIN → &
+    - Pipeline-style formatting with newlines between stages
     """
+    
+    def maybe_comment(
+        self,
+        sql: str,
+        expression: t.Optional[exp.Expression] = None,
+        comments: t.Optional[t.List[str]] = None,
+        separated: bool = False,
+    ) -> str:
+        """Override to always put comments on their own line for readability.
+        
+        ASQL output should be readable pipeline-style, so comments get their own line:
+            /* header comment */
+            from users
+            where status = 'active'
+        """
+        comments = (
+            ((expression and expression.comments) if comments is None else comments)
+            if self.comments
+            else None
+        )
+
+        if not comments or isinstance(expression, self.EXCLUDE_COMMENTS):
+            return sql
+
+        comments_sql = " ".join(
+            f"/*{self.sanitize_comment(comment)}*/" for comment in comments if comment
+        )
+
+        if not comments_sql:
+            return sql
+
+        # For ASQL, always put comments on their own line (before the SQL)
+        # This makes the pipeline output much more readable
+        if sql and not sql[0].isspace():
+            return f"{comments_sql}\n{sql}"
+        return f"{comments_sql}{sql}"
     
     def _get_setting(self, name: str, default: t.Any = None) -> t.Any:
         """Get a style setting from dialect.settings with fallback to default."""
@@ -185,6 +222,12 @@ class ASQLGenerator(Generator):
         For SELECT * FROM table → from table
         For SELECT cols FROM table → from table select cols
         For SELECT DISTINCT cols → from table select distinct cols
+        
+        Outputs pipeline-style formatting with newlines between stages:
+            from table
+            where condition
+            group by col1, col2
+            select col1, col2, agg1
         """
         # Get components - note SQLGlot uses from_ (underscore) due to Python reserved word
         from_ = expression.args.get("from_")
@@ -199,22 +242,39 @@ class ASQLGenerator(Generator):
         # Build FROM clause first
         parts: t.List[str] = []
         
-        # Handle CTEs first if present
+        # Handle CTEs first if present (separated by blank lines)
         if with_:
             cte_sql = self.with_sql(with_)
             parts.append(cte_sql)
+            # Add blank line separator before main query
+            parts.append("")
         
         # FROM clause - output "from table"
         if from_:
             table_sql = self.sql(from_.this)  # Get just the table expression
             parts.append(f"from {table_sql}")
         
-        # Handle joins
+        # Handle joins - each join on its own line, indented
         joins = expression.args.get("joins")
         if joins:
             for join in joins:
                 join_sql = self.join_sql(join)
                 parts.append(join_sql)
+        
+        # WHERE clause
+        if where:
+            where_cond = self.sql(where.this)
+            parts.append(f"where {where_cond}")
+        
+        # GROUP BY clause
+        if group:
+            group_cols = ", ".join(self.sql(e) for e in group.expressions)
+            parts.append(f"group by {group_cols}")
+        
+        # HAVING clause (note: ASQL typically uses WHERE after GROUP BY)
+        if having:
+            having_cond = self.sql(having.this)
+            parts.append(f"having {having_cond}")
         
         # SELECT columns (only if not SELECT *)
         select_expressions = expression.expressions
@@ -232,26 +292,18 @@ class ASQLGenerator(Generator):
             distinct_keyword = "distinct "
         
         if not is_select_star and select_expressions:
-            cols = ", ".join(self.sql(e) for e in select_expressions)
-            parts.append(f"select {distinct_keyword}{cols}")
+            # Format columns - if many columns, put each on its own line
+            col_strs = [self.sql(e) for e in select_expressions]
+            if len(col_strs) > 3:
+                # Multi-line format with indented columns
+                cols = ",\n    ".join(col_strs)
+                parts.append(f"select {distinct_keyword}{cols}")
+            else:
+                cols = ", ".join(col_strs)
+                parts.append(f"select {distinct_keyword}{cols}")
         elif distinct_keyword and is_select_star:
             # SELECT DISTINCT * → select distinct *
             parts.append(f"select {distinct_keyword}*")
-        
-        # WHERE clause
-        if where:
-            where_cond = self.sql(where.this)
-            parts.append(f"where {where_cond}")
-        
-        # GROUP BY clause
-        if group:
-            group_cols = ", ".join(self.sql(e) for e in group.expressions)
-            parts.append(f"group by {group_cols}")
-        
-        # HAVING clause
-        if having:
-            having_cond = self.sql(having.this)
-            parts.append(f"having {having_cond}")
         
         # ORDER BY clause
         if order:
@@ -269,7 +321,7 @@ class ASQLGenerator(Generator):
             offset_val = self.sql(offset.expression)
             parts.append(f"offset {offset_val}")
         
-        return " ".join(parts)
+        return "\n".join(parts)
     
     def join_sql(self, expression: exp.Join) -> str:
         """Generate ASQL join syntax with symbols.

@@ -14,30 +14,20 @@ A modern, pipeline-based query language that transpiles to SQL. ASQL uses a FROM
 
 ## Installation
 
-First, create and activate a virtual environment:
+ASQL uses [just](https://github.com/casey/just) as a command runner. Install it first:
 
 ```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-# On macOS/Linux:
-source venv/bin/activate
-# On Windows:
-# venv\Scripts\activate
+brew install just  # macOS
+# or: cargo install just
 ```
 
-Then install ASQL:
+Then set up the project:
 
 ```bash
-pip install -e .
+just install
 ```
 
-Or with development dependencies:
-
-```bash
-pip install -e ".[dev]"
-```
+This creates a virtual environment and installs all dependencies.
 
 ## VS Code Extension
 
@@ -100,11 +90,7 @@ The ASQL documentation is served via a web server that includes:
 ### Serving the Documentation
 
 ```bash
-# Install dependencies
-pip install -e ".[docs,playground]"
-
-# Start both MkDocs and Playground
-./serve.sh
+just serve
 ```
 
 This starts:
@@ -133,8 +119,9 @@ Try ASQL in your browser! The playground lets you write ASQL queries and see the
 ### Start the Playground
 
 ```bash
-# Start docs + playground (recommended)
-./serve.sh
+just serve          # Start docs + playground (recommended)
+# or
+just playground     # Start playground only
 ```
 
 Then open http://localhost:5001 in your browser.
@@ -153,7 +140,7 @@ The playground features:
 Run all examples:
 
 ```bash
-python examples/run_all.py
+just run examples/run_all.py
 ```
 
 Or import specific examples:
@@ -243,17 +230,14 @@ from users limit 10
 ## Development
 
 ```bash
-# Install dev dependencies
-pip install -e ".[dev]"
-
-# Run tests
-./venv/bin/pytest tests/
-
-# Run tests with coverage
-./venv/bin/pytest tests/ --cov=asql --cov-report=html
-
-# Run specific test file
-./venv/bin/pytest tests/test_compiler.py
+just install        # Set up virtual environment and install dependencies
+just test           # Run all tests
+just test-cov       # Run tests with coverage
+just test-file tests/test_compiler.py  # Run specific test file
+just test-k "pattern"  # Run tests matching a pattern
+just lint           # Run linter
+just fmt            # Format code
+just --list         # See all available commands
 ```
 
 ## Project Structure
