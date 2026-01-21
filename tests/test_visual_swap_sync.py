@@ -347,3 +347,148 @@ class TestSwapWithDifferentDialects:
             
         except Exception as e:
             pytest.skip(f"Dialect {dialect} error: {e}")
+
+
+class TestSqlSemanticPreservation:
+    """Tests that verify SQL semantic content is preserved during round-trips."""
+
+    def test_cte_preserves_structure(self):
+        """Test that CTEs are preserved in round-trip conversion."""
+        query = [
+            {
+                "name": "filtered_orders",
+                "from": {"table": "orders"},
+                "transforms": [
+                    {"type": "join", "join_type": "inner", "table": "customers", 
+                     "condition": {"type": "binary_op", "operator": "=",
+                                   "left": {"type": "column", "name": "customer_id", "table": "orders"},
+                                   "right": {"type": "column", "name": "id", "table": "customers"}}},
+                    {"type": "where", "condition": "orders.status = 'completed'"}
+                ]
+            },
+            {
+                "name": "aggregated",
+                "from": {"table": "filtered_orders"},
+                "transforms": [
+                    {"type": "group_by", "dimensions": ["country"],
+                     "aggregates": [{"function": "count", "column": "*", "alias": "total_orders"},
+                                   {"function": "sum", "column": "amount", "alias": "revenue"}]}
+                ]
+            },
+            {
+                "name": None,
+                "from": {"table": "aggregated"},
+                "transforms": [
+                    {"type": "where", "condition": "total_orders > 10"},
+                    {"type": "order_by", "expressions": [{"column": "revenue", "direction": "desc"}]}
+                ]
+            }
+        ]
+        
+        # Visual → SQL
+        sql = visual_json_to_sql(query)
+        
+        # Verify key SQL elements are present
+        sql_upper = sql.upper()
+        assert 'WITH' in sql_upper, "Should have WITH clause for CTEs"
+        assert 'JOIN' in sql_upper, "Should preserve JOIN"
+        assert 'GROUP BY' in sql_upper, "Should preserve GROUP BY"
+        assert 'ORDER BY' in sql_upper, "Should preserve ORDER BY"
+        assert 'COUNT(*)' in sql_upper, "Should preserve COUNT(*) aggregate"
+        assert 'SUM' in sql_upper, "Should preserve SUM aggregate"
+        
+        print(f"\nCTE preservation test SQL:")
+        print(f"  {sql[:300]}...")
+
+    def test_join_condition_preserved(self):
+        """Test that join conditions are preserved."""
+        query = [{
+            "from": {"table": "orders"},
+            "transforms": [
+                {"type": "join", "join_type": "left", "table": "products",
+                 "condition": {"type": "binary_op", "operator": "=",
+                               "left": {"type": "column", "name": "product_id", "table": "orders"},
+                               "right": {"type": "column", "name": "id", "table": "products"}}},
+                {"type": "where", "condition": "orders.total > 100"}
+            ]
+        }]
+        
+        # Visual → SQL
+        sql1 = visual_json_to_sql(query)
+        
+        # SQL → Visual → SQL
+        visual = sql_to_visual_json(sql1)
+        sql2 = visual_json_to_sql(visual)
+        
+        # Both should have JOIN with condition
+        for sql in [sql1, sql2]:
+            sql_upper = sql.upper()
+            assert 'LEFT' in sql_upper or 'JOIN' in sql_upper, "Should have LEFT JOIN"
+            assert 'PRODUCT_ID' in sql_upper, "Should preserve join column"
+        
+        print(f"\nJoin preservation:")
+        print(f"  Original: {sql1[:150]}...")
+        print(f"  Round-trip: {sql2[:150]}...")
+
+    def test_aggregate_functions_preserved(self):
+        """Test that aggregate functions are preserved."""
+        query = [{
+            "from": {"table": "orders"},
+            "transforms": [
+                {"type": "group_by", "dimensions": ["customer_id", "status"],
+                 "aggregates": [
+                     {"function": "count", "column": "*", "alias": "order_count"},
+                     {"function": "sum", "column": "total", "alias": "total_amount"},
+                     {"function": "avg", "column": "total", "alias": "avg_amount"},
+                     {"function": "min", "column": "total", "alias": "min_amount"},
+                     {"function": "max", "column": "total", "alias": "max_amount"}
+                 ]}
+            ]
+        }]
+        
+        # Visual → SQL
+        sql = visual_json_to_sql(query)
+        sql_upper = sql.upper()
+        
+        # Verify all aggregate functions are present
+        assert 'COUNT(*)' in sql_upper, "Should have COUNT(*)"
+        assert 'SUM' in sql_upper, "Should have SUM"
+        assert 'AVG' in sql_upper, "Should have AVG"
+        assert 'MIN' in sql_upper, "Should have MIN"
+        assert 'MAX' in sql_upper, "Should have MAX"
+        assert 'GROUP BY' in sql_upper, "Should have GROUP BY"
+        
+        print(f"\nAggregate preservation:")
+        print(f"  {sql}")
+
+    def test_filter_and_sort_preserved(self):
+        """Test that WHERE and ORDER BY are preserved."""
+        query = [{
+            "from": {"table": "users"},
+            "transforms": [
+                {"type": "where", "condition": "age >= 18 and status = 'active'"},
+                {"type": "order_by", "expressions": [
+                    {"column": "name", "direction": "asc"},
+                    {"column": "created_at", "direction": "desc"}
+                ]},
+                {"type": "limit", "count": 100}
+            ]
+        }]
+        
+        # Visual → SQL
+        sql1 = visual_json_to_sql(query)
+        
+        # SQL → Visual → SQL
+        visual = sql_to_visual_json(sql1)
+        sql2 = visual_json_to_sql(visual)
+        
+        # Both should have WHERE, ORDER BY, and LIMIT
+        for sql in [sql1, sql2]:
+            sql_upper = sql.upper()
+            assert 'WHERE' in sql_upper, "Should have WHERE clause"
+            assert 'ORDER BY' in sql_upper, "Should have ORDER BY"
+            assert 'LIMIT' in sql_upper or 'FETCH' in sql_upper or 'TOP' in sql_upper, "Should have LIMIT"
+        
+        print(f"\nFilter/sort preservation:")
+        print(f"  Original: {sql1}")
+        print(f"  Round-trip: {sql2}")

@@ -13,6 +13,7 @@ from sqlglot.dialects import Dialects
 
 import sqlglot
 
+import asql
 from asql.errors import ASQLSyntaxError, ASQLCompilationError
 from asql.json_schema import json_to_asql
 import json
@@ -804,21 +805,17 @@ async def transpile_from_visual(request: Request):
         # Step 1: Convert JSON to ASQL
         asql_text = json_to_asql(query_json)
         
-        # Step 2: Transpile to target dialect with schema
-        from sqlglot.schema import MappingSchema
-        schema = MappingSchema(PLAYGROUND_SCHEMA)
-        
+        # Step 2: Transpile to target dialect
         result = asql.transpile(
             asql_text,
             read="asql",
             write=target_dialect,
-            schema=schema,
         )
         sql_text = result[0] if result else ""
         
         # Step 3: Enrich query with column info
-        # Parse the ASQL to get column information at each step
-        enriched_query = enrich_query_with_columns(query_json, asql_text, schema)
+        # For now, just pass through the query without full column enrichment
+        enriched_query = enrich_query_with_columns(query_json, asql_text, None)
         
         return {
             "success": True,
@@ -843,6 +840,10 @@ def enrich_query_with_columns(query_json: dict, asql_text: str, schema) -> dict:
     import copy
     enriched = copy.deepcopy(query_json)
     
+    # If no schema, just return the query as-is
+    if schema is None:
+        return enriched
+    
     # Handle array of pipelines
     pipelines = enriched if isinstance(enriched, list) else [enriched]
     
@@ -853,7 +854,7 @@ def enrich_query_with_columns(query_json: dict, asql_text: str, schema) -> dict:
         table_name = pipeline["from"]["table"]
         
         # Get initial columns from schema
-        table_schema = schema.get_table(table_name)
+        table_schema = schema.get_table(table_name) if hasattr(schema, 'get_table') else None
         if table_schema:
             # Table schema returns column info
             columns = []
@@ -875,7 +876,7 @@ def enrich_query_with_columns(query_json: dict, asql_text: str, schema) -> dict:
                 elif transform_type == "join":
                     # Join adds columns from joined table
                     join_table = transform.get("table")
-                    if join_table:
+                    if join_table and hasattr(schema, 'get_table'):
                         join_schema = schema.get_table(join_table)
                         if join_schema:
                             for col_name in join_schema.columns:

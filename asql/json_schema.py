@@ -40,44 +40,49 @@ def json_to_asql(query_json: Union[Dict[str, Any], List[Dict[str, Any]]]) -> str
     if not pipelines:
         return "from # Enter table name"
 
-    result_parts: List[str] = []
+    # Track CTE names we've created so we can chain them properly
+    cte_names: set = set()
+    result_lines: List[str] = []
 
     for i, pipeline in enumerate(pipelines):
-        # Generate ASQL for this pipeline
-        pipeline_asql = _pipeline_to_asql(pipeline)
-
-        # Add stash for named pipelines
+        from_clause = pipeline.get("from", {})
+        from_table = from_clause.get("table", "") if isinstance(from_clause, dict) else ""
         name = pipeline.get("name")
+
+        # Check if this pipeline continues from a CTE we just created
+        # If so, we don't need a new FROM - just continue the pipeline
+        is_continuation = from_table in cte_names
+
+        if is_continuation:
+            # Continue the pipeline - just add transforms (no FROM)
+            transforms_lines = _transforms_to_asql_lines(pipeline.get("transforms", []))
+            result_lines.extend(transforms_lines)
+        else:
+            # Start a new pipeline with FROM
+            # Handle set operations (UNION, INTERSECT, EXCEPT) before this pipeline
+            set_op = pipelines[i - 1].get("set_operation") if i > 0 else None
+            if set_op:
+                op_type = set_op.get("type", "union").upper()
+                if set_op.get("all"):
+                    op_type += " ALL"
+                result_lines.append(op_type)
+
+            pipeline_asql = _pipeline_to_asql(pipeline)
+            result_lines.append(pipeline_asql)
+
+        # Add stash for named pipelines (CTEs)
         if name:
-            pipeline_asql += f"\n  stash as {name}"
+            result_lines.append(f"  stash as {name}")
+            cte_names.add(name)
 
-        result_parts.append(pipeline_asql)
-
-        # Handle set operations (UNION, INTERSECT, EXCEPT)
-        set_op = pipeline.get("set_operation")
-        if set_op and i < len(pipelines) - 1:
-            op_type = set_op.get("type", "union").upper()
-            if set_op.get("all"):
-                op_type += " ALL"
-            result_parts.append(op_type)
-
-    return "\n".join(result_parts)
+    return "\n".join(result_lines)
 
 
-def _pipeline_to_asql(pipeline: Dict[str, Any]) -> str:
-    """Convert a single pipeline to ASQL text."""
+def _transforms_to_asql_lines(transforms: List[Dict[str, Any]]) -> List[str]:
+    """Convert transforms list to ASQL lines (without FROM clause)."""
     lines: List[str] = []
 
-    # FROM clause
-    from_clause = pipeline.get("from", {})
-    table = from_clause.get("table", "")
-    if not table:
-        return "from # Enter table name"
-
-    lines.append(f"from {table}")
-
-    # Process transforms
-    for transform in pipeline.get("transforms", []):
+    for transform in transforms:
         transform_type = transform.get("type")
 
         # === FILTER TRANSFORMS ===
@@ -257,6 +262,25 @@ def _pipeline_to_asql(pipeline: Dict[str, Any]) -> str:
                 lines.append(f"  recurse {max_depth}")
             else:
                 lines.append("  recurse")
+
+    return lines
+
+
+def _pipeline_to_asql(pipeline: Dict[str, Any]) -> str:
+    """Convert a single pipeline to ASQL text (including FROM clause)."""
+    lines: List[str] = []
+
+    # FROM clause
+    from_clause = pipeline.get("from", {})
+    table = from_clause.get("table", "") if isinstance(from_clause, dict) else ""
+    if not table:
+        return "from # Enter table name"
+
+    lines.append(f"from {table}")
+
+    # Add transforms
+    transform_lines = _transforms_to_asql_lines(pipeline.get("transforms", []))
+    lines.extend(transform_lines)
 
     return "\n".join(lines)
 
