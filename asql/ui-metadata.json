@@ -187,6 +187,17 @@
   },
 
   "transforms": {
+    "from": {
+      "keywords": ["FROM"],
+      "label": "From",
+      "category": "source",
+      "description": "Select source table",
+      "sortable": false,
+      "deletable": false,
+      "parameters": [
+        { "name": "table", "type": "table", "required": true, "widget": "table_select" }
+      ]
+    },
     "where": {
       "keywords": ["WHERE", "FILTER", "IF"],
       "label": "Filter",
@@ -202,7 +213,7 @@
       "category": "select",
       "description": "Choose which columns to return",
       "parameters": [
-        { "name": "columns", "type": "expression[]", "required": true, "widget": "list" }
+        { "name": "columns", "type": "expression[]", "required": true, "widget": "list", "help": "Column names or expressions like month(date), upper(name)" }
       ]
     },
     "limit": {

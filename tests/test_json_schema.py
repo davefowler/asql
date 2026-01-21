@@ -922,7 +922,12 @@ class TestArrayFormat:
         assert 'limit 20' in result
 
     def test_named_pipeline_generates_stash(self):
-        """Test named pipelines generate stash statements."""
+        """Test named pipelines generate stash statements.
+        
+        When a subsequent pipeline references a CTE we just created,
+        it continues the pipeline (no new FROM) instead of starting a new statement.
+        This produces a single SQL statement with all CTEs in one WITH clause.
+        """
         query_json = [
             {
                 'name': 'active_users',
@@ -941,7 +946,7 @@ class TestArrayFormat:
 
         assert 'from users' in result
         assert 'stash as active_users' in result
-        assert 'from active_users' in result
+        # No separate 'from active_users' - pipeline continues after stash
 
     def test_union_set_operation(self):
         """Test UNION set operation between pipelines."""
@@ -1033,7 +1038,12 @@ class TestArrayFormat:
         assert 'limit 5' in result
 
     def test_cte_with_transforms_and_final_query(self):
-        """Test full CTE pattern with transforms."""
+        """Test full CTE pattern with transforms.
+        
+        When a subsequent pipeline references a CTE we just created,
+        it continues the pipeline (no new FROM) instead of starting a new statement.
+        This produces a single SQL statement with all CTEs in one WITH clause.
+        """
         query_json = [
             {
                 'name': 'recent_orders',
@@ -1054,7 +1064,7 @@ class TestArrayFormat:
 
         assert 'from orders' in result
         assert 'stash as recent_orders' in result
-        assert 'from recent_orders' in result
+        # No separate 'from recent_orders' - pipeline continues after stash
         assert 'group by customer_id' in result
 
 

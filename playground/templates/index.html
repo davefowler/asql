@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
     <link rel="stylesheet" href="/static/playground/playground.css">
     <link rel="stylesheet" href="/static/playground/visual-editor.css">
+    <link rel="stylesheet" href="/static/playground/visual-editor-v2/visual-editor.css">
 </head>
 <body>
     <div class="container">
@@ -211,10 +212,15 @@
         const EXAMPLES_DATA = /* EXAMPLES_DATA_PLACEHOLDER */ {};
     </script>
     
+    <!-- SortableJS for drag-and-drop -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    
     <!-- Playground Application -->
     <script src="/static/playground/playground.js"></script>
 
-    <!-- Visual Editor -->
-    <script src="/static/playground/visual-editor.js"></script>
+    <!-- Visual Editor v2 (recursive expression system) -->
+    <script src="/static/playground/visual-editor-v2/expression.js"></script>
+    <script src="/static/playground/visual-editor-v2/sortable-list.js"></script>
+    <script src="/static/playground/visual-editor-v2/visual-editor.js"></script>
 </body>
 </html>

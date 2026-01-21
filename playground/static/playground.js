@@ -395,7 +395,7 @@ function getStyleSettings() {
 }
 
 // ========== UI Functions ==========
-function swapLanguages() {
+async function swapLanguages() {
     const fromSelect = document.getElementById('from-dialect');
     const toSelect = document.getElementById('to-dialect');
     if (!fromSelect || !toSelect || !inputEditor || !outputEditor) {
@@ -405,18 +405,77 @@ function swapLanguages() {
     const fromValue = fromSelect.value;
     const toValue = toSelect.value;
 
-    fromSelect.value = toValue;
-    toSelect.value = fromValue;
+    // Prevent visual editor sync from overwriting swapped content
+    isSwapping = true;
 
-    const temp = inputEditor.getValue();
-    inputEditor.setValue(outputEditor.getValue());
-    outputEditor.setValue(temp);
+    try {
+        // Handle Visual ASQL conversion during swap
+        if (fromValue === 'visual-asql') {
+            // Swapping FROM Visual ASQL: output SQL becomes input, Visual ASQL becomes output
+            // The output already has SQL text, and we need to convert our JSON to ASQL for the new output
+            const outputSql = outputEditor.getValue();
+            const inputJson = inputEditor.getValue();
+            
+            fromSelect.value = toValue;
+            toSelect.value = fromValue;
+            
+            inputEditor.setValue(outputSql);
+            outputEditor.setValue(inputJson);
+            
+        } else if (toValue === 'visual-asql') {
+            // Swapping TO Visual ASQL as output: need to convert SQL input to Visual JSON
+            // After swap, Visual ASQL will be input, so we need to convert current input SQL to JSON
+            const currentInputSql = inputEditor.getValue();
+            const currentOutputJson = outputEditor.getValue();
+            
+            // Convert the current input SQL to Visual ASQL JSON
+            const response = await fetch('/api/visual/parse-sql', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    sql: currentInputSql, 
+                    dialect: fromValue 
+                })
+            });
+            const data = await response.json();
+            
+            if (!data.success) {
+                console.error('Failed to convert SQL to Visual ASQL:', data.error);
+                showOutputError('Swap failed: ' + data.error);
+                isSwapping = false;
+                return;
+            }
+            
+            fromSelect.value = toValue;
+            toSelect.value = fromValue;
+            
+            // The converted JSON goes into input (now Visual ASQL)
+            // The old output (which was JSON) goes into output (now SQL dialect)
+            inputEditor.setValue(JSON.stringify(data.query, null, 2));
+            outputEditor.setValue(currentOutputJson);
+            
+        } else {
+            // Normal swap - no Visual ASQL involved
+            fromSelect.value = toValue;
+            toSelect.value = fromValue;
 
-    // Update the dialect tracking for auto-transpile
-    currentInputDialect = toValue;
-    fromSelect.dataset.previousValue = toValue;
+            const temp = inputEditor.getValue();
+            inputEditor.setValue(outputEditor.getValue());
+            outputEditor.setValue(temp);
+        }
 
-    updateUITitles();
+        // Update the dialect tracking for auto-transpile
+        currentInputDialect = toValue;
+        fromSelect.dataset.previousValue = toValue;
+
+        // Wait for UI updates to complete before resetting swap flag
+        await updateUITitles();
+        
+    } finally {
+        // Reset the swap flag after UI updates are done
+        isSwapping = false;
+    }
+    
     translateQuery();
 }
 
@@ -542,7 +601,8 @@ async function updateEditorVisibility(panel, dialect) {
             if (columnsToggle) columnsToggle.style.display = 'none';
             
             // Switch to text mode - sync content from visual editor if it was showing
-            if (visualContainer.style.display !== 'none' && visualEditor) {
+            // BUT skip this during a swap operation, as the swapped content should be preserved
+            if (!isSwapping && visualContainer.style.display !== 'none' && visualEditor) {
                 const asql = await visualEditor.getASQL();
                 if (asql) {
                     inputEditor.setValue(asql);
@@ -854,6 +914,9 @@ function getApiDialect(dialect) {
 // Track what dialect the current input is in (for transpiling when From changes)
 let currentInputDialect = null;
 
+// Flag to prevent visual editor sync during swap operations
+let isSwapping = false;
+
 // Transpile the input text to a new dialect when "From" changes
 async function transpileInputToNewDialect(currentInput, newDialect) {
     // Detect if current input looks like JSON (visual-asql)
@@ -1161,27 +1224,18 @@ async function translateQuery() {
                 }
             }
             
-            const styleSettings = getStyleSettings();
-            const response = await fetch('/api/reverse-compile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sql: input, source_dialect: sourceDialect || '', settings: styleSettings })
-            });
-            
-            const data = await response.json();
-            if (data.error) {
-                showError(data.error);
-            } else if (toDialect === 'visual-asql') {
-                // Parse the ASQL to visual representation
-                const parseResponse = await fetch('/api/visual/parse', {
+            // If output is visual-asql, use direct SQL -> Visual JSON conversion
+            // This bypasses ASQL text intermediate and handles CTEs better
+            if (toDialect === 'visual-asql') {
+                const parseResponse = await fetch('/api/visual/parse-sql', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ asql: data.asql })
+                    body: JSON.stringify({ sql: input, dialect: sourceDialect || '' })
                 });
                 
                 const parseData = await parseResponse.json();
                 if (!parseData.success) {
-                    showError(parseData.error || 'Failed to parse ASQL');
+                    showError(parseData.error || 'Failed to convert SQL to visual format');
                 } else {
                     // Show JSON in text editor
                     outputEditor.setValue(JSON.stringify(parseData.query, null, 2));
@@ -1191,8 +1245,21 @@ async function translateQuery() {
                     updateURL();
                 }
             } else {
-                outputEditor.setValue(data.asql);
-                updateURL();
+                // Normal ASQL text output - use reverse-compile
+                const styleSettings = getStyleSettings();
+                const response = await fetch('/api/reverse-compile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sql: input, source_dialect: sourceDialect || '', settings: styleSettings })
+                });
+                
+                const data = await response.json();
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    outputEditor.setValue(data.asql);
+                    updateURL();
+                }
             }
         } else if (currentMode === 'sql-to-sql') {
             let sourceDialect = fromDialect;
@@ -2162,18 +2229,65 @@ function formatCondition(cond) {
 }
 
 // Handle visual editor changes - triggers translation when visual editor content changes
-window.onVisualEditorChange = debounce(async () => {
+const onVisualEditorChange = debounce(async () => {
     // Only process if input is using visual editor
     if (isVisualDialect('from-dialect') && visualEditor) {
-        const asql = await visualEditor.getASQL();
-        if (asql) {
-            // Also update the text editor (for when user switches back)
-            inputEditor.setValue(asql);
-            // Trigger normal translation
-            translateQuery();
+        const query = visualEditor.getQuery();
+        if (!query) return;
+        
+        const toDialect = document.getElementById('to-dialect')?.value || 'duckdb';
+        
+        try {
+            // Use the new transpile endpoint that does compile + transpile + column enrichment
+            const response = await fetch('/api/visual/transpile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    query, 
+                    target_dialect: toDialect 
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Update text editor with ASQL
+                if (data.asql) {
+                    inputEditor.setValue(data.asql);
+                }
+                
+                // Update output with SQL
+                if (data.sql) {
+                    outputEditor.setValue(data.sql);
+                }
+                
+                // Update visual editor with enriched query (has output_columns)
+                if (data.enriched_query && visualEditor.setQuery) {
+                    // Don't re-render, just update the data
+                    visualEditor.pipelines = Array.isArray(data.enriched_query) 
+                        ? data.enriched_query 
+                        : [data.enriched_query];
+                }
+                
+                hideError();
+                updateURL();
+            } else {
+                showError(data.error || 'Transpile failed');
+            }
+        } catch (error) {
+            console.error('Visual editor transpile error:', error);
+            // Fallback to old behavior
+            const asql = await visualEditor.getASQL();
+            if (asql) {
+                inputEditor.setValue(asql);
+                translateQuery();
+            }
         }
     }
 }, 500);
+
+// Register the event listener for visual editor changes
+document.addEventListener('visual-editor-change', onVisualEditorChange);
 
 
 
