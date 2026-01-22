@@ -122,9 +122,30 @@ class VisualEditorV2 {
       const pipelineEl = this.renderPipeline(pipeline, pipelineIdx);
       container.appendChild(pipelineEl);
 
-      // Add set operation between pipelines
+      // Add set operation between pipelines (only for true set operations, not CTEs)
       if (pipelineIdx < this.pipelines.length - 1) {
-        container.appendChild(this.renderSetOperation(pipelineIdx));
+        const nextPipeline = this.pipelines[pipelineIdx + 1];
+        const currentName = pipeline.name;
+        const nextFromTable = nextPipeline?.from?.table;
+        
+        // Check if next pipeline references current pipeline's stash (CTE relationship)
+        // Also check if next pipeline joins with current pipeline's stash
+        const joinsToCte = nextPipeline?.transforms?.some(t => 
+          t.type === 'join' && t.table === currentName
+        );
+        const isCteRelationship = currentName && (nextFromTable === currentName || joinsToCte);
+        
+        // Only show set operation selector if it's NOT a CTE relationship
+        // or if there's an explicit set_operation defined
+        if (!isCteRelationship || pipeline.set_operation) {
+          container.appendChild(this.renderSetOperation(pipelineIdx));
+        } else {
+          // Show a simple CTE indicator instead
+          const cteIndicator = document.createElement('div');
+          cteIndicator.className = 'cte-indicator';
+          cteIndicator.textContent = `↓ uses ${currentName}`;
+          container.appendChild(cteIndicator);
+        }
       }
     });
 
