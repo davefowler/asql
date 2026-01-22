@@ -20,8 +20,7 @@ import json
 
 from .jinja_utils import strip_jinja_templates
 from .examples import (
-    ASQL_EXAMPLES,
-    PIPELINE_EXAMPLES,
+    PIPE_EXAMPLES,
     COHORT_EXAMPLES,
     SAMPLING_EXAMPLES,
     RESHAPING_EXAMPLES,
@@ -212,8 +211,7 @@ async def index() -> HTMLResponse:
         import json
 
         examples_data = {
-            "asql": ASQL_EXAMPLES,
-            "pipeline": PIPELINE_EXAMPLES,
+            "pipe": PIPE_EXAMPLES,
             "cohort": COHORT_EXAMPLES,
             "sampling": SAMPLING_EXAMPLES,
             "reshaping": RESHAPING_EXAMPLES,
@@ -523,8 +521,7 @@ async def api_settings_schema() -> dict:
 async def api_examples() -> dict:
     """Get all ASQL examples organized by category."""
     return {
-        "asql": ASQL_EXAMPLES,
-        "pipeline": PIPELINE_EXAMPLES,
+        "pipe": PIPE_EXAMPLES,
         "cohort": COHORT_EXAMPLES,
         "sampling": SAMPLING_EXAMPLES,
         "reshaping": RESHAPING_EXAMPLES,

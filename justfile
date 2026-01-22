@@ -83,6 +83,20 @@ docs-build:
 gen-visual-examples:
     ./venv/bin/python scripts/generate_visual_examples.py
 
+# Kill development servers on ports 8000 and 5001
+kill:
+    #!/usr/bin/env bash
+    for port in 8000 5001; do
+        pids=$(lsof -nP -iTCP:$port -sTCP:LISTEN -t 2>/dev/null || true)
+        if [[ -n "$pids" ]]; then
+            echo "Killing process(es) on port $port: $pids"
+            kill $pids 2>/dev/null || true
+        fi
+    done
+    pkill -f "uvicorn .*playground:app" 2>/dev/null || true
+    pkill -f "mkdocs serve" 2>/dev/null || true
+    echo "✓ Development servers stopped"
+
 # ============================================================================
 # INTERNAL
 # ============================================================================
