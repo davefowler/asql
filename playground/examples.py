@@ -39,8 +39,7 @@ def _load_asql_examples(category: str) -> List[Example]:
 # ASQL EXAMPLES (loaded from JSON files)
 # =============================================================================
 
-ASQL_EXAMPLES: List[Example] = _load_asql_examples("basic")
-PIPELINE_EXAMPLES: List[Example] = _load_asql_examples("pipeline")
+PIPE_EXAMPLES: List[Example] = _load_asql_examples("pipe")
 SAMPLING_EXAMPLES: List[Example] = _load_asql_examples("sampling")
 RESHAPING_EXAMPLES: List[Example] = _load_asql_examples("reshaping")
 COLUMN_OPERATOR_EXAMPLES: List[Example] = _load_asql_examples("column_operators")
@@ -90,14 +89,13 @@ SQL_EXAMPLES: List[Dict[str, Any]] = _load_json("sql.json")
 def get_all_examples() -> Dict[str, List[Example]]:
     """Get all examples organized by category."""
     return {
-        "asql": ASQL_EXAMPLES,
-        "pipeline": PIPELINE_EXAMPLES,
+        "pipe": PIPE_EXAMPLES,
+        "cohort": COHORT_EXAMPLES,
         "sampling": SAMPLING_EXAMPLES,
         "reshaping": RESHAPING_EXAMPLES,
         "column_operators": COLUMN_OPERATOR_EXAMPLES,
         "count_inference": COUNT_INFERENCE_EXAMPLES,
         "spine": SPINE_EXAMPLES,
-        "cohort": COHORT_EXAMPLES,
         "syntax_styles": SYNTAX_STYLES_EXAMPLES,
     }
 
