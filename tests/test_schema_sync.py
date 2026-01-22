@@ -98,6 +98,10 @@ class TestTransformsSync:
 
         schema = get_schema()
         schema_transforms = set(schema["transforms"].keys())
+        
+        # 'from' is a special case - it's the starting point of a query, not a transform
+        # in the pipeline sense. It's handled by the base parser, not TRANSFORM_PARSERS.
+        schema_transforms.discard("from")
 
         # Build set of normalized parser transforms
         parser_transforms = set()
@@ -117,6 +121,10 @@ class TestTransformsSync:
         schema = get_schema()
 
         for transform_name, transform_data in schema["transforms"].items():
+            # Skip 'from' - it's handled by base parser, not TRANSFORM_PARSERS
+            if transform_name == "from":
+                continue
+                
             keywords = transform_data.get("keywords", [])
             if not keywords:
                 continue
