@@ -5,18 +5,18 @@
     "query": "-- Cohort analysis: track users over time since they signed up\n-- Alias reuse lets you reference 'cohort' in the same GROUP BY\n\nfrom events\n  join users                            -- Join to get signup_date\n  \n  group by \n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active   -- Active users in this cohort+period\n  )\n  \n  order by cohort, period"
   },
   {
-    "title": "Revenue Cohort with LTV",
-    "desc": "Track revenue and calculate lifetime value by first purchase cohort",
-    "query": "-- Revenue cohort with cumulative LTV calculation\n\nfrom orders\n  join customers\n  \n  group by \n    month(customers.first_order_date) as cohort,\n    months_between(orders.order_date, customers.first_order_date) as period\n  (\n    sum(total) as revenue,\n    count(distinct customer_id) as customers\n  )\n  \n  -- Add cohort size and cumulative metrics\n  select *,\n    first(customers) over cohort as cohort_size,       -- Period 0 customers = cohort size\n    running_sum(revenue) over cohort as cumulative_rev,\n    cumulative_rev / cohort_size as ltv                -- Lifetime value per customer\n    \n  order by cohort, period"
+    "title": "Revenue Cohort with Running Total",
+    "desc": "Track revenue by first purchase cohort with cumulative totals",
+    "query": "-- Revenue cohort with cumulative calculation\n\nfrom orders\n  join customers\n  \n  group by \n    month(customers.first_order_date) as cohort,\n    months_between(orders.order_date, customers.first_order_date) as period\n  (\n    sum(total) as revenue,\n    count(distinct customer_id) as customers\n  )\n  \n  -- Add cumulative revenue using running_sum\n  select *,\n    running_sum(revenue) over (partition by cohort order by period) as cumulative_rev\n    \n  order by cohort, period"
   },
   {
-    "title": "Retention with Percentages",
-    "desc": "Calculate retention percentage for each cohort period",
-    "query": "-- Full retention analysis with percentages\n\nfrom events\n  join users\n  \n  group by \n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active\n  )\n  \n  -- Calculate retention metrics\n  select \n    cohort,\n    period,\n    active,\n    first(active) over cohort as cohort_size,  -- Size is period 0 active count\n    round(active::numeric / cohort_size * 100, 1) as retention_pct\n    \n  where period between 0 and 12  -- First year only\n  order by cohort, period"
+    "title": "Retention with Period Filter",
+    "desc": "Calculate retention for first 12 periods only",
+    "query": "-- Retention analysis filtered to first year\n\nfrom events\n  join users\n  \n  group by \n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active\n  )\n    \n  where period between 0 and 12\n  order by cohort, period"
   },
   {
     "title": "Segmented Cohorts",
     "desc": "Compare retention across acquisition channels",
-    "query": "-- Cohort analysis segmented by acquisition channel\n-- Compare how different channels retain users\n\nfrom events\n  join users\n  \n  group by \n    users.channel,                                     -- Segment dimension\n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active\n  )\n  \n  select *,\n    first(active) over (channel, cohort) as cohort_size,\n    round(active::numeric / cohort_size * 100, 1) as retention_pct\n    \n  order by channel, cohort, period"
+    "query": "-- Cohort analysis segmented by acquisition channel\n-- Compare how different channels retain users\n\nfrom events\n  join users\n  \n  group by \n    users.channel,                                     -- Segment dimension\n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active\n  )\n    \n  order by channel, cohort, period"
   }
 ]
