@@ -29,7 +29,7 @@ from .examples import (
     COUNT_INFERENCE_EXAMPLES,
     SYNTAX_STYLES_EXAMPLES,
     SQL_EXAMPLES,
-    VISUAL_ASQL_EXAMPLES,
+    get_visual_asql_examples,
 )
 from .schema import (
     PLAYGROUND_SCHEMA,
@@ -131,6 +131,19 @@ SYNTAX_DIR = Path(__file__).parent.parent / "syntax"
 STATIC_DIR = Path(__file__).parent / "static"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
+
+# Middleware to disable caching for static files in development
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    # Add no-cache headers for static files to help with Safari's aggressive caching
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
 # Mount static files
 if STATIC_DIR.exists():
     app.mount(
@@ -176,9 +189,17 @@ def _normalize_base_url(url: str) -> str:
 @app.get("/", response_class=HTMLResponse)
 async def index() -> HTMLResponse:
     """Render the playground interface."""
+    import time
     template_path = TEMPLATES_DIR / "index.html"
     if template_path.exists():
         content = template_path.read_text()
+
+        # Add cache-busting query param to static files for development
+        # This forces Safari (and other aggressive cachers) to fetch fresh copies
+        cache_buster = f"?v={int(time.time())}"
+        content = content.replace('.css">', f'.css{cache_buster}">')
+        content = content.replace('.js">', f'.js{cache_buster}">')
+        content = content.replace(".js'></script>", f".js{cache_buster}'></script>")
 
         docs_url = _normalize_base_url(os.environ.get("DOCS_URL", "https://analyticsql.com"))
         playground_url = _normalize_base_url(
@@ -200,7 +221,7 @@ async def index() -> HTMLResponse:
             "count_inference": COUNT_INFERENCE_EXAMPLES,
             "syntax_styles": SYNTAX_STYLES_EXAMPLES,
             "sql": SQL_EXAMPLES,
-            "visual_asql": VISUAL_ASQL_EXAMPLES,
+            "visual_asql": get_visual_asql_examples(),
         }
         examples_json = json.dumps(examples_data)
 

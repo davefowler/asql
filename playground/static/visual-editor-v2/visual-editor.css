@@ -30,7 +30,7 @@
 .visual-editor {
   padding: 12px;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: visible;
   flex: 1;
   min-height: 0;
   font-family: 'Monaco', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
@@ -41,6 +41,8 @@
 /* Pipeline container */
 .pipeline-block {
   margin-bottom: 16px;
+  overflow: visible;
+  position: relative;
 }
 
 .pipeline-header {
@@ -73,13 +75,22 @@
 }
 
 .pipeline-remove-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
   background: none;
   border: none;
   color: #ccc;
   cursor: pointer;
   font-size: 18px;
-  padding: 0 4px;
+  padding: 4px;
   line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.pipeline-block:hover .pipeline-remove-btn {
+  opacity: 1;
 }
 
 .pipeline-remove-btn:hover {
@@ -89,12 +100,14 @@
 /* Transforms list */
 .transforms-list {
   min-height: 20px;
+  overflow: visible;
 }
 
 /* Block base styles */
 .block {
-  display: block;
-  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px 0 8px; /* No bottom padding - output columns go there */
   margin-bottom: 2px;
   position: relative;
   max-width: 100%;
@@ -109,6 +122,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+  padding-bottom: 4px; /* Space before output columns */
 }
 
 /* Drag handle - absolute top left, show on hover */
@@ -245,15 +259,98 @@
   border-bottom-color: var(--asql-red);
 }
 
-/* Column autocomplete */
-.column-autocomplete {
+/* Column autocomplete and column select */
+.column-autocomplete,
+.column-select {
   color: var(--asql-variable);
   field-sizing: content;
   min-width: 2ch;
 }
 
+.column-select {
+  cursor: pointer;
+}
+
 .column-autocomplete::-webkit-calendar-picker-indicator {
   display: none !important;
+}
+
+/* Column input container with dropdown */
+.column-input-container {
+  position: relative;
+  display: inline-block;
+}
+
+.column-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10000;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: 180px;
+  max-height: 250px;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+
+.column-dropdown.visible {
+  display: block;
+}
+
+/* Ensure blocks don't clip dropdown */
+.block {
+  overflow: visible !important;
+}
+
+.block-body {
+  overflow: visible !important;
+}
+
+.expression-item,
+.aggregate-item,
+.order-item {
+  overflow: visible;
+}
+
+.expression-list,
+.aggregate-list,
+.order-list {
+  overflow: visible;
+}
+
+.expr-column-container {
+  overflow: visible;
+}
+
+.column-dropdown-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.column-dropdown-item:hover {
+  background: #f0f4f8;
+}
+
+.column-dropdown-type {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+}
+
+.column-dropdown-empty {
+  padding: 8px 12px;
+  color: #888;
+  font-size: 12px;
+  font-style: italic;
 }
 
 /* ============================================================================
@@ -592,6 +689,39 @@
   border: none;
 }
 
+/* Text mode: each column/expression on its own line */
+.visual-style-text .select-block .block-body,
+.visual-style-text .order_by-block .block-body {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.visual-style-text .expression-list,
+.visual-style-text .order-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding-left: 8px; /* Slight indent under keyword */
+  width: 100%;
+}
+
+.visual-style-text .expression-item,
+.visual-style-text .order-item {
+  display: flex;
+  align-items: center;
+}
+
+.visual-style-text .expression-item::after,
+.visual-style-text .order-item::after {
+  content: ',';
+}
+
+.visual-style-text .expression-item:last-of-type::after,
+.visual-style-text .order-item:last-of-type::after {
+  content: '';
+}
+
 /* Text mode: clean inline styling for aggregate inputs */
 .visual-style-text .agg-function,
 .visual-style-text .aggregate-item .column-autocomplete {
@@ -726,23 +856,49 @@
    ============================================================================ */
 
 .output-columns {
-  margin-top: 4px;
-  padding: 4px 8px;
+  padding: 0;
   background: #f8f9fa;
-  border-top: 1px solid #eee;
-  font-size: 11px;
+  border-top: 1px solid #e0e0e0;
+  font-size: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  /* Position at bottom of block, span full width */
+  margin: 0;
+  margin-top: auto;
+  margin-left: -8px;
+  margin-right: -8px;
+  width: calc(100% + 16px);
+  /* Hide scrollbar */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.output-columns::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .output-columns table {
   border-collapse: collapse;
+  display: inline-flex;
+}
+
+.output-columns tr {
+  display: inline-flex;
 }
 
 .output-columns th {
-  padding: 2px 8px;
+  padding: 6px 12px;
   font-weight: 500;
   color: var(--asql-variable);
   white-space: nowrap;
   text-align: left;
+  border-right: 1px solid #e8e8e8;
+  background: #f8f9fa;
+}
+
+.output-columns th:last-child {
+  border-right: none;
 }
 
 .output-columns .col-type {
@@ -839,10 +995,6 @@
   background: transparent;
 }
 
-.visual-style-text .value-operator {
-  /* Standard text style */
-}
-
 /* ============================================================================
    BLOCKY STYLE MODE (visual blocks)
    ============================================================================ */
@@ -858,15 +1010,24 @@
   padding: 12px;
   margin-bottom: 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  overflow: visible;
 }
 
 .visual-style-blocky .block {
   background: #f8f9fa;
   border-radius: 6px;
-  padding: 8px 24px 8px 20px; /* Extra padding for drag handle (left) and delete (right) */
+  padding: 8px 24px 0 20px; /* No bottom padding - output columns go there */
   margin-bottom: 4px;
   border: 1px solid #eee;
   position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+
+.visual-style-blocky .block-body {
+  padding-bottom: 8px; /* Add padding here instead of block */
+  overflow: visible;
 }
 
 .visual-style-blocky .block:hover {
@@ -989,30 +1150,50 @@
 }
 
 .visual-style-blocky .output-columns {
-  background: #f0f4f8;
-  border-radius: 0 0 6px 6px;
-  border-top: 2px solid #e0e0e0;
-  padding: 8px 12px;
+  background: white;
+  border-radius: 0 0 5px 5px;
+  border-top: 1px solid #e0e0e0;
+  padding: 0;
+  margin: 0;
+  margin-left: -20px; /* Counteract block padding */
+  margin-right: -24px;
+  width: calc(100% + 44px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.visual-style-blocky .output-columns::-webkit-scrollbar {
+  display: none;
 }
 
 .visual-style-blocky .output-columns table {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: inline-flex;
+  min-width: 100%;
 }
 
 .visual-style-blocky .output-columns tr {
-  display: contents;
+  display: inline-flex;
 }
 
 .visual-style-blocky .output-columns th {
   background: white;
-  border: 1px solid #d8e0e8;
-  border-radius: 4px;
-  padding: 4px 10px;
+  border: none;
+  border-right: 1px solid #eee;
+  border-radius: 0;
+  padding: 8px 14px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  font-weight: 500;
+  color: #555;
+  font-size: 12px;
+}
+
+.visual-style-blocky .output-columns th:last-child {
+  border-right: none;
 }
 
 .visual-style-blocky .add-step-dropdown {

@@ -123,16 +123,22 @@ class Expression {
 
   /**
    * Convert structured expression back to string
+   * 
+   * Handles types from the visual dialect generator:
+   * - column, literal, function, binary, unary (core types)
+   * - in, like, between, null_check, unary_op (additional types)
    */
   toString(expr = this.value) {
     if (!expr) return '';
 
     switch (expr.type) {
       case 'column':
+        // Include table prefix if present
+        if (expr.table) return `${expr.table}.${expr.name || ''}`;
         return expr.name || '';
       case 'literal':
-        if (expr.dataType === 'string') return `'${expr.value}'`;
-        if (expr.dataType === 'null') return 'NULL';
+        if (expr.dataType === 'string' || expr.data_type === 'string') return `'${expr.value}'`;
+        if (expr.dataType === 'null' || expr.data_type === 'null' || expr.value === null) return 'NULL';
         return String(expr.value ?? '');
       case 'function':
         const args = (expr.args || []).map(a => this.toString(a)).join(', ');
@@ -141,8 +147,22 @@ class Expression {
         return `${this.toString(expr.left)} ${expr.op} ${this.toString(expr.right)}`;
       case 'unary':
         return `${expr.op} ${this.toString(expr.arg)}`;
+      case 'unary_op':
+        return `${expr.operator.toUpperCase()} ${this.toString(expr.operand)}`;
+      case 'in':
+        const values = (expr.values || []).map(v => this.toString(v)).join(', ');
+        return `${this.toString(expr.operand)} IN (${values})`;
+      case 'like':
+        return `${this.toString(expr.operand)} LIKE ${this.toString(expr.pattern)}`;
+      case 'between':
+        return `${this.toString(expr.operand)} BETWEEN ${this.toString(expr.low)} AND ${this.toString(expr.high)}`;
+      case 'null_check':
+        return `${this.toString(expr.operand)} ${expr.operator.toUpperCase()}`;
+      case 'unknown':
+        return expr.value || '';
       default:
-        return '';
+        // Fallback for unrecognized types - try to convert to string
+        return expr.value || expr.name || '';
     }
   }
 
@@ -233,37 +253,119 @@ class Expression {
   }
 
   /**
-   * Render column input with autocomplete
+   * Render column input with autocomplete dropdown
    */
   renderColumnInput(expr) {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'expr-column column-autocomplete';
-    input.value = expr.name || '';
-    input.placeholder = 'column';
-    input.setAttribute('list', `columns-${this.id}`);
+    const container = document.createElement('span');
+    container.className = 'expr-column-container column-input-container';
 
-    // Create datalist for autocomplete
-    const datalist = document.createElement('datalist');
-    datalist.id = `columns-${this.id}`;
-    if (this.schema.columns) {
-      this.schema.columns.forEach(col => {
-        const option = document.createElement('option');
-        option.value = typeof col === 'string' ? col : col.name;
-        datalist.appendChild(option);
-      });
+    // Use contenteditable span for auto-sizing
+    const input = document.createElement('span');
+    input.className = 'expr-column column-autocomplete';
+    input.contentEditable = 'true';
+    input.spellcheck = false;
+    input.textContent = expr.name || '';
+    input.dataset.placeholder = 'column';
+    
+    // Show placeholder when empty
+    if (!expr.name) {
+      input.classList.add('empty');
     }
 
-    const container = document.createElement('span');
-    container.className = 'expr-column-container';
-    container.appendChild(input);
-    container.appendChild(datalist);
-
     input.addEventListener('input', (e) => {
-      expr.name = e.target.value;
+      expr.name = e.target.textContent;
+      input.classList.toggle('empty', !e.target.textContent);
       this.notifyChange();
+      updateDropdown();
     });
 
+    // Prevent newlines
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        input.blur();
+      }
+    });
+
+    // Handle paste - strip formatting
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = e.clipboardData.getData('text/plain').replace(/\n/g, '');
+      document.execCommand('insertText', false, text);
+    });
+
+    container.appendChild(input);
+
+    // Create dropdown menu
+    const dropdown = document.createElement('div');
+    dropdown.className = 'column-dropdown';
+    
+    const columns = this.schema?.columns || [];
+    
+    const updateDropdown = () => {
+      dropdown.innerHTML = '';
+      
+      if (columns.length === 0) {
+        const emptyItem = document.createElement('div');
+        emptyItem.className = 'column-dropdown-empty';
+        emptyItem.textContent = 'No columns available';
+        dropdown.appendChild(emptyItem);
+        return;
+      }
+      
+      // Show ALL columns - sort matching ones to top
+      const rawFilter = (expr.name || '').toLowerCase();
+      const filterValue = rawFilter.includes('.') ? rawFilter.split('.').pop() : rawFilter;
+      
+      // Sort: exact matches first, then partial matches, then rest alphabetically
+      const sortedCols = [...columns].sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        const aExact = aName === filterValue;
+        const bExact = bName === filterValue;
+        const aPartial = filterValue && (aName.includes(filterValue) || filterValue.includes(aName));
+        const bPartial = filterValue && (bName.includes(filterValue) || filterValue.includes(bName));
+        
+        if (aExact && !bExact) return -1;
+        if (bExact && !aExact) return 1;
+        if (aPartial && !bPartial) return -1;
+        if (bPartial && !aPartial) return 1;
+        return aName.localeCompare(bName);
+      });
+      
+      sortedCols.forEach(col => {
+        const item = document.createElement('div');
+        item.className = 'column-dropdown-item';
+        item.textContent = col.name;
+        if (col.type) {
+          const typeSpan = document.createElement('span');
+          typeSpan.className = 'column-dropdown-type';
+          typeSpan.textContent = col.type;
+          item.appendChild(typeSpan);
+        }
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          input.textContent = col.name;
+          expr.name = col.name;
+          input.classList.remove('empty');
+          this.notifyChange();
+          dropdown.classList.remove('visible');
+        });
+        dropdown.appendChild(item);
+      });
+    };
+
+    // Show dropdown on focus
+    input.addEventListener('focus', () => {
+      updateDropdown();
+      dropdown.classList.add('visible');
+    });
+
+    input.addEventListener('blur', () => {
+      setTimeout(() => dropdown.classList.remove('visible'), 150);
+    });
+
+    container.appendChild(dropdown);
     return container;
   }
 
@@ -271,31 +373,47 @@ class Expression {
    * Render literal value input
    */
   renderLiteralInput(expr) {
-    const input = document.createElement('input');
+    // Use contenteditable span for auto-sizing
+    const input = document.createElement('span');
     input.className = 'expr-literal';
+    input.contentEditable = 'true';
+    input.spellcheck = false;
     
     if (expr.dataType === 'number') {
-      input.type = 'number';
-      input.value = expr.value ?? '';
+      input.textContent = expr.value ?? '';
       input.className += ' expr-literal-number';
+      input.inputMode = 'numeric';
     } else if (expr.dataType === 'null') {
-      input.type = 'text';
-      input.value = 'NULL';
-      input.readOnly = true;
+      input.textContent = 'NULL';
+      input.contentEditable = 'false';
       input.className += ' expr-literal-null';
     } else {
-      input.type = 'text';
-      input.value = expr.value ?? '';
+      input.textContent = expr.value ?? '';
       input.className += ' expr-literal-string';
     }
 
     input.addEventListener('input', (e) => {
       if (expr.dataType === 'number') {
-        expr.value = parseFloat(e.target.value) || 0;
+        expr.value = parseFloat(e.target.textContent) || 0;
       } else {
-        expr.value = e.target.value;
+        expr.value = e.target.textContent;
       }
       this.notifyChange();
+    });
+
+    // Prevent newlines
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        input.blur();
+      }
+    });
+
+    // Handle paste - strip formatting
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = e.clipboardData.getData('text/plain').replace(/\n/g, '');
+      document.execCommand('insertText', false, text);
     });
 
     return input;
@@ -440,20 +558,39 @@ class Expression {
     toggle.addEventListener('click', () => {
       if (!this.value.alias) {
         this.value.alias = this.getDefaultAlias();
+        aliasInput.textContent = this.value.alias;
       }
       container.classList.toggle('has-alias');
       aliasInput.focus();
       this.notifyChange();
     });
 
-    const aliasInput = document.createElement('input');
-    aliasInput.type = 'text';
+    // Use contenteditable span for auto-sizing
+    const aliasInput = document.createElement('span');
     aliasInput.className = 'expr-alias-input';
-    aliasInput.value = this.value.alias || '';
-    aliasInput.placeholder = this.getDefaultAlias();
+    aliasInput.contentEditable = 'true';
+    aliasInput.spellcheck = false;
+    aliasInput.textContent = this.value.alias || '';
+    aliasInput.dataset.placeholder = this.getDefaultAlias();
+    
     aliasInput.addEventListener('input', (e) => {
-      this.value.alias = e.target.value || null;
+      this.value.alias = e.target.textContent || null;
       this.notifyChange();
+    });
+
+    // Prevent newlines
+    aliasInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        aliasInput.blur();
+      }
+    });
+
+    // Handle paste - strip formatting
+    aliasInput.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = e.clipboardData.getData('text/plain').replace(/\n/g, '');
+      document.execCommand('insertText', false, text);
     });
 
     container.appendChild(toggle);

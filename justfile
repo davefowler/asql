@@ -58,8 +58,8 @@ serve: _kill-servers
     echo "=================================================="
     echo ""
     
-    # Start both servers
-    ./venv/bin/uvicorn playground:app --reload --host 0.0.0.0 --port 5001 &
+    # Start both servers (watch static files for CSS/JS changes)
+    ./venv/bin/uvicorn playground:app --reload --reload-dir playground/static --reload-dir playground/templates --host 0.0.0.0 --port 5001 &
     PLAYGROUND_PID=$!
     ./venv/bin/python -m mkdocs serve --livereload &
     MKDOCS_PID=$!
@@ -74,6 +74,14 @@ docs:
 # Build documentation for production
 docs-build:
     ./venv/bin/python -m mkdocs build
+
+# ============================================================================
+# UTILITIES
+# ============================================================================
+
+# Generate visual ASQL examples from ASQL source queries (edit the script to update examples)
+gen-visual-examples:
+    ./venv/bin/python scripts/generate_visual_examples.py
 
 # ============================================================================
 # INTERNAL
