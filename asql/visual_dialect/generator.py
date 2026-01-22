@@ -166,13 +166,17 @@ class VisualASQLGenerator(Generator):
         if pipeline_comments:
             result["comments"] = pipeline_comments
 
+        # Check if this is a multi-table query (has JOINs)
+        has_joins = bool(expression.args.get("joins"))
+        
         # FROM clause (uses 'from_' because 'from' is a Python keyword)
         if from_clause := expression.args.get("from_"):
             table_expr = from_clause.this
             if table_expr:
                 table_name = self._get_table_name(table_expr)
                 table_alias = self._get_alias(table_expr)
-                table_cols = self._get_table_columns(table_name)
+                # Only qualify column names if there are joins (to avoid ambiguity)
+                table_cols = self._get_table_columns(table_name, qualify=has_joins)
                 
                 # If no schema columns, use inferred columns from query
                 if not table_cols:
@@ -464,18 +468,18 @@ class VisualASQLGenerator(Generator):
             if not table and table_count == 1 and from_table_name:
                 table = from_table_name
             
-            # Build qualified name for deduplication
-            qualified_name = f"{table}.{name}" if table else name
-            if qualified_name in seen:
+            # Build qualified key for deduplication
+            qualified_key = f"{table}.{name}" if table else name
+            if qualified_key in seen:
                 continue
-            seen.add(qualified_name)
+            seen.add(qualified_key)
             
             # Group by table (or "_unqualified_" if no table)
             source = table or "_unqualified_"
             if source not in columns_by_table:
                 columns_by_table[source] = []
             columns_by_table[source].append({
-                "name": qualified_name,
+                "name": name,  # Use just the column name, not qualified
                 "source": table,
             })
         

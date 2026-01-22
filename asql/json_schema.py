@@ -66,6 +66,9 @@ def json_to_asql(query_json: Union[Dict[str, Any], List[Dict[str, Any]]]) -> str
                 if set_op.get("all"):
                     op_type += " ALL"
                 result_lines.append(op_type)
+            elif i > 0:
+                # Add semicolon to separate independent pipelines
+                result_lines.append(";")
 
             pipeline_asql = _pipeline_to_asql(pipeline)
             result_lines.append(pipeline_asql)
