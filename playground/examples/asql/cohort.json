@@ -2,7 +2,7 @@
   {
     "title": "User Retention Cohort",
     "desc": "Track monthly active users by signup cohort using alias reuse",
-    "query": "-- Cohort analysis: track users over time since they signed up\n-- No special syntax needed - just computed columns + group by\n\nfrom events\n  join users                            -- Join to get signup_date\n  \n  -- Group by cohort (signup month) and period (months since signup)\n  -- Alias reuse lets us reference 'cohort' immediately after defining it\n  group by \n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active   -- Active users in this cohort+period\n  )\n  \n  order by cohort, period"
+    "query": "-- Cohort analysis: track users over time since they signed up\n-- Alias reuse lets you reference 'cohort' in the same GROUP BY\n\nfrom events\n  join users                            -- Join to get signup_date\n  \n  group by \n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active   -- Active users in this cohort+period\n  )\n  \n  order by cohort, period"
   },
   {
     "title": "Revenue Cohort with LTV",

@@ -90,11 +90,12 @@ kill:
         pids=$(lsof -nP -iTCP:$port -sTCP:LISTEN -t 2>/dev/null || true)
         if [[ -n "$pids" ]]; then
             echo "Killing process(es) on port $port: $pids"
-            kill $pids 2>/dev/null || true
+            kill -9 $pids 2>/dev/null || true
         fi
     done
-    pkill -f "uvicorn .*playground:app" 2>/dev/null || true
-    pkill -f "mkdocs serve" 2>/dev/null || true
+    pkill -9 -f "uvicorn .*playground:app" 2>/dev/null || true
+    pkill -9 -f "mkdocs serve" 2>/dev/null || true
+    sleep 1
     echo "✓ Development servers stopped"
 
 # ============================================================================
@@ -106,8 +107,8 @@ _kill-servers:
     #!/usr/bin/env bash
     for port in 8000 5001; do
         pids=$(lsof -nP -iTCP:$port -sTCP:LISTEN -t 2>/dev/null || true)
-        [[ -n "$pids" ]] && kill $pids 2>/dev/null || true
+        [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null || true
     done
-    pkill -f "uvicorn .*playground:app" 2>/dev/null || true
-    pkill -f "mkdocs serve" 2>/dev/null || true
-    sleep 0.5
+    pkill -9 -f "uvicorn .*playground:app" 2>/dev/null || true
+    pkill -9 -f "mkdocs serve" 2>/dev/null || true
+    sleep 1

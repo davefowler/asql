@@ -1791,6 +1791,7 @@ class ASQLParser(Parser):
         - Simple columns: region, category
         - Qualified columns: customers.id, orders.total
         - Function calls: month(date), year(created_at), slugify(name)
+        - Aliased expressions: month(date) as cohort, region as reg
         - But stops at standalone ( that starts an aggregate block
         
         The key insight: aggregate blocks always contain aliased expressions.
@@ -1799,6 +1800,8 @@ class ASQLParser(Parser):
         """
         if not self._curr:
             return None
+        
+        expr: t.Optional[exp.Expression] = None
         
         if self._curr.token_type == TokenType.VAR:
             name = self._curr.text
@@ -1813,57 +1816,67 @@ class ASQLParser(Parser):
                 if self._curr and self._curr.token_type == TokenType.VAR:
                     col_name = self._curr.text
                     self._advance()  # consume column name
-                    return exp.Column(
+                    expr = exp.Column(
                         this=exp.to_identifier(col_name),
                         table=exp.to_identifier(name)
                     )
                 else:
                     # Malformed, just return the table as column
-                    return exp.Column(this=exp.to_identifier(name))
+                    expr = exp.Column(this=exp.to_identifier(name))
             
-            if next_tok and next_tok.token_type == TokenType.L_PAREN:
+            elif next_tok and next_tok.token_type == TokenType.L_PAREN:
                 # Check if this looks like an aggregate block
                 if self._looks_like_aggregate_block_at(self._index + 1):
                     # This is: identifier (aggregate_block)
                     self._advance()  # consume identifier
-                    return exp.Column(this=exp.to_identifier(name))
-                
-                # Otherwise, this is a function call like month(date) or slugify(name)
-                # Check if it's a custom function with special parsing (like SLUGIFY)
-                upper_name = name.upper()
-                if upper_name in self.FUNCTION_PARSERS:
-                    # Use the custom function parser
-                    self._advance()  # consume function name
-                    return self.FUNCTION_PARSERS[upper_name](self)
-                
-                # Otherwise, parse as a standard function
-                self._advance()  # consume identifier
-                self._advance()  # consume (
-                
-                # Parse function arguments
-                args = self._parse_csv(self._parse_expression)
-                
-                if not self._match(TokenType.R_PAREN):
-                    self.raise_error("Expected ) after function arguments")
-                
-                # Build function expression using FUNCTIONS registry if available
-                func_class = self.FUNCTIONS.get(upper_name)
-                if func_class:
-                    if callable(func_class):
-                        expr = func_class(args)
-                    else:
-                        expr = func_class(this=args[0] if args else None)
+                    expr = exp.Column(this=exp.to_identifier(name))
                 else:
-                    expr = exp.Anonymous(this=name, expressions=args)
-                
-                return expr
+                    # Otherwise, this is a function call like month(date) or slugify(name)
+                    # Check if it's a custom function with special parsing (like SLUGIFY)
+                    upper_name = name.upper()
+                    if upper_name in self.FUNCTION_PARSERS:
+                        # Use the custom function parser
+                        self._advance()  # consume function name
+                        expr = self.FUNCTION_PARSERS[upper_name](self)
+                    else:
+                        # Otherwise, parse as a standard function
+                        self._advance()  # consume identifier
+                        self._advance()  # consume (
+                        
+                        # Parse function arguments
+                        args = self._parse_csv(self._parse_expression)
+                        
+                        if not self._match(TokenType.R_PAREN):
+                            self.raise_error("Expected ) after function arguments")
+                        
+                        # Build function expression using FUNCTIONS registry if available
+                        func_class = self.FUNCTIONS.get(upper_name)
+                        if func_class:
+                            if callable(func_class):
+                                expr = func_class(args)
+                            else:
+                                expr = func_class(this=args[0] if args else None)
+                        else:
+                            expr = exp.Anonymous(this=name, expressions=args)
             else:
                 # Simple column
                 self._advance()
-                return exp.Column(this=exp.to_identifier(name))
+                expr = exp.Column(this=exp.to_identifier(name))
+        else:
+            # For other cases (literals, etc.), use standard parsing
+            expr = self._parse_primary()
         
-        # For other cases (literals, etc.), use standard parsing
-        return self._parse_primary()
+        # Check for optional alias: "AS alias" or just "alias"
+        # But don't consume ( which starts aggregate block
+        if expr and self._curr:
+            if self._match(TokenType.ALIAS):
+                # Explicit AS keyword
+                if self._curr and self._curr.token_type == TokenType.VAR:
+                    alias_name = self._curr.text
+                    self._advance()
+                    expr = exp.Alias(this=expr, alias=exp.to_identifier(alias_name))
+        
+        return expr
     
     def _looks_like_aggregate_block_at(self, paren_idx: int) -> bool:
         """Check if ( at given index starts an aggregate block vs a function call.
