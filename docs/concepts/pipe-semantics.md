@@ -1,6 +1,6 @@
-# Pipeline Semantics
+# Pipe Semantics
 
-ASQL uses a pipeline-based query model where data flows from top to bottom. This matches how you think about data transformations and makes complex queries easier to understand.
+ASQL uses a pipe-based query model where data flows from top to bottom. This matches how you think about data transformations and makes complex queries easier to understand.
 
 ## The Problem with SQL
 

@@ -325,7 +325,7 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 Understanding ASQL's design:
 
 - [Guaranteed Groups](concepts/guaranteed-groups.md) — Automatic gap-filling
-- [Pipeline Semantics](concepts/pipelines.md) — Why FROM-first matters
+- [Pipe Semantics](concepts/pipe-semantics.md) — Why FROM-first matters
 - [Convention Over Configuration](concepts/conventions.md) — Smart defaults
 - [Function Shorthand](concepts/shorthand.md) — Underscore/space flexibility
 

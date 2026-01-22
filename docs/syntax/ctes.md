@@ -212,6 +212,6 @@ If you have more than 3-4 CTEs, consider whether the query should be split into 
 
 ## Next Steps
 
-- **[Pipeline Basics](pipeline.md)** — Core pipe syntax
+- **[Pipe Syntax](pipe.md)** — Core pipe syntax
 - **[Examples](../examples.md)** — Real-world query patterns
 - **[Aggregations](aggregations.md)** — GROUP BY with CTEs

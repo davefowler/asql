@@ -4,7 +4,7 @@ This section provides detailed documentation on ASQL syntax. Each page covers a 
 
 ## Core Syntax
 
-- **[Pipeline Basics](pipeline.md)** — FROM-first queries, pipeline operators, chaining transformations
+- **[Pipe Syntax](pipe.md)** — FROM-first queries, pipe operators, chaining transformations
 - **[Expressions & Operators](expressions.md)** — Comparisons, arithmetic, logical operators, conditionals
 - **[Aggregations](aggregations.md)** — GROUP BY, aggregate functions, natural language aggregates
 - **[Joins](joins.md)** — Join operators, FK inference, dot notation traversal
@@ -64,9 +64,9 @@ where status = "active"   -- SQL style
 where status == "active"  -- programmer style
 ```
 
-### Pipeline Operators
+### Pipe Operators
 
-Pipeline operators are optional—indentation works too:
+Pipe operators are optional—indentation works too:
 
 ```asql
 -- Indentation-based (preferred):
@@ -82,6 +82,6 @@ from users
 
 ## Next Steps
 
-- Start with **[Pipeline Basics](pipeline.md)** to understand the core structure
+- Start with **[Pipe Syntax](pipe.md)** to understand the core structure
 - See **[Examples](../examples.md)** for real-world query patterns
 - Read the **[Language Specification](../spec.md)** for complete reference
