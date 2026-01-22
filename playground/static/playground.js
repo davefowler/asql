@@ -749,54 +749,56 @@ async function setOutputVisualModePreference(mode) {
 function updateVisualStyleToggleButtons() {
     const blockyBtn = document.getElementById('blocky-style-btn');
     const textBtn = document.getElementById('text-style-btn');
+    const pipesBtn = document.getElementById('pipes-style-btn');
     const outputBlockyBtn = document.getElementById('output-blocky-style-btn');
     const outputTextBtn = document.getElementById('output-text-style-btn');
-    
+    const outputPipesBtn = document.getElementById('output-pipes-style-btn');
+
     // Input panel
-    if (blockyBtn && textBtn) {
-        if (visualStylePreference === 'blocky') {
-            blockyBtn.classList.add('active');
-            textBtn.classList.remove('active');
-        } else {
-            blockyBtn.classList.remove('active');
-            textBtn.classList.add('active');
-        }
+    if (blockyBtn && textBtn && pipesBtn) {
+        blockyBtn.classList.toggle('active', visualStylePreference === 'blocky');
+        textBtn.classList.toggle('active', visualStylePreference === 'text');
+        pipesBtn.classList.toggle('active', visualStylePreference === 'pipes');
     }
-    
+
     // Output panel (uses same preference)
-    if (outputBlockyBtn && outputTextBtn) {
-        if (visualStylePreference === 'blocky') {
-            outputBlockyBtn.classList.add('active');
-            outputTextBtn.classList.remove('active');
-        } else {
-            outputBlockyBtn.classList.remove('active');
-            outputTextBtn.classList.add('active');
-        }
+    if (outputBlockyBtn && outputTextBtn && outputPipesBtn) {
+        outputBlockyBtn.classList.toggle('active', visualStylePreference === 'blocky');
+        outputTextBtn.classList.toggle('active', visualStylePreference === 'text');
+        outputPipesBtn.classList.toggle('active', visualStylePreference === 'pipes');
     }
 }
 
-// Switch visual style preference (blocky vs text)
+// Switch visual style preference (blocky vs text vs pipes)
 function setVisualStylePreference(style) {
     visualStylePreference = style;
     localStorage.setItem('asql_visual_style', style);
     updateVisualStyleToggleButtons();
     applyVisualStyle();
+
+    // Re-render visual output if in pipes mode
+    if (style === 'pipes' && lastRenderedQuery) {
+        renderPipesView(lastRenderedQuery);
+    }
 }
+
+// Track last rendered query for pipes mode re-renders
+let lastRenderedQuery = null;
 
 // Apply visual style class to containers
 function applyVisualStyle() {
     const inputVisualContainer = document.getElementById('visual-editor-container');
     const outputVisualContainer = document.getElementById('output-visual-editor-container');
-    
+
+    const allStyles = ['visual-style-text', 'visual-style-blocky', 'visual-style-pipes'];
     const className = `visual-style-${visualStylePreference}`;
-    const otherClass = visualStylePreference === 'blocky' ? 'visual-style-text' : 'visual-style-blocky';
-    
+
     if (inputVisualContainer) {
-        inputVisualContainer.classList.remove(otherClass);
+        allStyles.forEach(s => inputVisualContainer.classList.remove(s));
         inputVisualContainer.classList.add(className);
     }
     if (outputVisualContainer) {
-        outputVisualContainer.classList.remove(otherClass);
+        allStyles.forEach(s => outputVisualContainer.classList.remove(s));
         outputVisualContainer.classList.add(className);
     }
 }
@@ -1786,23 +1788,31 @@ document.addEventListener('DOMContentLoaded', function() {
             outputVisualViewBtn.addEventListener('click', () => setOutputVisualModePreference('visual'));
         }
         
-        // Visual style toggle buttons (blocky vs text)
+        // Visual style toggle buttons (blocky vs text vs pipes)
         const blockyStyleBtn = document.getElementById('blocky-style-btn');
         const textStyleBtn = document.getElementById('text-style-btn');
+        const pipesStyleBtn = document.getElementById('pipes-style-btn');
         const outputBlockyStyleBtn = document.getElementById('output-blocky-style-btn');
         const outputTextStyleBtn = document.getElementById('output-text-style-btn');
-        
+        const outputPipesStyleBtn = document.getElementById('output-pipes-style-btn');
+
         if (blockyStyleBtn) {
             blockyStyleBtn.addEventListener('click', () => setVisualStylePreference('blocky'));
         }
         if (textStyleBtn) {
             textStyleBtn.addEventListener('click', () => setVisualStylePreference('text'));
         }
+        if (pipesStyleBtn) {
+            pipesStyleBtn.addEventListener('click', () => setVisualStylePreference('pipes'));
+        }
         if (outputBlockyStyleBtn) {
             outputBlockyStyleBtn.addEventListener('click', () => setVisualStylePreference('blocky'));
         }
         if (outputTextStyleBtn) {
             outputTextStyleBtn.addEventListener('click', () => setVisualStylePreference('text'));
+        }
+        if (outputPipesStyleBtn) {
+            outputPipesStyleBtn.addEventListener('click', () => setVisualStylePreference('pipes'));
         }
         
         // Show columns toggle buttons
@@ -1875,14 +1885,23 @@ document.addEventListener('DOMContentLoaded', function() {
 // Render query JSON to the output visual editor (read-only display)
 // Handles both new array format and legacy single-object format
 function renderOutputVisual(query) {
+    // Store query for re-renders (e.g., when switching to pipes mode)
+    lastRenderedQuery = query;
+
     const fromDisplay = document.getElementById('output-from-table-display');
     const fromInput = document.getElementById('output-from-table');
     const transformsContainer = document.getElementById('output-transforms-container');
-    
+
     if (!transformsContainer) return;
-    
+
     // Normalize to array format
     const pipelines = Array.isArray(query) ? query : [query];
+
+    // If in pipes mode, render the pipes view
+    if (visualStylePreference === 'pipes') {
+        renderPipesView(query);
+        return;
+    }
     
     // Clear container
     transformsContainer.innerHTML = '';
@@ -2012,6 +2031,276 @@ function renderOutputVisual(query) {
         
         transformsContainer.appendChild(pipelineDiv);
     });
+}
+
+// Render Yahoo Pipes-style visualization for pipelines/CTEs
+function renderPipesView(query) {
+    const transformsContainer = document.getElementById('output-transforms-container');
+    if (!transformsContainer) return;
+
+    // Hide the static from block
+    const fromBlock = document.querySelector('#output-visual-editor-container .from-block');
+    if (fromBlock) fromBlock.style.display = 'none';
+
+    // Clear container
+    transformsContainer.innerHTML = '';
+
+    // Normalize to array format
+    const pipelines = Array.isArray(query) ? query : [query];
+
+    // Create pipes container
+    const pipesContainer = document.createElement('div');
+    pipesContainer.className = 'pipes-nodes-container';
+
+    // Build a map of CTE names for reference detection
+    const cteNames = new Set();
+    pipelines.forEach(p => {
+        if (p.name) cteNames.add(p.name.toLowerCase());
+    });
+
+    // Render each pipeline as a node
+    pipelines.forEach((pipeline, idx) => {
+        const node = createPipeNode(pipeline, idx, pipelines.length, cteNames);
+        pipesContainer.appendChild(node);
+
+        // Add set operation connector between pipelines
+        if (pipeline.set_operation && idx < pipelines.length - 1) {
+            const setOpDiv = document.createElement('div');
+            setOpDiv.className = 'pipe-set-operation';
+            const opText = pipeline.set_operation.all
+                ? `${pipeline.set_operation.type.toUpperCase()} ALL`
+                : pipeline.set_operation.type.toUpperCase();
+            setOpDiv.innerHTML = `<span class="pipe-set-op-badge">${opText}</span>`;
+            pipesContainer.appendChild(setOpDiv);
+        }
+    });
+
+    transformsContainer.appendChild(pipesContainer);
+}
+
+// Create a single pipe node for a pipeline/CTE
+function createPipeNode(pipeline, idx, totalPipelines, cteNames) {
+    const node = document.createElement('div');
+    node.className = 'pipe-node';
+    node.dataset.pipelineIndex = idx;
+
+    // Determine node title and type
+    const tableName = pipeline.from?.table || '';
+    const isNamedCTE = !!pipeline.name;
+    const nodeTitle = pipeline.name || tableName || `Query ${idx + 1}`;
+    const nodeType = isNamedCTE ? 'CTE' : (tableName ? 'TABLE' : 'QUERY');
+
+    // Check if this references another CTE
+    const referencesOtherCTE = cteNames.has(tableName.toLowerCase()) && tableName.toLowerCase() !== pipeline.name?.toLowerCase();
+
+    // Create header
+    const header = document.createElement('div');
+    header.className = 'pipe-node-header';
+
+    const icon = document.createElement('div');
+    icon.className = 'pipe-node-icon';
+    icon.textContent = isNamedCTE ? 'C' : (referencesOtherCTE ? '⟶' : 'T');
+
+    const title = document.createElement('div');
+    title.className = 'pipe-node-title';
+    title.textContent = nodeTitle;
+
+    const typeLabel = document.createElement('div');
+    typeLabel.className = 'pipe-node-type';
+    typeLabel.textContent = nodeType;
+
+    header.appendChild(icon);
+    header.appendChild(title);
+    header.appendChild(typeLabel);
+
+    // Add source badge or reference badge
+    if (tableName && !isNamedCTE) {
+        const sourceBadge = document.createElement('span');
+        sourceBadge.className = 'pipe-source-badge';
+        sourceBadge.textContent = 'SOURCE';
+        header.appendChild(sourceBadge);
+    } else if (referencesOtherCTE) {
+        const refBadge = document.createElement('span');
+        refBadge.className = 'pipe-ref-badge';
+        refBadge.textContent = `← ${tableName}`;
+        refBadge.title = `References CTE: ${tableName}`;
+        header.appendChild(refBadge);
+    }
+
+    node.appendChild(header);
+
+    // Create body with transforms
+    const body = document.createElement('div');
+    body.className = 'pipe-node-body';
+
+    // Show FROM source if this is a named CTE with a table source
+    if (isNamedCTE && tableName) {
+        const fromStep = document.createElement('div');
+        fromStep.className = 'pipe-step';
+        fromStep.innerHTML = `
+            <div class="pipe-step-header">
+                <span class="pipe-step-type select">FROM</span>
+            </div>
+            <div class="pipe-step-content">
+                <span class="value-column">${escapeHtmlText(tableName)}</span>
+            </div>
+        `;
+        body.appendChild(fromStep);
+    }
+
+    // Render transforms
+    if (pipeline.transforms && pipeline.transforms.length > 0) {
+        pipeline.transforms.forEach(transform => {
+            const step = createPipeStep(transform);
+            body.appendChild(step);
+        });
+    }
+
+    if (body.children.length === 0) {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.className = 'pipes-empty-state';
+        emptyMsg.textContent = 'No transforms';
+        body.appendChild(emptyMsg);
+    }
+
+    node.appendChild(body);
+
+    // Add output columns footer if available
+    const lastTransform = pipeline.transforms?.[pipeline.transforms.length - 1];
+    const outputCols = lastTransform?.output_columns || pipeline.from?.output_columns;
+    if (outputCols && outputCols.length > 0) {
+        const footer = document.createElement('div');
+        footer.className = 'pipe-node-footer';
+        const colsDiv = document.createElement('div');
+        colsDiv.className = 'output-columns';
+        colsDiv.innerHTML = renderOutputColumnsTable(outputCols);
+        footer.appendChild(colsDiv);
+        node.appendChild(footer);
+    }
+
+    // Add connection ports for multiple pipelines
+    if (totalPipelines > 1) {
+        if (idx > 0) {
+            const portIn = document.createElement('div');
+            portIn.className = 'pipe-port pipe-port-in';
+            portIn.title = 'Input';
+            node.appendChild(portIn);
+        }
+        if (idx < totalPipelines - 1) {
+            const portOut = document.createElement('div');
+            portOut.className = 'pipe-port pipe-port-out';
+            portOut.title = 'Output';
+            node.appendChild(portOut);
+        }
+    }
+
+    return node;
+}
+
+// Create a step element within a pipe node
+function createPipeStep(transform) {
+    const step = document.createElement('div');
+    step.className = 'pipe-step';
+
+    const stepType = transform.type || 'unknown';
+    const header = document.createElement('div');
+    header.className = 'pipe-step-header';
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `pipe-step-type ${stepType}`;
+    typeBadge.textContent = stepType.toUpperCase().replace('_', ' ');
+    header.appendChild(typeBadge);
+
+    const content = document.createElement('div');
+    content.className = 'pipe-step-content';
+    content.innerHTML = renderPipeStepContent(transform);
+
+    step.appendChild(header);
+    step.appendChild(content);
+
+    return step;
+}
+
+// Render the content of a pipe step based on transform type
+function renderPipeStepContent(transform) {
+    const escape = escapeHtmlText;
+
+    switch (transform.type) {
+        case 'where':
+            return `<span class="value-column">${escape(transform.condition || '')}</span>`;
+
+        case 'select':
+            if (transform.columns && transform.columns.length > 0) {
+                const cols = transform.columns.map(c => {
+                    const expr = typeof c === 'string' ? c : (c.expression || c.name || '');
+                    const alias = typeof c === 'object' && c.name !== c.expression ? c.name : null;
+                    if (alias && alias !== expr) {
+                        return `<span class="value-column">${escape(expr)}</span> <span class="value-operator">as</span> <span class="value-column">${escape(alias)}</span>`;
+                    }
+                    return `<span class="value-column">${escape(expr)}</span>`;
+                });
+                return cols.join(', ');
+            }
+            return '*';
+
+        case 'join':
+            const joinType = (transform.join_type || 'inner').toUpperCase();
+            const joinTable = transform.table || '';
+            const joinCond = transform.condition || '';
+            return `<span class="value-operator">${joinType}</span> <span class="value-column">${escape(joinTable)}</span> <span class="value-operator">on</span> ${escape(joinCond)}`;
+
+        case 'group_by':
+            let groupContent = '';
+            if (transform.dimensions && transform.dimensions.length > 0) {
+                const dims = transform.dimensions.map(d => `<span class="value-column">${escape(d)}</span>`).join(', ');
+                groupContent += dims;
+            }
+            if (transform.aggregates && transform.aggregates.length > 0) {
+                const aggs = transform.aggregates.map(a => {
+                    const fn = a.function || 'count';
+                    const col = a.column || '*';
+                    const alias = a.alias ? ` <span class="value-operator">as</span> <span class="value-column">${escape(a.alias)}</span>` : '';
+                    return `<span class="value-function">${escape(fn)}</span>(<span class="value-column">${escape(col)}</span>)${alias}`;
+                }).join(', ');
+                if (groupContent) groupContent += '<br>';
+                groupContent += aggs;
+            }
+            return groupContent || 'no dimensions';
+
+        case 'order_by':
+            if (transform.expressions && transform.expressions.length > 0) {
+                return transform.expressions.map(e => {
+                    const col = e.column || e.expression || '';
+                    const dir = (e.direction || 'asc').toUpperCase();
+                    return `<span class="value-column">${escape(col)}</span> <span class="value-operator">${dir}</span>`;
+                }).join(', ');
+            }
+            return '';
+
+        case 'limit':
+            const count = transform.count || transform.limit || 0;
+            const offset = transform.offset;
+            let limitStr = `<span class="value-number">${count}</span>`;
+            if (offset) {
+                limitStr += ` <span class="value-operator">offset</span> <span class="value-number">${offset}</span>`;
+            }
+            return limitStr;
+
+        case 'extend':
+            if (transform.columns && transform.columns.length > 0) {
+                return transform.columns.map(c => `<span class="value-column">${escape(typeof c === 'string' ? c : c.expression || '')}</span>`).join(', ');
+            }
+            return '';
+
+        default:
+            // Generic fallback - show any condition or expression
+            if (transform.condition) return escape(transform.condition);
+            if (transform.expression) return escape(transform.expression);
+            if (transform.columns) {
+                return transform.columns.map(c => escape(typeof c === 'string' ? c : JSON.stringify(c))).join(', ');
+            }
+            return JSON.stringify(transform);
+    }
 }
 
 // Helper to escape HTML in text
