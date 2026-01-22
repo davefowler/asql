@@ -8,9 +8,7 @@ Usage:
     from orders group by spine(month(created_at)), region (sum(amount))
 """
 
-import pytest
 from tests.fixtures import transpile
-from asql import CompileSettings
 from asql.compiler.spine_helpers import (
     _find_non_date_group_by_columns,
 )

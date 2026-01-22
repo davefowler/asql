@@ -265,7 +265,7 @@ class TestSqlToVisual:
         assert 'from' in query
         assert query['from']['table'] == 'users'
         
-        print(f"\nSimple SQL converted to:")
+        print("\nSimple SQL converted to:")
         print(json.dumps(result, indent=2)[:500])
 
     def test_join_sql_to_visual(self):
@@ -279,7 +279,7 @@ class TestSqlToVisual:
         result = sql_to_visual_json(sql)
         assert result, "Failed to convert SQL with JOIN"
         
-        print(f"\nJoin SQL converted to:")
+        print("\nJoin SQL converted to:")
         print(json.dumps(result, indent=2)[:500])
 
     def test_aggregate_sql_to_visual(self):
@@ -293,7 +293,7 @@ class TestSqlToVisual:
         result = sql_to_visual_json(sql)
         assert result, "Failed to convert aggregate SQL"
         
-        print(f"\nAggregate SQL converted to:")
+        print("\nAggregate SQL converted to:")
         print(json.dumps(result, indent=2)[:500])
 
 
@@ -328,11 +328,11 @@ class TestSwapRoundTrip:
         """
         # Step 1: Visual ASQL → SQL
         sql1 = visual_json_to_sql(example['query'])
-        assert sql1, f"Step 1 failed"
+        assert sql1, "Step 1 failed"
         
         # Step 2: SQL → Visual ASQL JSON (first swap)
         json_result = sql_to_visual_json(sql1)
-        assert json_result, f"Step 2 failed"
+        assert json_result, "Step 2 failed"
         
         # Step 3: Visual ASQL JSON → SQL (second swap - back to SQL)
         sql2 = visual_json_to_sql(json_result)
@@ -363,7 +363,7 @@ class TestSwapRoundTrip:
         # Swap 4: Visual → SQL
         sql3 = visual_json_to_sql(json2)
         
-        print(f"\nTriple swap stability test:")
+        print("\nTriple swap stability test:")
         print(f"  SQL after 2 swaps: {sql2}")
         print(f"  SQL after 4 swaps: {sql3}")
         
@@ -386,7 +386,7 @@ class TestSwapEdgeCases:
         result = sql_to_visual_json(sql)
         assert result
         
-        print(f"\nEmpty transforms:")
+        print("\nEmpty transforms:")
         print(f"  SQL: {sql}")
         print(f"  Back to JSON: {json.dumps(result, indent=2)[:200]}")
 
@@ -412,7 +412,7 @@ class TestSwapEdgeCases:
         sql = visual_json_to_sql(query)
         assert sql
         
-        print(f"\nMultiple pipelines (CTE):")
+        print("\nMultiple pipelines (CTE):")
         print(f"  SQL: {sql}")
         
         # Should contain CTE structure
@@ -497,7 +497,7 @@ class TestSqlSemanticPreservation:
         assert 'COUNT(*)' in sql_upper, "Should preserve COUNT(*) aggregate"
         assert 'SUM' in sql_upper, "Should preserve SUM aggregate"
         
-        print(f"\nCTE preservation test SQL:")
+        print("\nCTE preservation test SQL:")
         print(f"  {sql[:300]}...")
 
     def test_join_condition_preserved(self):
@@ -526,7 +526,7 @@ class TestSqlSemanticPreservation:
             assert 'LEFT' in sql_upper or 'JOIN' in sql_upper, "Should have LEFT JOIN"
             assert 'PRODUCT_ID' in sql_upper, "Should preserve join column"
         
-        print(f"\nJoin preservation:")
+        print("\nJoin preservation:")
         print(f"  Original: {sql1[:150]}...")
         print(f"  Round-trip: {sql2[:150]}...")
 
@@ -558,7 +558,7 @@ class TestSqlSemanticPreservation:
         assert 'MAX' in sql_upper, "Should have MAX"
         assert 'GROUP BY' in sql_upper, "Should have GROUP BY"
         
-        print(f"\nAggregate preservation:")
+        print("\nAggregate preservation:")
         print(f"  {sql}")
 
     def test_filter_and_sort_preserved(self):
@@ -589,7 +589,7 @@ class TestSqlSemanticPreservation:
             assert 'ORDER BY' in sql_upper, "Should have ORDER BY"
             assert 'LIMIT' in sql_upper or 'FETCH' in sql_upper or 'TOP' in sql_upper, "Should have LIMIT"
         
-        print(f"\nFilter/sort preservation:")
+        print("\nFilter/sort preservation:")
         print(f"  Original: {sql1}")
         print(f"  Round-trip: {sql2}")
 
@@ -778,7 +778,7 @@ class TestSqlIdentityRoundTrip:
             try:
                 parsed = sqlglot.parse_one(sql, dialect=dialect)
                 return parsed.sql(dialect=dialect, pretty=False)
-            except:
+            except Exception:
                 return sql.strip()
         
         sql1_norm = normalize(sql1)
