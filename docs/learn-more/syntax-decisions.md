@@ -312,30 +312,27 @@ The syntax reads naturally: "per customer_id, first by order_date descending."
 
 ---
 
-## Cohort Analysis: `cohort by`
+## Cohort Analysis: Alias Reuse Pattern
 
-**Decision**: Add first-class cohort analysis support.
+**Decision**: Use ASQL's alias reuse for cohort analysis instead of special syntax.
 
 | Alternative | Source | Why Not |
 |-------------|--------|---------|
 | Manual CTEs | SQL | 50+ lines of boilerplate |
-| No special syntax | — | Cohort analysis is too common in analytics to ignore |
+| `cohort by` operator | Earlier ASQL | Added unnecessary complexity; alias reuse already solves this |
 
-**Rationale**: Cohort retention analysis is one of the most common analytics patterns. It typically requires 3-5 CTEs and 50+ lines of SQL. ASQL reduces this to 3 lines:
+**Rationale**: Cohort retention analysis is one of the most common analytics patterns. We originally had a `cohort by` operator, but realized ASQL's alias reuse already makes this simple:
 
 ```asql
 from events
-  group by month(event_date) (count(distinct user_id) as active)
-  cohort by month(users.signup_date)
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(count(distinct user_id) as active)
 ```
 
-This automatically:
-- Creates cohort assignment CTEs
-- Joins activity to cohort data
-- Calculates period (months since signup)
-- Adds cohort_size for retention calculations
-
-**Consideration**: This is a domain-specific feature that not all users need. However, for analytics use cases, it's a massive productivity win. The feature is well-documented and optional.
+ASQL's alias reuse lets you reference `cohort` immediately after defining it - no CTEs needed. This is cleaner than a special operator because it composes naturally with other ASQL features.
 
 ---
 
@@ -498,7 +495,7 @@ Pattern: `{function}_{column}` (configurable).
 | Relative dates | `ago`, `from now` | Manual | Readability |
 | String matching | `contains` | `LIKE` | Readability |
 | Window ops | `per` | Window functions | Conciseness |
-| Cohorts | `cohort by` | Manual CTEs | Productivity |
+| Cohorts | Alias reuse pattern | Manual CTEs | Productivity |
 | Gap-filling | Automatic | Manual spines | Correctness |
 | CTEs | `stash as` | `WITH ... AS` | Proximity |
 | Post-aggregation filter | `where` | `having` | Simplicity |
@@ -525,7 +522,7 @@ These are syntax decisions still under consideration:
 | 2024 | `#` count shorthand | Novel but intuitive |
 | 2024 | `per` for window operations | Simplifies deduplication |
 | 2024 | Guaranteed groups | Automatic gap-filling |
-| 2024 | `cohort by` | First-class cohort analysis |
+| 2024 | Cohort pattern | Alias reuse enables simple cohort queries |
 | 2025-01 | `extend` implemented | In branch, pending merge |
 | 2026-01 | Documentation | This page created |
 

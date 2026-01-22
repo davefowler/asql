@@ -37,7 +37,7 @@ This section provides detailed documentation on ASQL syntax. Each page covers a 
 | Exclude column | `except password_hash` | `SELECT * EXCEPT(password_hash)` |
 | Pivot | `pivot sum(x) by cat values (...)` | `CASE WHEN ... GROUP BY` |
 | Explode array | `explode tags as tag` | `CROSS JOIN UNNEST(tags)` |
-| Cohort analysis | `cohort by month(users.signup_date)` | Multiple CTEs with joins and period calculation |
+| Cohort analysis | `group by month(signup) as cohort, months_between(date, signup) as period` | Multiple CTEs |
 
 ## Syntax Flexibility
 
