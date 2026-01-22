@@ -169,7 +169,6 @@ class TestSettingsValidation:
     
     def test_invalid_week_start_raises_error(self):
         """Invalid week_start value should raise ValueError."""
-        import pytest
         asql = ASQL()
         
         query = "SET week_start = 'wednesday'; from orders"
@@ -178,7 +177,6 @@ class TestSettingsValidation:
     
     def test_invalid_equality_raises_error(self):
         """Invalid equality value should raise ValueError."""
-        import pytest
         asql = ASQL()
         
         query = "SET equality = 'triple'; from orders"

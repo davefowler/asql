@@ -26,14 +26,21 @@ The `.cursorrules` file contains:
 
 ## Quick Reference
 
-### Running Tests
+### Common Commands
 ```bash
-./venv/bin/pytest tests/ -v
+just install        # Set up virtual environment and install dependencies
+just test           # Run all tests
+just test-v         # Run tests verbose
+just test-file <f>  # Run specific test file
+just serve          # Start docs + playground servers
+just lint           # Run linter
+just fmt            # Format code
+just --list         # See all available commands
 ```
 
 ### Documentation & Playground
 ```bash
-./serve.sh
+just serve
 # Documentation: http://localhost:8000
 # Playground: http://localhost:5001
 ```

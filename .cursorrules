@@ -7,14 +7,20 @@
 - **No shims or adapters** - refactor directly
 - If something is wrong, FIX IT. Don't add workarounds.
 
-## ⚠️ CRITICAL: Virtual Environment
-- **ALWAYS** prefix Python commands with `./venv/bin/`:
-- `./venv/bin/pytest tests/` (not just `pytest`)
-- `./venv/bin/python script.py` (not just `python`)
-- The system Python has different package versions and WILL cause false test failures
+## ⚠️ CRITICAL: Use `just` Commands
+- **ALWAYS** use `just` for common tasks (it handles the venv automatically):
+  - `just test` - run all tests
+  - `just test-file tests/test_foo.py` - run specific test file
+  - `just test-k "pattern"` - run tests matching pattern
+  - `just lint` / `just lint-fix` - run linter
+  - `just fmt` - format code
+  - `just serve` - start docs + playground servers
+  - `just docs` - start docs server only
+  - `just run script.py` - run a Python script with venv
+- Run `just --list` to see all available commands
+- The justfile ensures the correct venv is always used
 
 ## Testing
-- use the venv
 - Write tests first (TDD approach)
 
 ## Code Style
@@ -242,7 +248,7 @@ def _parse_thing(self):
 **When adding new syntax:**
 1. Add parsing logic to `asql/dialect/parser.py`
 2. Add UI metadata to `asql/ui-metadata.json`
-3. Run `./venv/bin/pytest tests/test_schema_sync.py` to verify sync
+3. Run `just test-file tests/test_schema_sync.py` to verify sync
 
 **Why separate?** The parser needs `TokenType` and `exp.*` classes. The UI needs `label` and `description`. Keeping them separate is simpler than forcing both into one file.
 

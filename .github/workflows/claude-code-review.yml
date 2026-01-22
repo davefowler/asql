@@ -46,7 +46,7 @@ jobs:
             - Security concerns
             - Test coverage
             - Adherence to TDD principles (tests written first)
-            - Proper use of venv for Python commands (./venv/bin/pytest, etc.)
+            - Proper use of `just` commands (just test, just lint, etc.)
 
             Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
 
