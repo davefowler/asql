@@ -1,75 +1,178 @@
 [
   {
-    "title": "Complete Analytics Dashboard",
-    "desc": "Showcases all visual editor features: joins, filters, functions, aggregates, grouping, sorting",
+    "title": "Customer Lifetime Value Analysis",
+    "desc": "Multi-step analysis: aggregate orders, join customers, categorize value tiers, summarize",
     "dialect": "visual-asql",
     "query": [
       {
-        "name": null,
+        "name": "order_metrics",
         "from": {
           "table": "orders",
-          "alias": null
+          "alias": null,
+          "output_columns": [
+            {"name": "customer_id", "source": "orders"},
+            {"name": "total", "source": "orders"},
+            {"name": "created_at", "source": "orders"},
+            {"name": "status", "source": "orders"}
+          ]
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "where",
+            "condition": {
+              "type": "binary",
+              "op": "=",
+              "left": {"type": "column", "name": "status", "table": "orders"},
+              "right": {"type": "literal", "value": "completed", "data_type": "string"}
+            },
+            "output_columns": [
+              {"name": "customer_id", "source": "orders"},
+              {"name": "total", "source": "orders"},
+              {"name": "created_at", "source": "orders"}
+            ]
+          },
+          {
+            "id": "t1",
+            "type": "group_by",
+            "dimensions": ["customer_id"],
+            "aggregates": [
+              {"function": "sum", "column": "total", "alias": "lifetime_value"},
+              {"function": "count", "column": "*", "alias": "order_count"},
+              {"function": "avg", "column": "total", "alias": "avg_order"},
+              {"function": "min", "column": "created_at", "alias": "first_order"},
+              {"function": "max", "column": "created_at", "alias": "last_order"}
+            ],
+            "output_columns": [
+              {"name": "customer_id", "source": "orders"},
+              {"name": "lifetime_value", "function": "sum"},
+              {"name": "order_count", "function": "count"},
+              {"name": "avg_order", "function": "avg"},
+              {"name": "first_order", "function": "min"},
+              {"name": "last_order", "function": "max"}
+            ]
+          }
+        ]
+      },
+      {
+        "name": "customer_tiers",
+        "from": {
+          "table": "customers",
+          "alias": null,
+          "output_columns": [
+            {"name": "id", "source": "customers"},
+            {"name": "name", "source": "customers"},
+            {"name": "email", "source": "customers"},
+            {"name": "country", "source": "customers"},
+            {"name": "signup_date", "source": "customers"}
+          ]
         },
         "transforms": [
           {
             "id": "t0",
             "type": "join",
             "join_type": "inner",
-            "table": "customers",
-            "condition": "orders.customer_id = customers.id"
+            "table": "order_metrics",
+            "alias": null,
+            "condition": {
+              "type": "binary",
+              "op": "=",
+              "left": {"type": "column", "name": "id", "table": "customers"},
+              "right": {"type": "column", "name": "customer_id", "table": "order_metrics"}
+            },
+            "output_columns": [
+              {"name": "id", "source": "customers"},
+              {"name": "name", "source": "customers"},
+              {"name": "email", "source": "customers"},
+              {"name": "country", "source": "customers"},
+              {"name": "signup_date", "source": "customers"},
+              {"name": "lifetime_value", "source": "order_metrics"},
+              {"name": "order_count", "source": "order_metrics"},
+              {"name": "avg_order", "source": "order_metrics"},
+              {"name": "first_order", "source": "order_metrics"},
+              {"name": "last_order", "source": "order_metrics"}
+            ]
           },
           {
             "id": "t1",
-            "type": "join",
-            "join_type": "left",
-            "table": "products",
-            "condition": "orders.product_id = products.id"
+            "type": "select",
+            "columns": [
+              {"expression": "id", "name": "customer_id"},
+              {"expression": "name", "name": "name"},
+              {"expression": "country", "name": "country"},
+              {"expression": "lifetime_value", "name": "lifetime_value"},
+              {"expression": "order_count", "name": "order_count"},
+              {"expression": "avg_order", "name": "avg_order"}
+            ],
+            "output_columns": [
+              {"name": "customer_id"},
+              {"name": "name"},
+              {"name": "country"},
+              {"name": "lifetime_value"},
+              {"name": "order_count"},
+              {"name": "avg_order"}
+            ]
+          }
+        ]
+      },
+      {
+        "name": null,
+        "from": {
+          "table": "customer_tiers",
+          "alias": null,
+          "output_columns": [
+            {"name": "customer_id", "source": "customer_tiers"},
+            {"name": "name", "source": "customer_tiers"},
+            {"name": "country", "source": "customer_tiers"},
+            {"name": "lifetime_value", "source": "customer_tiers"},
+            {"name": "order_count", "source": "customer_tiers"},
+            {"name": "avg_order", "source": "customer_tiers"}
+          ]
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "group_by",
+            "dimensions": ["country"],
+            "aggregates": [
+              {"function": "count", "column": "*", "alias": "customer_count"},
+              {"function": "sum", "column": "lifetime_value", "alias": "total_revenue"},
+              {"function": "avg", "column": "lifetime_value", "alias": "avg_ltv"},
+              {"function": "avg", "column": "order_count", "alias": "avg_orders"}
+            ],
+            "output_columns": [
+              {"name": "country", "source": "customer_tiers"},
+              {"name": "customer_count", "function": "count"},
+              {"name": "total_revenue", "function": "sum"},
+              {"name": "avg_ltv", "function": "avg"},
+              {"name": "avg_orders", "function": "avg"}
+            ]
+          },
+          {
+            "id": "t1",
+            "type": "order_by",
+            "expressions": [
+              {"column": "total_revenue", "direction": "desc"}
+            ],
+            "output_columns": [
+              {"name": "country"},
+              {"name": "customer_count"},
+              {"name": "total_revenue"},
+              {"name": "avg_ltv"},
+              {"name": "avg_orders"}
+            ]
           },
           {
             "id": "t2",
-            "type": "where",
-            "condition": "orders.status = 'completed' AND orders.total > 50"
-          },
-          {
-            "id": "t3",
-            "type": "extend",
-            "columns": [
-              "year(orders.created_at) as order_year",
-              "month(orders.created_at) as order_month",
-              "upper(customers.country) as country_code"
-            ]
-          },
-          {
-            "id": "t4",
-            "type": "group_by",
-            "dimensions": ["order_year", "order_month", "country_code", "products.category"],
-            "aggregates": [
-              {"function": "count", "column": "*", "alias": "total_orders"},
-              {"function": "sum", "column": "orders.total", "alias": "revenue"},
-              {"function": "avg", "column": "orders.total", "alias": "avg_order_value"},
-              {"function": "min", "column": "orders.total", "alias": "smallest_order"},
-              {"function": "max", "column": "orders.total", "alias": "largest_order"},
-              {"function": "count_distinct", "column": "customers.id", "alias": "unique_customers"}
-            ]
-          },
-          {
-            "id": "t5",
-            "type": "where",
-            "condition": "total_orders >= 5 AND revenue > 1000"
-          },
-          {
-            "id": "t6",
-            "type": "order_by",
-            "expressions": [
-              {"column": "order_year", "direction": "desc"},
-              {"column": "order_month", "direction": "desc"},
-              {"column": "revenue", "direction": "desc"}
-            ]
-          },
-          {
-            "id": "t7",
             "type": "limit",
-            "count": 100
+            "count": 20,
+            "output_columns": [
+              {"name": "country"},
+              {"name": "customer_count"},
+              {"name": "total_revenue"},
+              {"name": "avg_ltv"},
+              {"name": "avg_orders"}
+            ]
           }
         ]
       }
@@ -84,13 +187,422 @@
         "name": null,
         "from": {
           "table": "users",
-          "alias": null
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "id",
+              "source": "users"
+            },
+            {
+              "name": "user_id",
+              "source": "users"
+            },
+            {
+              "name": "name",
+              "source": "users"
+            },
+            {
+              "name": "email",
+              "source": "users"
+            },
+            {
+              "name": "phone",
+              "source": "users"
+            },
+            {
+              "name": "domain",
+              "source": "users"
+            },
+            {
+              "name": "country",
+              "source": "users"
+            },
+            {
+              "name": "region",
+              "source": "users"
+            },
+            {
+              "name": "city",
+              "source": "users"
+            },
+            {
+              "name": "timezone",
+              "source": "users"
+            },
+            {
+              "name": "status",
+              "source": "users"
+            },
+            {
+              "name": "is_active",
+              "source": "users"
+            },
+            {
+              "name": "age",
+              "source": "users"
+            },
+            {
+              "name": "gender",
+              "source": "users"
+            },
+            {
+              "name": "channel",
+              "source": "users"
+            },
+            {
+              "name": "source",
+              "source": "users"
+            },
+            {
+              "name": "campaign",
+              "source": "users"
+            },
+            {
+              "name": "created_at",
+              "source": "users"
+            },
+            {
+              "name": "updated_at",
+              "source": "users"
+            },
+            {
+              "name": "signup_date",
+              "source": "users"
+            },
+            {
+              "name": "last_login",
+              "source": "users"
+            },
+            {
+              "name": "deleted_at",
+              "source": "users"
+            },
+            {
+              "name": "password_hash",
+              "source": "users"
+            },
+            {
+              "name": "internal_notes",
+              "source": "users"
+            }
+          ]
         },
         "transforms": [
           {
             "id": "t0",
             "type": "where",
-            "condition": "status = 'active'"
+            "condition": {
+              "type": "binary",
+              "op": "=",
+              "left": {
+                "type": "column",
+                "name": "status",
+                "table": "users"
+              },
+              "right": {
+                "type": "literal",
+                "value": "active",
+                "data_type": "string"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "id",
+                "source": "users"
+              },
+              {
+                "name": "user_id",
+                "source": "users"
+              },
+              {
+                "name": "name",
+                "source": "users"
+              },
+              {
+                "name": "email",
+                "source": "users"
+              },
+              {
+                "name": "phone",
+                "source": "users"
+              },
+              {
+                "name": "domain",
+                "source": "users"
+              },
+              {
+                "name": "country",
+                "source": "users"
+              },
+              {
+                "name": "region",
+                "source": "users"
+              },
+              {
+                "name": "city",
+                "source": "users"
+              },
+              {
+                "name": "timezone",
+                "source": "users"
+              },
+              {
+                "name": "status",
+                "source": "users"
+              },
+              {
+                "name": "is_active",
+                "source": "users"
+              },
+              {
+                "name": "age",
+                "source": "users"
+              },
+              {
+                "name": "gender",
+                "source": "users"
+              },
+              {
+                "name": "channel",
+                "source": "users"
+              },
+              {
+                "name": "source",
+                "source": "users"
+              },
+              {
+                "name": "campaign",
+                "source": "users"
+              },
+              {
+                "name": "created_at",
+                "source": "users"
+              },
+              {
+                "name": "updated_at",
+                "source": "users"
+              },
+              {
+                "name": "signup_date",
+                "source": "users"
+              },
+              {
+                "name": "last_login",
+                "source": "users"
+              },
+              {
+                "name": "deleted_at",
+                "source": "users"
+              },
+              {
+                "name": "password_hash",
+                "source": "users"
+              },
+              {
+                "name": "internal_notes",
+                "source": "users"
+              }
+            ]
+          },
+          {
+            "id": "t1",
+            "type": "select",
+            "columns": [
+              {
+                "name": "id",
+                "expression": "users.id"
+              },
+              {
+                "name": "user_id",
+                "expression": "users.user_id"
+              },
+              {
+                "name": "name",
+                "expression": "users.name"
+              },
+              {
+                "name": "email",
+                "expression": "users.email"
+              },
+              {
+                "name": "phone",
+                "expression": "users.phone"
+              },
+              {
+                "name": "domain",
+                "expression": "users.domain"
+              },
+              {
+                "name": "country",
+                "expression": "users.country"
+              },
+              {
+                "name": "region",
+                "expression": "users.region"
+              },
+              {
+                "name": "city",
+                "expression": "users.city"
+              },
+              {
+                "name": "timezone",
+                "expression": "users.timezone"
+              },
+              {
+                "name": "status",
+                "expression": "users.status"
+              },
+              {
+                "name": "is_active",
+                "expression": "users.is_active"
+              },
+              {
+                "name": "age",
+                "expression": "users.age"
+              },
+              {
+                "name": "gender",
+                "expression": "users.gender"
+              },
+              {
+                "name": "channel",
+                "expression": "users.channel"
+              },
+              {
+                "name": "source",
+                "expression": "users.source"
+              },
+              {
+                "name": "campaign",
+                "expression": "users.campaign"
+              },
+              {
+                "name": "created_at",
+                "expression": "users.created_at"
+              },
+              {
+                "name": "updated_at",
+                "expression": "users.updated_at"
+              },
+              {
+                "name": "signup_date",
+                "expression": "users.signup_date"
+              },
+              {
+                "name": "last_login",
+                "expression": "users.last_login"
+              },
+              {
+                "name": "deleted_at",
+                "expression": "users.deleted_at"
+              },
+              {
+                "name": "password_hash",
+                "expression": "users.password_hash"
+              },
+              {
+                "name": "internal_notes",
+                "expression": "users.internal_notes"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "id",
+                "expression": "users.id"
+              },
+              {
+                "name": "user_id",
+                "expression": "users.user_id"
+              },
+              {
+                "name": "name",
+                "expression": "users.name"
+              },
+              {
+                "name": "email",
+                "expression": "users.email"
+              },
+              {
+                "name": "phone",
+                "expression": "users.phone"
+              },
+              {
+                "name": "domain",
+                "expression": "users.domain"
+              },
+              {
+                "name": "country",
+                "expression": "users.country"
+              },
+              {
+                "name": "region",
+                "expression": "users.region"
+              },
+              {
+                "name": "city",
+                "expression": "users.city"
+              },
+              {
+                "name": "timezone",
+                "expression": "users.timezone"
+              },
+              {
+                "name": "status",
+                "expression": "users.status"
+              },
+              {
+                "name": "is_active",
+                "expression": "users.is_active"
+              },
+              {
+                "name": "age",
+                "expression": "users.age"
+              },
+              {
+                "name": "gender",
+                "expression": "users.gender"
+              },
+              {
+                "name": "channel",
+                "expression": "users.channel"
+              },
+              {
+                "name": "source",
+                "expression": "users.source"
+              },
+              {
+                "name": "campaign",
+                "expression": "users.campaign"
+              },
+              {
+                "name": "created_at",
+                "expression": "users.created_at"
+              },
+              {
+                "name": "updated_at",
+                "expression": "users.updated_at"
+              },
+              {
+                "name": "signup_date",
+                "expression": "users.signup_date"
+              },
+              {
+                "name": "last_login",
+                "expression": "users.last_login"
+              },
+              {
+                "name": "deleted_at",
+                "expression": "users.deleted_at"
+              },
+              {
+                "name": "password_hash",
+                "expression": "users.password_hash"
+              },
+              {
+                "name": "internal_notes",
+                "expression": "users.internal_notes"
+              }
+            ]
           }
         ]
       }
@@ -105,16 +617,53 @@
         "name": null,
         "from": {
           "table": "users",
-          "alias": null
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "name",
+              "source": "users"
+            },
+            {
+              "name": "email",
+              "source": "users"
+            },
+            {
+              "name": "country",
+              "source": "users"
+            }
+          ]
         },
         "transforms": [
           {
             "id": "t0",
             "type": "select",
             "columns": [
-              {"name": "name", "expression": "name"},
-              {"name": "email", "expression": "email"},
-              {"name": "country", "expression": "country"}
+              {
+                "name": "name",
+                "expression": "users.name"
+              },
+              {
+                "name": "email",
+                "expression": "users.email"
+              },
+              {
+                "name": "country",
+                "expression": "users.country"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "name",
+                "expression": "users.name"
+              },
+              {
+                "name": "email",
+                "expression": "users.email"
+              },
+              {
+                "name": "country",
+                "expression": "users.country"
+              }
             ]
           }
         ]
@@ -130,15 +679,38 @@
         "name": null,
         "from": {
           "table": "users",
-          "alias": null
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "country",
+              "source": "users"
+            }
+          ]
         },
         "transforms": [
           {
             "id": "t0",
             "type": "group_by",
-            "dimensions": ["country"],
+            "dimensions": [
+              "country"
+            ],
             "aggregates": [
-              {"function": "count", "column": "*", "alias": "total"}
+              {
+                "function": "count",
+                "column": "*",
+                "alias": "total"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "country",
+                "source": "users"
+              },
+              {
+                "name": "total",
+                "function": "count",
+                "source_column": "*"
+              }
             ]
           }
         ]
@@ -154,26 +726,77 @@
         "name": null,
         "from": {
           "table": "users",
-          "alias": null
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "name",
+              "source": "users"
+            },
+            {
+              "name": "email",
+              "source": "users"
+            }
+          ]
         },
         "transforms": [
           {
             "id": "t0",
             "type": "select",
             "columns": [
-              {"name": "name", "expression": "name"},
-              {"name": "email", "expression": "email"}
+              {
+                "name": "name",
+                "expression": "users.name"
+              },
+              {
+                "name": "email",
+                "expression": "users.email"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "name",
+                "expression": "users.name"
+              },
+              {
+                "name": "email",
+                "expression": "users.email"
+              }
             ]
           },
           {
             "id": "t1",
             "type": "order_by",
-            "expressions": [{"column": "name", "direction": "asc"}]
+            "expressions": [
+              {
+                "column": "name",
+                "direction": "asc"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "name",
+                "expression": "users.name"
+              },
+              {
+                "name": "email",
+                "expression": "users.email"
+              }
+            ]
           },
           {
             "id": "t2",
             "type": "limit",
-            "count": 10
+            "count": 10,
+            "output_columns": [
+              {
+                "name": "name",
+                "expression": "users.name"
+              },
+              {
+                "name": "email",
+                "expression": "users.email"
+              }
+            ]
           }
         ]
       }
@@ -188,23 +811,98 @@
         "name": null,
         "from": {
           "table": "sales",
-          "alias": null
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "region",
+              "source": "sales"
+            },
+            {
+              "name": "amount",
+              "source": "sales"
+            },
+            {
+              "name": "total_sales",
+              "source": "sales"
+            }
+          ]
         },
         "transforms": [
           {
             "id": "t0",
             "type": "group_by",
-            "dimensions": ["region"],
+            "dimensions": [
+              "region"
+            ],
             "aggregates": [
-              {"function": "sum", "column": "amount", "alias": "total_sales"},
-              {"function": "count", "column": "*", "alias": "orders"},
-              {"function": "avg", "column": "amount", "alias": "avg_order"}
+              {
+                "function": "sum",
+                "column": "amount",
+                "alias": "total_sales"
+              },
+              {
+                "function": "count",
+                "column": "*",
+                "alias": "orders"
+              },
+              {
+                "function": "avg",
+                "column": "amount",
+                "alias": "avg_order"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "region",
+                "source": "sales"
+              },
+              {
+                "name": "total_sales",
+                "function": "sum",
+                "source_column": "amount"
+              },
+              {
+                "name": "orders",
+                "function": "count",
+                "source_column": "*"
+              },
+              {
+                "name": "avg_order",
+                "function": "avg",
+                "source_column": "amount"
+              }
             ]
           },
           {
             "id": "t1",
             "type": "order_by",
-            "expressions": [{"column": "total_sales", "direction": "desc"}]
+            "expressions": [
+              {
+                "column": "total_sales",
+                "direction": "desc"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "region",
+                "source": "sales"
+              },
+              {
+                "name": "total_sales",
+                "function": "sum",
+                "source_column": "amount"
+              },
+              {
+                "name": "orders",
+                "function": "count",
+                "source_column": "*"
+              },
+              {
+                "name": "avg_order",
+                "function": "avg",
+                "source_column": "amount"
+              }
+            ]
           }
         ]
       }
@@ -219,32 +917,144 @@
         "name": null,
         "from": {
           "table": "orders",
-          "alias": null
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "customer_id",
+              "source": "orders"
+            },
+            {
+              "name": "total",
+              "source": "orders"
+            },
+            {
+              "name": "status",
+              "source": "orders"
+            },
+            {
+              "name": "lifetime_value",
+              "source": "orders"
+            }
+          ]
         },
         "transforms": [
           {
             "id": "t0",
             "type": "where",
-            "condition": "status = 'completed'"
+            "condition": {
+              "type": "binary",
+              "op": "=",
+              "left": {
+                "type": "column",
+                "name": "status",
+                "table": "orders"
+              },
+              "right": {
+                "type": "literal",
+                "value": "completed",
+                "data_type": "string"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "customer_id",
+                "source": "orders"
+              },
+              {
+                "name": "total",
+                "source": "orders"
+              },
+              {
+                "name": "status",
+                "source": "orders"
+              },
+              {
+                "name": "lifetime_value",
+                "source": "orders"
+              }
+            ]
           },
           {
             "id": "t1",
             "type": "group_by",
-            "dimensions": ["customer_id"],
+            "dimensions": [
+              "customer_id"
+            ],
             "aggregates": [
-              {"function": "sum", "column": "total", "alias": "lifetime_value"},
-              {"function": "count", "column": "*", "alias": "order_count"}
+              {
+                "function": "sum",
+                "column": "total",
+                "alias": "lifetime_value"
+              },
+              {
+                "function": "count",
+                "column": "*",
+                "alias": "order_count"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "customer_id",
+                "source": "orders"
+              },
+              {
+                "name": "lifetime_value",
+                "function": "sum",
+                "source_column": "total"
+              },
+              {
+                "name": "order_count",
+                "function": "count",
+                "source_column": "*"
+              }
             ]
           },
           {
             "id": "t2",
             "type": "order_by",
-            "expressions": [{"column": "lifetime_value", "direction": "desc"}]
+            "expressions": [
+              {
+                "column": "lifetime_value",
+                "direction": "desc"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "customer_id",
+                "source": "orders"
+              },
+              {
+                "name": "lifetime_value",
+                "function": "sum",
+                "source_column": "total"
+              },
+              {
+                "name": "order_count",
+                "function": "count",
+                "source_column": "*"
+              }
+            ]
           },
           {
             "id": "t3",
             "type": "limit",
-            "count": 20
+            "count": 20,
+            "output_columns": [
+              {
+                "name": "customer_id",
+                "source": "orders"
+              },
+              {
+                "name": "lifetime_value",
+                "function": "sum",
+                "source_column": "total"
+              },
+              {
+                "name": "order_count",
+                "function": "count",
+                "source_column": "*"
+              }
+            ]
           }
         ]
       }
@@ -256,10 +1066,24 @@
     "dialect": "visual-asql",
     "query": [
       {
-        "name": null,
+        "name": "__tmp1",
         "from": {
           "table": "customers",
-          "alias": null
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "id",
+              "source": "customers"
+            },
+            {
+              "name": "name",
+              "source": "customers"
+            },
+            {
+              "name": "email",
+              "source": "customers"
+            }
+          ]
         },
         "transforms": [
           {
@@ -267,98 +1091,1916 @@
             "type": "join",
             "join_type": "left",
             "table": "orders",
-            "condition": "customers.id = orders.customer_id"
+            "alias": null,
+            "condition": {
+              "type": "binary",
+              "op": "=",
+              "left": {
+                "type": "column",
+                "name": "id",
+                "table": "customers"
+              },
+              "right": {
+                "type": "column",
+                "name": "customer_id",
+                "table": "orders"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "id",
+                "source": "customers"
+              },
+              {
+                "name": "name",
+                "source": "customers"
+              },
+              {
+                "name": "email",
+                "source": "customers"
+              },
+              {
+                "name": "total",
+                "source": "orders"
+              },
+              {
+                "name": "created_at",
+                "source": "orders"
+              },
+              {
+                "name": "customer_id",
+                "source": "orders"
+              }
+            ]
           },
           {
             "id": "t1",
             "type": "where",
-            "condition": "orders.created_at >= '2024-01-01'"
+            "condition": {
+              "type": "binary",
+              "op": ">=",
+              "left": {
+                "type": "column",
+                "name": "created_at",
+                "table": "orders"
+              },
+              "right": {
+                "type": "literal",
+                "value": "2024-01-01",
+                "data_type": "string"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "id",
+                "source": "customers"
+              },
+              {
+                "name": "name",
+                "source": "customers"
+              },
+              {
+                "name": "email",
+                "source": "customers"
+              },
+              {
+                "name": "total",
+                "source": "orders"
+              },
+              {
+                "name": "created_at",
+                "source": "orders"
+              },
+              {
+                "name": "customer_id",
+                "source": "orders"
+              }
+            ]
           },
           {
             "id": "t2",
             "type": "group_by",
-            "dimensions": ["customers.id", "customers.name", "customers.email"],
+            "dimensions": [
+              "id",
+              "name",
+              "email"
+            ],
             "aggregates": [
-              {"function": "count", "column": "*", "alias": "order_count"},
-              {"function": "sum", "column": "orders.total", "alias": "total_spent"},
-              {"function": "avg", "column": "orders.total", "alias": "avg_order"},
-              {"function": "max", "column": "orders.created_at", "alias": "last_order"}
+              {
+                "function": "count",
+                "column": "*",
+                "alias": "order_count"
+              },
+              {
+                "function": "sum",
+                "column": "total",
+                "alias": "total_spent"
+              },
+              {
+                "function": "avg",
+                "column": "total",
+                "alias": "avg_order"
+              },
+              {
+                "function": "max",
+                "column": "created_at",
+                "alias": "last_order"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "id",
+                "source": "customers"
+              },
+              {
+                "name": "name",
+                "source": "customers"
+              },
+              {
+                "name": "email",
+                "source": "customers"
+              },
+              {
+                "name": "order_count",
+                "function": "count",
+                "source_column": "*"
+              },
+              {
+                "name": "total_spent",
+                "function": "sum",
+                "source_column": "total"
+              },
+              {
+                "name": "avg_order",
+                "function": "avg",
+                "source_column": "total"
+              },
+              {
+                "name": "last_order",
+                "function": "max",
+                "source_column": "created_at"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": null,
+        "from": {
+          "table": "__tmp1",
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "*",
+              "source": "__tmp1"
+            },
+            {
+              "name": "total_spent",
+              "source": "__tmp1"
+            }
+          ]
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "where",
+            "condition": {
+              "type": "binary",
+              "op": ">",
+              "left": {
+                "type": "column",
+                "name": "total_spent",
+                "table": "__tmp1"
+              },
+              "right": {
+                "type": "literal",
+                "value": 1000,
+                "data_type": "number"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "*",
+                "source": "__tmp1"
+              },
+              {
+                "name": "total_spent",
+                "source": "__tmp1"
+              }
+            ]
+          },
+          {
+            "id": "t1",
+            "type": "select",
+            "columns": [
+              {
+                "name": "*",
+                "expression": "__tmp1.*"
+              },
+              {
+                "name": "*",
+                "expression": "orders.*"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "*",
+                "expression": "__tmp1.*"
+              },
+              {
+                "name": "*",
+                "expression": "orders.*"
+              }
+            ]
+          },
+          {
+            "id": "t2",
+            "type": "order_by",
+            "expressions": [
+              {
+                "column": "total_spent",
+                "direction": "desc"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "*",
+                "expression": "__tmp1.*"
+              },
+              {
+                "name": "*",
+                "expression": "orders.*"
+              }
             ]
           },
           {
             "id": "t3",
-            "type": "where",
-            "condition": "total_spent > 1000"
-          },
-          {
-            "id": "t4",
-            "type": "order_by",
-            "expressions": [{"column": "total_spent", "direction": "desc"}]
-          },
-          {
-            "id": "t5",
             "type": "limit",
-            "count": 50
+            "count": 50,
+            "output_columns": [
+              {
+                "name": "*",
+                "expression": "__tmp1.*"
+              },
+              {
+                "name": "*",
+                "expression": "orders.*"
+              }
+            ]
           }
         ]
       }
     ]
   },
   {
-    "title": "Product Performance Analysis",
-    "desc": "Multi-join analysis of products, orders, and categories",
+    "title": "Complete Analytics Dashboard",
+    "desc": "Showcases all visual editor features: joins, filters, functions, aggregates, grouping, sorting",
     "dialect": "visual-asql",
     "query": [
       {
-        "name": null,
+        "name": "__tmp1",
         "from": {
-          "table": "products",
-          "alias": null
+          "table": "orders",
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "id",
+              "source": "orders"
+            },
+            {
+              "name": "order_id",
+              "source": "orders"
+            },
+            {
+              "name": "user_id",
+              "source": "orders"
+            },
+            {
+              "name": "customer_id",
+              "source": "orders"
+            },
+            {
+              "name": "product_id",
+              "source": "orders"
+            },
+            {
+              "name": "status",
+              "source": "orders"
+            },
+            {
+              "name": "amount",
+              "source": "orders"
+            },
+            {
+              "name": "total",
+              "source": "orders"
+            },
+            {
+              "name": "subtotal",
+              "source": "orders"
+            },
+            {
+              "name": "tax",
+              "source": "orders"
+            },
+            {
+              "name": "discount",
+              "source": "orders"
+            },
+            {
+              "name": "shipping",
+              "source": "orders"
+            },
+            {
+              "name": "region",
+              "source": "orders"
+            },
+            {
+              "name": "country",
+              "source": "orders"
+            },
+            {
+              "name": "created_at",
+              "source": "orders"
+            },
+            {
+              "name": "updated_at",
+              "source": "orders"
+            },
+            {
+              "name": "order_date",
+              "source": "orders"
+            },
+            {
+              "name": "shipped_date",
+              "source": "orders"
+            },
+            {
+              "name": "delivered_date",
+              "source": "orders"
+            },
+            {
+              "name": "estimated_delivery",
+              "source": "orders"
+            },
+            {
+              "name": "payment_method",
+              "source": "orders"
+            },
+            {
+              "name": "payment_status",
+              "source": "orders"
+            }
+          ]
         },
         "transforms": [
           {
             "id": "t0",
             "type": "join",
             "join_type": "inner",
-            "table": "categories",
-            "condition": "products.category_id = categories.id"
+            "table": "customers",
+            "alias": null,
+            "condition": {
+              "type": "binary",
+              "op": "=",
+              "left": {
+                "type": "column",
+                "name": "customer_id",
+                "table": "orders"
+              },
+              "right": {
+                "type": "column",
+                "name": "id",
+                "table": "customers"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "id",
+                "source": "orders"
+              },
+              {
+                "name": "order_id",
+                "source": "orders"
+              },
+              {
+                "name": "user_id",
+                "source": "orders"
+              },
+              {
+                "name": "customer_id",
+                "source": "orders"
+              },
+              {
+                "name": "product_id",
+                "source": "orders"
+              },
+              {
+                "name": "status",
+                "source": "orders"
+              },
+              {
+                "name": "amount",
+                "source": "orders"
+              },
+              {
+                "name": "total",
+                "source": "orders"
+              },
+              {
+                "name": "subtotal",
+                "source": "orders"
+              },
+              {
+                "name": "tax",
+                "source": "orders"
+              },
+              {
+                "name": "discount",
+                "source": "orders"
+              },
+              {
+                "name": "shipping",
+                "source": "orders"
+              },
+              {
+                "name": "region",
+                "source": "orders"
+              },
+              {
+                "name": "country",
+                "source": "orders"
+              },
+              {
+                "name": "created_at",
+                "source": "orders"
+              },
+              {
+                "name": "updated_at",
+                "source": "orders"
+              },
+              {
+                "name": "order_date",
+                "source": "orders"
+              },
+              {
+                "name": "shipped_date",
+                "source": "orders"
+              },
+              {
+                "name": "delivered_date",
+                "source": "orders"
+              },
+              {
+                "name": "estimated_delivery",
+                "source": "orders"
+              },
+              {
+                "name": "payment_method",
+                "source": "orders"
+              },
+              {
+                "name": "payment_status",
+                "source": "orders"
+              },
+              {
+                "name": "id",
+                "source": "customers"
+              },
+              {
+                "name": "customer_id",
+                "source": "customers"
+              },
+              {
+                "name": "name",
+                "source": "customers"
+              },
+              {
+                "name": "email",
+                "source": "customers"
+              },
+              {
+                "name": "phone",
+                "source": "customers"
+              },
+              {
+                "name": "company",
+                "source": "customers"
+              },
+              {
+                "name": "country",
+                "source": "customers"
+              },
+              {
+                "name": "region",
+                "source": "customers"
+              },
+              {
+                "name": "city",
+                "source": "customers"
+              },
+              {
+                "name": "address",
+                "source": "customers"
+              },
+              {
+                "name": "status",
+                "source": "customers"
+              },
+              {
+                "name": "is_active",
+                "source": "customers"
+              },
+              {
+                "name": "tier",
+                "source": "customers"
+              },
+              {
+                "name": "lifetime_value",
+                "source": "customers"
+              },
+              {
+                "name": "total_orders",
+                "source": "customers"
+              },
+              {
+                "name": "created_at",
+                "source": "customers"
+              },
+              {
+                "name": "updated_at",
+                "source": "customers"
+              },
+              {
+                "name": "signup_date",
+                "source": "customers"
+              },
+              {
+                "name": "first_order_date",
+                "source": "customers"
+              },
+              {
+                "name": "last_order_date",
+                "source": "customers"
+              },
+              {
+                "name": "internal_id",
+                "source": "customers"
+              }
+            ]
           },
           {
             "id": "t1",
             "type": "join",
             "join_type": "left",
-            "table": "order_items",
-            "condition": "products.id = order_items.product_id"
-          },
-          {
-            "id": "t2",
-            "type": "join",
-            "join_type": "left",
-            "table": "orders",
-            "condition": "order_items.order_id = orders.id"
-          },
-          {
-            "id": "t3",
-            "type": "where",
-            "condition": "orders.status = 'completed' OR orders.id IS NULL"
-          },
-          {
-            "id": "t4",
-            "type": "group_by",
-            "dimensions": ["categories.name", "products.name", "products.price"],
-            "aggregates": [
-              {"function": "count", "column": "order_items.id", "alias": "times_ordered"},
-              {"function": "sum", "column": "order_items.quantity", "alias": "total_units"},
-              {"function": "sum", "column": "order_items.subtotal", "alias": "revenue"},
-              {"function": "avg", "column": "order_items.quantity", "alias": "avg_qty_per_order"}
+            "table": "products",
+            "alias": null,
+            "condition": {
+              "type": "binary",
+              "op": "=",
+              "left": {
+                "type": "column",
+                "name": "product_id",
+                "table": "orders"
+              },
+              "right": {
+                "type": "column",
+                "name": "id",
+                "table": "products"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "id",
+                "source": "orders"
+              },
+              {
+                "name": "order_id",
+                "source": "orders"
+              },
+              {
+                "name": "user_id",
+                "source": "orders"
+              },
+              {
+                "name": "customer_id",
+                "source": "orders"
+              },
+              {
+                "name": "product_id",
+                "source": "orders"
+              },
+              {
+                "name": "status",
+                "source": "orders"
+              },
+              {
+                "name": "amount",
+                "source": "orders"
+              },
+              {
+                "name": "total",
+                "source": "orders"
+              },
+              {
+                "name": "subtotal",
+                "source": "orders"
+              },
+              {
+                "name": "tax",
+                "source": "orders"
+              },
+              {
+                "name": "discount",
+                "source": "orders"
+              },
+              {
+                "name": "shipping",
+                "source": "orders"
+              },
+              {
+                "name": "region",
+                "source": "orders"
+              },
+              {
+                "name": "country",
+                "source": "orders"
+              },
+              {
+                "name": "created_at",
+                "source": "orders"
+              },
+              {
+                "name": "updated_at",
+                "source": "orders"
+              },
+              {
+                "name": "order_date",
+                "source": "orders"
+              },
+              {
+                "name": "shipped_date",
+                "source": "orders"
+              },
+              {
+                "name": "delivered_date",
+                "source": "orders"
+              },
+              {
+                "name": "estimated_delivery",
+                "source": "orders"
+              },
+              {
+                "name": "payment_method",
+                "source": "orders"
+              },
+              {
+                "name": "payment_status",
+                "source": "orders"
+              },
+              {
+                "name": "id",
+                "source": "customers"
+              },
+              {
+                "name": "customer_id",
+                "source": "customers"
+              },
+              {
+                "name": "name",
+                "source": "customers"
+              },
+              {
+                "name": "email",
+                "source": "customers"
+              },
+              {
+                "name": "phone",
+                "source": "customers"
+              },
+              {
+                "name": "company",
+                "source": "customers"
+              },
+              {
+                "name": "country",
+                "source": "customers"
+              },
+              {
+                "name": "region",
+                "source": "customers"
+              },
+              {
+                "name": "city",
+                "source": "customers"
+              },
+              {
+                "name": "address",
+                "source": "customers"
+              },
+              {
+                "name": "status",
+                "source": "customers"
+              },
+              {
+                "name": "is_active",
+                "source": "customers"
+              },
+              {
+                "name": "tier",
+                "source": "customers"
+              },
+              {
+                "name": "lifetime_value",
+                "source": "customers"
+              },
+              {
+                "name": "total_orders",
+                "source": "customers"
+              },
+              {
+                "name": "created_at",
+                "source": "customers"
+              },
+              {
+                "name": "updated_at",
+                "source": "customers"
+              },
+              {
+                "name": "signup_date",
+                "source": "customers"
+              },
+              {
+                "name": "first_order_date",
+                "source": "customers"
+              },
+              {
+                "name": "last_order_date",
+                "source": "customers"
+              },
+              {
+                "name": "internal_id",
+                "source": "customers"
+              },
+              {
+                "name": "id",
+                "source": "products"
+              },
+              {
+                "name": "product_id",
+                "source": "products"
+              },
+              {
+                "name": "name",
+                "source": "products"
+              },
+              {
+                "name": "description",
+                "source": "products"
+              },
+              {
+                "name": "sku",
+                "source": "products"
+              },
+              {
+                "name": "category",
+                "source": "products"
+              },
+              {
+                "name": "subcategory",
+                "source": "products"
+              },
+              {
+                "name": "brand",
+                "source": "products"
+              },
+              {
+                "name": "price",
+                "source": "products"
+              },
+              {
+                "name": "cost",
+                "source": "products"
+              },
+              {
+                "name": "sale_price",
+                "source": "products"
+              },
+              {
+                "name": "msrp",
+                "source": "products"
+              },
+              {
+                "name": "stock_quantity",
+                "source": "products"
+              },
+              {
+                "name": "is_available",
+                "source": "products"
+              },
+              {
+                "name": "status",
+                "source": "products"
+              },
+              {
+                "name": "is_active",
+                "source": "products"
+              },
+              {
+                "name": "created_at",
+                "source": "products"
+              },
+              {
+                "name": "updated_at",
+                "source": "products"
+              }
             ]
           },
           {
-            "id": "t5",
+            "id": "t2",
+            "type": "where",
+            "condition": {
+              "type": "binary",
+              "op": "AND",
+              "left": {
+                "type": "binary",
+                "op": "=",
+                "left": {
+                  "type": "column",
+                  "name": "status",
+                  "table": "orders"
+                },
+                "right": {
+                  "type": "literal",
+                  "value": "completed",
+                  "data_type": "string"
+                }
+              },
+              "right": {
+                "type": "binary",
+                "op": ">",
+                "left": {
+                  "type": "column",
+                  "name": "total",
+                  "table": "orders"
+                },
+                "right": {
+                  "type": "literal",
+                  "value": 50,
+                  "data_type": "number"
+                }
+              }
+            },
+            "output_columns": [
+              {
+                "name": "id",
+                "source": "orders"
+              },
+              {
+                "name": "order_id",
+                "source": "orders"
+              },
+              {
+                "name": "user_id",
+                "source": "orders"
+              },
+              {
+                "name": "customer_id",
+                "source": "orders"
+              },
+              {
+                "name": "product_id",
+                "source": "orders"
+              },
+              {
+                "name": "status",
+                "source": "orders"
+              },
+              {
+                "name": "amount",
+                "source": "orders"
+              },
+              {
+                "name": "total",
+                "source": "orders"
+              },
+              {
+                "name": "subtotal",
+                "source": "orders"
+              },
+              {
+                "name": "tax",
+                "source": "orders"
+              },
+              {
+                "name": "discount",
+                "source": "orders"
+              },
+              {
+                "name": "shipping",
+                "source": "orders"
+              },
+              {
+                "name": "region",
+                "source": "orders"
+              },
+              {
+                "name": "country",
+                "source": "orders"
+              },
+              {
+                "name": "created_at",
+                "source": "orders"
+              },
+              {
+                "name": "updated_at",
+                "source": "orders"
+              },
+              {
+                "name": "order_date",
+                "source": "orders"
+              },
+              {
+                "name": "shipped_date",
+                "source": "orders"
+              },
+              {
+                "name": "delivered_date",
+                "source": "orders"
+              },
+              {
+                "name": "estimated_delivery",
+                "source": "orders"
+              },
+              {
+                "name": "payment_method",
+                "source": "orders"
+              },
+              {
+                "name": "payment_status",
+                "source": "orders"
+              },
+              {
+                "name": "id",
+                "source": "customers"
+              },
+              {
+                "name": "customer_id",
+                "source": "customers"
+              },
+              {
+                "name": "name",
+                "source": "customers"
+              },
+              {
+                "name": "email",
+                "source": "customers"
+              },
+              {
+                "name": "phone",
+                "source": "customers"
+              },
+              {
+                "name": "company",
+                "source": "customers"
+              },
+              {
+                "name": "country",
+                "source": "customers"
+              },
+              {
+                "name": "region",
+                "source": "customers"
+              },
+              {
+                "name": "city",
+                "source": "customers"
+              },
+              {
+                "name": "address",
+                "source": "customers"
+              },
+              {
+                "name": "status",
+                "source": "customers"
+              },
+              {
+                "name": "is_active",
+                "source": "customers"
+              },
+              {
+                "name": "tier",
+                "source": "customers"
+              },
+              {
+                "name": "lifetime_value",
+                "source": "customers"
+              },
+              {
+                "name": "total_orders",
+                "source": "customers"
+              },
+              {
+                "name": "created_at",
+                "source": "customers"
+              },
+              {
+                "name": "updated_at",
+                "source": "customers"
+              },
+              {
+                "name": "signup_date",
+                "source": "customers"
+              },
+              {
+                "name": "first_order_date",
+                "source": "customers"
+              },
+              {
+                "name": "last_order_date",
+                "source": "customers"
+              },
+              {
+                "name": "internal_id",
+                "source": "customers"
+              },
+              {
+                "name": "id",
+                "source": "products"
+              },
+              {
+                "name": "product_id",
+                "source": "products"
+              },
+              {
+                "name": "name",
+                "source": "products"
+              },
+              {
+                "name": "description",
+                "source": "products"
+              },
+              {
+                "name": "sku",
+                "source": "products"
+              },
+              {
+                "name": "category",
+                "source": "products"
+              },
+              {
+                "name": "subcategory",
+                "source": "products"
+              },
+              {
+                "name": "brand",
+                "source": "products"
+              },
+              {
+                "name": "price",
+                "source": "products"
+              },
+              {
+                "name": "cost",
+                "source": "products"
+              },
+              {
+                "name": "sale_price",
+                "source": "products"
+              },
+              {
+                "name": "msrp",
+                "source": "products"
+              },
+              {
+                "name": "stock_quantity",
+                "source": "products"
+              },
+              {
+                "name": "is_available",
+                "source": "products"
+              },
+              {
+                "name": "status",
+                "source": "products"
+              },
+              {
+                "name": "is_active",
+                "source": "products"
+              },
+              {
+                "name": "created_at",
+                "source": "products"
+              },
+              {
+                "name": "updated_at",
+                "source": "products"
+              }
+            ]
+          },
+          {
+            "id": "t3",
+            "type": "select",
+            "columns": [
+              {
+                "name": "id",
+                "expression": "orders.id"
+              },
+              {
+                "name": "order_id",
+                "expression": "orders.order_id"
+              },
+              {
+                "name": "user_id",
+                "expression": "orders.user_id"
+              },
+              {
+                "name": "customer_id",
+                "expression": "orders.customer_id"
+              },
+              {
+                "name": "product_id",
+                "expression": "orders.product_id"
+              },
+              {
+                "name": "status",
+                "expression": "orders.status"
+              },
+              {
+                "name": "amount",
+                "expression": "orders.amount"
+              },
+              {
+                "name": "total",
+                "expression": "orders.total"
+              },
+              {
+                "name": "subtotal",
+                "expression": "orders.subtotal"
+              },
+              {
+                "name": "tax",
+                "expression": "orders.tax"
+              },
+              {
+                "name": "discount",
+                "expression": "orders.discount"
+              },
+              {
+                "name": "shipping",
+                "expression": "orders.shipping"
+              },
+              {
+                "name": "region",
+                "expression": "orders.region"
+              },
+              {
+                "name": "country",
+                "expression": "orders.country"
+              },
+              {
+                "name": "created_at",
+                "expression": "orders.created_at"
+              },
+              {
+                "name": "updated_at",
+                "expression": "orders.updated_at"
+              },
+              {
+                "name": "order_date",
+                "expression": "orders.order_date"
+              },
+              {
+                "name": "shipped_date",
+                "expression": "orders.shipped_date"
+              },
+              {
+                "name": "delivered_date",
+                "expression": "orders.delivered_date"
+              },
+              {
+                "name": "estimated_delivery",
+                "expression": "orders.estimated_delivery"
+              },
+              {
+                "name": "payment_method",
+                "expression": "orders.payment_method"
+              },
+              {
+                "name": "payment_status",
+                "expression": "orders.payment_status"
+              },
+              {
+                "name": "id",
+                "expression": "customers.id"
+              },
+              {
+                "name": "customer_id",
+                "expression": "customers.customer_id"
+              },
+              {
+                "name": "name",
+                "expression": "customers.name"
+              },
+              {
+                "name": "email",
+                "expression": "customers.email"
+              },
+              {
+                "name": "phone",
+                "expression": "customers.phone"
+              },
+              {
+                "name": "company",
+                "expression": "customers.company"
+              },
+              {
+                "name": "country",
+                "expression": "customers.country"
+              },
+              {
+                "name": "region",
+                "expression": "customers.region"
+              },
+              {
+                "name": "city",
+                "expression": "customers.city"
+              },
+              {
+                "name": "address",
+                "expression": "customers.address"
+              },
+              {
+                "name": "status",
+                "expression": "customers.status"
+              },
+              {
+                "name": "is_active",
+                "expression": "customers.is_active"
+              },
+              {
+                "name": "tier",
+                "expression": "customers.tier"
+              },
+              {
+                "name": "lifetime_value",
+                "expression": "customers.lifetime_value"
+              },
+              {
+                "name": "total_orders",
+                "expression": "customers.total_orders"
+              },
+              {
+                "name": "created_at",
+                "expression": "customers.created_at"
+              },
+              {
+                "name": "updated_at",
+                "expression": "customers.updated_at"
+              },
+              {
+                "name": "signup_date",
+                "expression": "customers.signup_date"
+              },
+              {
+                "name": "first_order_date",
+                "expression": "customers.first_order_date"
+              },
+              {
+                "name": "last_order_date",
+                "expression": "customers.last_order_date"
+              },
+              {
+                "name": "internal_id",
+                "expression": "customers.internal_id"
+              },
+              {
+                "name": "id",
+                "expression": "products.id"
+              },
+              {
+                "name": "product_id",
+                "expression": "products.product_id"
+              },
+              {
+                "name": "name",
+                "expression": "products.name"
+              },
+              {
+                "name": "description",
+                "expression": "products.description"
+              },
+              {
+                "name": "sku",
+                "expression": "products.sku"
+              },
+              {
+                "name": "category",
+                "expression": "products.category"
+              },
+              {
+                "name": "subcategory",
+                "expression": "products.subcategory"
+              },
+              {
+                "name": "brand",
+                "expression": "products.brand"
+              },
+              {
+                "name": "price",
+                "expression": "products.price"
+              },
+              {
+                "name": "cost",
+                "expression": "products.cost"
+              },
+              {
+                "name": "sale_price",
+                "expression": "products.sale_price"
+              },
+              {
+                "name": "msrp",
+                "expression": "products.msrp"
+              },
+              {
+                "name": "stock_quantity",
+                "expression": "products.stock_quantity"
+              },
+              {
+                "name": "is_available",
+                "expression": "products.is_available"
+              },
+              {
+                "name": "status",
+                "expression": "products.status"
+              },
+              {
+                "name": "is_active",
+                "expression": "products.is_active"
+              },
+              {
+                "name": "created_at",
+                "expression": "products.created_at"
+              },
+              {
+                "name": "updated_at",
+                "expression": "products.updated_at"
+              },
+              {
+                "name": "order_year",
+                "expression": "YEAR(orders.created_at)"
+              },
+              {
+                "name": "order_month",
+                "expression": "MONTH(orders.created_at)"
+              },
+              {
+                "name": "country_code",
+                "expression": "UPPER(customers.country)"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "id",
+                "expression": "orders.id"
+              },
+              {
+                "name": "order_id",
+                "expression": "orders.order_id"
+              },
+              {
+                "name": "user_id",
+                "expression": "orders.user_id"
+              },
+              {
+                "name": "customer_id",
+                "expression": "orders.customer_id"
+              },
+              {
+                "name": "product_id",
+                "expression": "orders.product_id"
+              },
+              {
+                "name": "status",
+                "expression": "orders.status"
+              },
+              {
+                "name": "amount",
+                "expression": "orders.amount"
+              },
+              {
+                "name": "total",
+                "expression": "orders.total"
+              },
+              {
+                "name": "subtotal",
+                "expression": "orders.subtotal"
+              },
+              {
+                "name": "tax",
+                "expression": "orders.tax"
+              },
+              {
+                "name": "discount",
+                "expression": "orders.discount"
+              },
+              {
+                "name": "shipping",
+                "expression": "orders.shipping"
+              },
+              {
+                "name": "region",
+                "expression": "orders.region"
+              },
+              {
+                "name": "country",
+                "expression": "orders.country"
+              },
+              {
+                "name": "created_at",
+                "expression": "orders.created_at"
+              },
+              {
+                "name": "updated_at",
+                "expression": "orders.updated_at"
+              },
+              {
+                "name": "order_date",
+                "expression": "orders.order_date"
+              },
+              {
+                "name": "shipped_date",
+                "expression": "orders.shipped_date"
+              },
+              {
+                "name": "delivered_date",
+                "expression": "orders.delivered_date"
+              },
+              {
+                "name": "estimated_delivery",
+                "expression": "orders.estimated_delivery"
+              },
+              {
+                "name": "payment_method",
+                "expression": "orders.payment_method"
+              },
+              {
+                "name": "payment_status",
+                "expression": "orders.payment_status"
+              },
+              {
+                "name": "id",
+                "expression": "customers.id"
+              },
+              {
+                "name": "customer_id",
+                "expression": "customers.customer_id"
+              },
+              {
+                "name": "name",
+                "expression": "customers.name"
+              },
+              {
+                "name": "email",
+                "expression": "customers.email"
+              },
+              {
+                "name": "phone",
+                "expression": "customers.phone"
+              },
+              {
+                "name": "company",
+                "expression": "customers.company"
+              },
+              {
+                "name": "country",
+                "expression": "customers.country"
+              },
+              {
+                "name": "region",
+                "expression": "customers.region"
+              },
+              {
+                "name": "city",
+                "expression": "customers.city"
+              },
+              {
+                "name": "address",
+                "expression": "customers.address"
+              },
+              {
+                "name": "status",
+                "expression": "customers.status"
+              },
+              {
+                "name": "is_active",
+                "expression": "customers.is_active"
+              },
+              {
+                "name": "tier",
+                "expression": "customers.tier"
+              },
+              {
+                "name": "lifetime_value",
+                "expression": "customers.lifetime_value"
+              },
+              {
+                "name": "total_orders",
+                "expression": "customers.total_orders"
+              },
+              {
+                "name": "created_at",
+                "expression": "customers.created_at"
+              },
+              {
+                "name": "updated_at",
+                "expression": "customers.updated_at"
+              },
+              {
+                "name": "signup_date",
+                "expression": "customers.signup_date"
+              },
+              {
+                "name": "first_order_date",
+                "expression": "customers.first_order_date"
+              },
+              {
+                "name": "last_order_date",
+                "expression": "customers.last_order_date"
+              },
+              {
+                "name": "internal_id",
+                "expression": "customers.internal_id"
+              },
+              {
+                "name": "id",
+                "expression": "products.id"
+              },
+              {
+                "name": "product_id",
+                "expression": "products.product_id"
+              },
+              {
+                "name": "name",
+                "expression": "products.name"
+              },
+              {
+                "name": "description",
+                "expression": "products.description"
+              },
+              {
+                "name": "sku",
+                "expression": "products.sku"
+              },
+              {
+                "name": "category",
+                "expression": "products.category"
+              },
+              {
+                "name": "subcategory",
+                "expression": "products.subcategory"
+              },
+              {
+                "name": "brand",
+                "expression": "products.brand"
+              },
+              {
+                "name": "price",
+                "expression": "products.price"
+              },
+              {
+                "name": "cost",
+                "expression": "products.cost"
+              },
+              {
+                "name": "sale_price",
+                "expression": "products.sale_price"
+              },
+              {
+                "name": "msrp",
+                "expression": "products.msrp"
+              },
+              {
+                "name": "stock_quantity",
+                "expression": "products.stock_quantity"
+              },
+              {
+                "name": "is_available",
+                "expression": "products.is_available"
+              },
+              {
+                "name": "status",
+                "expression": "products.status"
+              },
+              {
+                "name": "is_active",
+                "expression": "products.is_active"
+              },
+              {
+                "name": "created_at",
+                "expression": "products.created_at"
+              },
+              {
+                "name": "updated_at",
+                "expression": "products.updated_at"
+              },
+              {
+                "name": "order_year",
+                "expression": "YEAR(orders.created_at)"
+              },
+              {
+                "name": "order_month",
+                "expression": "MONTH(orders.created_at)"
+              },
+              {
+                "name": "country_code",
+                "expression": "UPPER(customers.country)"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "__tmp2",
+        "from": {
+          "table": "__tmp1",
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "order_year",
+              "source": "__tmp1"
+            },
+            {
+              "name": "order_month",
+              "source": "__tmp1"
+            },
+            {
+              "name": "country_code",
+              "source": "__tmp1"
+            }
+          ]
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "group_by",
+            "dimensions": [
+              "order_year",
+              "order_month",
+              "country_code",
+              "category"
+            ],
+            "aggregates": [
+              {
+                "function": "count",
+                "column": "*",
+                "alias": "total_orders"
+              },
+              {
+                "function": "sum",
+                "column": "total",
+                "alias": "revenue"
+              },
+              {
+                "function": "avg",
+                "column": "total",
+                "alias": "avg_order_value"
+              },
+              {
+                "function": "min",
+                "column": "total",
+                "alias": "smallest_order"
+              },
+              {
+                "function": "max",
+                "column": "total",
+                "alias": "largest_order"
+              },
+              {
+                "function": "count",
+                "column": "DISTINCT customers.id",
+                "alias": "unique_customers"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "order_year",
+                "source": "__tmp1"
+              },
+              {
+                "name": "order_month",
+                "source": "__tmp1"
+              },
+              {
+                "name": "country_code",
+                "source": "__tmp1"
+              },
+              {
+                "name": "category",
+                "source": "products"
+              },
+              {
+                "name": "total_orders",
+                "function": "count",
+                "source_column": "*"
+              },
+              {
+                "name": "revenue",
+                "function": "sum",
+                "source_column": "total"
+              },
+              {
+                "name": "avg_order_value",
+                "function": "avg",
+                "source_column": "total"
+              },
+              {
+                "name": "smallest_order",
+                "function": "min",
+                "source_column": "total"
+              },
+              {
+                "name": "largest_order",
+                "function": "max",
+                "source_column": "total"
+              },
+              {
+                "name": "unique_customers",
+                "function": "count",
+                "source_column": "DISTINCT customers.id"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": null,
+        "from": {
+          "table": "__tmp2",
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "*",
+              "source": "__tmp2"
+            },
+            {
+              "name": "total_orders",
+              "source": "__tmp2"
+            },
+            {
+              "name": "revenue",
+              "source": "__tmp2"
+            },
+            {
+              "name": "order_year",
+              "source": "__tmp2"
+            },
+            {
+              "name": "order_month",
+              "source": "__tmp2"
+            }
+          ]
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "where",
+            "condition": {
+              "type": "binary",
+              "op": "AND",
+              "left": {
+                "type": "binary",
+                "op": ">=",
+                "left": {
+                  "type": "column",
+                  "name": "total_orders",
+                  "table": "__tmp2"
+                },
+                "right": {
+                  "type": "literal",
+                  "value": 5,
+                  "data_type": "number"
+                }
+              },
+              "right": {
+                "type": "binary",
+                "op": ">",
+                "left": {
+                  "type": "column",
+                  "name": "revenue",
+                  "table": "__tmp2"
+                },
+                "right": {
+                  "type": "literal",
+                  "value": 1000,
+                  "data_type": "number"
+                }
+              }
+            },
+            "output_columns": [
+              {
+                "name": "*",
+                "source": "__tmp2"
+              },
+              {
+                "name": "total_orders",
+                "source": "__tmp2"
+              },
+              {
+                "name": "revenue",
+                "source": "__tmp2"
+              },
+              {
+                "name": "order_year",
+                "source": "__tmp2"
+              },
+              {
+                "name": "order_month",
+                "source": "__tmp2"
+              }
+            ]
+          },
+          {
+            "id": "t1",
+            "type": "select",
+            "columns": [
+              {
+                "name": "*",
+                "expression": "__tmp2.*"
+              },
+              {
+                "name": "*",
+                "expression": "customers.*"
+              },
+              {
+                "name": "*",
+                "expression": "products.*"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "*",
+                "expression": "__tmp2.*"
+              },
+              {
+                "name": "*",
+                "expression": "customers.*"
+              },
+              {
+                "name": "*",
+                "expression": "products.*"
+              }
+            ]
+          },
+          {
+            "id": "t2",
             "type": "order_by",
             "expressions": [
-              {"column": "categories.name", "direction": "asc"},
-              {"column": "revenue", "direction": "desc"}
+              {
+                "column": "order_year",
+                "direction": "desc"
+              },
+              {
+                "column": "order_month",
+                "direction": "desc"
+              },
+              {
+                "column": "revenue",
+                "direction": "desc"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "*",
+                "expression": "__tmp2.*"
+              },
+              {
+                "name": "*",
+                "expression": "customers.*"
+              },
+              {
+                "name": "*",
+                "expression": "products.*"
+              }
+            ]
+          },
+          {
+            "id": "t3",
+            "type": "limit",
+            "count": 100,
+            "output_columns": [
+              {
+                "name": "*",
+                "expression": "__tmp2.*"
+              },
+              {
+                "name": "*",
+                "expression": "customers.*"
+              },
+              {
+                "name": "*",
+                "expression": "products.*"
+              }
             ]
           }
         ]
@@ -371,10 +3013,28 @@
     "dialect": "visual-asql",
     "query": [
       {
-        "name": null,
+        "name": "__tmp1",
         "from": {
           "table": "orders",
-          "alias": null
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "created_at",
+              "source": "orders"
+            },
+            {
+              "name": "total",
+              "source": "orders"
+            },
+            {
+              "name": "customer_id",
+              "source": "orders"
+            },
+            {
+              "name": "status",
+              "source": "orders"
+            }
+          ]
         },
         "transforms": [
           {
@@ -382,35 +3042,258 @@
             "type": "join",
             "join_type": "inner",
             "table": "customers",
-            "condition": "orders.customer_id = customers.id"
+            "alias": null,
+            "condition": {
+              "type": "binary",
+              "op": "=",
+              "left": {
+                "type": "column",
+                "name": "customer_id",
+                "table": "orders"
+              },
+              "right": {
+                "type": "column",
+                "name": "id",
+                "table": "customers"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "created_at",
+                "source": "orders"
+              },
+              {
+                "name": "total",
+                "source": "orders"
+              },
+              {
+                "name": "customer_id",
+                "source": "orders"
+              },
+              {
+                "name": "status",
+                "source": "orders"
+              },
+              {
+                "name": "country",
+                "source": "customers"
+              },
+              {
+                "name": "id",
+                "source": "customers"
+              }
+            ]
           },
           {
             "id": "t1",
             "type": "where",
-            "condition": "orders.status IN ('completed', 'shipped')"
+            "condition": {
+              "type": "in",
+              "operand": {
+                "type": "column",
+                "name": "status",
+                "table": "orders"
+              },
+              "values": [
+                {
+                  "type": "literal",
+                  "value": "completed",
+                  "data_type": "string"
+                },
+                {
+                  "type": "literal",
+                  "value": "shipped",
+                  "data_type": "string"
+                }
+              ]
+            },
+            "output_columns": [
+              {
+                "name": "created_at",
+                "source": "orders"
+              },
+              {
+                "name": "total",
+                "source": "orders"
+              },
+              {
+                "name": "customer_id",
+                "source": "orders"
+              },
+              {
+                "name": "status",
+                "source": "orders"
+              },
+              {
+                "name": "country",
+                "source": "customers"
+              },
+              {
+                "name": "id",
+                "source": "customers"
+              }
+            ]
           },
           {
             "id": "t2",
             "type": "group_by",
-            "dimensions": ["month(orders.created_at)", "customers.acquisition_channel"],
+            "dimensions": [
+              "MONTH(orders.created_at)",
+              "country"
+            ],
             "aggregates": [
-              {"function": "sum", "column": "orders.total", "alias": "revenue"},
-              {"function": "count", "column": "*", "alias": "order_count"},
-              {"function": "count_distinct", "column": "orders.customer_id", "alias": "unique_customers"},
-              {"function": "avg", "column": "orders.total", "alias": "avg_order_value"}
+              {
+                "function": "sum",
+                "column": "total",
+                "alias": "revenue"
+              },
+              {
+                "function": "count",
+                "column": "*",
+                "alias": "order_count"
+              },
+              {
+                "function": "count",
+                "column": "DISTINCT orders.customer_id",
+                "alias": "unique_customers"
+              },
+              {
+                "function": "avg",
+                "column": "total",
+                "alias": "avg_order_value"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "MONTH(orders.created_at)"
+              },
+              {
+                "name": "country",
+                "source": "customers"
+              },
+              {
+                "name": "revenue",
+                "function": "sum",
+                "source_column": "total"
+              },
+              {
+                "name": "order_count",
+                "function": "count",
+                "source_column": "*"
+              },
+              {
+                "name": "unique_customers",
+                "function": "count",
+                "source_column": "DISTINCT orders.customer_id"
+              },
+              {
+                "name": "avg_order_value",
+                "function": "avg",
+                "source_column": "total"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": null,
+        "from": {
+          "table": "__tmp1",
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "*",
+              "source": "__tmp1"
+            },
+            {
+              "name": "order_count",
+              "source": "__tmp1"
+            },
+            {
+              "name": "revenue",
+              "source": "__tmp1"
+            }
+          ]
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "where",
+            "condition": {
+              "type": "binary",
+              "op": ">=",
+              "left": {
+                "type": "column",
+                "name": "order_count",
+                "table": "__tmp1"
+              },
+              "right": {
+                "type": "literal",
+                "value": 10,
+                "data_type": "number"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "*",
+                "source": "__tmp1"
+              },
+              {
+                "name": "order_count",
+                "source": "__tmp1"
+              },
+              {
+                "name": "revenue",
+                "source": "__tmp1"
+              }
             ]
           },
           {
-            "id": "t3",
-            "type": "where",
-            "condition": "order_count >= 10"
+            "id": "t1",
+            "type": "select",
+            "columns": [
+              {
+                "name": "*",
+                "expression": "__tmp1.*"
+              },
+              {
+                "name": "*",
+                "expression": "customers.*"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "*",
+                "expression": "__tmp1.*"
+              },
+              {
+                "name": "*",
+                "expression": "customers.*"
+              }
+            ]
           },
           {
-            "id": "t4",
+            "id": "t2",
             "type": "order_by",
             "expressions": [
-              {"column": "month(orders.created_at)", "direction": "asc"},
-              {"column": "revenue", "direction": "desc"}
+              {
+                "column": "",
+                "direction": "asc"
+              },
+              {
+                "column": "revenue",
+                "direction": "desc"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "*",
+                "expression": "__tmp1.*"
+              },
+              {
+                "name": "*",
+                "expression": "customers.*"
+              }
             ]
           }
         ]
@@ -418,64 +3301,411 @@
     ]
   },
   {
-    "title": "Employee Sales Leaderboard",
-    "desc": "Complex join with filters, aggregation, and ranking",
+    "title": "Product Category Analysis",
+    "desc": "Multi-join analysis of products and sales",
     "dialect": "visual-asql",
     "query": [
       {
         "name": null,
         "from": {
-          "table": "employees",
-          "alias": null
+          "table": "products",
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "category",
+              "source": "products"
+            },
+            {
+              "name": "name",
+              "source": "products"
+            },
+            {
+              "name": "price",
+              "source": "products"
+            },
+            {
+              "name": "id",
+              "source": "products"
+            },
+            {
+              "name": "revenue",
+              "source": "products"
+            }
+          ]
         },
         "transforms": [
           {
             "id": "t0",
             "type": "join",
-            "join_type": "inner",
-            "table": "departments",
-            "condition": "employees.department_id = departments.id"
+            "join_type": "left",
+            "table": "sales",
+            "alias": null,
+            "condition": {
+              "type": "binary",
+              "op": "=",
+              "left": {
+                "type": "column",
+                "name": "id",
+                "table": "products"
+              },
+              "right": {
+                "type": "column",
+                "name": "product_id",
+                "table": "sales"
+              }
+            },
+            "output_columns": [
+              {
+                "name": "category",
+                "source": "products"
+              },
+              {
+                "name": "name",
+                "source": "products"
+              },
+              {
+                "name": "price",
+                "source": "products"
+              },
+              {
+                "name": "id",
+                "source": "products"
+              },
+              {
+                "name": "revenue",
+                "source": "products"
+              },
+              {
+                "name": "id",
+                "source": "sales"
+              },
+              {
+                "name": "quantity",
+                "source": "sales"
+              },
+              {
+                "name": "amount",
+                "source": "sales"
+              },
+              {
+                "name": "status",
+                "source": "sales"
+              },
+              {
+                "name": "product_id",
+                "source": "sales"
+              },
+              {
+                "name": "category",
+                "source": "sales"
+              },
+              {
+                "name": "revenue",
+                "source": "sales"
+              }
+            ]
           },
           {
             "id": "t1",
-            "type": "join",
-            "join_type": "left",
-            "table": "sales",
-            "condition": "employees.id = sales.employee_id"
+            "type": "where",
+            "condition": {
+              "type": "binary",
+              "op": "OR",
+              "left": {
+                "type": "binary",
+                "op": "=",
+                "left": {
+                  "type": "column",
+                  "name": "status",
+                  "table": "sales"
+                },
+                "right": {
+                  "type": "literal",
+                  "value": "completed",
+                  "data_type": "string"
+                }
+              },
+              "right": {
+                "type": "null_check",
+                "operator": "is null",
+                "operand": {
+                  "type": "column",
+                  "name": "id",
+                  "table": "sales"
+                }
+              }
+            },
+            "output_columns": [
+              {
+                "name": "category",
+                "source": "products"
+              },
+              {
+                "name": "name",
+                "source": "products"
+              },
+              {
+                "name": "price",
+                "source": "products"
+              },
+              {
+                "name": "id",
+                "source": "products"
+              },
+              {
+                "name": "revenue",
+                "source": "products"
+              },
+              {
+                "name": "id",
+                "source": "sales"
+              },
+              {
+                "name": "quantity",
+                "source": "sales"
+              },
+              {
+                "name": "amount",
+                "source": "sales"
+              },
+              {
+                "name": "status",
+                "source": "sales"
+              },
+              {
+                "name": "product_id",
+                "source": "sales"
+              },
+              {
+                "name": "category",
+                "source": "sales"
+              },
+              {
+                "name": "revenue",
+                "source": "sales"
+              }
+            ]
           },
           {
             "id": "t2",
-            "type": "where",
-            "condition": "employees.status = 'active' AND sales.sale_date >= '2024-01-01'"
+            "type": "group_by",
+            "dimensions": [
+              "category",
+              "name",
+              "price"
+            ],
+            "aggregates": [
+              {
+                "function": "count",
+                "column": "id",
+                "alias": "times_sold"
+              },
+              {
+                "function": "sum",
+                "column": "quantity",
+                "alias": "total_units"
+              },
+              {
+                "function": "sum",
+                "column": "amount",
+                "alias": "revenue"
+              },
+              {
+                "function": "avg",
+                "column": "quantity",
+                "alias": "avg_qty_per_sale"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "category",
+                "source": "products"
+              },
+              {
+                "name": "name",
+                "source": "products"
+              },
+              {
+                "name": "price",
+                "source": "products"
+              },
+              {
+                "name": "times_sold",
+                "function": "count",
+                "source_column": "id"
+              },
+              {
+                "name": "total_units",
+                "function": "sum",
+                "source_column": "quantity"
+              },
+              {
+                "name": "revenue",
+                "function": "sum",
+                "source_column": "amount"
+              },
+              {
+                "name": "avg_qty_per_sale",
+                "function": "avg",
+                "source_column": "quantity"
+              }
+            ]
           },
           {
             "id": "t3",
-            "type": "group_by",
-            "dimensions": ["departments.name", "employees.id", "employees.name"],
-            "aggregates": [
-              {"function": "sum", "column": "sales.amount", "alias": "total_sales"},
-              {"function": "count", "column": "sales.id", "alias": "deal_count"},
-              {"function": "avg", "column": "sales.amount", "alias": "avg_deal_size"},
-              {"function": "max", "column": "sales.amount", "alias": "largest_deal"}
-            ]
-          },
-          {
-            "id": "t4",
-            "type": "where",
-            "condition": "deal_count > 0"
-          },
-          {
-            "id": "t5",
             "type": "order_by",
             "expressions": [
-              {"column": "departments.name", "direction": "asc"},
-              {"column": "total_sales", "direction": "desc"}
+              {
+                "column": "category",
+                "direction": "asc"
+              },
+              {
+                "column": "revenue",
+                "direction": "desc"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "category",
+                "source": "products"
+              },
+              {
+                "name": "name",
+                "source": "products"
+              },
+              {
+                "name": "price",
+                "source": "products"
+              },
+              {
+                "name": "times_sold",
+                "function": "count",
+                "source_column": "id"
+              },
+              {
+                "name": "total_units",
+                "function": "sum",
+                "source_column": "quantity"
+              },
+              {
+                "name": "revenue",
+                "function": "sum",
+                "source_column": "amount"
+              },
+              {
+                "name": "avg_qty_per_sale",
+                "function": "avg",
+                "source_column": "quantity"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Lead Conversion Funnel",
+    "desc": "Analyze leads by source and status",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": null,
+        "from": {
+          "table": "leads",
+          "alias": null,
+          "output_columns": [
+            {
+              "name": "source",
+              "source": "leads"
+            },
+            {
+              "name": "status",
+              "source": "leads"
+            },
+            {
+              "name": "score",
+              "source": "leads"
+            },
+            {
+              "name": "lead_count",
+              "source": "leads"
+            }
+          ]
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "group_by",
+            "dimensions": [
+              "source",
+              "status"
+            ],
+            "aggregates": [
+              {
+                "function": "count",
+                "column": "*",
+                "alias": "lead_count"
+              },
+              {
+                "function": "avg",
+                "column": "score",
+                "alias": "avg_score"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "source",
+                "source": "leads"
+              },
+              {
+                "name": "status",
+                "source": "leads"
+              },
+              {
+                "name": "lead_count",
+                "function": "count",
+                "source_column": "*"
+              },
+              {
+                "name": "avg_score",
+                "function": "avg",
+                "source_column": "score"
+              }
             ]
           },
           {
-            "id": "t6",
-            "type": "limit",
-            "count": 100
+            "id": "t1",
+            "type": "order_by",
+            "expressions": [
+              {
+                "column": "source",
+                "direction": "asc"
+              },
+              {
+                "column": "lead_count",
+                "direction": "desc"
+              }
+            ],
+            "output_columns": [
+              {
+                "name": "source",
+                "source": "leads"
+              },
+              {
+                "name": "status",
+                "source": "leads"
+              },
+              {
+                "name": "lead_count",
+                "function": "count",
+                "source_column": "*"
+              },
+              {
+                "name": "avg_score",
+                "function": "avg",
+                "source_column": "score"
+              }
+            ]
           }
         ]
       }

@@ -628,59 +628,60 @@ LIMIT 10
 
 ## Cohort Analysis
 
-Cohort analysis tracks user behavior over time by grouping users by when they started. Traditional SQL requires 50+ lines with multiple CTEs. ASQL simplifies this to just 3-5 lines.
+Cohort analysis tracks user behavior over time by grouping users by when they started. In ASQL, this is straightforward using computed columns and alias reuse.
 
 ### User Retention by Cohort
 
-**ASQL (3 lines):**
+**ASQL:**
 ```asql-play
 from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
-```
-
-**SQL (50+ lines):**
-```sql
-WITH cohort_base AS (
-  SELECT user_id, DATE_TRUNC('month', signup_date) AS cohort_month
-  FROM users
-),
-cohort_sizes AS (
-  SELECT cohort_month, COUNT(DISTINCT user_id) AS cohort_size
-  FROM cohort_base
-  GROUP BY cohort_month
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
 )
-SELECT 
-  cb.cohort_month,
-  EXTRACT(YEAR FROM AGE(e.event_date, cb.cohort_month)) * 12 + 
-  EXTRACT(MONTH FROM AGE(e.event_date, cb.cohort_month)) AS period,
-  cs.cohort_size,
-  COUNT(DISTINCT e.user_id) AS active
-FROM events e
-JOIN cohort_base cb ON e.user_id = cb.user_id
-JOIN cohort_sizes cs ON cb.cohort_month = cs.cohort_month
-GROUP BY cb.cohort_month, period, cs.cohort_size
-ORDER BY cb.cohort_month, period
+order by cohort, period
 ```
 
-**Reduction: 94%** - From 50+ lines to 3 lines!
+ASQL's alias reuse lets you reference `cohort` immediately after defining it - no CTEs needed!
 
 ### Revenue Cohort with LTV
 
 **ASQL:**
 ```asql-play
 from orders
-group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date)
+join customers
+group by 
+  month(customers.first_order_date) as cohort,
+  months_between(orders.order_date, customers.first_order_date) as period
+(
+  sum(total) as revenue,
+  count(distinct customer_id) as customers
+)
+select *,
+  first(customers) over cohort as cohort_size,
+  running_sum(revenue) over cohort / cohort_size as ltv
+order by cohort, period
 ```
 
-### Retention with Period-over-Period Change
+### Retention with Percentages
 
 **ASQL:**
 ```asql-play
 from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+select *,
+  first(active) over cohort as cohort_size,
+  round(active::numeric / cohort_size * 100, 1) as retention_pct
+order by cohort, period
 ```
 
 ### Segmented Cohorts by Channel
@@ -688,8 +689,15 @@ cohort by month(users.signup_date)
 **ASQL:**
 ```asql-play
 from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by users.channel, month(users.signup_date)
+join users
+group by 
+  users.channel,
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+order by channel, cohort, period
 ```
 
 This creates cohorts segmented by acquisition channel, allowing you to compare retention across different channels.

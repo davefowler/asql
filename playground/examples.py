@@ -39,8 +39,7 @@ def _load_asql_examples(category: str) -> List[Example]:
 # ASQL EXAMPLES (loaded from JSON files)
 # =============================================================================
 
-ASQL_EXAMPLES: List[Example] = _load_asql_examples("basic")
-PIPELINE_EXAMPLES: List[Example] = _load_asql_examples("pipeline")
+PIPE_EXAMPLES: List[Example] = _load_asql_examples("pipe")
 SAMPLING_EXAMPLES: List[Example] = _load_asql_examples("sampling")
 RESHAPING_EXAMPLES: List[Example] = _load_asql_examples("reshaping")
 COLUMN_OPERATOR_EXAMPLES: List[Example] = _load_asql_examples("column_operators")
@@ -55,7 +54,11 @@ SYNTAX_STYLES_EXAMPLES: List[Example] = _load_asql_examples("syntax_styles")
 # These have "query" as JSON objects (not strings) for the visual editor
 
 def _load_visual_asql_examples() -> List[Dict[str, Any]]:
-    """Load Visual ASQL examples, converting query objects to JSON strings."""
+    """Load Visual ASQL examples, converting query objects to JSON strings.
+    
+    Note: This loads fresh from disk each time to support hot-reloading
+    when examples are regenerated via `just gen-visual-examples`.
+    """
     examples = _load_json("visual_asql.json")
     # Convert query objects to JSON strings for the frontend
     for ex in examples:
@@ -64,6 +67,12 @@ def _load_visual_asql_examples() -> List[Dict[str, Any]]:
     return examples
 
 
+def get_visual_asql_examples() -> List[Dict[str, Any]]:
+    """Get Visual ASQL examples (loads fresh from disk each call)."""
+    return _load_visual_asql_examples()
+
+
+# For backwards compatibility - but prefer get_visual_asql_examples() for fresh data
 VISUAL_ASQL_EXAMPLES: List[Dict[str, Any]] = _load_visual_asql_examples()
 
 # =============================================================================
@@ -80,14 +89,13 @@ SQL_EXAMPLES: List[Dict[str, Any]] = _load_json("sql.json")
 def get_all_examples() -> Dict[str, List[Example]]:
     """Get all examples organized by category."""
     return {
-        "asql": ASQL_EXAMPLES,
-        "pipeline": PIPELINE_EXAMPLES,
+        "pipe": PIPE_EXAMPLES,
+        "cohort": COHORT_EXAMPLES,
         "sampling": SAMPLING_EXAMPLES,
         "reshaping": RESHAPING_EXAMPLES,
         "column_operators": COLUMN_OPERATOR_EXAMPLES,
         "count_inference": COUNT_INFERENCE_EXAMPLES,
         "spine": SPINE_EXAMPLES,
-        "cohort": COHORT_EXAMPLES,
         "syntax_styles": SYNTAX_STYLES_EXAMPLES,
     }
 

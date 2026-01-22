@@ -1228,7 +1228,7 @@ class TestUnionExecution:
             assert "Alice" in names
             assert "Charlie" in names
         except Exception as e:
-            pytest.xfail(f"UNION pipeline syntax not yet implemented: {e}")
+            pytest.xfail(f"UNION pipe syntax not yet implemented: {e}")
 
 
 class TestTernaryExecution:

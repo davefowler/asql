@@ -27,7 +27,7 @@ from sqlglot.parser import Parser
 from sqlglot.tokens import Token, TokenType
 
 from asql.dialect.tokenizer import ASQLTokenizer  # noqa: F401
-from asql.expressions import Spine, CohortBy
+from asql.expressions import Spine
 from asql.functions import (
     ASQL_FUNCTION_REGISTRY,
     NATURAL_DATE_UNITS,
@@ -252,8 +252,7 @@ class ASQLParser(Parser):
         2. Implicit function aliases (SUM(amount) → SUM(amount) AS sum_amount)
         3. Auto-aliasing (function calls without explicit aliases)
         4. FK shorthand (ON user_id → ON orders.user_id = users.id) - needs schema
-        5. Cohort transform (cohort by ... → CTEs and JOINs)
-        6. Auto-qualify columns (resolve ambiguous columns in JOINs)
+        5. Auto-qualify columns (resolve ambiguous columns in JOINs)
         
         Transform order (Phase 2 - generate universal SQL):
         7. Alias reuse → CTE chains (works on all dialects including DuckDB)
@@ -292,7 +291,6 @@ class ASQLParser(Parser):
         from asql.dialect.transforms.auto_alias import apply_auto_aliasing
         from asql.dialect.transforms.auto_qualify import auto_qualify_columns
         from asql.dialect.transforms.join_fk_shorthand import transform_fk_shorthand
-        from asql.dialect.transforms.cohort_transform import transform_cohort
         
         # === Phase 1: Basic transforms (no dialect/schema required) ===
         stmt = apply_since_until_underscore_shorthands(stmt, settings)
@@ -302,9 +300,6 @@ class ASQLParser(Parser):
         # === Phase 2: Schema-aware transforms (need schema, not dialect) ===
         if schema is not None:
             stmt = transform_fk_shorthand(stmt, settings)
-        
-        # Cohort transform (generates CTEs and JOINs)
-        stmt = transform_cohort(stmt, settings)
         
         # Auto-qualify columns in joins (expands SELECT * to table.* for each table)
         stmt = auto_qualify_columns(stmt)
@@ -555,7 +550,7 @@ class ASQLParser(Parser):
             kind=kind,
             on=on_column_list,
         )
-    """Parser for ASQL pipeline syntax using TRANSFORM_PARSERS pattern.
+    """Parser for ASQL pipe syntax using TRANSFORM_PARSERS pattern.
     
     This follows PRQL's pattern:
     1. Start with FROM clause
@@ -678,7 +673,6 @@ class ASQLParser(Parser):
         "DENSE": lambda self, query: self._parse_asql_dense_rank_standalone(query),
         "DEDUPLICATE": lambda self, query: self._parse_asql_deduplicate(query),
         # Advanced transforms
-        "COHORT": lambda self, query: self._parse_asql_cohort(query),
         "RECURSE": lambda self, query: self._parse_asql_recurse(query),
         # Spine - explicit gap-filling: spine by month(date) (aggs)
         "SPINE": lambda self, query: self._parse_asql_spine_by(query),
@@ -1797,6 +1791,7 @@ class ASQLParser(Parser):
         - Simple columns: region, category
         - Qualified columns: customers.id, orders.total
         - Function calls: month(date), year(created_at), slugify(name)
+        - Aliased expressions: month(date) as cohort, region as reg
         - But stops at standalone ( that starts an aggregate block
         
         The key insight: aggregate blocks always contain aliased expressions.
@@ -1805,6 +1800,8 @@ class ASQLParser(Parser):
         """
         if not self._curr:
             return None
+        
+        expr: t.Optional[exp.Expression] = None
         
         if self._curr.token_type == TokenType.VAR:
             name = self._curr.text
@@ -1819,57 +1816,67 @@ class ASQLParser(Parser):
                 if self._curr and self._curr.token_type == TokenType.VAR:
                     col_name = self._curr.text
                     self._advance()  # consume column name
-                    return exp.Column(
+                    expr = exp.Column(
                         this=exp.to_identifier(col_name),
                         table=exp.to_identifier(name)
                     )
                 else:
                     # Malformed, just return the table as column
-                    return exp.Column(this=exp.to_identifier(name))
+                    expr = exp.Column(this=exp.to_identifier(name))
             
-            if next_tok and next_tok.token_type == TokenType.L_PAREN:
+            elif next_tok and next_tok.token_type == TokenType.L_PAREN:
                 # Check if this looks like an aggregate block
                 if self._looks_like_aggregate_block_at(self._index + 1):
                     # This is: identifier (aggregate_block)
                     self._advance()  # consume identifier
-                    return exp.Column(this=exp.to_identifier(name))
-                
-                # Otherwise, this is a function call like month(date) or slugify(name)
-                # Check if it's a custom function with special parsing (like SLUGIFY)
-                upper_name = name.upper()
-                if upper_name in self.FUNCTION_PARSERS:
-                    # Use the custom function parser
-                    self._advance()  # consume function name
-                    return self.FUNCTION_PARSERS[upper_name](self)
-                
-                # Otherwise, parse as a standard function
-                self._advance()  # consume identifier
-                self._advance()  # consume (
-                
-                # Parse function arguments
-                args = self._parse_csv(self._parse_expression)
-                
-                if not self._match(TokenType.R_PAREN):
-                    self.raise_error("Expected ) after function arguments")
-                
-                # Build function expression using FUNCTIONS registry if available
-                func_class = self.FUNCTIONS.get(upper_name)
-                if func_class:
-                    if callable(func_class):
-                        expr = func_class(args)
-                    else:
-                        expr = func_class(this=args[0] if args else None)
+                    expr = exp.Column(this=exp.to_identifier(name))
                 else:
-                    expr = exp.Anonymous(this=name, expressions=args)
-                
-                return expr
+                    # Otherwise, this is a function call like month(date) or slugify(name)
+                    # Check if it's a custom function with special parsing (like SLUGIFY)
+                    upper_name = name.upper()
+                    if upper_name in self.FUNCTION_PARSERS:
+                        # Use the custom function parser
+                        self._advance()  # consume function name
+                        expr = self.FUNCTION_PARSERS[upper_name](self)
+                    else:
+                        # Otherwise, parse as a standard function
+                        self._advance()  # consume identifier
+                        self._advance()  # consume (
+                        
+                        # Parse function arguments
+                        args = self._parse_csv(self._parse_expression)
+                        
+                        if not self._match(TokenType.R_PAREN):
+                            self.raise_error("Expected ) after function arguments")
+                        
+                        # Build function expression using FUNCTIONS registry if available
+                        func_class = self.FUNCTIONS.get(upper_name)
+                        if func_class:
+                            if callable(func_class):
+                                expr = func_class(args)
+                            else:
+                                expr = func_class(this=args[0] if args else None)
+                        else:
+                            expr = exp.Anonymous(this=name, expressions=args)
             else:
                 # Simple column
                 self._advance()
-                return exp.Column(this=exp.to_identifier(name))
+                expr = exp.Column(this=exp.to_identifier(name))
+        else:
+            # For other cases (literals, etc.), use standard parsing
+            expr = self._parse_primary()
         
-        # For other cases (literals, etc.), use standard parsing
-        return self._parse_primary()
+        # Check for optional alias: "AS alias" or just "alias"
+        # But don't consume ( which starts aggregate block
+        if expr and self._curr:
+            if self._match(TokenType.ALIAS):
+                # Explicit AS keyword
+                if self._curr and self._curr.token_type == TokenType.VAR:
+                    alias_name = self._curr.text
+                    self._advance()
+                    expr = exp.Alias(this=expr, alias=exp.to_identifier(alias_name))
+        
+        return expr
     
     def _looks_like_aggregate_block_at(self, paren_idx: int) -> bool:
         """Check if ( at given index starts an aggregate block vs a function call.
@@ -2452,76 +2459,6 @@ class ASQLParser(Parser):
         # Same as: per <cols> first by <order_col>
         return self._add_qualify_row_number(query, partition_cols, order_expr, order_desc)
 
-    def _parse_asql_cohort(self, query: exp.Query) -> exp.Query:
-        """Parse cohort by [segments,] <granularity_func>(<table.column>) [on <join_key>].
-        
-        Syntax:
-            cohort by month(users.signup_date)
-            cohort by month(users.signup_date) on user_id
-            cohort by users.channel, month(users.signup_date) on user_id
-            cohort by week(customers.first_order_date) on customer_id
-        
-        The granularity function (month, week, day, etc.) is parsed as a regular 
-        function call - any date function works, not a hardcoded list.
-        
-        Creates a CohortBy expression attached to the query for later transformation.
-        """
-        if not self._match_text_seq("BY"):
-            self.raise_error("Expected BY after COHORT")
-            return query
-        
-        # Parse comma-separated expressions: segments are columns, last item is granularity function
-        # e.g., "channel, region, month(signup_date)" → segments=[channel, region], granularity_expr=month(signup_date)
-        expressions: t.List[exp.Expression] = []
-        
-        while True:
-            # Parse expression (could be column or function call)
-            expr = self._parse_unary()
-            if not expr:
-                break
-            expressions.append(expr)
-            
-            # Check for comma (more expressions) vs ON (join key) vs end
-            if not self._match(TokenType.COMMA):
-                break
-        
-        if not expressions:
-            self.raise_error("Expected granularity function (e.g., month(date_col)) after COHORT BY")
-            return query
-        
-        # Last expression should be the granularity function
-        granularity_expr = expressions[-1]
-        segments = expressions[:-1]
-        
-        # Extract granularity and cohort_col from the function expression
-        granularity, cohort_col = self._extract_granularity_from_expr(granularity_expr)
-        
-        if not granularity or not cohort_col:
-            self.raise_error(
-                "Expected granularity function like month(date_col), week(date_col), or day(date_col)"
-            )
-            return query
-        
-        # Parse optional ON join_key
-        join_key = None
-        if self._match(TokenType.ON):
-            join_key_col = self._parse_column()
-            if join_key_col:
-                join_key = join_key_col.name if hasattr(join_key_col, 'name') else str(join_key_col.this)
-        
-        # Build CohortBy AST node (replaces old _cohort_info attribute hack)
-        cohort_node = CohortBy(
-            this=granularity_expr,
-            granularity=exp.Literal.string(granularity) if granularity else None,
-            join_key=exp.to_identifier(join_key) if join_key else None,
-            segments=segments if segments else None,
-        )
-        
-        # Attach to query using proper args mechanism
-        query.set("cohort", cohort_node)
-        
-        return query
-    
     def _parse_asql_spine_by(self, query: exp.Query) -> exp.Query:
         """Parse spine by <columns> (aggregations).
         

@@ -108,7 +108,7 @@ nav:
     - Examples: examples.md
   - Syntax:
     - syntax/index.md
-    - Pipeline Basics: syntax/pipeline.md
+    - Pipe Basics: syntax/pipe.md
     - Expressions & Operators: syntax/expressions.md
     - Aggregations: syntax/aggregations.md
     - Joins: syntax/joins.md
@@ -120,7 +120,7 @@ nav:
     - Pivot, Unpivot & Explode: syntax/pivot-unpivot.md
   - Concepts:
     - concepts/index.md
-    - Pipeline Semantics: concepts/pipelines.md
+    - Pipe Semantics: concepts/pipe-semantics.md
     - Guaranteed Groups: concepts/guaranteed-groups.md
     - Convention Over Configuration: concepts/conventions.md
     - Function Shorthand: concepts/shorthand.md

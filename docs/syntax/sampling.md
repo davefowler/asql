@@ -146,6 +146,6 @@ from users
 
 ## Next Steps
 
-- **[Pipeline Basics](pipeline.md)** — Combining sample with other operations
+- **[Pipe Syntax](pipe.md)** — Combining sample with other operations
 - **[Window Functions](window-functions.md)** — How stratified sampling works
 - **[Examples](../examples.md)** — More sampling patterns

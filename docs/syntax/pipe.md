@@ -1,6 +1,6 @@
-# Pipeline Basics
+# Pipe Syntax
 
-ASQL uses a pipeline-based query structure where data flows from top to bottom. This matches how you think about transformations and makes complex queries easier to read and write.
+ASQL uses a pipe-based query structure where data flows from top to bottom. This matches how you think about transformations and makes complex queries easier to read and write.
 
 ## FROM-First Queries
 
@@ -12,7 +12,7 @@ from users
 
 This selects all rows and columns from the `users` table. Unlike SQL, you don't need to specify `SELECT *` upfront—ASQL adds it automatically when generating SQL.
 
-## Pipeline Flow
+## Pipe Flow
 
 Transformations are applied in sequence:
 
@@ -26,7 +26,7 @@ from users
 
 Each line transforms the result of the previous line. This reads naturally: "From users, where status is active, where age is at least 18, order by created_at descending, take 10."
 
-## Pipeline Operators
+## Pipe Operators
 
 You can optionally use the pipe operator (`|`) to make the flow explicit:
 

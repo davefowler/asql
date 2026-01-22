@@ -393,6 +393,6 @@ select "select"     -- Column named 'select'
 
 ## See Also
 
-- **[Pipeline Basics](../syntax/pipeline.md)** — Using pipeline keywords
+- **[Pipe Basics](../syntax/pipe.md)** — Using pipe keywords
 - **[Operators Reference](operators.md)** — All operators
 - **[Functions Reference](functions.md)** — All functions

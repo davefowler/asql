@@ -8,7 +8,6 @@ This module provides a unified approach to resolving join conditions:
 
 Used by:
 - join_fk_shorthand.py - Expanding `ON user_id` to full condition
-- cohort_transform.py - Inferring cohort join keys
 - (future) auto-join - When no ON clause is provided
 """
 

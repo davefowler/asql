@@ -122,9 +122,30 @@ class VisualEditorV2 {
       const pipelineEl = this.renderPipeline(pipeline, pipelineIdx);
       container.appendChild(pipelineEl);
 
-      // Add set operation between pipelines
+      // Add set operation between pipelines (only for true set operations, not CTEs)
       if (pipelineIdx < this.pipelines.length - 1) {
-        container.appendChild(this.renderSetOperation(pipelineIdx));
+        const nextPipeline = this.pipelines[pipelineIdx + 1];
+        const currentName = pipeline.name;
+        const nextFromTable = nextPipeline?.from?.table;
+        
+        // Check if next pipeline references current pipeline's stash (CTE relationship)
+        // Also check if next pipeline joins with current pipeline's stash
+        const joinsToCte = nextPipeline?.transforms?.some(t => 
+          t.type === 'join' && t.table === currentName
+        );
+        const isCteRelationship = currentName && (nextFromTable === currentName || joinsToCte);
+        
+        // Only show set operation selector if it's NOT a CTE relationship
+        // or if there's an explicit set_operation defined
+        if (!isCteRelationship || pipeline.set_operation) {
+          container.appendChild(this.renderSetOperation(pipelineIdx));
+        } else {
+          // Show a simple CTE indicator instead
+          const cteIndicator = document.createElement('div');
+          cteIndicator.className = 'cte-indicator';
+          cteIndicator.textContent = `↓ uses ${currentName}`;
+          container.appendChild(cteIndicator);
+        }
       }
     });
 
@@ -329,7 +350,7 @@ class VisualEditorV2 {
     // Parameters
     if (schema.parameters) {
       schema.parameters.forEach(param => {
-        body.appendChild(this.renderParameter(transform, param, pipelineIdx));
+        body.appendChild(this.renderParameter(transform, param, pipelineIdx, transformIdx));
       });
     }
 
@@ -356,7 +377,7 @@ class VisualEditorV2 {
   /**
    * Render a parameter based on its type
    */
-  renderParameter(transform, param, pipelineIdx) {
+  renderParameter(transform, param, pipelineIdx, transformIdx = 0) {
     const container = document.createElement('span');
     container.className = 'param-container';
 
@@ -373,16 +394,16 @@ class VisualEditorV2 {
         container.appendChild(this.renderDropdown(transform, param));
         break;
       case 'expression':
-        container.appendChild(this.renderExpressionWidget(transform, param, pipelineIdx));
+        container.appendChild(this.renderExpressionWidget(transform, param, pipelineIdx, transformIdx));
         break;
       case 'list':
-        container.appendChild(this.renderListWidget(transform, param, pipelineIdx));
+        container.appendChild(this.renderListWidget(transform, param, pipelineIdx, transformIdx));
         break;
       case 'aggregate_list':
-        container.appendChild(this.renderAggregateList(transform, param, pipelineIdx));
+        container.appendChild(this.renderAggregateList(transform, param, pipelineIdx, transformIdx));
         break;
       case 'order_list':
-        container.appendChild(this.renderOrderList(transform, param, pipelineIdx));
+        container.appendChild(this.renderOrderList(transform, param, pipelineIdx, transformIdx));
         break;
       case 'table_select':
         container.appendChild(this.renderTableSelect(transform, param, pipelineIdx));
@@ -483,7 +504,7 @@ class VisualEditorV2 {
   /**
    * Render expression widget (single expression)
    */
-  renderExpressionWidget(transform, param, pipelineIdx) {
+  renderExpressionWidget(transform, param, pipelineIdx, transformIdx = 0) {
     const value = transform[param.name] || {};
     const exprId = `${transform.id}-${param.name}`;
     
@@ -497,7 +518,7 @@ class VisualEditorV2 {
         this.notifyChange();
       },
       metadata: this.metadata,
-      schema: this.getSchemaContext(pipelineIdx)
+      schema: this.getSchemaContext(pipelineIdx, transformIdx)
     });
 
     this.expressionInstances.set(exprId, expr);
@@ -507,7 +528,7 @@ class VisualEditorV2 {
   /**
    * Render list widget (columns, expressions)
    */
-  renderListWidget(transform, param, pipelineIdx) {
+  renderListWidget(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
     const isExpressionType = param.type === 'expression[]' || 
                             param.name === 'columns' || 
@@ -518,7 +539,7 @@ class VisualEditorV2 {
     container.className = 'expression-list';
 
     items.forEach((item, idx) => {
-      const itemEl = this.renderExpressionItem(item, idx, transform, param, pipelineIdx, showAlias);
+      const itemEl = this.renderExpressionItem(item, idx, transform, param, pipelineIdx, transformIdx, showAlias);
       container.appendChild(itemEl);
     });
 
@@ -564,7 +585,7 @@ class VisualEditorV2 {
   /**
    * Render a single expression item in a list
    */
-  renderExpressionItem(item, idx, transform, param, pipelineIdx, showAlias) {
+  renderExpressionItem(item, idx, transform, param, pipelineIdx, transformIdx, showAlias) {
     const wrapper = document.createElement('div');
     wrapper.className = 'expression-item';
     wrapper.dataset.index = idx;
@@ -589,7 +610,7 @@ class VisualEditorV2 {
         this.notifyChange();
       },
       metadata: this.metadata,
-      schema: this.getSchemaContext(pipelineIdx)
+      schema: this.getSchemaContext(pipelineIdx, transformIdx)
     });
 
     this.expressionInstances.set(exprId, expr);
@@ -614,15 +635,16 @@ class VisualEditorV2 {
   /**
    * Render aggregate list widget
    */
-  renderAggregateList(transform, param, pipelineIdx) {
+  renderAggregateList(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
     const aggregates = this.metadata.aggregates || {};
+    const schemaContext = this.getSchemaContext(pipelineIdx, transformIdx);
     
     const container = document.createElement('div');
     container.className = 'aggregate-list';
 
     items.forEach((item, idx) => {
-      const itemEl = this.renderAggregateItem(item, idx, transform, param, pipelineIdx, aggregates);
+      const itemEl = this.renderAggregateItem(item, idx, transform, param, pipelineIdx, aggregates, schemaContext);
       container.appendChild(itemEl);
     });
 
@@ -642,9 +664,97 @@ class VisualEditorV2 {
   }
 
   /**
+   * Create a column input with hover dropdown
+   */
+  createColumnInput(value, placeholder, columns, onChange) {
+    const container = document.createElement('span');
+    container.className = 'column-input-container';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'column-autocomplete';
+    input.value = value || '';
+    input.placeholder = placeholder || 'column';
+    input.addEventListener('input', (e) => onChange(e.target.value));
+
+    container.appendChild(input);
+
+    // Create dropdown menu (hidden by default)
+    const dropdown = document.createElement('div');
+    dropdown.className = 'column-dropdown';
+    
+    const updateDropdown = () => {
+      dropdown.innerHTML = '';
+      
+      if (columns.length === 0) {
+        const emptyItem = document.createElement('div');
+        emptyItem.className = 'column-dropdown-empty';
+        emptyItem.textContent = 'No columns available';
+        dropdown.appendChild(emptyItem);
+        return;
+      }
+      
+      // Show ALL columns - sort matching ones to top
+      const rawFilter = input.value.toLowerCase();
+      const filterValue = rawFilter.includes('.') ? rawFilter.split('.').pop() : rawFilter;
+      
+      // Sort: exact matches first, then partial matches, then rest
+      const sortedCols = [...columns].sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        const aExact = aName === filterValue;
+        const bExact = bName === filterValue;
+        const aPartial = filterValue && (aName.includes(filterValue) || filterValue.includes(aName));
+        const bPartial = filterValue && (bName.includes(filterValue) || filterValue.includes(bName));
+        
+        if (aExact && !bExact) return -1;
+        if (bExact && !aExact) return 1;
+        if (aPartial && !bPartial) return -1;
+        if (bPartial && !aPartial) return 1;
+        return aName.localeCompare(bName);
+      });
+      
+      sortedCols.forEach(col => {
+        const item = document.createElement('div');
+        item.className = 'column-dropdown-item';
+        item.textContent = col.name;
+        if (col.type) {
+          const typeSpan = document.createElement('span');
+          typeSpan.className = 'column-dropdown-type';
+          typeSpan.textContent = col.type;
+          item.appendChild(typeSpan);
+        }
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          input.value = col.name;
+          onChange(col.name);
+          dropdown.classList.remove('visible');
+        });
+        dropdown.appendChild(item);
+      });
+    };
+
+    // Show dropdown on focus/hover
+    input.addEventListener('focus', () => {
+      updateDropdown();
+      dropdown.classList.add('visible');
+    });
+
+    input.addEventListener('blur', () => {
+      // Delay to allow click on dropdown item
+      setTimeout(() => dropdown.classList.remove('visible'), 150);
+    });
+
+    input.addEventListener('input', updateDropdown);
+
+    container.appendChild(dropdown);
+    return container;
+  }
+
+  /**
    * Render a single aggregate item
    */
-  renderAggregateItem(item, idx, transform, param, pipelineIdx, aggregates) {
+  renderAggregateItem(item, idx, transform, param, pipelineIdx, aggregates, schemaContext) {
     const wrapper = document.createElement('div');
     wrapper.className = `aggregate-item ${item.alias ? 'has-alias' : ''}`;
     wrapper.dataset.index = idx;
@@ -682,16 +792,17 @@ class VisualEditorV2 {
     openParen.textContent = '(';
     expr.appendChild(openParen);
 
-    // Column input
-    const colInput = document.createElement('input');
-    colInput.type = 'text';
-    colInput.className = 'column-autocomplete';
-    colInput.value = item.column || (item.function === 'count' ? '*' : '');
-    colInput.placeholder = item.function === 'count' ? '*' : 'column';
-    colInput.addEventListener('input', (e) => {
-      item.column = e.target.value === '*' ? '' : e.target.value;
-      this.notifyChange();
-    });
+    // Column input with dropdown
+    const columns = schemaContext?.columns || [];
+    const colInput = this.createColumnInput(
+      item.column || (item.function === 'count' ? '*' : ''),
+      item.function === 'count' ? '*' : 'column',
+      columns,
+      (value) => {
+        item.column = value === '*' ? '' : value;
+        this.notifyChange();
+      }
+    );
     expr.appendChild(colInput);
 
     // Close paren
@@ -750,14 +861,15 @@ class VisualEditorV2 {
   /**
    * Render order by list
    */
-  renderOrderList(transform, param, pipelineIdx) {
+  renderOrderList(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
+    const schemaContext = this.getSchemaContext(pipelineIdx, transformIdx);
     
     const container = document.createElement('div');
     container.className = 'order-list';
 
     items.forEach((item, idx) => {
-      const itemEl = this.renderOrderItem(item, idx, transform, param, pipelineIdx);
+      const itemEl = this.renderOrderItem(item, idx, transform, param, pipelineIdx, schemaContext);
       container.appendChild(itemEl);
     });
 
@@ -779,7 +891,7 @@ class VisualEditorV2 {
   /**
    * Render order by item
    */
-  renderOrderItem(item, idx, transform, param, pipelineIdx) {
+  renderOrderItem(item, idx, transform, param, pipelineIdx, schemaContext) {
     const wrapper = document.createElement('div');
     wrapper.className = 'order-item';
     wrapper.dataset.index = idx;
@@ -790,16 +902,17 @@ class VisualEditorV2 {
     handle.innerHTML = '⋮⋮';
     wrapper.appendChild(handle);
 
-    // Column input
-    const colInput = document.createElement('input');
-    colInput.type = 'text';
-    colInput.className = 'column-autocomplete';
-    colInput.value = item.column || '';
-    colInput.placeholder = 'column';
-    colInput.addEventListener('input', (e) => {
-      item.column = e.target.value;
-      this.notifyChange();
-    });
+    // Column input with dropdown
+    const columns = schemaContext?.columns || [];
+    const colInput = this.createColumnInput(
+      item.column || '',
+      'column',
+      columns,
+      (value) => {
+        item.column = value;
+        this.notifyChange();
+      }
+    );
     wrapper.appendChild(colInput);
 
     // Direction toggle
@@ -1087,12 +1200,35 @@ class VisualEditorV2 {
 
   /**
    * Get schema context for autocomplete
+   * Returns available columns from the step immediately before
    */
-  getSchemaContext(pipelineIdx) {
-    // TODO: Get available columns based on FROM table and previous transforms
-    return {
-      columns: this.availableTables.length > 0 ? [] : []
-    };
+  getSchemaContext(pipelineIdx, transformIdx = 0) {
+    const pipeline = this.pipelines[pipelineIdx];
+    if (!pipeline) return { columns: [] };
+
+    let outputColumns = null;
+
+    // Get output_columns from the previous step
+    if (transformIdx === 0) {
+      // First transform - get columns from FROM
+      outputColumns = pipeline.from?.output_columns;
+    } else if (pipeline.transforms && transformIdx > 0) {
+      // Get columns from the previous transform
+      const prevTransform = pipeline.transforms[transformIdx - 1];
+      outputColumns = prevTransform?.output_columns;
+      
+      // Fallback: if prev transform doesn't have output_columns, try from block
+      if (!outputColumns || outputColumns.length === 0) {
+        outputColumns = pipeline.from?.output_columns;
+      }
+    }
+
+    // Convert to standard format
+    const columns = (outputColumns || []).map(col => 
+      typeof col === 'string' ? { name: col } : col
+    );
+
+    return { columns };
   }
 
   /**

@@ -29,10 +29,6 @@ from asql.dialect.transforms.join_inference import (
     JoinCondition,
 )
 
-from asql.dialect.transforms.cohort_transform import (
-    transform_cohort,
-)
-
 __all__ = [
     # Underscore shorthands
     "apply_since_until_underscore_shorthands",
@@ -46,6 +42,4 @@ __all__ = [
     # Join inference
     "resolve_join_condition",
     "JoinCondition",
-    # Cohort
-    "transform_cohort",
 ]

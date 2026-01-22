@@ -334,5 +334,5 @@ For PostgreSQL, MySQL, and SQLite, you need to list columns explicitly.
 ## Next Steps
 
 - **[Aggregations](aggregations.md)** — Using pivot with GROUP BY
-- **[Pipeline Basics](pipeline.md)** — Combining operations
+- **[Pipe Syntax](pipe.md)** — Combining operations
 - **[Examples](../examples.md)** — Real-world patterns

@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Initial experimental release
-- FROM-first pipeline syntax
+- FROM-first pipe syntax
 - Natural language aggregations (`sum amount`, `# users`)
 - Date arithmetic (`7 days ago`, `30 days from now`)
 - Date truncation functions (`year()`, `month()`, `week()`)
