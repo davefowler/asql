@@ -39,6 +39,53 @@ const waitForVisualEditor = async (requireInitialized = false) => {
     return false;
 };
 
+// ========== Global Error Handling ==========
+function showGlobalError(raw) {
+    const errorDiv = document.getElementById('error');
+    if (!errorDiv) return;
+
+    // Simple error message extraction
+    let simplified = raw;
+    if (typeof raw === 'string') {
+        // Extract main error message, ignoring stack traces
+        const match = raw.match(/^([^\n]+)/);
+        simplified = match ? match[1] : raw;
+    }
+
+    errorDiv.className = 'error error-banner';
+    errorDiv.style.display = 'block';
+    errorDiv.textContent = '';
+
+    const title = document.createElement('div');
+    title.className = 'error-title';
+    title.textContent = "Can't transpile";
+    errorDiv.appendChild(title);
+
+    const message = document.createElement('div');
+    message.className = 'error-message';
+    message.textContent = simplified || 'Unknown error';
+    errorDiv.appendChild(message);
+
+    if (raw && simplified && String(raw).trim() !== simplified) {
+        const details = document.createElement('details');
+        const summary = document.createElement('summary');
+        summary.textContent = 'Details';
+        const pre = document.createElement('pre');
+        pre.textContent = String(raw).trim();
+        details.appendChild(summary);
+        details.appendChild(pre);
+        errorDiv.appendChild(details);
+    }
+}
+
+function hideGlobalError() {
+    const errorDiv = document.getElementById('error');
+    if (!errorDiv) return;
+    errorDiv.style.display = 'none';
+    errorDiv.className = '';
+    errorDiv.textContent = '';
+}
+
 // ========== Global Variables ==========
 let inputEditor, outputEditor;
 
@@ -771,14 +818,30 @@ function updateVisualStyleToggleButtons() {
 
 // Switch visual style preference (blocky vs text vs pipes)
 function setVisualStylePreference(style) {
+    const previousStyle = visualStylePreference;
     visualStylePreference = style;
     localStorage.setItem('asql_visual_style', style);
     updateVisualStyleToggleButtons();
     applyVisualStyle();
 
-    // Re-render visual output if in pipes mode
-    if (style === 'pipes' && lastRenderedQuery) {
-        renderPipesView(lastRenderedQuery);
+    // Only re-render when switching to/from pipes mode (pipes needs different DOM structure)
+    const switchingToPipes = style === 'pipes' && previousStyle !== 'pipes';
+    const switchingFromPipes = style !== 'pipes' && previousStyle === 'pipes';
+    
+    if (switchingToPipes || switchingFromPipes) {
+        // Re-render input visual editor for pipes mode change
+        if (typeof visualEditor !== 'undefined' && visualEditor && visualEditor.renderAll) {
+            visualEditor.renderAll();
+        }
+        
+        // Re-render visual output for pipes mode change
+        if (lastRenderedQuery) {
+            if (style === 'pipes') {
+                renderPipesView(lastRenderedQuery);
+            } else {
+                renderOutputVisual(lastRenderedQuery);
+            }
+        }
     }
 }
 
@@ -2551,17 +2614,39 @@ const onVisualEditorChange = debounce(async () => {
                 }
                 
                 // Update visual editor with enriched query (has output_columns)
-                if (data.enriched_query && visualEditor.setQuery) {
-                    // Don't re-render, just update the data
-                    visualEditor.pipelines = Array.isArray(data.enriched_query) 
-                        ? data.enriched_query 
+                // IMPORTANT: Merge enriched data into existing objects instead of replacing them
+                // to preserve references held by DOM event handlers
+                if (data.enriched_query) {
+                    const enrichedPipelines = Array.isArray(data.enriched_query)
+                        ? data.enriched_query
                         : [data.enriched_query];
+
+                    // Merge output_columns into existing transforms
+                    enrichedPipelines.forEach((enrichedPipeline, pIdx) => {
+                        const existingPipeline = visualEditor.pipelines[pIdx];
+                        if (!existingPipeline) return;
+
+                        // Merge from output_columns
+                        if (enrichedPipeline.from?.output_columns) {
+                            existingPipeline.from = existingPipeline.from || {};
+                            existingPipeline.from.output_columns = enrichedPipeline.from.output_columns;
+                        }
+
+                        // Merge transform output_columns by matching IDs
+                        (enrichedPipeline.transforms || []).forEach(enrichedTransform => {
+                            const existingTransform = (existingPipeline.transforms || [])
+                                .find(t => t.id === enrichedTransform.id);
+                            if (existingTransform && enrichedTransform.output_columns) {
+                                existingTransform.output_columns = enrichedTransform.output_columns;
+                            }
+                        });
+                    });
                 }
                 
-                hideError();
+                hideGlobalError();
                 updateURL();
             } else {
-                showError(data.error || 'Transpile failed');
+                showGlobalError(data.error || 'Transpile failed');
             }
         } catch (error) {
             console.error('Visual editor transpile error:', error);

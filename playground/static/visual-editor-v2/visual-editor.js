@@ -1,6 +1,28 @@
 /**
  * Visual ASQL Editor v2 - Complete rewrite with recursive expressions
- * 
+ *
+ * ARCHITECTURE PRINCIPLES:
+ * ========================
+ * 1. THE UI IS "DUMB" - No business logic here. All smarts come from the backend.
+ *    - Transform schemas/metadata come from /api/metadata
+ *    - Column options come from output_columns populated by SQLGlot qualify
+ *    - This component just RENDERS what it's told
+ *
+ * 2. STYLE MODES ARE CSS-ONLY (except Pipes mode)
+ *    - Text mode (.visual-style-text) and Blocky mode (.visual-style-blocky)
+ *      use the SAME rendering logic, just different CSS
+ *    - Pipes mode (.visual-style-pipes) requires different DOM for node layout
+ *
+ * 3. COLUMN DROPDOWNS depend on output_columns from backend
+ *    - Each transform should have output_columns populated by the backend
+ *    - The backend uses SQLGlot's qualify() with the schema
+ *    - If dropdowns show text inputs instead of selects, check output_columns
+ *
+ * 4. DON'T ADD UI LOGIC - If something looks wrong:
+ *    - Check the metadata (transform schemas from /api/metadata)
+ *    - Check output_columns on the transform (from /api/visual/transpile)
+ *    - Fix the DATA, not the rendering code
+ *
  * Features:
  * - Recursive expression builder with hover-to-expand
  * - SortableJS for drag-and-drop reordering
@@ -103,6 +125,14 @@ class VisualEditorV2 {
   }
 
   /**
+   * Check if pipes style is active
+   */
+  isPipesMode() {
+    const container = document.getElementById('visual-editor-container');
+    return container && container.classList.contains('visual-style-pipes');
+  }
+
+  /**
    * Render all pipelines
    */
   renderAll() {
@@ -118,6 +148,12 @@ class VisualEditorV2 {
     // Hide the static HTML elements that conflict with v2
     this.hideStaticElements();
 
+    // Check if pipes mode is active - if so, render pipes view
+    if (this.isPipesMode()) {
+      this.renderPipesMode(container);
+      return;
+    }
+
     this.pipelines.forEach((pipeline, pipelineIdx) => {
       const pipelineEl = this.renderPipeline(pipeline, pipelineIdx);
       container.appendChild(pipelineEl);
@@ -130,6 +166,353 @@ class VisualEditorV2 {
 
     // Add pipeline button
     container.appendChild(this.renderAddPipelineButton());
+  }
+
+  /**
+   * Render pipes mode view (Yahoo Pipes-style nodes)
+   */
+  renderPipesMode(container) {
+    // Create pipes container with relative positioning for SVG overlay
+    const pipesContainer = document.createElement('div');
+    pipesContainer.className = 'pipes-nodes-container';
+
+    // Build a map of CTE names for reference detection
+    const cteNames = new Set();
+    const cteNodeMap = new Map(); // Map CTE name -> node element
+    this.pipelines.forEach(p => {
+      if (p.name) cteNames.add(p.name.toLowerCase());
+    });
+
+    // Track CTE references for drawing connections
+    const cteReferences = []; // Array of { sourceNode, targetCteName }
+
+    // Render each pipeline as a node
+    this.pipelines.forEach((pipeline, idx) => {
+      const node = this.createPipeNode(pipeline, idx, this.pipelines.length, cteNames);
+      node.dataset.cteName = pipeline.name || '';
+      pipesContainer.appendChild(node);
+
+      // Track CTE nodes by name for connection drawing
+      if (pipeline.name) {
+        cteNodeMap.set(pipeline.name.toLowerCase(), node);
+      }
+
+      // Track if this pipeline references another CTE
+      const tableName = pipeline.from?.table || '';
+      if (cteNames.has(tableName.toLowerCase()) && tableName.toLowerCase() !== pipeline.name?.toLowerCase()) {
+        cteReferences.push({
+          sourceNode: node,
+          targetCteName: tableName.toLowerCase()
+        });
+      }
+
+      // Add set operation connector between pipelines
+      if (pipeline.set_operation && idx < this.pipelines.length - 1) {
+        const setOpDiv = document.createElement('div');
+        setOpDiv.className = 'pipe-set-operation';
+        const opText = pipeline.set_operation.all
+          ? `${pipeline.set_operation.type.toUpperCase()} ALL`
+          : pipeline.set_operation.type.toUpperCase();
+        setOpDiv.innerHTML = `<span class="pipe-set-op-badge">${opText}</span>`;
+        pipesContainer.appendChild(setOpDiv);
+      }
+    });
+
+    container.appendChild(pipesContainer);
+
+    // Add pipeline button
+    container.appendChild(this.renderAddPipelineButton());
+
+    // Draw CTE connection lines after DOM is laid out
+    if (cteReferences.length > 0) {
+      setTimeout(() => {
+        this.drawCteConnections(pipesContainer, cteReferences, cteNodeMap);
+      }, 0);
+    }
+  }
+
+  /**
+   * Draw SVG connection lines between CTE references
+   */
+  drawCteConnections(container, references, cteNodeMap) {
+    // Remove any existing SVG
+    const existingSvg = container.querySelector('.cte-connections-svg');
+    if (existingSvg) existingSvg.remove();
+
+    // Create SVG overlay
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('cte-connections-svg');
+    svg.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0;';
+
+    const containerRect = container.getBoundingClientRect();
+
+    references.forEach(({ sourceNode, targetCteName }) => {
+      const targetNode = cteNodeMap.get(targetCteName);
+      if (!targetNode) return;
+
+      const sourceRect = sourceNode.getBoundingClientRect();
+      const targetRect = targetNode.getBoundingClientRect();
+
+      // Calculate connection points relative to container
+      // Source: left edge of the source node (the one that references the CTE)
+      // Target: right edge of the target CTE node
+      const sourceX = sourceRect.left - containerRect.left;
+      const sourceY = sourceRect.top - containerRect.top + sourceRect.height / 2;
+
+      const targetX = targetRect.right - containerRect.left;
+      const targetY = targetRect.top - containerRect.top + targetRect.height / 2;
+
+      // Create a curved path
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+      // Bezier curve - curve out to the left then back
+      const midX = Math.min(sourceX, targetX) - 30;
+      const d = `M ${targetX} ${targetY} C ${midX} ${targetY}, ${midX} ${sourceY}, ${sourceX} ${sourceY}`;
+
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', 'var(--accent-color, #667eea)');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('stroke-dasharray', '4,4');
+      path.setAttribute('opacity', '0.6');
+
+      // Add arrow marker at end
+      const arrowId = `arrow-${Math.random().toString(36).substr(2, 9)}`;
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+      marker.setAttribute('id', arrowId);
+      marker.setAttribute('markerWidth', '6');
+      marker.setAttribute('markerHeight', '6');
+      marker.setAttribute('refX', '5');
+      marker.setAttribute('refY', '3');
+      marker.setAttribute('orient', 'auto');
+
+      const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      arrowPath.setAttribute('d', 'M0,0 L0,6 L6,3 z');
+      arrowPath.setAttribute('fill', 'var(--accent-color, #667eea)');
+      arrowPath.setAttribute('opacity', '0.6');
+
+      marker.appendChild(arrowPath);
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      path.setAttribute('marker-end', `url(#${arrowId})`);
+      svg.appendChild(path);
+    });
+
+    // Insert SVG at the beginning of the container
+    container.style.position = 'relative';
+    container.insertBefore(svg, container.firstChild);
+  }
+
+  /**
+   * Create a pipe node for a pipeline
+   */
+  createPipeNode(pipeline, idx, totalPipelines, cteNames) {
+    const node = document.createElement('div');
+    node.className = 'pipe-node';
+    node.dataset.pipelineIndex = idx;
+
+    // Determine node title and type
+    const tableName = pipeline.from?.table || '';
+    const isNamedCTE = !!pipeline.name;
+    const nodeTitle = pipeline.name || tableName || `Query ${idx + 1}`;
+    const nodeType = isNamedCTE ? 'CTE' : (tableName ? 'TABLE' : 'QUERY');
+
+    // Check if this references another CTE
+    const referencesOtherCTE = cteNames.has(tableName.toLowerCase()) && tableName.toLowerCase() !== pipeline.name?.toLowerCase();
+
+    // Create header
+    const header = document.createElement('div');
+    header.className = 'pipe-node-header';
+
+    const icon = document.createElement('div');
+    icon.className = 'pipe-node-icon';
+    icon.textContent = isNamedCTE ? 'C' : (referencesOtherCTE ? '→' : 'T');
+
+    const title = document.createElement('div');
+    title.className = 'pipe-node-title';
+    title.textContent = nodeTitle;
+
+    const typeLabel = document.createElement('div');
+    typeLabel.className = 'pipe-node-type';
+    typeLabel.textContent = nodeType;
+
+    header.appendChild(icon);
+    header.appendChild(title);
+    header.appendChild(typeLabel);
+
+    // Add source badge or reference badge
+    if (tableName && !isNamedCTE) {
+      const sourceBadge = document.createElement('span');
+      sourceBadge.className = 'pipe-source-badge';
+      sourceBadge.textContent = 'SOURCE';
+      header.appendChild(sourceBadge);
+    } else if (referencesOtherCTE) {
+      const refBadge = document.createElement('span');
+      refBadge.className = 'pipe-ref-badge';
+      refBadge.textContent = `← ${tableName}`;
+      refBadge.title = `References CTE: ${tableName}`;
+      header.appendChild(refBadge);
+    }
+
+    node.appendChild(header);
+
+    // Create body with transforms
+    const body = document.createElement('div');
+    body.className = 'pipe-node-body';
+
+    // Show FROM source if this is a named CTE with a table source
+    if (isNamedCTE && tableName) {
+      const fromStep = document.createElement('div');
+      fromStep.className = 'pipe-step';
+      fromStep.innerHTML = `
+        <div class="pipe-step-header">
+          <span class="pipe-step-type select">FROM</span>
+        </div>
+        <div class="pipe-step-content">
+          <span class="value-column">${this.escapeHtml(tableName)}</span>
+        </div>
+      `;
+      body.appendChild(fromStep);
+    }
+
+    // Render transforms
+    if (pipeline.transforms && pipeline.transforms.length > 0) {
+      pipeline.transforms.forEach(transform => {
+        const step = this.createPipeStep(transform);
+        body.appendChild(step);
+      });
+    }
+
+    if (body.children.length === 0) {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.className = 'pipes-empty-state';
+      emptyMsg.textContent = 'No transforms';
+      body.appendChild(emptyMsg);
+    }
+
+    node.appendChild(body);
+
+    // Add output columns footer if available
+    const lastTransform = pipeline.transforms?.[pipeline.transforms.length - 1];
+    const outputCols = lastTransform?.output_columns || pipeline.from?.output_columns;
+    if (outputCols && outputCols.length > 0) {
+      const footer = document.createElement('div');
+      footer.className = 'pipe-node-footer';
+      footer.appendChild(this.renderOutputColumns(outputCols));
+      node.appendChild(footer);
+    }
+
+    // Add connection ports for multiple pipelines
+    if (totalPipelines > 1) {
+      if (idx > 0) {
+        const portIn = document.createElement('div');
+        portIn.className = 'pipe-port pipe-port-in';
+        portIn.title = 'Input';
+        node.appendChild(portIn);
+      }
+      if (idx < totalPipelines - 1) {
+        const portOut = document.createElement('div');
+        portOut.className = 'pipe-port pipe-port-out';
+        portOut.title = 'Output';
+        node.appendChild(portOut);
+      }
+    }
+
+    return node;
+  }
+
+  /**
+   * Create a step element within a pipe node
+   */
+  createPipeStep(transform) {
+    const step = document.createElement('div');
+    step.className = 'pipe-step';
+
+    const stepType = transform.type || 'unknown';
+    const header = document.createElement('div');
+    header.className = 'pipe-step-header';
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `pipe-step-type ${stepType}`;
+    typeBadge.textContent = stepType.toUpperCase().replace('_', ' ');
+    header.appendChild(typeBadge);
+
+    const content = document.createElement('div');
+    content.className = 'pipe-step-content';
+    content.innerHTML = this.renderPipeStepContent(transform);
+
+    step.appendChild(header);
+    step.appendChild(content);
+
+    return step;
+  }
+
+  /**
+   * Render the content of a pipe step based on transform type
+   */
+  renderPipeStepContent(transform) {
+    const escape = (str) => this.escapeHtml(str);
+
+    switch (transform.type) {
+      case 'where':
+        return `<span class="value-column">${escape(transform.condition || '')}</span>`;
+
+      case 'select':
+        if (transform.columns && transform.columns.length > 0) {
+          const cols = transform.columns.map(c => {
+            const expr = typeof c === 'string' ? c : (c.expression || c.name || '');
+            const alias = typeof c === 'object' && c.name ? ` <span class="value-operator">as</span> ${escape(c.name)}` : '';
+            return `<span class="value-column">${escape(expr)}</span>${alias}`;
+          });
+          return cols.join(', ');
+        }
+        return '';
+
+      case 'group_by':
+        const dims = (transform.dimensions || []).map(d => `<span class="value-column">${escape(d)}</span>`);
+        const aggs = (transform.aggregates || []).map(a => {
+          const col = a.column || '*';
+          const alias = a.alias ? ` <span class="value-operator">as</span> ${escape(a.alias)}` : '';
+          return `<span class="value-function">${escape(a.function)}</span>(<span class="value-column">${escape(col)}</span>)${alias}`;
+        });
+        return [...dims, ...aggs].join(', ');
+
+      case 'order_by':
+        if (transform.expressions && transform.expressions.length > 0) {
+          const items = transform.expressions.map(e => {
+            const col = e.column || '';
+            const dir = e.direction === 'desc' ? ' ↓' : ' ↑';
+            return `<span class="value-column">${escape(col)}</span>${dir}`;
+          });
+          return items.join(', ');
+        }
+        return '';
+
+      case 'limit':
+        return `<span class="value-number">${transform.count || ''}</span>`;
+
+      case 'join':
+        const joinType = transform.join_type || 'join';
+        const joinTable = transform.table || '';
+        const joinOn = transform.on || '';
+        return `<span class="value-operator">${escape(joinType)}</span> <span class="value-column">${escape(joinTable)}</span> <span class="value-operator">on</span> ${escape(joinOn)}`;
+
+      case 'extend':
+        if (transform.columns && transform.columns.length > 0) {
+          const cols = transform.columns.map(c => {
+            const expr = typeof c === 'string' ? c : (c.expression || '');
+            const alias = typeof c === 'object' && c.name ? ` <span class="value-operator">as</span> ${escape(c.name)}` : '';
+            return `${escape(expr)}${alias}`;
+          });
+          return cols.join(', ');
+        }
+        return '';
+
+      default:
+        return JSON.stringify(transform).slice(0, 100);
+    }
   }
 
   /**
@@ -329,7 +712,7 @@ class VisualEditorV2 {
     // Parameters
     if (schema.parameters) {
       schema.parameters.forEach(param => {
-        body.appendChild(this.renderParameter(transform, param, pipelineIdx));
+        body.appendChild(this.renderParameter(transform, param, pipelineIdx, transformIdx));
       });
     }
 
@@ -356,12 +739,12 @@ class VisualEditorV2 {
   /**
    * Render a parameter based on its type
    */
-  renderParameter(transform, param, pipelineIdx) {
+  renderParameter(transform, param, pipelineIdx, transformIdx = 0) {
     const container = document.createElement('span');
     container.className = 'param-container';
 
     const widget = param.widget || 'text';
-    
+
     switch (widget) {
       case 'text':
         container.appendChild(this.renderTextInput(transform, param));
@@ -373,16 +756,16 @@ class VisualEditorV2 {
         container.appendChild(this.renderDropdown(transform, param));
         break;
       case 'expression':
-        container.appendChild(this.renderExpressionWidget(transform, param, pipelineIdx));
+        container.appendChild(this.renderExpressionWidget(transform, param, pipelineIdx, transformIdx));
         break;
       case 'list':
-        container.appendChild(this.renderListWidget(transform, param, pipelineIdx));
+        container.appendChild(this.renderListWidget(transform, param, pipelineIdx, transformIdx));
         break;
       case 'aggregate_list':
-        container.appendChild(this.renderAggregateList(transform, param, pipelineIdx));
+        container.appendChild(this.renderAggregateList(transform, param, pipelineIdx, transformIdx));
         break;
       case 'order_list':
-        container.appendChild(this.renderOrderList(transform, param, pipelineIdx));
+        container.appendChild(this.renderOrderList(transform, param, pipelineIdx, transformIdx));
         break;
       case 'table_select':
         container.appendChild(this.renderTableSelect(transform, param, pipelineIdx));
@@ -483,10 +866,10 @@ class VisualEditorV2 {
   /**
    * Render expression widget (single expression)
    */
-  renderExpressionWidget(transform, param, pipelineIdx) {
+  renderExpressionWidget(transform, param, pipelineIdx, transformIdx = 0) {
     const value = transform[param.name] || {};
     const exprId = `${transform.id}-${param.name}`;
-    
+
     const expr = new Expression({
       value,
       id: exprId,
@@ -497,7 +880,7 @@ class VisualEditorV2 {
         this.notifyChange();
       },
       metadata: this.metadata,
-      schema: this.getSchemaContext(pipelineIdx)
+      schema: this.getSchemaContext(pipelineIdx, transformIdx)
     });
 
     this.expressionInstances.set(exprId, expr);
@@ -507,18 +890,18 @@ class VisualEditorV2 {
   /**
    * Render list widget (columns, expressions)
    */
-  renderListWidget(transform, param, pipelineIdx) {
+  renderListWidget(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
-    const isExpressionType = param.type === 'expression[]' || 
-                            param.name === 'columns' || 
+    const isExpressionType = param.type === 'expression[]' ||
+                            param.name === 'columns' ||
                             param.name === 'dimensions';
     const showAlias = param.name === 'columns' && transform.type === 'select';
-    
+
     const container = document.createElement('div');
     container.className = 'expression-list';
 
     items.forEach((item, idx) => {
-      const itemEl = this.renderExpressionItem(item, idx, transform, param, pipelineIdx, showAlias);
+      const itemEl = this.renderExpressionItem(item, idx, transform, param, pipelineIdx, transformIdx, showAlias);
       container.appendChild(itemEl);
     });
 
@@ -526,13 +909,21 @@ class VisualEditorV2 {
     const addBtn = document.createElement('button');
     addBtn.className = 'list-add-btn';
     addBtn.textContent = '+ Add';
-    addBtn.addEventListener('click', () => {
-      const newItem = showAlias ? { expression: '', name: '' } : '';
-      items.push(newItem);
-      transform[param.name] = items;
-      this.renderAll();
-      this.notifyChange();
-    });
+    // Store references for the click handler
+    const paramName = param.name;
+    const transformRef = transform;
+    const editorRef = this;
+    const needsAlias = showAlias;
+    addBtn.onclick = function(e) {
+      e.stopPropagation();
+      const newItem = needsAlias ? { expression: '', name: '' } : '';
+      if (!transformRef[paramName]) {
+        transformRef[paramName] = [];
+      }
+      transformRef[paramName].push(newItem);
+      editorRef.renderAll();
+      editorRef.notifyChange();
+    };
     container.appendChild(addBtn);
 
     // Make sortable
@@ -544,6 +935,8 @@ class VisualEditorV2 {
           handle: '.expr-drag-handle',
           ghostClass: 'expr-ghost',
           draggable: '.expression-item',
+          filter: '.list-add-btn, .expr-remove, button',  // Don't drag when clicking buttons
+          preventOnFilter: false,  // Allow click events on filtered elements
           onEnd: (evt) => {
             const { oldIndex, newIndex } = evt;
             if (oldIndex !== newIndex) {
@@ -564,7 +957,7 @@ class VisualEditorV2 {
   /**
    * Render a single expression item in a list
    */
-  renderExpressionItem(item, idx, transform, param, pipelineIdx, showAlias) {
+  renderExpressionItem(item, idx, transform, param, pipelineIdx, transformIdx, showAlias) {
     const wrapper = document.createElement('div');
     wrapper.className = 'expression-item';
     wrapper.dataset.index = idx;
@@ -589,7 +982,7 @@ class VisualEditorV2 {
         this.notifyChange();
       },
       metadata: this.metadata,
-      schema: this.getSchemaContext(pipelineIdx)
+      schema: this.getSchemaContext(pipelineIdx, transformIdx)
     });
 
     this.expressionInstances.set(exprId, expr);
@@ -614,15 +1007,15 @@ class VisualEditorV2 {
   /**
    * Render aggregate list widget
    */
-  renderAggregateList(transform, param, pipelineIdx) {
+  renderAggregateList(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
     const aggregates = this.metadata.aggregates || {};
-    
+
     const container = document.createElement('div');
     container.className = 'aggregate-list';
 
     items.forEach((item, idx) => {
-      const itemEl = this.renderAggregateItem(item, idx, transform, param, pipelineIdx, aggregates);
+      const itemEl = this.renderAggregateItem(item, idx, transform, param, pipelineIdx, transformIdx, aggregates);
       container.appendChild(itemEl);
     });
 
@@ -630,12 +1023,18 @@ class VisualEditorV2 {
     const addBtn = document.createElement('button');
     addBtn.className = 'list-add-btn';
     addBtn.textContent = '+ Add Aggregate';
-    addBtn.addEventListener('click', () => {
-      items.push({ function: 'count', column: '', alias: '' });
-      transform[param.name] = items;
-      this.renderAll();
-      this.notifyChange();
-    });
+    const paramName = param.name;
+    const transformRef = transform;
+    const editorRef = this;
+    addBtn.onclick = function(e) {
+      e.stopPropagation();
+      if (!transformRef[paramName]) {
+        transformRef[paramName] = [];
+      }
+      transformRef[paramName].push({ function: 'count', column: '', alias: '' });
+      editorRef.renderAll();
+      editorRef.notifyChange();
+    };
     container.appendChild(addBtn);
 
     return container;
@@ -644,7 +1043,7 @@ class VisualEditorV2 {
   /**
    * Render a single aggregate item
    */
-  renderAggregateItem(item, idx, transform, param, pipelineIdx, aggregates) {
+  renderAggregateItem(item, idx, transform, param, pipelineIdx, transformIdx, aggregates) {
     const wrapper = document.createElement('div');
     wrapper.className = `aggregate-item ${item.alias ? 'has-alias' : ''}`;
     wrapper.dataset.index = idx;
@@ -750,14 +1149,14 @@ class VisualEditorV2 {
   /**
    * Render order by list
    */
-  renderOrderList(transform, param, pipelineIdx) {
+  renderOrderList(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
-    
+
     const container = document.createElement('div');
     container.className = 'order-list';
 
     items.forEach((item, idx) => {
-      const itemEl = this.renderOrderItem(item, idx, transform, param, pipelineIdx);
+      const itemEl = this.renderOrderItem(item, idx, transform, param, pipelineIdx, transformIdx);
       container.appendChild(itemEl);
     });
 
@@ -779,7 +1178,7 @@ class VisualEditorV2 {
   /**
    * Render order by item
    */
-  renderOrderItem(item, idx, transform, param, pipelineIdx) {
+  renderOrderItem(item, idx, transform, param, pipelineIdx, transformIdx) {
     const wrapper = document.createElement('div');
     wrapper.className = 'order-item';
     wrapper.dataset.index = idx;
@@ -1086,13 +1485,35 @@ class VisualEditorV2 {
   }
 
   /**
-   * Get schema context for autocomplete
+   * Get schema context for autocomplete (available columns at a given point in pipeline)
+   *
+   * This uses output_columns populated by the backend via SQLGlot qualify.
+   * If columns aren't showing in dropdowns, check:
+   * 1. Is the backend returning output_columns? (check /api/visual/transpile response)
+   * 2. Are output_columns being merged into transforms? (check onVisualEditorChange in playground.js)
+   *
+   * @param {number} pipelineIdx - Index of the pipeline
+   * @param {number} transformIdx - Index of the transform (-1 for FROM block, or index of current transform)
    */
-  getSchemaContext(pipelineIdx) {
-    // TODO: Get available columns based on FROM table and previous transforms
-    return {
-      columns: this.availableTables.length > 0 ? [] : []
-    };
+  getSchemaContext(pipelineIdx, transformIdx = -1) {
+    const pipeline = this.pipelines[pipelineIdx];
+    if (!pipeline) return { columns: [] };
+
+    let columns = [];
+
+    if (transformIdx < 0) {
+      // For FROM block or before any transforms - use FROM's output_columns
+      columns = pipeline.from?.output_columns || [];
+    } else if (transformIdx === 0) {
+      // First transform - use FROM's output_columns
+      columns = pipeline.from?.output_columns || [];
+    } else {
+      // Use previous transform's output_columns
+      const prevTransform = pipeline.transforms?.[transformIdx - 1];
+      columns = prevTransform?.output_columns || pipeline.from?.output_columns || [];
+    }
+
+    return { columns };
   }
 
   /**
@@ -1281,4 +1702,5 @@ let visualEditor = null;
 document.addEventListener('DOMContentLoaded', () => {
   visualEditor = new VisualEditorV2();
   visualEditor.init();
+  window.visualEditor = visualEditor; // Expose for debugging
 });

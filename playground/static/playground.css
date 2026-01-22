@@ -241,6 +241,76 @@ h1 {
     background: var(--asql-red-dark);
 }
 
+/* ========== Visual Style Toggle (text/blocky/pipes) ========== */
+.visual-style-toggle {
+    display: flex;
+    margin-left: 8px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.style-toggle-btn {
+    padding: 4px 8px;
+    border: none;
+    background: white;
+    font-size: 12px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.15s ease;
+    border-right: 1px solid #dadce0;
+}
+
+.style-toggle-btn:last-child {
+    border-right: none;
+}
+
+.style-toggle-btn:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.style-toggle-btn.active {
+    background: var(--asql-red);
+    color: white;
+}
+
+.style-toggle-btn.active:hover {
+    background: var(--asql-red-dark);
+}
+
+/* ========== Show Columns Toggle ========== */
+.show-columns-toggle {
+    display: flex;
+    margin-left: 8px;
+}
+
+.columns-toggle-btn {
+    padding: 4px 8px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    background: white;
+    font-size: 11px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.15s ease;
+}
+
+.columns-toggle-btn:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.columns-toggle-btn.active {
+    background: var(--asql-red);
+    color: white;
+    border-color: var(--asql-red);
+}
+
+.columns-toggle-btn.active:hover {
+    background: var(--asql-red-dark);
+}
+
 /* ========== Buttons ========== */
 button {
     padding: 10px 24px;
