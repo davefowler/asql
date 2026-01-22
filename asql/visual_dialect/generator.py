@@ -437,111 +437,47 @@ class VisualASQLGenerator(Generator):
     ) -> t.Dict[str, t.List[t.Dict[str, t.Any]]]:
         """Extract all column references from a query, grouped by table.
         
-        This provides a fallback for column info when no schema is available.
-        We scan SELECT, GROUP BY, ORDER BY, WHERE, and JOIN ON clauses
-        to find all referenced columns.
+        Uses SQLGlot's find_all() to locate all Column nodes in the AST.
+        Provides fallback column info when no schema is available.
         """
         columns_by_table: t.Dict[str, t.List[t.Dict[str, t.Any]]] = {}
+        seen: t.Set[str] = set()
         
-        # Get the FROM table name to use as default for unqualified columns
+        # Get FROM table name for unqualified columns in single-table queries
         from_table_name: t.Optional[str] = None
         if from_clause := expression.args.get("from_"):
             if table_expr := from_clause.this:
                 from_table_name = self._get_table_name(table_expr)
         
-        # Also collect all table names/aliases for reference
-        all_tables: t.Set[str] = set()
-        if from_table_name:
-            all_tables.add(from_table_name)
-        for join in expression.args.get("joins") or []:
-            if join.this:
-                join_table = self._get_table_name(join.this)
-                all_tables.add(join_table)
-                if alias := self._get_alias(join.this):
-                    all_tables.add(alias)
+        # Count tables to determine if single or multi-table query
+        table_count = 1 if from_table_name else 0
+        table_count += len(expression.args.get("joins") or [])
         
-        def add_column(table: t.Optional[str], name: str) -> None:
-            """Add a column reference to the appropriate table."""
+        # Use SQLGlot's find_all to get all Column nodes
+        for col in expression.find_all(exp.Column):
+            table = col.table
+            name = col.name
             if not name:
-                return
-            # If no table specified and we have a single FROM table, use it
-            # Otherwise use "_unqualified_" bucket
-            if table:
-                source = table
-            elif from_table_name and len(all_tables) == 1:
-                # Single table query - unqualified columns belong to FROM table
-                source = from_table_name
-            else:
-                # Multi-table query - keep unqualified separate
-                source = "_unqualified_"
+                continue
             
+            # For single-table queries, unqualified columns belong to FROM table
+            if not table and table_count == 1 and from_table_name:
+                table = from_table_name
+            
+            # Build qualified name for deduplication
+            qualified_name = f"{table}.{name}" if table else name
+            if qualified_name in seen:
+                continue
+            seen.add(qualified_name)
+            
+            # Group by table (or "_unqualified_" if no table)
+            source = table or "_unqualified_"
             if source not in columns_by_table:
                 columns_by_table[source] = []
-            
-            # Use qualified name (table.column) for clarity
-            qualified_name = f"{source}.{name}" if source and source != "_unqualified_" else name
-            
-            # Check if already exists (by qualified name)
-            for existing in columns_by_table[source]:
-                if existing["name"] == qualified_name:
-                    return
             columns_by_table[source].append({
                 "name": qualified_name,
-                "source": source if source != "_unqualified_" else None,
+                "source": table,
             })
-        
-        def extract_from_expression(expr: t.Optional[exp.Expression]) -> None:
-            """Recursively extract column references from an expression."""
-            if expr is None:
-                return
-            if isinstance(expr, exp.Column):
-                add_column(expr.table, expr.name)
-            # Recurse into child expressions
-            for child in expr.iter_expressions():
-                extract_from_expression(child)
-        
-        # Extract from SELECT expressions
-        for select_expr in expression.args.get("expressions") or []:
-            extract_from_expression(select_expr)
-        
-        # Extract from WHERE clause
-        if where := expression.args.get("where"):
-            extract_from_expression(where)
-        
-        # Extract from GROUP BY clause
-        if group := expression.args.get("group"):
-            for group_expr in group.expressions:
-                extract_from_expression(group_expr)
-        
-        # Extract from ORDER BY clause
-        if order := expression.args.get("order"):
-            for order_expr in order.expressions:
-                extract_from_expression(order_expr)
-        
-        # Extract from HAVING clause
-        if having := expression.args.get("having"):
-            extract_from_expression(having)
-        
-        # Extract from JOIN ON conditions
-        for join in expression.args.get("joins") or []:
-            if on_clause := join.args.get("on"):
-                extract_from_expression(on_clause)
-        
-        # For multi-table queries, distribute unqualified columns to all tables
-        # (since we can't know which table they belong to without schema)
-        if "_unqualified_" in columns_by_table and len(all_tables) > 1:
-            unqualified = columns_by_table.pop("_unqualified_")
-            for table in all_tables:
-                if table not in columns_by_table:
-                    columns_by_table[table] = []
-                for col in unqualified:
-                    # Add to each table if not already present
-                    col_names = {c["name"] for c in columns_by_table[table]}
-                    if col["name"] not in col_names:
-                        columns_by_table[table].append({
-                            "name": col["name"],
-                            "source": table,
-                        })
         
         return columns_by_table
 
