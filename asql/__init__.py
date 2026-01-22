@@ -29,7 +29,7 @@ from asql.dialect import ASQL, register_asql_dialect
 from asql.visual_dialect import VisualASQL, register_visual_asql_dialect
 from asql.config import ASQLConfig, StyleConfig, CompileSettings
 from asql.transpile import transpile, transpile_one
-from asql.expressions import Spine, CohortBy
+from asql.expressions import Spine
 
 __version__ = "0.1.0"
 
@@ -54,5 +54,4 @@ __all__ = [
     
     # Custom AST nodes
     "Spine",
-    "CohortBy",
 ]

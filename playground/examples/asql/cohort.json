@@ -1,22 +1,22 @@
 [
   {
     "title": "User Retention Cohort",
-    "desc": "Track monthly active users by signup cohort",
-    "query": "-- cohort by creates cohort analysis\n-- Groups users by when they started, tracks activity over time\nfrom events\n  group by month(event_date) (\n    #(distinct user_id) as active  -- Distinct active users\n  )\n  cohort by month(users.signup_date) on user_id"
+    "desc": "Track monthly active users by signup cohort using alias reuse",
+    "query": "-- Cohort analysis: track users over time since they signed up\n-- No special syntax needed - just computed columns + group by\n\nfrom events\n  join users                            -- Join to get signup_date\n  \n  -- Group by cohort (signup month) and period (months since signup)\n  -- Alias reuse lets us reference 'cohort' immediately after defining it\n  group by \n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active   -- Active users in this cohort+period\n  )\n  \n  order by cohort, period"
   },
   {
-    "title": "Revenue Cohort",
-    "desc": "Revenue by first purchase cohort",
-    "query": "-- Track revenue by when customers first purchased\nfrom orders\n  group by month(order_date) (\n    sum_total\n  )\n  cohort by month(customers.first_order_date) on customer_id"
+    "title": "Revenue Cohort with LTV",
+    "desc": "Track revenue and calculate lifetime value by first purchase cohort",
+    "query": "-- Revenue cohort with cumulative LTV calculation\n\nfrom orders\n  join customers\n  \n  group by \n    month(customers.first_order_date) as cohort,\n    months_between(orders.order_date, customers.first_order_date) as period\n  (\n    sum(total) as revenue,\n    count(distinct customer_id) as customers\n  )\n  \n  -- Add cohort size and cumulative metrics\n  select *,\n    first(customers) over cohort as cohort_size,       -- Period 0 customers = cohort size\n    running_sum(revenue) over cohort as cumulative_rev,\n    cumulative_rev / cohort_size as ltv                -- Lifetime value per customer\n    \n  order by cohort, period"
   },
   {
-    "title": "Weekly Cohorts",
-    "desc": "Weekly granularity cohort analysis",
-    "query": "-- Use week() for weekly cohorts\nfrom events\n  group by week(event_date) (\n    #(distinct user_id) as active\n  )\n  cohort by week(users.signup_date) on user_id"
+    "title": "Retention with Percentages",
+    "desc": "Calculate retention percentage for each cohort period",
+    "query": "-- Full retention analysis with percentages\n\nfrom events\n  join users\n  \n  group by \n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active\n  )\n  \n  -- Calculate retention metrics\n  select \n    cohort,\n    period,\n    active,\n    first(active) over cohort as cohort_size,  -- Size is period 0 active count\n    round(active::numeric / cohort_size * 100, 1) as retention_pct\n    \n  where period between 0 and 12  -- First year only\n  order by cohort, period"
   },
   {
     "title": "Segmented Cohorts",
-    "desc": "Cohort analysis by acquisition channel",
-    "query": "-- Add segmentation to cohorts\n-- Compare retention across different channels\nfrom events\n  group by month(event_date) (\n    #(distinct user_id) as active\n  )\n  cohort by users.channel, month(users.signup_date) on user_id"
+    "desc": "Compare retention across acquisition channels",
+    "query": "-- Cohort analysis segmented by acquisition channel\n-- Compare how different channels retain users\n\nfrom events\n  join users\n  \n  group by \n    users.channel,                                     -- Segment dimension\n    month(users.signup_date) as cohort,\n    months_between(events.event_date, users.signup_date) as period\n  (\n    count(distinct user_id) as active\n  )\n  \n  select *,\n    first(active) over (channel, cohort) as cohort_size,\n    round(active::numeric / cohort_size * 100, 1) as retention_pct\n    \n  order by channel, cohort, period"
   }
 ]
