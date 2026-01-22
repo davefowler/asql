@@ -28,7 +28,7 @@ if not HAS_PYTEST_ASYNCIO:
     pytest.skip("pytest_asyncio not installed", allow_module_level=True)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client():
     """Create an async test client for the FastAPI app."""
     if not HAS_FASTAPI:

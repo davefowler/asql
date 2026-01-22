@@ -160,8 +160,9 @@ class VisualEditorV2 {
       const pipelineEl = this.renderPipeline(pipeline, pipelineIdx);
       container.appendChild(pipelineEl);
 
-      // Add set operation between pipelines
-      if (pipelineIdx < this.pipelines.length - 1) {
+      // Add set operation between pipelines ONLY if set_operation exists
+      // CTEs (named pipelines) don't have set_operation - they're referenced by name
+      if (pipelineIdx < this.pipelines.length - 1 && pipeline.set_operation) {
         container.appendChild(this.renderSetOperation(pipelineIdx));
       }
     });
@@ -1369,7 +1370,7 @@ class VisualEditorV2 {
 
     const btn = document.createElement('button');
     btn.className = 'add-pipeline-btn';
-    btn.textContent = '+ Add Pipeline (CTE / Set Operation)';
+    btn.textContent = '+ Add CTE / Pipeline';
     btn.addEventListener('click', () => this.addPipeline());
 
     container.appendChild(btn);
@@ -1519,14 +1520,14 @@ class VisualEditorV2 {
   }
 
   /**
-   * Add a new pipeline
+   * Add a new pipeline (CTE by default)
+   *
+   * New pipelines are added as CTEs (named pipelines) by default.
+   * To create a UNION/INTERSECT/EXCEPT, use addSetOperation() instead.
    */
   addPipeline() {
-    // Add set operation to previous pipeline
-    if (this.pipelines.length > 0) {
-      this.pipelines[this.pipelines.length - 1].set_operation = { type: 'union', all: false };
-    }
-
+    // Don't auto-add set_operation - CTEs don't need it
+    // Set operations should be explicitly requested
     this.pipelines.push({
       name: null,
       from: { table: '' },
@@ -1544,17 +1545,16 @@ class VisualEditorV2 {
   removePipeline(pipelineIdx) {
     if (this.pipelines.length <= 1) return;
 
-    // Preserve set_operation when removing a middle pipeline
+    // Handle set_operation when removing a pipeline
     const removedSetOp = this.pipelines[pipelineIdx]?.set_operation;
-    if (pipelineIdx > 0) {
-      if (pipelineIdx < this.pipelines.length - 1) {
-        // Middle pipeline: carry forward its set_operation to previous pipeline
-        this.pipelines[pipelineIdx - 1].set_operation = 
-          removedSetOp || { type: 'union', all: false };
-      } else {
-        // Last pipeline: remove set_operation from previous
-        delete this.pipelines[pipelineIdx - 1].set_operation;
+    if (pipelineIdx > 0 && pipelineIdx < this.pipelines.length - 1) {
+      // Middle pipeline: carry forward its set_operation to previous IF it had one
+      if (removedSetOp) {
+        this.pipelines[pipelineIdx - 1].set_operation = removedSetOp;
       }
+    } else if (pipelineIdx > 0 && pipelineIdx === this.pipelines.length - 1) {
+      // Last pipeline: remove set_operation from previous
+      delete this.pipelines[pipelineIdx - 1].set_operation;
     }
 
     this.pipelines.splice(pipelineIdx, 1);
