@@ -105,10 +105,12 @@ def _condition_to_string(cond):
             return f"'{val}'"
         return str(val)
     
-    if ctype == 'binary_op':
+    # Handle both 'binary' (generator format) and 'binary_op' (legacy format)
+    if ctype == 'binary' or ctype == 'binary_op':
         left = _condition_to_string(cond.get('left', {}))
         right = _condition_to_string(cond.get('right', {}))
-        op = cond.get('operator', '=')
+        # Support both 'op' (generator format) and 'operator' (legacy format)
+        op = cond.get('op') or cond.get('operator', '=')
         # Normalize == to =
         if op == '==':
             op = '='

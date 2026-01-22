@@ -301,12 +301,12 @@ class TestOutputColumnsWithSchema:
         output_cols = result["from"]["output_columns"]
         assert len(output_cols) == 4
         
-        # Column names are qualified (table.column)
+        # Column names are unqualified for single-table queries (no JOINs)
         col_names = {c["name"] for c in output_cols}
-        assert col_names == {"users.id", "users.name", "users.email", "users.status"}
+        assert col_names == {"id", "name", "email", "status"}
         
         # Check types
-        id_col = next(c for c in output_cols if c["name"] == "users.id")
+        id_col = next(c for c in output_cols if c["name"] == "id")
         assert id_col["type"] == "INT"
 
     def test_where_preserves_columns(self, schema):

@@ -346,10 +346,11 @@ def _expression_to_asql(expr: Union[Dict[str, Any], str]) -> str:
             escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
 
-    elif expr_type == "binary_op":
+    elif expr_type == "binary" or expr_type == "binary_op":
         left = _expression_to_asql(expr.get("left", {}))
         right = _expression_to_asql(expr.get("right", {}))
-        operator = expr.get("operator", "=")
+        # Support both 'op' (generator format) and 'operator' (legacy format)
+        operator = expr.get("op") or expr.get("operator", "=")
 
         # Convert SQL = to ASQL ==
         if operator == "=":
