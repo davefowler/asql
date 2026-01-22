@@ -44,7 +44,7 @@ Many examples are inspired by or adapted from real-world dbt models:
   - [dbt_zendesk](https://github.com/fivetran/dbt_zendesk)
   - [dbt_salesforce](https://github.com/fivetran/dbt_salesforce)
 
-These examples demonstrate how ASQL's pipeline syntax simplifies complex SQL queries commonly found in production dbt models.
+These examples demonstrate how ASQL's pipe syntax simplifies complex SQL queries commonly found in production dbt models.
 
 ## Usage
 

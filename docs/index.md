@@ -1,6 +1,6 @@
 # ASQL: SQL with Analytics Built In
 
-Analytic SQL (ASQL) is a query language designed for analytics work. It adds **built-in analytics features** that SQL lacks—guaranteed complete results, cohort analysis, cross-dialect date handling—and uses a pipeline syntax that flows top-to-bottom.
+Analytic SQL (ASQL) is a query language designed for analytics work. It adds **built-in analytics features** that SQL lacks—guaranteed complete results, cohort analysis, cross-dialect date handling—and uses a pipe syntax that flows top-to-bottom.
 
 Think of it as SQL with analytics superpowers. Write ASQL, get standard SQL for any dialect.
 
@@ -156,7 +156,7 @@ When your tables follow standard naming conventions (`user_id` → `users.id`), 
 
 ---
 
-## Pipeline Syntax
+## Pipe Syntax
 
 ASQL queries flow top-to-bottom in execution order:
 
@@ -361,7 +361,7 @@ Understanding ASQL's design:
 - [pandas](https://pandas.pydata.org/) — Method chaining, column operations
 - [PRQL](https://prql-lang.org/) — Pipeline approach to SQL
 - [dbt](https://www.getdbt.com/) — Many ASQL features are built-in versions of dbt macro patterns
-- [Kusto/KQL](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/) — Pipeline syntax at scale
+- [Kusto/KQL](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/) — Pipe syntax at scale
 
 ---
 

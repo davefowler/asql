@@ -14,7 +14,7 @@ A complete VS Code extension for ASQL, inspired by PRQL's VS Code tooling, provi
 2. **`language-configuration.json`** - Language settings
    - Comments (`#`)
    - Brackets and auto-closing pairs
-   - Indentation rules for pipeline syntax
+   - Indentation rules for pipe syntax
 
 3. **`syntaxes/asql.tmLanguage.json`** - TextMate grammar
    - Syntax highlighting for all ASQL features
@@ -74,7 +74,7 @@ A complete VS Code extension for ASQL, inspired by PRQL's VS Code tooling, provi
 ### Language Configuration
 - ✅ Line comments: `#`
 - ✅ Auto-closing pairs: `()`, `[]`, `{}`, `""`, `''`
-- ✅ Smart indentation for pipeline syntax
+- ✅ Smart indentation for pipe syntax
 - ✅ Word pattern for identifiers
 
 ## Comparison with PRQL

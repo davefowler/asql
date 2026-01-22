@@ -178,7 +178,7 @@ class TestSQLToJSON:
         
         where_transforms = [t for t in result["transforms"] if t["type"] == "where"]
         assert len(where_transforms) == 1
-        assert where_transforms[0]["condition"]["operator"] == "="
+        assert where_transforms[0]["condition"]["op"] == "="
 
     def test_limit_extracted(self):
         """Test LIMIT clause is extracted."""
@@ -301,11 +301,12 @@ class TestOutputColumnsWithSchema:
         output_cols = result["from"]["output_columns"]
         assert len(output_cols) == 4
         
+        # Column names are qualified (table.column)
         col_names = {c["name"] for c in output_cols}
-        assert col_names == {"id", "name", "email", "status"}
+        assert col_names == {"users.id", "users.name", "users.email", "users.status"}
         
         # Check types
-        id_col = next(c for c in output_cols if c["name"] == "id")
+        id_col = next(c for c in output_cols if c["name"] == "users.id")
         assert id_col["type"] == "INT"
 
     def test_where_preserves_columns(self, schema):
@@ -411,7 +412,7 @@ class TestExpressionToJSON:
             )[0]
             result = get_first_pipeline(json_out)
             condition = result["transforms"][0]["condition"]
-            assert condition["operator"] == expected_op, f"Failed for operator {sql_op}"
+            assert condition["op"] == expected_op, f"Failed for operator {sql_op}"
 
     def test_logical_and(self):
         """Test AND operator."""
@@ -422,8 +423,8 @@ class TestExpressionToJSON:
         result = get_first_pipeline(json_out)
         
         condition = result["transforms"][0]["condition"]
-        assert condition["type"] == "binary_op"
-        assert condition["operator"] == "and"
+        assert condition["type"] == "binary"
+        assert condition["op"] == "AND"
 
     def test_logical_or(self):
         """Test OR operator."""
@@ -434,8 +435,8 @@ class TestExpressionToJSON:
         result = get_first_pipeline(json_out)
         
         condition = result["transforms"][0]["condition"]
-        assert condition["type"] == "binary_op"
-        assert condition["operator"] == "or"
+        assert condition["type"] == "binary"
+        assert condition["op"] == "OR"
 
 
 class TestErrorCases:
@@ -631,10 +632,10 @@ class TestNestedConditions:
         result = get_first_pipeline(json_out)
         
         condition = result["transforms"][0]["condition"]
-        assert condition["type"] == "binary_op"
-        assert condition["operator"] == "and"
+        assert condition["type"] == "binary"
+        assert condition["op"] == "AND"
         # Right side should be the OR condition
-        assert condition["right"]["operator"] == "or"
+        assert condition["right"]["op"] == "OR"
 
     def test_deeply_nested(self):
         """Test deeply nested conditions."""
@@ -645,10 +646,10 @@ class TestNestedConditions:
         result = get_first_pipeline(json_out)
         
         condition = result["transforms"][0]["condition"]
-        assert condition["type"] == "binary_op"
-        assert condition["operator"] == "or"
-        assert condition["left"]["operator"] == "and"
-        assert condition["right"]["operator"] == "and"
+        assert condition["type"] == "binary"
+        assert condition["op"] == "OR"
+        assert condition["left"]["op"] == "AND"
+        assert condition["right"]["op"] == "AND"
 
     def test_not_condition(self):
         """Test NOT operator."""
@@ -692,7 +693,7 @@ class TestFunctionConditions:
         result = get_first_pipeline(json_out)
         
         condition = result["transforms"][0]["condition"]
-        assert condition["type"] == "binary_op"
+        assert condition["type"] == "binary"
         assert condition["left"]["type"] == "function"
         assert condition["left"]["name"] == "UPPER"
 
@@ -700,8 +701,8 @@ class TestFunctionConditions:
 class TestASQLSpecificFeatures:
     """Test ASQL-specific features through visual_asql."""
 
-    def test_asql_pipeline_syntax(self):
-        """Test ASQL pipeline syntax is preserved through JSON."""
+    def test_asql_pipe_syntax(self):
+        """Test ASQL pipe syntax is preserved through JSON."""
         # ASQL -> JSON
         json_out = sqlglot.transpile(
             "from users where status == 'active' limit 10",

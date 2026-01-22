@@ -79,7 +79,7 @@ These dialects have SQL generation tested via SQLGlot parsing:
 | When/then expressions | ✅ | Single condition |
 | Spine/gap-filling | ✅ | Core ASQL feature |
 | CTEs (stash as) | ⚠️ | Multi-query syntax in progress |
-| UNION | ⚠️ | Pipeline syntax in progress |
+| UNION | ⚠️ | Pipe syntax in progress |
 | Nested when/then | ⚠️ | Bug in parser |
 
 ### Example Files

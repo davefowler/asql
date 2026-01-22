@@ -261,7 +261,7 @@ class VisualASQLGenerator(Generator):
             dims, aggs = self._extract_group_by_columns(expression, group)
             current_columns = dims + aggs
 
-            transform = {
+            transform = { 
                 "id": f"t{transform_id}",
                 "type": "group_by",
                 "dimensions": [d["name"] for d in dims],
@@ -400,8 +400,13 @@ class VisualASQLGenerator(Generator):
         collect(expr)
         return comments
 
-    def _get_table_columns(self, table_name: str) -> t.List[t.Dict[str, t.Any]]:
-        """Get columns for a table from schema."""
+    def _get_table_columns(self, table_name: str, qualify: bool = True) -> t.List[t.Dict[str, t.Any]]:
+        """Get columns for a table from schema.
+        
+        Args:
+            table_name: The table name to look up
+            qualify: If True, include qualified name (table.column) for disambiguation
+        """
         if not self._schema:
             return []
 
@@ -415,8 +420,10 @@ class VisualASQLGenerator(Generator):
                     exp.column(col)
                 )
                 type_str = str(col_type) if col_type else "UNKNOWN"
+                # Use qualified name (table.column) for clarity after JOINs
+                qualified_name = f"{table_name}.{col}" if qualify else col
                 result.append({
-                    "name": col,
+                    "name": qualified_name,
                     "type": type_str,
                     "source": table_name,
                 })
@@ -470,12 +477,16 @@ class VisualASQLGenerator(Generator):
             
             if source not in columns_by_table:
                 columns_by_table[source] = []
-            # Check if already exists
+            
+            # Use qualified name (table.column) for clarity
+            qualified_name = f"{source}.{name}" if source and source != "_unqualified_" else name
+            
+            # Check if already exists (by qualified name)
             for existing in columns_by_table[source]:
-                if existing["name"] == name:
+                if existing["name"] == qualified_name:
                     return
             columns_by_table[source].append({
-                "name": name,
+                "name": qualified_name,
                 "source": source if source != "_unqualified_" else None,
             })
         

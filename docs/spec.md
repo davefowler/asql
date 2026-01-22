@@ -1773,7 +1773,7 @@ from use_this_later
 - ✅ **Proximity**: CTEs are defined where they're used, often right before they're referenced
 - ✅ **Clear chaining**: You can see the data flow clearly at the end of pipelines
 - ✅ **Reusability**: Multiple queries can reference the same stashed CTE
-- ✅ **Natural flow**: Fits naturally into the pipeline syntax
+- ✅ **Natural flow**: Fits naturally into the pipe syntax
 - ✅ **Better readability**: You end with the name and use it right after, so your eyes don't have to jump around
 
 **Note**: `stash as` is currently the only ASQL syntax that creates CTEs.
@@ -2682,7 +2682,7 @@ aggregate_func := 'count' | 'sum' | 'avg' | 'min' | 'max'
 
 | Feature | SQL | PRQL | Malloy | ASQL |
 |---------|-----|------|--------|------|
-| Pipeline syntax | ❌ | ✅ | ✅ | ✅ |
+| Pipe syntax | ❌ | ✅ | ✅ | ✅ |
 | Model layer | ❌ | ❌ | ✅ | ✅ (optional) |
 | Natural language | ❌ | ❌ | ✅ | ✅ |
 | Smart joins | ❌ | ❌ | ✅ | ✅ |

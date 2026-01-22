@@ -27,7 +27,7 @@ from sqlglot.parser import Parser
 from sqlglot.tokens import Token, TokenType
 
 from asql.dialect.tokenizer import ASQLTokenizer  # noqa: F401
-from asql.expressions import Spine, CohortBy
+from asql.expressions import Spine
 from asql.functions import (
     ASQL_FUNCTION_REGISTRY,
     NATURAL_DATE_UNITS,
@@ -252,8 +252,7 @@ class ASQLParser(Parser):
         2. Implicit function aliases (SUM(amount) → SUM(amount) AS sum_amount)
         3. Auto-aliasing (function calls without explicit aliases)
         4. FK shorthand (ON user_id → ON orders.user_id = users.id) - needs schema
-        5. Cohort transform (cohort by ... → CTEs and JOINs)
-        6. Auto-qualify columns (resolve ambiguous columns in JOINs)
+        5. Auto-qualify columns (resolve ambiguous columns in JOINs)
         
         Transform order (Phase 2 - generate universal SQL):
         7. Alias reuse → CTE chains (works on all dialects including DuckDB)
@@ -292,7 +291,6 @@ class ASQLParser(Parser):
         from asql.dialect.transforms.auto_alias import apply_auto_aliasing
         from asql.dialect.transforms.auto_qualify import auto_qualify_columns
         from asql.dialect.transforms.join_fk_shorthand import transform_fk_shorthand
-        from asql.dialect.transforms.cohort_transform import transform_cohort
         
         # === Phase 1: Basic transforms (no dialect/schema required) ===
         stmt = apply_since_until_underscore_shorthands(stmt, settings)
@@ -302,9 +300,6 @@ class ASQLParser(Parser):
         # === Phase 2: Schema-aware transforms (need schema, not dialect) ===
         if schema is not None:
             stmt = transform_fk_shorthand(stmt, settings)
-        
-        # Cohort transform (generates CTEs and JOINs)
-        stmt = transform_cohort(stmt, settings)
         
         # Auto-qualify columns in joins (expands SELECT * to table.* for each table)
         stmt = auto_qualify_columns(stmt)
@@ -555,7 +550,7 @@ class ASQLParser(Parser):
             kind=kind,
             on=on_column_list,
         )
-    """Parser for ASQL pipeline syntax using TRANSFORM_PARSERS pattern.
+    """Parser for ASQL pipe syntax using TRANSFORM_PARSERS pattern.
     
     This follows PRQL's pattern:
     1. Start with FROM clause
@@ -678,7 +673,6 @@ class ASQLParser(Parser):
         "DENSE": lambda self, query: self._parse_asql_dense_rank_standalone(query),
         "DEDUPLICATE": lambda self, query: self._parse_asql_deduplicate(query),
         # Advanced transforms
-        "COHORT": lambda self, query: self._parse_asql_cohort(query),
         "RECURSE": lambda self, query: self._parse_asql_recurse(query),
         # Spine - explicit gap-filling: spine by month(date) (aggs)
         "SPINE": lambda self, query: self._parse_asql_spine_by(query),
@@ -2452,76 +2446,6 @@ class ASQLParser(Parser):
         # Same as: per <cols> first by <order_col>
         return self._add_qualify_row_number(query, partition_cols, order_expr, order_desc)
 
-    def _parse_asql_cohort(self, query: exp.Query) -> exp.Query:
-        """Parse cohort by [segments,] <granularity_func>(<table.column>) [on <join_key>].
-        
-        Syntax:
-            cohort by month(users.signup_date)
-            cohort by month(users.signup_date) on user_id
-            cohort by users.channel, month(users.signup_date) on user_id
-            cohort by week(customers.first_order_date) on customer_id
-        
-        The granularity function (month, week, day, etc.) is parsed as a regular 
-        function call - any date function works, not a hardcoded list.
-        
-        Creates a CohortBy expression attached to the query for later transformation.
-        """
-        if not self._match_text_seq("BY"):
-            self.raise_error("Expected BY after COHORT")
-            return query
-        
-        # Parse comma-separated expressions: segments are columns, last item is granularity function
-        # e.g., "channel, region, month(signup_date)" → segments=[channel, region], granularity_expr=month(signup_date)
-        expressions: t.List[exp.Expression] = []
-        
-        while True:
-            # Parse expression (could be column or function call)
-            expr = self._parse_unary()
-            if not expr:
-                break
-            expressions.append(expr)
-            
-            # Check for comma (more expressions) vs ON (join key) vs end
-            if not self._match(TokenType.COMMA):
-                break
-        
-        if not expressions:
-            self.raise_error("Expected granularity function (e.g., month(date_col)) after COHORT BY")
-            return query
-        
-        # Last expression should be the granularity function
-        granularity_expr = expressions[-1]
-        segments = expressions[:-1]
-        
-        # Extract granularity and cohort_col from the function expression
-        granularity, cohort_col = self._extract_granularity_from_expr(granularity_expr)
-        
-        if not granularity or not cohort_col:
-            self.raise_error(
-                "Expected granularity function like month(date_col), week(date_col), or day(date_col)"
-            )
-            return query
-        
-        # Parse optional ON join_key
-        join_key = None
-        if self._match(TokenType.ON):
-            join_key_col = self._parse_column()
-            if join_key_col:
-                join_key = join_key_col.name if hasattr(join_key_col, 'name') else str(join_key_col.this)
-        
-        # Build CohortBy AST node (replaces old _cohort_info attribute hack)
-        cohort_node = CohortBy(
-            this=granularity_expr,
-            granularity=exp.Literal.string(granularity) if granularity else None,
-            join_key=exp.to_identifier(join_key) if join_key else None,
-            segments=segments if segments else None,
-        )
-        
-        # Attach to query using proper args mechanism
-        query.set("cohort", cohort_node)
-        
-        return query
-    
     def _parse_asql_spine_by(self, query: exp.Query) -> exp.Query:
         """Parse spine by <columns> (aggregations).
         

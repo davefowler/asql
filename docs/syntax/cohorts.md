@@ -1,78 +1,45 @@
 # Cohort Analysis
 
-Cohort analysis groups users by a shared characteristic (usually when they "started") and tracks their behavior over time. ASQL's `cohort by` operator dramatically simplifies this complex pattern.
+Cohort analysis groups users by a shared characteristic (usually when they "started") and tracks their behavior over time. ASQL's features make cohort queries simple and readable.
 
-## The Problem: Cohort Queries Are Complex
+## What is Cohort Analysis?
 
-Traditional SQL requires 3-5 CTEs and 50+ lines for even basic cohort queries. A simple retention cohort requires:
+Cohort analysis tracks **the same entities over time periods** relative to when they started. Key components:
 
-1. Finding each user's cohort (when they started)
-2. Finding each user's activity by period
-3. Calculating periods since cohort start
-4. Getting cohort sizes
-5. Joining everything together
-6. Calculating retention rates
+- **Cohort**: When each entity "started" (signup month, first purchase month, etc.)
+- **Period**: Time elapsed since their cohort start (0 = start, 1 = first period after, etc.)
+- **Cohort size**: How many entities in each cohort (for retention %)
 
-**SQL Example (50+ lines):**
-```sql
-WITH user_cohorts AS (
-    SELECT user_id, DATE_TRUNC('month', signup_date) AS cohort_month
-    FROM users
-),
-activity_months AS (
-    SELECT user_id, DATE_TRUNC('month', event_date) AS activity_month
-    FROM events
-    GROUP BY 1, 2
-),
-cohort_sizes AS (
-    SELECT cohort_month, COUNT(*) AS size
-    FROM user_cohorts GROUP BY 1
-),
-cohort_activity AS (
-    SELECT 
-        uc.cohort_month,
-        EXTRACT(YEAR FROM AGE(am.activity_month, uc.cohort_month)) * 12 +
-        EXTRACT(MONTH FROM AGE(am.activity_month, uc.cohort_month)) AS period,
-        COUNT(DISTINCT uc.user_id) AS active
-    FROM user_cohorts uc
-    JOIN activity_months am ON uc.user_id = am.user_id
-    WHERE am.activity_month >= uc.cohort_month
-    GROUP BY 1, 2
-)
-SELECT 
-    ca.cohort_month, cs.size, ca.period,
-    ca.active, ROUND(ca.active::numeric / cs.size * 100, 1) AS retention
-FROM cohort_activity ca
-JOIN cohort_sizes cs ON ca.cohort_month = cs.cohort_month
-ORDER BY ca.cohort_month, ca.period;
-```
+## The Simple Pattern
 
-**ASQL (3 lines):**
-```asql-play
-from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
-```
-
-**Reduction: 94%** 🎉
-
-## Basic Syntax
-
-The `cohort by` clause transforms any aggregation query into a cohort analysis:
+In ASQL, cohort analysis is just computed columns + GROUP BY:
 
 ```asql
-from <activity_table>
-group by <granularity>(<activity_date>) (<aggregations>)
-cohort by <granularity>(<cohort_table>.<cohort_date>)
+from orders
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(orders.created_at, users.signup_date) as period
+(
+  count(distinct customer_id) as active
+)
 ```
 
-### Components
+That's it. ASQL's **alias reuse** lets you reference `cohort` and `period` immediately after defining them.
 
-- **Activity table**: The table containing events/activities to analyze (e.g., `events`, `orders`)
-- **Activity date**: The date column in the activity table (e.g., `event_date`, `order_date`)
-- **Granularity**: Time bucket function - `month()`, `week()`, or `day()`
-- **Cohort table**: The table containing cohort assignment (e.g., `users`, `customers`)
-- **Cohort date**: The date that defines when users joined the cohort (e.g., `signup_date`, `first_order_date`)
+## Why This Works
+
+Traditional SQL requires CTEs because you can't reference a computed column in the same SELECT:
+
+```sql
+-- This DOESN'T work in SQL:
+SELECT 
+  DATE_TRUNC('month', signup_date) AS cohort,
+  DATEDIFF(month, cohort, order_date) AS period  -- ERROR!
+FROM ...
+```
+
+ASQL's alias reuse handles this automatically - each alias becomes available to subsequent expressions.
 
 ## Examples
 
@@ -80,247 +47,207 @@ cohort by <granularity>(<cohort_table>.<cohort_date>)
 
 Track monthly active users by their signup month:
 
-```asql-play
+```asql
 from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+order by cohort, period
 ```
 
 **Output columns:**
-- `cohort_month`: Month users signed up
+- `cohort`: Month users signed up
 - `period`: Months since signup (0 = signup month, 1 = first month after, etc.)
 - `active`: Active users in that period
-- `cohort_size`: Total users in the cohort
 
 ### Revenue Cohort Analysis
 
 Track revenue by first purchase cohort:
 
-```asql-play
+```asql
 from orders
-group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date)
-```
-
-### Weekly Activity Cohorts
-
-Track weekly active users:
-
-```asql-play
-from events
-group by week(event_date) (count(distinct user_id) as active)
-cohort by week(users.signup_date)
-```
-
-### Multiple Metrics
-
-Track multiple metrics simultaneously:
-
-```asql-play
-from events
-group by month(event_date) (
-  count(distinct user_id) as active,
-  # as events,
-  sum(revenue) as revenue
+join customers
+group by 
+  month(customers.first_order_date) as cohort,
+  months_between(orders.order_date, customers.first_order_date) as period
+(
+  sum(total) as revenue,
+  count(distinct customer_id) as customers
 )
-cohort by month(users.signup_date)
+order by cohort, period
 ```
 
-## Period Calculation
+### Weekly Cohorts
 
-Period is automatically calculated based on the granularity:
-
-- `cohort by month(...)` → period in **months** since cohort start
-- `cohort by week(...)` → period in **weeks** since cohort start  
-- `cohort by day(...)` → period in **days** since cohort start
-
-The period calculation uses:
-- The activity date column from your `group by` clause
-- The cohort date from the `cohort by` clause
-- Computes the difference using appropriate date arithmetic
-
-**Period values:**
-- `0`: The cohort start period (signup month/week/day)
-- `1`: First period after cohort start
-- `2`: Second period after cohort start
-- And so on...
-
-## Retention Calculations
-
-With `cohort by`, retention calculations become straightforward. The `cohort_size` column is automatically available:
-
-```asql-play
-from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
-```
-
-You can calculate retention rates in your BI tool or with window functions:
+Track weekly active users with weekly periods:
 
 ```asql
 from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
-select
-  cohort_month,
-  period,
-  active,
-  cohort_size,
+join users
+group by 
+  week(users.signup_date) as cohort,
+  weeks_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+order by cohort, period
+```
+
+### Retention with Cohort Size
+
+To calculate retention percentage, you need cohort size. Use a window function:
+
+```asql
+from events
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+select *,
+  first(active) over cohort as cohort_size,
   round(active::numeric / cohort_size * 100, 1) as retention_pct
+order by cohort, period
 ```
 
-## Period-over-Period Comparisons
+The `first(active) over cohort` gets the period 0 value (all users in cohort), which is the cohort size.
 
-Use window functions like `prior()` for period-over-period analysis:
+### Cumulative Metrics (LTV)
 
-```asql
-from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
-select
-  cohort_month,
-  period,
-  active,
-  prior(active) as prev_period_active,
-  active - prior(active) as change,
-  round((active - prior(active))::numeric / prior(active) * 100, 1) as pct_change
-```
-
-The `cohort by` clause automatically partitions window functions by cohort and orders by period, so `prior()` works correctly.
-
-## Cumulative Metrics (LTV)
-
-Use `running_sum()` for cumulative metrics like Lifetime Value (LTV):
+Use `running_sum()` for lifetime value:
 
 ```asql
 from orders
-group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date)
-select
-  cohort_month,
-  period,
-  revenue,
-  running_sum(revenue) as cumulative_revenue,
-  running_sum(revenue) / cohort_size as ltv
+join customers
+group by 
+  month(customers.first_order_date) as cohort,
+  months_between(orders.order_date, customers.first_order_date) as period
+(
+  sum(total) as revenue,
+  count(distinct customer_id) as customers
+)
+select *,
+  running_sum(revenue) over cohort as cumulative_revenue,
+  first(customers) over cohort as cohort_size,
+  running_sum(revenue) over cohort / cohort_size as ltv
+order by cohort, period
 ```
 
-## Segmented Cohorts
+### Self-Cohort (First Activity as Cohort)
 
-Add segment dimensions before the time function to create segmented cohorts:
-
-```asql-play
-from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by users.channel, month(users.signup_date)
-```
-
-This creates cohorts segmented by acquisition channel, allowing you to compare retention across different channels.
-
-**Output columns:**
-- `channel`: Acquisition channel
-- `cohort_month`: Month users signed up
-- `period`: Months since signup
-- `active`: Active users
-- `cohort_size`: Total users in that channel cohort
-
-## Join Key Inference
-
-ASQL automatically infers join keys using foreign key naming conventions. For example:
-
-- `events.user_id` → joins to `users.id`
-- `orders.customer_id` → joins to `customers.id`
-
-```asql-play
-from orders
-group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date)
-```
-
-If your schema doesn't follow these conventions, provide schema information or enable `infer_join_keys` mode for examples.
-
-## Common Use Cases
-
-### 1. User Retention Analysis
-
-```asql-play
-from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
-```
-
-### 2. Revenue Cohort with LTV
+When the cohort date isn't in a separate table, use a subquery or window function to find each entity's first activity:
 
 ```asql
-from orders
-group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date)
-select
-  cohort_month,
-  period,
-  revenue,
-  running_sum(revenue) as cumulative_revenue,
-  running_sum(revenue) / cohort_size as ltv
+from (
+  from orders
+  select *,
+    month(first(created_at) over customer_id) as cohort
+)
+group by 
+  cohort,
+  months_between(created_at, cohort) as period
+(
+  count(distinct customer_id) as active
+)
+order by cohort, period
 ```
 
-### 3. Feature Adoption Cohorts
+### Segmented Cohorts
 
-```asql-play
-from feature_events
-where feature_name = "dashboard"
-group by week(event_date) (count(distinct user_id) as feature_users)
-cohort by week(users.first_dashboard_use_date)
-```
-
-### 4. Subscription Survival Analysis
-
-```asql-play
-from subscription_events
-where status = "active"
-group by month(event_date) (count(distinct subscription_id) as active_subs)
-cohort by month(subscriptions.start_date)
-```
-
-### 5. Churn Analysis
+Add segment dimensions to compare cohorts across segments:
 
 ```asql
 from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
-select
-  cohort_month,
-  period,
-  active,
-  cohort_size,
+join users
+group by 
+  users.channel,
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+order by channel, cohort, period
+```
+
+## Period Calculation Functions
+
+ASQL provides date difference functions for period calculation:
+
+| Function | Returns |
+|----------|---------|
+| `months_between(date1, date2)` | Months between dates |
+| `weeks_between(date1, date2)` | Weeks between dates |
+| `days_between(date1, date2)` | Days between dates |
+
+Or use explicit arithmetic:
+```asql
+datediff('month', signup_date, event_date) as period
+```
+
+## Gap Filling with Spine
+
+For complete cohort matrices (showing 0 for periods with no activity), use `spine by`:
+
+```asql
+from events
+join users
+spine by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+order by cohort, period
+```
+
+The `spine by` ensures you get a row for every (cohort, period) combination.
+
+## Common Patterns
+
+### Retention Table
+
+```asql
+from events
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+select cohort, period, active,
+  first(active) over cohort as cohort_size,
+  round(active::numeric / cohort_size * 100, 1) as retention_pct
+where period between 0 and 12
+order by cohort, period
+```
+
+### Churn Analysis
+
+```asql
+from events
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+select cohort, period, active,
+  first(active) over cohort as cohort_size,
   cohort_size - active as churned,
-  round((cohort_size - active)::numeric / cohort_size * 100, 1) as churn_rate
+  round((cohort_size - active)::numeric / cohort_size * 100, 1) as churn_pct
+order by cohort, period
 ```
-
-## How It Works
-
-When you use `cohort by`, ASQL automatically:
-
-1. **Creates cohort CTEs**: Generates `cohort_base` (cohort assignment) and `cohort_sizes` (cohort size calculation)
-2. **Infers joins**: Automatically joins the activity table to the cohort table using foreign key conventions
-3. **Calculates period**: Computes periods since cohort start based on the granularity function
-4. **Modifies GROUP BY**: Adds `cohort_month` and `period` to the grouping
-5. **Adds columns**: Includes `cohort_month`, `period`, and `cohort_size` in the SELECT
-6. **Orders results**: Automatically orders by `cohort_month, period`
-
-## Best Practices
-
-1. **Match granularities**: Use the same granularity in `group by` and `cohort by` (e.g., both `month()`)
-2. **Follow FK conventions**: Use `{table}_id` naming (e.g., `user_id`, `customer_id`) for automatic join inference
-3. **Filter activity**: Apply filters before `cohort by` to analyze specific event types
-4. **Combine with window functions**: Use `prior()`, `running_sum()`, etc. for advanced analysis
-
-## Limitations
-
-- **Join inference**: Requires standard foreign key naming (e.g., `user_id` → `users.id`)
-- **Granularity matching**: Activity and cohort granularities should match or be compatible
-- **Single cohort dimension**: Currently supports one cohort definition per query (segmented cohorts are supported)
 
 ## See Also
 
-- [Window Functions](window-functions.md) - `prior()`, `running_sum()`, and other functions useful for cohorts
-- [Date Functions](dates.md) - `month()`, `week()`, `day()` functions
-- [Spec: Cohort Analysis](../spec.md#14-cohort-analysis) - Full specification
+- [Window Functions](window-functions.md) - `first()`, `running_sum()`, and other functions useful for cohorts
+- [Date Functions](dates.md) - `month()`, `week()`, date arithmetic
+- [Spine (Gap Filling)](spine.md) - Ensuring complete time series

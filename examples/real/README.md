@@ -39,7 +39,7 @@ The original SQL files contain **dbt Jinja templating** (e.g., `{{ ref('table') 
 **ASQL equivalents** strip out the Jinja and focus on the core SQL logic, making them:
 - ✅ Testable with ASQL compiler
 - ✅ Understandable without dbt knowledge
-- ✅ Demonstrative of ASQL's pipeline syntax
+- ✅ Demonstrative of ASQL's pipe syntax
 
 ### Creating ASQL Equivalents
 
@@ -47,7 +47,7 @@ When creating ASQL equivalents:
 
 1. **Remove Jinja macros**: Replace `{{ ref('table') }}` with direct table names
 2. **Simplify CTEs**: Convert `WITH ... AS` to ASQL's `with` syntax
-3. **Use pipeline syntax**: Convert nested queries to pipeline operations
+3. **Use pipe syntax**: Convert nested queries to pipeline operations
 4. **Test compilation**: All ASQL files should compile successfully
 
 ### Testing
