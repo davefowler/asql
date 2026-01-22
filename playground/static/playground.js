@@ -1128,6 +1128,12 @@ async function translateQuery() {
         }
     };
     
+    const hideError = () => {
+        errorDiv.style.display = 'none';
+        errorDiv.className = '';
+        errorDiv.textContent = '';
+    };
+    
     try {
         if (currentMode === 'asql-to-sql') {
             // If output is visual-asql, parse to visual representation
