@@ -446,11 +446,14 @@ from orders
 **7. Cohort analysis:**
 ```asql
 from events
-  group by month(event_date) (count(distinct user_id) as active)
-  cohort by month(users.signup_date)
+  join users
+  group by 
+    month(users.signup_date) as cohort,
+    months_between(events.event_date, users.signup_date) as period
+  (count(distinct user_id) as active)
 ```
 
-This tracks monthly active users by their signup month - a complex query that would take 50+ lines in SQL!
+This tracks monthly active users by their signup month using alias reuse - no special syntax needed!
 
 </details>
 
@@ -458,7 +461,7 @@ This tracks monthly active users by their signup month - a complex query that wo
 
 ## Part 8: Cohort Analysis
 
-Cohort analysis is one of the most powerful patterns in analytics, but it's notoriously complex in SQL. ASQL makes it simple.
+Cohort analysis is one of the most powerful patterns in analytics. In ASQL, it's straightforward using computed columns and alias reuse.
 
 ### What is Cohort Analysis?
 
@@ -470,65 +473,82 @@ Cohort analysis groups users by when they started (their "cohort") and tracks th
 
 ```asql
 from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+order by cohort, period
 ```
 
-This single query:
-- Groups events by month
-- Assigns users to cohorts based on signup month
-- Calculates periods since signup
-- Tracks active users per period
-
 **Output:**
-- `cohort_month`: When users signed up
+- `cohort`: When users signed up
 - `period`: Months since signup (0 = signup month, 1 = first month after, etc.)
 - `active`: Active users in that period
-- `cohort_size`: Total users in the cohort
 
-### Revenue Cohorts
+The key insight: ASQL's **alias reuse** lets you reference `cohort` immediately after defining it. No CTEs needed!
 
-Track revenue by first purchase cohort:
+### Retention with Cohort Size
+
+To calculate retention percentages, add cohort size using a window function:
+
+```asql
+from events
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+select *,
+  first(active) over cohort as cohort_size,
+  round(active::numeric / cohort_size * 100, 1) as retention_pct
+order by cohort, period
+```
+
+### Revenue Cohorts with LTV
+
+Track revenue by first purchase cohort and calculate lifetime value:
 
 ```asql
 from orders
-group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date)
+join customers
+group by 
+  month(customers.first_order_date) as cohort,
+  months_between(orders.order_date, customers.first_order_date) as period
+(
+  sum(total) as revenue,
+  count(distinct customer_id) as customers
+)
+select *,
+  first(customers) over cohort as cohort_size,
+  running_sum(revenue) over cohort / cohort_size as ltv
+order by cohort, period
 ```
 
-### With Period-over-Period Analysis
+### Period-over-Period Analysis
 
 Add window functions for period-over-period comparisons:
 
 ```asql
 from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
-select
-  cohort_month,
-  period,
-  active,
-  prior(active) as prev_period_active,
-  active - prior(active) as change
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(
+  count(distinct user_id) as active
+)
+select *,
+  prior(active) over cohort as prev_period_active,
+  active - prev_period_active as change
+order by cohort, period
 ```
 
-### Lifetime Value (LTV)
-
-Calculate cumulative revenue and LTV:
-
-```asql
-from orders
-group by month(order_date) (sum(total) as revenue)
-cohort by month(customers.first_order_date)
-select
-  cohort_month,
-  period,
-  revenue,
-  running_sum(revenue) as cumulative_revenue,
-  running_sum(revenue) / cohort_size as ltv
-```
-
-### Why Cohort Analysis Matters
+### Why ASQL Makes This Simple
 
 **SQL (50+ lines):**
 ```sql
@@ -564,14 +584,18 @@ JOIN cohort_sizes cs ON ca.cohort_month = cs.cohort_month
 ORDER BY ca.cohort_month, ca.period;
 ```
 
-**ASQL (3 lines):**
+**ASQL (computed columns + group by):**
 ```asql
 from events
-group by month(event_date) (count(distinct user_id) as active)
-cohort by month(users.signup_date)
+join users
+group by 
+  month(users.signup_date) as cohort,
+  months_between(events.event_date, users.signup_date) as period
+(count(distinct user_id) as active)
+order by cohort, period
 ```
 
-**94% reduction in complexity!** 🎉
+The simplicity comes from ASQL's alias reuse - you can reference computed columns immediately!
 
 ---
 

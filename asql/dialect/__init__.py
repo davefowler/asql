@@ -2,7 +2,7 @@
 
 This package provides the ASQL dialect for SQLGlot, consisting of:
 - Tokenizer: Handles ASQL-specific token mappings
-- Parser: Parses ASQL pipeline syntax
+- Parser: Parses ASQL pipe syntax
 - Generator: Converts AST back to ASQL strings
 - Dialect: The main dialect class connecting all components
 

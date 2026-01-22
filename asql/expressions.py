@@ -8,7 +8,7 @@ from __future__ import annotations
 from sqlglot import exp
 
 
-__all__ = ["Spine", "CohortBy"]
+__all__ = ["Spine"]
 
 
 class Spine(exp.Func):
@@ -34,54 +34,3 @@ class Spine(exp.Func):
         if hasattr(inner, 'output_name'):
             return inner.output_name
         return ""
-
-
-class CohortBy(exp.Expression):
-    """Cohort analysis clause.
-    
-    Syntax: cohort by month(users.signup_date) on user_id
-    
-    This replaces the _cohort_info attribute hack with a proper AST node.
-    The cohort transform reads this clause and generates:
-    - cohort_base CTE (user → cohort mapping)
-    - cohort_sizes CTE (cohort → size)
-    - JOINs to attach cohort info
-    - Modified GROUP BY and SELECT
-    
-    Args:
-        this: The cohort column expression (e.g., month(users.signup_date))
-        granularity: Time granularity string ("month", "week", "day")
-        join_key: Column to join on (e.g., user_id)
-        segments: Optional list of segment expressions
-    """
-    arg_types = {
-        "this": True,           # Cohort column expression
-        "granularity": False,   # Granularity string literal
-        "join_key": False,      # Join key column/identifier
-        "segments": False,      # List of segment expressions
-    }
-    
-    @property
-    def cohort_column(self) -> exp.Expression:
-        """Get the cohort column expression."""
-        return self.this
-    
-    @property
-    def granularity_value(self) -> str | None:
-        """Get the granularity as a string."""
-        gran = self.args.get("granularity")
-        if isinstance(gran, exp.Literal):
-            return gran.this
-        return None
-    
-    @property
-    def join_key_value(self) -> str | None:
-        """Get the join key as a string."""
-        key = self.args.get("join_key")
-        if isinstance(key, exp.Identifier):
-            return key.name
-        if isinstance(key, exp.Column):
-            return key.name
-        if isinstance(key, str):
-            return key
-        return None

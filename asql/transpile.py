@@ -150,6 +150,7 @@ def _apply_dialect_transforms(
     They need to know the target dialect to emit correct SQL patterns.
     
     Transform order:
+    0. Strip GROUP BY aliases (ASQL syntax cleanup → valid SQL)
     1. Spine transform (exp.Spine → gap-filling CTEs)
     2. Alias reuse (same-row refs → CTE chain for non-DuckDB)
     3. Column operators (* EXCEPT → explicit columns for unsupported dialects)
@@ -170,6 +171,9 @@ def _apply_dialect_transforms(
     if settings is None:
         settings = CompileSettings()
     
+    # 0. Strip aliases from GROUP BY (ASQL allows, SQL doesn't)
+    ast = _strip_group_by_aliases(ast)
+    
     # 1. Spine transform (process exp.Spine nodes)
     ast = _transform_spine(ast, dialect, settings)
     
@@ -181,6 +185,34 @@ def _apply_dialect_transforms(
     
     # 4. List comprehension (DuckDB native, others need ARRAY(SELECT))
     ast = _transform_list_comprehension(ast, dialect)
+    
+    return ast
+
+
+def _strip_group_by_aliases(ast: exp.Expression) -> exp.Expression:
+    """Convert GROUP BY aliases to alias references.
+    
+    ASQL allows: group by month(date) as cohort (count(*))
+    SQL standard: GROUP BY cohort (reference the SELECT alias)
+    
+    This transform converts GROUP BY Alias(expr, name) to GROUP BY name,
+    which is supported by all major SQL dialects.
+    """
+    for select in ast.find_all(exp.Select):
+        group = select.find(exp.Group)
+        if not group:
+            continue
+        
+        new_exprs = []
+        for group_expr in group.expressions:
+            if isinstance(group_expr, exp.Alias):
+                # Convert to alias reference: GROUP BY cohort
+                alias_name = group_expr.alias
+                new_exprs.append(exp.Column(this=exp.to_identifier(alias_name)))
+            else:
+                new_exprs.append(group_expr)
+        
+        group.set("expressions", new_exprs)
     
     return ast
 

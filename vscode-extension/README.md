@@ -7,7 +7,7 @@ VS Code extension providing syntax highlighting, snippets, and language support 
 - ✅ **Syntax Highlighting** - Full TextMate grammar support for ASQL syntax
 - ✅ **Code Snippets** - Quick snippets for common ASQL patterns
 - ✅ **Language Configuration** - Comments, brackets, auto-closing pairs
-- ✅ **Indentation Support** - Smart indentation for pipeline syntax
+- ✅ **Indentation Support** - Smart indentation for pipe syntax
 
 ## Installation
 
@@ -88,7 +88,7 @@ The extension highlights:
 - Quotes: `""` and `''`
 
 ### Indentation
-The extension supports smart indentation for ASQL's pipeline syntax:
+The extension supports smart indentation for ASQL's pipe syntax:
 ```asql
 from users
   where status == "active"

@@ -90,8 +90,7 @@ function hideGlobalError() {
 let inputEditor, outputEditor;
 
 // Example arrays - will be set from EXAMPLES_DATA injected by server
-let asqlExamples = [];
-let asqlPipelineExamples = [];
+let pipeExamples = [];
 let cohortExamples = [];
 let samplingExamples = [];
 let dataReshapingExamples = [];
@@ -157,8 +156,7 @@ if (isEmbedded) {
 // ========== Initialize Examples Data ==========
 // This function is called from the inline script with EXAMPLES_DATA
 window.initializeExamplesData = function(data) {
-    asqlExamples = data.asql || [];
-    asqlPipelineExamples = data.pipeline || [];
+    pipeExamples = data.pipe || [];
     cohortExamples = data.cohort || [];
     samplingExamples = data.sampling || [];
     dataReshapingExamples = data.reshaping || [];
@@ -1195,6 +1193,12 @@ async function translateQuery() {
         }
     };
     
+    const hideError = () => {
+        errorDiv.style.display = 'none';
+        errorDiv.className = '';
+        errorDiv.textContent = '';
+    };
+    
     try {
         if (currentMode === 'asql-to-sql') {
             // If output is visual-asql, parse to visual representation
@@ -1558,14 +1562,10 @@ function loadExamples() {
     try {
         container.innerHTML = '';
         
-        // Always show all ASQL examples - they will set direction to ASQL -> SQL when clicked
-        createExampleSection(container, 'Basic Examples',
-            'Basic ASQL queries that showcase the language syntax.',
-            asqlExamples, { ensureAsql: true });
-        
-        createExampleSection(container, 'ASQL Pipeline Examples',
-            'Complex queries that showcase pipeline features and generate multiple CTEs.',
-            asqlPipelineExamples, { ensureAsql: true });
+        // ASQL examples - they will set direction to ASQL -> SQL when clicked
+        createExampleSection(container, 'ASQL Pipe Syntax Examples',
+            'Queries showcasing ASQL pipe syntax features.',
+            pipeExamples, { ensureAsql: true });
         
         createExampleSection(container, 'Cohort Analysis Examples',
             'Cohort analysis patterns using first(), running_sum(), prior(), and other window functions.',

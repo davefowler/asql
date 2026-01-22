@@ -58,8 +58,8 @@ serve: _kill-servers
     echo "=================================================="
     echo ""
     
-    # Start both servers
-    ./venv/bin/uvicorn playground:app --reload --host 0.0.0.0 --port 5001 &
+    # Start both servers (watch static files for CSS/JS changes)
+    ./venv/bin/uvicorn playground:app --reload --reload-dir playground/static --reload-dir playground/templates --host 0.0.0.0 --port 5001 &
     PLAYGROUND_PID=$!
     ./venv/bin/python -m mkdocs serve --livereload &
     MKDOCS_PID=$!
@@ -76,6 +76,29 @@ docs-build:
     ./venv/bin/python -m mkdocs build
 
 # ============================================================================
+# UTILITIES
+# ============================================================================
+
+# Generate visual ASQL examples from ASQL source queries (edit the script to update examples)
+gen-visual-examples:
+    ./venv/bin/python scripts/generate_visual_examples.py
+
+# Kill development servers on ports 8000 and 5001
+kill:
+    #!/usr/bin/env bash
+    for port in 8000 5001; do
+        pids=$(lsof -nP -iTCP:$port -sTCP:LISTEN -t 2>/dev/null || true)
+        if [[ -n "$pids" ]]; then
+            echo "Killing process(es) on port $port: $pids"
+            kill -9 $pids 2>/dev/null || true
+        fi
+    done
+    pkill -9 -f "uvicorn .*playground:app" 2>/dev/null || true
+    pkill -9 -f "mkdocs serve" 2>/dev/null || true
+    sleep 1
+    echo "✓ Development servers stopped"
+
+# ============================================================================
 # INTERNAL
 # ============================================================================
 
@@ -84,8 +107,8 @@ _kill-servers:
     #!/usr/bin/env bash
     for port in 8000 5001; do
         pids=$(lsof -nP -iTCP:$port -sTCP:LISTEN -t 2>/dev/null || true)
-        [[ -n "$pids" ]] && kill $pids 2>/dev/null || true
+        [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null || true
     done
-    pkill -f "uvicorn .*playground:app" 2>/dev/null || true
-    pkill -f "mkdocs serve" 2>/dev/null || true
-    sleep 0.5
+    pkill -9 -f "uvicorn .*playground:app" 2>/dev/null || true
+    pkill -9 -f "mkdocs serve" 2>/dev/null || true
+    sleep 1

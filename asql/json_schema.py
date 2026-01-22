@@ -66,6 +66,9 @@ def json_to_asql(query_json: Union[Dict[str, Any], List[Dict[str, Any]]]) -> str
                 if set_op.get("all"):
                     op_type += " ALL"
                 result_lines.append(op_type)
+            elif i > 0:
+                # Add semicolon to separate independent pipelines
+                result_lines.append(";")
 
             pipeline_asql = _pipeline_to_asql(pipeline)
             result_lines.append(pipeline_asql)
@@ -343,10 +346,11 @@ def _expression_to_asql(expr: Union[Dict[str, Any], str]) -> str:
             escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
 
-    elif expr_type == "binary_op":
+    elif expr_type == "binary" or expr_type == "binary_op":
         left = _expression_to_asql(expr.get("left", {}))
         right = _expression_to_asql(expr.get("right", {}))
-        operator = expr.get("operator", "=")
+        # Support both 'op' (generator format) and 'operator' (legacy format)
+        operator = expr.get("op") or expr.get("operator", "=")
 
         # Convert SQL = to ASQL ==
         if operator == "=":

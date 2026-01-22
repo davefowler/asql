@@ -6,7 +6,7 @@ This document describes the actual implementation of Analytic SQL (ASQL), a pipe
 
 ## Overview
 
-Analytic SQL is implemented as a Python library that parses ASQL syntax and generates standard SQL using SQLGlot. The system uses a custom parser to handle ASQL's unique pipeline syntax, then transforms the parsed structure into SQLGlot's AST for SQL generation.
+Analytic SQL is implemented as a Python library that parses ASQL syntax and generates standard SQL using SQLGlot. The system uses a custom parser to handle ASQL's unique pipe syntax, then transforms the parsed structure into SQLGlot's AST for SQL generation.
 
 ## High-Level Flow
 
@@ -19,7 +19,7 @@ ASQL Text
   → SQL String
 ```
 
-The key insight is that ASQL's pipeline syntax is transformed into SQL Common Table Expressions (CTEs), where each pipeline step becomes a CTE that feeds into the next step.
+The key insight is that ASQL's pipe syntax is transformed into SQL Common Table Expressions (CTEs), where each pipeline step becomes a CTE that feeds into the next step.
 
 ## Core Components
 
@@ -28,7 +28,7 @@ The key insight is that ASQL's pipeline syntax is transformed into SQL Common Ta
 The `ASQLParser` class handles parsing ASQL syntax into an internal representation that can be converted to SQLGlot AST.
 
 **Key Responsibilities:**
-- Parse pipeline syntax (`from`, `where`, `group by`, `order by`, `limit`)
+- Parse pipe syntax (`from`, `where`, `group by`, `order by`, `limit`)
 - Handle ASQL-specific operators (`==`, `!=`, `#` for count)
 - Parse expressions and aggregations
 - Handle `with` statements for CTEs

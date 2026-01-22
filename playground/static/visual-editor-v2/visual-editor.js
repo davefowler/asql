@@ -4,8 +4,8 @@
  * ARCHITECTURE PRINCIPLES:
  * ========================
  * 1. THE UI IS "DUMB" - No business logic here. All smarts come from the backend.
- *    - Transform schemas/metadata come from /api/metadata
- *    - Column options come from output_columns populated by SQLGlot qualify
+ *    - Transform schemas/metadata come from /api/visual/metadata
+ *    - Column options come from output_columns populated by SQLGlot qualify()
  *    - This component just RENDERS what it's told
  *
  * 2. STYLE MODES ARE CSS-ONLY (except Pipes mode)
@@ -15,11 +15,12 @@
  *
  * 3. COLUMN DROPDOWNS depend on output_columns from backend
  *    - Each transform should have output_columns populated by the backend
- *    - The backend uses SQLGlot's qualify() with the schema
+ *    - The backend uses SQLGlot's qualify() with the schema (see app.py enrich_query_with_columns)
  *    - If dropdowns show text inputs instead of selects, check output_columns
+ *    - Column input created via createColumnInput() method
  *
  * 4. DON'T ADD UI LOGIC - If something looks wrong:
- *    - Check the metadata (transform schemas from /api/metadata)
+ *    - Check the metadata (transform schemas from /api/visual/metadata)
  *    - Check output_columns on the transform (from /api/visual/transpile)
  *    - Fix the DATA, not the rendering code
  *
@@ -28,6 +29,7 @@
  * - SortableJS for drag-and-drop reordering
  * - Metadata-driven UI generation
  * - Both blocky and text style modes via CSS
+ * - Pipes mode for CTE visualization
  */
 
 class VisualEditorV2 {
@@ -1010,12 +1012,13 @@ class VisualEditorV2 {
   renderAggregateList(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
     const aggregates = this.metadata.aggregates || {};
+    const schemaContext = this.getSchemaContext(pipelineIdx, transformIdx);
 
     const container = document.createElement('div');
     container.className = 'aggregate-list';
 
     items.forEach((item, idx) => {
-      const itemEl = this.renderAggregateItem(item, idx, transform, param, pipelineIdx, transformIdx, aggregates);
+      const itemEl = this.renderAggregateItem(item, idx, transform, param, pipelineIdx, aggregates, schemaContext);
       container.appendChild(itemEl);
     });
 
@@ -1043,7 +1046,7 @@ class VisualEditorV2 {
   /**
    * Render a single aggregate item
    */
-  renderAggregateItem(item, idx, transform, param, pipelineIdx, transformIdx, aggregates) {
+  renderAggregateItem(item, idx, transform, param, pipelineIdx, aggregates, schemaContext) {
     const wrapper = document.createElement('div');
     wrapper.className = `aggregate-item ${item.alias ? 'has-alias' : ''}`;
     wrapper.dataset.index = idx;
@@ -1081,16 +1084,17 @@ class VisualEditorV2 {
     openParen.textContent = '(';
     expr.appendChild(openParen);
 
-    // Column input
-    const colInput = document.createElement('input');
-    colInput.type = 'text';
-    colInput.className = 'column-autocomplete';
-    colInput.value = item.column || (item.function === 'count' ? '*' : '');
-    colInput.placeholder = item.function === 'count' ? '*' : 'column';
-    colInput.addEventListener('input', (e) => {
-      item.column = e.target.value === '*' ? '' : e.target.value;
-      this.notifyChange();
-    });
+    // Column input with dropdown
+    const columns = schemaContext?.columns || [];
+    const colInput = this.createColumnInput(
+      item.column || (item.function === 'count' ? '*' : ''),
+      item.function === 'count' ? '*' : 'column',
+      columns,
+      (value) => {
+        item.column = value === '*' ? '' : value;
+        this.notifyChange();
+      }
+    );
     expr.appendChild(colInput);
 
     // Close paren
@@ -1151,12 +1155,13 @@ class VisualEditorV2 {
    */
   renderOrderList(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
+    const schemaContext = this.getSchemaContext(pipelineIdx, transformIdx);
 
     const container = document.createElement('div');
     container.className = 'order-list';
 
     items.forEach((item, idx) => {
-      const itemEl = this.renderOrderItem(item, idx, transform, param, pipelineIdx, transformIdx);
+      const itemEl = this.renderOrderItem(item, idx, transform, param, pipelineIdx, schemaContext);
       container.appendChild(itemEl);
     });
 
@@ -1178,7 +1183,7 @@ class VisualEditorV2 {
   /**
    * Render order by item
    */
-  renderOrderItem(item, idx, transform, param, pipelineIdx, transformIdx) {
+  renderOrderItem(item, idx, transform, param, pipelineIdx, schemaContext) {
     const wrapper = document.createElement('div');
     wrapper.className = 'order-item';
     wrapper.dataset.index = idx;
@@ -1189,16 +1194,17 @@ class VisualEditorV2 {
     handle.innerHTML = '⋮⋮';
     wrapper.appendChild(handle);
 
-    // Column input
-    const colInput = document.createElement('input');
-    colInput.type = 'text';
-    colInput.className = 'column-autocomplete';
-    colInput.value = item.column || '';
-    colInput.placeholder = 'column';
-    colInput.addEventListener('input', (e) => {
-      item.column = e.target.value;
-      this.notifyChange();
-    });
+    // Column input with dropdown
+    const columns = schemaContext?.columns || [];
+    const colInput = this.createColumnInput(
+      item.column || '',
+      'column',
+      columns,
+      (value) => {
+        item.column = value;
+        this.notifyChange();
+      }
+    );
     wrapper.appendChild(colInput);
 
     // Direction toggle
@@ -1378,6 +1384,102 @@ class VisualEditorV2 {
     block.className = 'block error-block';
     block.innerHTML = `<div class="block-body"><span class="error">${this.escapeHtml(message)}</span></div>`;
     return block;
+  }
+
+  /**
+   * Create a column input with dropdown autocomplete
+   *
+   * This uses output_columns from the backend to populate dropdown options.
+   * If dropdowns aren't showing, check that output_columns are being populated.
+   */
+  createColumnInput(value, placeholder, columns, onChange) {
+    const container = document.createElement('span');
+    container.className = 'column-input-container';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'column-autocomplete';
+    input.value = value || '';
+    input.placeholder = placeholder || 'column';
+    input.addEventListener('input', (e) => onChange(e.target.value));
+
+    container.appendChild(input);
+
+    // Create dropdown menu (hidden by default)
+    const dropdown = document.createElement('div');
+    dropdown.className = 'column-dropdown';
+
+    const updateDropdown = () => {
+      dropdown.innerHTML = '';
+
+      if (columns.length === 0) {
+        const emptyItem = document.createElement('div');
+        emptyItem.className = 'column-dropdown-empty';
+        emptyItem.textContent = 'No columns available';
+        dropdown.appendChild(emptyItem);
+        return;
+      }
+
+      // Show ALL columns - sort matching ones to top
+      const rawFilter = input.value.toLowerCase();
+      const filterValue = rawFilter.includes('.') ? rawFilter.split('.').pop() : rawFilter;
+
+      // Sort: exact matches first, then partial matches, then rest
+      const sortedCols = [...columns].sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        const aExact = aName === filterValue;
+        const bExact = bName === filterValue;
+        const aPartial = filterValue && (aName.includes(filterValue) || filterValue.includes(aName));
+        const bPartial = filterValue && (bName.includes(filterValue) || filterValue.includes(bName));
+
+        if (aExact && !bExact) return -1;
+        if (bExact && !aExact) return 1;
+        if (aPartial && !bPartial) return -1;
+        if (bPartial && !aPartial) return 1;
+        return aName.localeCompare(bName);
+      });
+
+      sortedCols.forEach(col => {
+        const item = document.createElement('div');
+        item.className = 'column-dropdown-item';
+        item.textContent = col.name;
+        if (col.type) {
+          const typeSpan = document.createElement('span');
+          typeSpan.className = 'column-type';
+          typeSpan.textContent = col.type;
+          item.appendChild(typeSpan);
+        }
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault(); // Prevent blur
+          input.value = col.name;
+          onChange(col.name);
+          dropdown.classList.remove('visible');
+        });
+        dropdown.appendChild(item);
+      });
+    };
+
+    container.appendChild(dropdown);
+
+    // Show dropdown on focus
+    input.addEventListener('focus', () => {
+      updateDropdown();
+      dropdown.classList.add('visible');
+    });
+
+    // Update dropdown on input
+    input.addEventListener('input', () => {
+      updateDropdown();
+    });
+
+    // Hide dropdown on blur
+    input.addEventListener('blur', () => {
+      // Small delay to allow click on dropdown item
+      setTimeout(() => dropdown.classList.remove('visible'), 150);
+    });
+
+    return container;
   }
 
   /**

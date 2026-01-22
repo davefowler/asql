@@ -158,18 +158,41 @@ class VisualASQLGenerator(Generator):
         current_columns: t.List[t.Dict[str, t.Any]] = []
         transform_id = 0
 
+        # Pre-extract column references from the query for fallback when no schema
+        inferred_columns_by_table = self._extract_columns_from_query(expression)
+
         # Extract top-level comments from the SELECT statement
         pipeline_comments = self._get_comments(expression)
         if pipeline_comments:
             result["comments"] = pipeline_comments
 
+        # Check if this is a multi-table query (has JOINs)
+        has_joins = bool(expression.args.get("joins"))
+        
         # FROM clause (uses 'from_' because 'from' is a Python keyword)
         if from_clause := expression.args.get("from_"):
             table_expr = from_clause.this
             if table_expr:
                 table_name = self._get_table_name(table_expr)
                 table_alias = self._get_alias(table_expr)
-                table_cols = self._get_table_columns(table_name)
+                # Only qualify column names if there are joins (to avoid ambiguity)
+                table_cols = self._get_table_columns(table_name, qualify=has_joins)
+                
+                # If no schema columns, use inferred columns from query
+                if not table_cols:
+                    # Get columns for this table (try both name and alias)
+                    table_cols = inferred_columns_by_table.get(table_name, [])
+                    if table_alias and table_alias != table_name:
+                        table_cols = table_cols + inferred_columns_by_table.get(table_alias, [])
+                    # Deduplicate by name
+                    seen = set()
+                    unique_cols = []
+                    for col in table_cols:
+                        if col["name"] not in seen:
+                            seen.add(col["name"])
+                            unique_cols.append(col)
+                    table_cols = unique_cols
+                
                 current_columns = table_cols.copy()
 
                 from_comments = self._get_comments(from_clause) or self._get_comments(table_expr)
@@ -187,6 +210,21 @@ class VisualASQLGenerator(Generator):
             join_table = self._get_table_name(join_table_expr)
             join_alias = self._get_alias(join_table_expr)
             join_cols = self._get_table_columns(join_table)
+            
+            # If no schema columns, use inferred columns from query
+            if not join_cols:
+                join_cols = inferred_columns_by_table.get(join_table, [])
+                if join_alias and join_alias != join_table:
+                    join_cols = join_cols + inferred_columns_by_table.get(join_alias, [])
+                # Deduplicate by name
+                seen = set()
+                unique_cols = []
+                for col in join_cols:
+                    if col["name"] not in seen:
+                        seen.add(col["name"])
+                        unique_cols.append(col)
+                join_cols = unique_cols
+            
             current_columns.extend(join_cols)
 
             join_type = self._get_join_type(join)
@@ -227,7 +265,7 @@ class VisualASQLGenerator(Generator):
             dims, aggs = self._extract_group_by_columns(expression, group)
             current_columns = dims + aggs
 
-            transform = {
+            transform = { 
                 "id": f"t{transform_id}",
                 "type": "group_by",
                 "dimensions": [d["name"] for d in dims],
@@ -366,8 +404,13 @@ class VisualASQLGenerator(Generator):
         collect(expr)
         return comments
 
-    def _get_table_columns(self, table_name: str) -> t.List[t.Dict[str, t.Any]]:
-        """Get columns for a table from schema."""
+    def _get_table_columns(self, table_name: str, qualify: bool = True) -> t.List[t.Dict[str, t.Any]]:
+        """Get columns for a table from schema.
+        
+        Args:
+            table_name: The table name to look up
+            qualify: If True, include qualified name (table.column) for disambiguation
+        """
         if not self._schema:
             return []
 
@@ -381,8 +424,10 @@ class VisualASQLGenerator(Generator):
                     exp.column(col)
                 )
                 type_str = str(col_type) if col_type else "UNKNOWN"
+                # Use qualified name (table.column) for clarity after JOINs
+                qualified_name = f"{table_name}.{col}" if qualify else col
                 result.append({
-                    "name": col,
+                    "name": qualified_name,
                     "type": type_str,
                     "source": table_name,
                 })
@@ -390,6 +435,55 @@ class VisualASQLGenerator(Generator):
         except (KeyError, AttributeError, TypeError, ValueError):
             # Schema lookup can fail for missing tables, invalid column refs, etc.
             return []
+
+    def _extract_columns_from_query(
+        self, expression: exp.Select
+    ) -> t.Dict[str, t.List[t.Dict[str, t.Any]]]:
+        """Extract all column references from a query, grouped by table.
+        
+        Uses SQLGlot's find_all() to locate all Column nodes in the AST.
+        Provides fallback column info when no schema is available.
+        """
+        columns_by_table: t.Dict[str, t.List[t.Dict[str, t.Any]]] = {}
+        seen: t.Set[str] = set()
+        
+        # Get FROM table name for unqualified columns in single-table queries
+        from_table_name: t.Optional[str] = None
+        if from_clause := expression.args.get("from_"):
+            if table_expr := from_clause.this:
+                from_table_name = self._get_table_name(table_expr)
+        
+        # Count tables to determine if single or multi-table query
+        table_count = 1 if from_table_name else 0
+        table_count += len(expression.args.get("joins") or [])
+        
+        # Use SQLGlot's find_all to get all Column nodes
+        for col in expression.find_all(exp.Column):
+            table = col.table
+            name = col.name
+            if not name:
+                continue
+            
+            # For single-table queries, unqualified columns belong to FROM table
+            if not table and table_count == 1 and from_table_name:
+                table = from_table_name
+            
+            # Build qualified key for deduplication
+            qualified_key = f"{table}.{name}" if table else name
+            if qualified_key in seen:
+                continue
+            seen.add(qualified_key)
+            
+            # Group by table (or "_unqualified_" if no table)
+            source = table or "_unqualified_"
+            if source not in columns_by_table:
+                columns_by_table[source] = []
+            columns_by_table[source].append({
+                "name": name,  # Use just the column name, not qualified
+                "source": table,
+            })
+        
+        return columns_by_table
 
     def _get_join_type(self, join: exp.Join) -> str:
         """Extract join type from Join expression using declarative dict lookup."""
@@ -442,8 +536,8 @@ class VisualASQLGenerator(Generator):
         # Binary comparison operators (uses class-level _BINARY_OP_MAP)
         elif isinstance(expr, (exp.EQ, exp.NEQ, exp.LT, exp.GT, exp.LTE, exp.GTE)):
             return {
-                "type": "binary_op",
-                "operator": self._BINARY_OP_MAP.get(type(expr), "="),
+                "type": "binary",
+                "op": self._BINARY_OP_MAP.get(type(expr), "="),
                 "left": self._expression_to_json(expr.this),
                 "right": self._expression_to_json(expr.expression),
             }
@@ -451,16 +545,16 @@ class VisualASQLGenerator(Generator):
         # Logical operators
         elif isinstance(expr, exp.And):
             return {
-                "type": "binary_op",
-                "operator": "and",
+                "type": "binary",
+                "op": "AND",
                 "left": self._expression_to_json(expr.this),
                 "right": self._expression_to_json(expr.expression),
             }
 
         elif isinstance(expr, exp.Or):
             return {
-                "type": "binary_op",
-                "operator": "or",
+                "type": "binary",
+                "op": "OR",
                 "left": self._expression_to_json(expr.this),
                 "right": self._expression_to_json(expr.expression),
             }

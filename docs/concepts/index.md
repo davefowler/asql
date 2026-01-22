@@ -4,7 +4,7 @@ This section explains the core ideas and design values behind ASQL.
 
 ## Core Concepts
 
-- **[Pipeline Semantics](pipelines.md)** — Why FROM-first and what it means for your queries
+- **[Pipe Semantics](pipe-semantics.md)** — Why FROM-first and what it means for your queries
 - **[Guaranteed Groups](guaranteed-groups.md)** — Automatic gap-filling for complete analytics
 - **[Convention Over Configuration](conventions.md)** — How ASQL infers relationships and defaults
 - **[Function Shorthand](shorthand.md)** — Underscore/space flexibility explained
@@ -30,8 +30,8 @@ ASQL writes queries in the order they execute. Data flows top-to-bottom. This no
 
 #### Related Features
 
-- [Pipeline Semantics](pipelines.md) — deep dive on execution order
-- [Pipeline Syntax](../syntax/pipeline.md) — FROM-first query structure
+- [Pipe Semantics](pipe-semantics.md) — deep dive on execution order
+- [Pipe Syntax](../syntax/pipe.md) — FROM-first query structure
 - [Aggregations](../syntax/aggregations.md) — no HAVING keyword needed
 
 ### 2. Convention Over Configuration
@@ -120,6 +120,6 @@ ASQL preserves your `--` comments through transpilation. It also adds helpful co
 
 ## Next Steps
 
-- **[Pipeline Semantics](pipelines.md)** — Deep dive into FROM-first design
+- **[Pipe Semantics](pipe-semantics.md)** — Deep dive into FROM-first design
 - **[Guaranteed Groups](guaranteed-groups.md)** — Understanding automatic gap-filling
 - **[Syntax Guide](../syntax/index.md)** — Complete syntax reference

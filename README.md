@@ -1,6 +1,6 @@
 # ASQL: Analytic SQL
 
-A modern, pipeline-based query language that transpiles to SQL. ASQL uses a FROM-first, pipeline-based syntax that makes complex analytics queries more readable and intuitive.
+A modern, pipe-based query language that transpiles to SQL. ASQL uses a FROM-first, pipe syntax that makes complex analytics queries more readable and intuitive.
 
 ## Features
 
@@ -38,7 +38,7 @@ ASQL has VS Code extension support for syntax highlighting, snippets, and langua
 ✨ **Features**:
 - Syntax highlighting for ASQL keywords, operators, and functions
 - Code snippets for common query patterns
-- Smart indentation for pipeline syntax
+- Smart indentation for pipe syntax
 - File association for `.asql` files
 
 For more details, see [`vscode-extension/VSCODE_INTEGRATION.md`](vscode-extension/VSCODE_INTEGRATION.md).
@@ -162,7 +162,7 @@ sorting_and_limiting.example_complete_pipeline()
 
 ### Basic Syntax
 
-ASQL uses a pipeline-based syntax where operations flow from top to bottom:
+ASQL uses a pipe syntax where operations flow from top to bottom:
 
 ```asql
 from users                    # Start with a table

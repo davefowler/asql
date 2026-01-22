@@ -1,6 +1,6 @@
 # ASQL: SQL with Analytics Built In
 
-Analytic SQL (ASQL) is a query language designed for analytics work. It adds **built-in analytics features** that SQL lacks—guaranteed complete results, cohort analysis, cross-dialect date handling—and uses a pipeline syntax that flows top-to-bottom.
+Analytic SQL (ASQL) is a query language designed for analytics work. It adds **built-in analytics features** that SQL lacks—guaranteed complete results, cohort analysis, cross-dialect date handling—and uses a pipe syntax that flows top-to-bottom.
 
 Think of it as SQL with analytics superpowers. Write ASQL, get standard SQL for any dialect.
 
@@ -156,7 +156,7 @@ When your tables follow standard naming conventions (`user_id` → `users.id`), 
 
 ---
 
-## Pipeline Syntax
+## Pipe Syntax
 
 ASQL queries flow top-to-bottom in execution order:
 
@@ -325,14 +325,14 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 Understanding ASQL's design:
 
 - [Guaranteed Groups](concepts/guaranteed-groups.md) — Automatic gap-filling
-- [Pipeline Semantics](concepts/pipelines.md) — Why FROM-first matters
+- [Pipe Semantics](concepts/pipe-semantics.md) — Why FROM-first matters
 - [Convention Over Configuration](concepts/conventions.md) — Smart defaults
 - [Function Shorthand](concepts/shorthand.md) — Underscore/space flexibility
 
 ### Syntax Guide
 
 - [Syntax Overview](syntax/index.md) — All syntax documentation
-- [Pipeline Basics](syntax/pipeline.md) — FROM-first queries, chaining
+- [Pipe Basics](syntax/pipe.md) — FROM-first queries, chaining
 - [Aggregations](syntax/aggregations.md) — GROUP BY deep dive
 - [Joins](syntax/joins.md) — Join operators, FK inference
 - [Dates & Time](syntax/dates.md) — Date functions, arithmetic
@@ -361,7 +361,7 @@ Understanding ASQL's design:
 - [pandas](https://pandas.pydata.org/) — Method chaining, column operations
 - [PRQL](https://prql-lang.org/) — Pipeline approach to SQL
 - [dbt](https://www.getdbt.com/) — Many ASQL features are built-in versions of dbt macro patterns
-- [Kusto/KQL](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/) — Pipeline syntax at scale
+- [Kusto/KQL](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/query/) — Pipe syntax at scale
 
 ---
 

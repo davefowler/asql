@@ -1,6 +1,6 @@
 """Real-world SQL examples from Fivetran dbt models, converted to ASQL.
 
-These examples showcase how ASQL's pipeline syntax simplifies complex queries
+These examples showcase how ASQL's pipe syntax simplifies complex queries
 from production dbt models. Original SQL from:
 - https://github.com/fivetran/dbt_shopify
 - https://github.com/fivetran/dbt_stripe  
@@ -94,7 +94,7 @@ select
     refund_transactions.total_order_refund_amount as refund_amount
 """
     print(asql.strip())
-    print("\nNote: ASQL's pipeline syntax makes each transformation step clear!")
+    print("\nNote: ASQL's pipe syntax makes each transformation step clear!")
 
 
 def example_2_stripe_customer_overview() -> None:
@@ -430,7 +430,7 @@ select
     ) as cohort_month_number
 """
     print(asql.strip())
-    print("\nNote: ASQL's pipeline syntax makes cohort analysis more readable!")
+    print("\nNote: ASQL's pipe syntax makes cohort analysis more readable!")
 
 
 if __name__ == "__main__":

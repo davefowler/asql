@@ -423,17 +423,6 @@
         { "name": "columns", "type": "column[]", "required": false, "widget": "list" }
       ]
     },
-    "cohort": {
-      "keywords": ["COHORT"],
-      "label": "Cohort",
-      "category": "analytics",
-      "description": "Cohort retention analysis",
-      "parameters": [
-        { "name": "entity", "type": "column", "required": true, "widget": "text" },
-        { "name": "cohort_date", "type": "column", "required": true, "widget": "text" },
-        { "name": "event_date", "type": "column", "required": true, "widget": "text" }
-      ]
-    },
     "spine": {
       "keywords": ["SPINE"],
       "label": "Spine",

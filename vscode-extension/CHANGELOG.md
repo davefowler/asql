@@ -10,7 +10,7 @@ All notable changes to the ASQL VS Code extension will be documented in this fil
 - TextMate grammar for ASQL syntax
 - Code snippets for common ASQL patterns
 - Language configuration (comments, brackets, auto-closing)
-- Indentation support for pipeline syntax
+- Indentation support for pipe syntax
 - File association for `.asql` files
 
 ### Features

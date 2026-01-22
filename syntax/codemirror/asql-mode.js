@@ -102,6 +102,8 @@
         "ends": true, "iends": true, "matches": true,
         // Cohort analysis
         "cohort": true,
+        // Spine (gap-filling)
+        "spine": true,
         // Deduplication
         "deduplicate": true,
         // Sampling

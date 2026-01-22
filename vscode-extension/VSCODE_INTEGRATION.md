@@ -57,7 +57,7 @@ Configured in `language-configuration.json`:
 - **Brackets**: `()`, `[]`, `{}`
 - **Auto-closing**: Parentheses, brackets, quotes
 - **Word pattern**: Identifiers (alphanumeric + underscore)
-- **Indentation**: Smart indentation for pipeline syntax
+- **Indentation**: Smart indentation for pipe syntax
 
 ### 4. File Association
 
