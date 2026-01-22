@@ -250,4 +250,4 @@ order by cohort, period
 
 - [Window Functions](window-functions.md) - `first()`, `running_sum()`, and other functions useful for cohorts
 - [Date Functions](dates.md) - `month()`, `week()`, date arithmetic
-- [Spine (Gap Filling)](spine.md) - Ensuring complete time series
+- [Spine (Gap Filling)](../spec.md#spine-by-gap-filling) - Ensuring complete time series

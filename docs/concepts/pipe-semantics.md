@@ -209,6 +209,6 @@ ASQL transpiles to SQL, so you can always use the generated SQL directly.
 
 ## Next Steps
 
-- **[Pipeline Basics](../syntax/pipeline.md)** — Syntax reference
+- **[Pipe Basics](../syntax/pipe.md)** — Syntax reference
 - **[CTEs & Variables](../syntax/ctes.md)** — When you do need CTEs
 - **[Convention Over Configuration](conventions.md)** — How ASQL infers defaults

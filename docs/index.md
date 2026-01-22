@@ -332,7 +332,7 @@ Understanding ASQL's design:
 ### Syntax Guide
 
 - [Syntax Overview](syntax/index.md) — All syntax documentation
-- [Pipeline Basics](syntax/pipeline.md) — FROM-first queries, chaining
+- [Pipe Basics](syntax/pipe.md) — FROM-first queries, chaining
 - [Aggregations](syntax/aggregations.md) — GROUP BY deep dive
 - [Joins](syntax/joins.md) — Join operators, FK inference
 - [Dates & Time](syntax/dates.md) — Date functions, arithmetic

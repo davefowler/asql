@@ -2,8 +2,7 @@
 
 from .jinja_utils import strip_jinja_templates
 from .examples import (
-    ASQL_EXAMPLES,
-    PIPELINE_EXAMPLES, 
+    PIPE_EXAMPLES,
     COHORT_EXAMPLES,
     SAMPLING_EXAMPLES,
     RESHAPING_EXAMPLES,
@@ -30,8 +29,7 @@ from .app import app
 
 __all__ = [
     "strip_jinja_templates",
-    "ASQL_EXAMPLES",
-    "PIPELINE_EXAMPLES",
+    "PIPE_EXAMPLES",
     "COHORT_EXAMPLES", 
     "SAMPLING_EXAMPLES",
     "RESHAPING_EXAMPLES",

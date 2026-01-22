@@ -31,7 +31,7 @@ ASQL writes queries in the order they execute. Data flows top-to-bottom. This no
 #### Related Features
 
 - [Pipe Semantics](pipe-semantics.md) — deep dive on execution order
-- [Pipe Syntax](../syntax/pipeline.md) — FROM-first query structure
+- [Pipe Syntax](../syntax/pipe.md) — FROM-first query structure
 - [Aggregations](../syntax/aggregations.md) — no HAVING keyword needed
 
 ### 2. Convention Over Configuration
