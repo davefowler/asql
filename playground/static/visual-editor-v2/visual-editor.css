@@ -1697,3 +1697,458 @@
 .visual-style-pipes .pipe-node-body::-webkit-scrollbar-thumb:hover {
   background: #a0a4a9;
 }
+
+/* ============================================================================
+   ACCORDION STYLE MODE (Spreadsheet-like accordion)
+   ============================================================================ */
+
+.visual-style-accordion .visual-editor {
+  background: #f5f7fa;
+  padding: 16px;
+}
+
+/* Accordion container */
+.accordion-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Individual pipeline in accordion */
+.accordion-pipeline {
+  background: white;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+/* Pipeline header for CTEs */
+.accordion-pipeline-header {
+  background: linear-gradient(90deg, #f0f2f5, #e8ecf0);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid #e0e4e8;
+}
+
+.accordion-cte-badge {
+  background: var(--asql-red);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.accordion-cte-name {
+  font-weight: 600;
+  color: #24292f;
+  font-size: 14px;
+}
+
+/* Set operation between pipelines */
+.accordion-set-operation {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.accordion-set-op-badge {
+  background: linear-gradient(135deg, var(--asql-red), #a02828);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Accordion step (each pipeline step) */
+.accordion-step {
+  border-bottom: 1px solid #e8ecf0;
+  transition: all 0.2s ease;
+}
+
+.accordion-step:last-of-type {
+  border-bottom: none;
+}
+
+.accordion-step.collapsed {
+  background: #fafbfc;
+}
+
+.accordion-step.expanded {
+  background: white;
+}
+
+/* Step header */
+.accordion-step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.accordion-step-header:hover {
+  background: #f0f4f8;
+}
+
+.accordion-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.accordion-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #656d76;
+  font-size: 12px;
+}
+
+/* Step type badge */
+.accordion-step-type {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.accordion-step-type.type-from {
+  background: rgba(76, 175, 80, 0.15);
+  color: #2e7d32;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.accordion-step-type.type-where {
+  background: rgba(244, 67, 54, 0.15);
+  color: #c62828;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.accordion-step-type.type-select {
+  background: rgba(33, 150, 243, 0.15);
+  color: #1565c0;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.accordion-step-type.type-group_by {
+  background: rgba(255, 152, 0, 0.15);
+  color: #e65100;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+.accordion-step-type.type-order_by {
+  background: rgba(156, 39, 176, 0.15);
+  color: #7b1fa2;
+  border: 1px solid rgba(156, 39, 176, 0.3);
+}
+
+.accordion-step-type.type-limit {
+  background: rgba(121, 85, 72, 0.15);
+  color: #5d4037;
+  border: 1px solid rgba(121, 85, 72, 0.3);
+}
+
+.accordion-step-type.type-join {
+  background: rgba(0, 188, 212, 0.15);
+  color: #00838f;
+  border: 1px solid rgba(0, 188, 212, 0.3);
+}
+
+.accordion-step-type.type-extend {
+  background: rgba(103, 58, 183, 0.15);
+  color: #512da8;
+  border: 1px solid rgba(103, 58, 183, 0.3);
+}
+
+/* Step label */
+.accordion-step-label {
+  color: #24292f;
+  font-size: 13px;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* Column count */
+.accordion-col-count {
+  background: #e8ecf0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  color: #656d76;
+}
+
+/* Expand indicator */
+.accordion-expand-indicator {
+  font-size: 10px;
+  color: #888;
+  transition: transform 0.2s;
+}
+
+.accordion-step.expanded .accordion-expand-indicator {
+  color: var(--asql-red);
+}
+
+/* Column headers row (spreadsheet style) */
+.accordion-col-headers {
+  display: flex;
+  overflow-x: auto;
+  background: #f8f9fa;
+  border-top: 1px solid #e8ecf0;
+  min-height: 36px;
+}
+
+.accordion-col-headers::-webkit-scrollbar {
+  height: 4px;
+}
+
+.accordion-col-headers::-webkit-scrollbar-thumb {
+  background: #c0c4c8;
+  border-radius: 2px;
+}
+
+.accordion-col-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6px 14px;
+  min-width: 100px;
+  max-width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid #e8ecf0;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+}
+
+.accordion-col-header:last-child {
+  border-right: none;
+}
+
+.accordion-col-header:hover {
+  background: #e8f0f8;
+}
+
+.accordion-col-header.accordion-empty-header {
+  color: #888;
+  font-style: italic;
+  cursor: default;
+}
+
+.accordion-col-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #24292f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accordion-col-type {
+  font-size: 10px;
+  color: #888;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+/* Data container (visible when expanded) */
+.accordion-data-container {
+  border-top: 1px solid #e8ecf0;
+  max-height: 320px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.accordion-data-container::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.accordion-data-container::-webkit-scrollbar-thumb {
+  background: #c0c4c8;
+  border-radius: 3px;
+}
+
+/* Data row */
+.accordion-data-row {
+  display: flex;
+  min-width: fit-content;
+  border-bottom: 1px solid #f0f2f4;
+  transition: background 0.1s;
+}
+
+.accordion-data-row:last-child {
+  border-bottom: none;
+}
+
+.accordion-data-row:hover {
+  background: #f8fafc;
+}
+
+.accordion-data-row:nth-child(even) {
+  background: #fafbfc;
+}
+
+.accordion-data-row:nth-child(even):hover {
+  background: #f0f4f8;
+}
+
+/* Data cell */
+.accordion-data-cell {
+  padding: 8px 14px;
+  min-width: 100px;
+  max-width: 200px;
+  flex-shrink: 0;
+  border-right: 1px solid #f0f2f4;
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  color: #24292f;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accordion-data-cell:last-child {
+  border-right: none;
+}
+
+.accordion-data-cell.accordion-empty-cell {
+  color: #888;
+  font-style: italic;
+}
+
+/* Cell type styling */
+.accordion-data-cell.cell-type-int,
+.accordion-data-cell.cell-type-bigint,
+.accordion-data-cell.cell-type-integer,
+.accordion-data-cell.cell-type-float,
+.accordion-data-cell.cell-type-double,
+.accordion-data-cell.cell-type-decimal,
+.accordion-data-cell.cell-type-numeric {
+  color: var(--asql-number);
+  text-align: right;
+}
+
+.accordion-data-cell.cell-type-varchar,
+.accordion-data-cell.cell-type-text,
+.accordion-data-cell.cell-type-string {
+  color: var(--asql-string);
+}
+
+.accordion-data-cell.cell-type-bool,
+.accordion-data-cell.cell-type-boolean {
+  color: var(--asql-operator);
+}
+
+.accordion-data-cell.cell-type-date,
+.accordion-data-cell.cell-type-timestamp,
+.accordion-data-cell.cell-type-datetime {
+  color: #7c4dff;
+}
+
+/* Add step button */
+.accordion-add-step {
+  padding: 12px 14px;
+  border-top: 1px solid #e8ecf0;
+  background: #fafbfc;
+}
+
+.accordion-add-btn {
+  background: white;
+  border: 1px dashed #c0c4c8;
+  border-radius: 6px;
+  padding: 10px 16px;
+  width: 100%;
+  color: #656d76;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.accordion-add-btn:hover {
+  border-color: var(--asql-red);
+  color: var(--asql-red);
+  background: #fff8f8;
+}
+
+/* Column action menu */
+.accordion-column-menu,
+.accordion-add-menu {
+  background: white;
+  border: 1px solid #e0e4e8;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  min-width: 180px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 10000;
+}
+
+.accordion-menu-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #24292f;
+  transition: background 0.1s;
+}
+
+.accordion-menu-item:hover {
+  background: #f0f4f8;
+}
+
+.accordion-menu-item:first-child {
+  border-radius: 7px 7px 0 0;
+}
+
+.accordion-menu-item:last-child {
+  border-radius: 0 0 7px 7px;
+}
+
+.accordion-menu-group {
+  border-bottom: 1px solid #e8ecf0;
+}
+
+.accordion-menu-group:last-child {
+  border-bottom: none;
+}
+
+.accordion-menu-group-label {
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: #fafbfc;
+}
+
+/* Hide standard pipeline blocks in accordion mode */
+.visual-style-accordion .pipeline-block,
+.visual-style-accordion .input-pipeline > .from-block,
+.visual-style-accordion .transforms-list,
+.visual-style-accordion .add-step-dropdown {
+  display: none;
+}
+
+/* Show accordion container */
+.visual-style-accordion .accordion-container {
+  display: flex;
+}

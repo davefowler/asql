@@ -795,15 +795,18 @@ function updateVisualStyleToggleButtons() {
     const blockyBtn = document.getElementById('blocky-style-btn');
     const textBtn = document.getElementById('text-style-btn');
     const pipesBtn = document.getElementById('pipes-style-btn');
+    const accordionBtn = document.getElementById('accordion-style-btn');
     const outputBlockyBtn = document.getElementById('output-blocky-style-btn');
     const outputTextBtn = document.getElementById('output-text-style-btn');
     const outputPipesBtn = document.getElementById('output-pipes-style-btn');
+    const outputAccordionBtn = document.getElementById('output-accordion-style-btn');
 
     // Input panel
     if (blockyBtn && textBtn && pipesBtn) {
         blockyBtn.classList.toggle('active', visualStylePreference === 'blocky');
         textBtn.classList.toggle('active', visualStylePreference === 'text');
         pipesBtn.classList.toggle('active', visualStylePreference === 'pipes');
+        if (accordionBtn) accordionBtn.classList.toggle('active', visualStylePreference === 'accordion');
     }
 
     // Output panel (uses same preference)
@@ -811,10 +814,11 @@ function updateVisualStyleToggleButtons() {
         outputBlockyBtn.classList.toggle('active', visualStylePreference === 'blocky');
         outputTextBtn.classList.toggle('active', visualStylePreference === 'text');
         outputPipesBtn.classList.toggle('active', visualStylePreference === 'pipes');
+        if (outputAccordionBtn) outputAccordionBtn.classList.toggle('active', visualStylePreference === 'accordion');
     }
 }
 
-// Switch visual style preference (blocky vs text vs pipes)
+// Switch visual style preference (blocky vs text vs pipes vs accordion)
 function setVisualStylePreference(style) {
     const previousStyle = visualStylePreference;
     visualStylePreference = style;
@@ -822,17 +826,19 @@ function setVisualStylePreference(style) {
     updateVisualStyleToggleButtons();
     applyVisualStyle();
 
-    // Only re-render when switching to/from pipes mode (pipes needs different DOM structure)
-    const switchingToPipes = style === 'pipes' && previousStyle !== 'pipes';
-    const switchingFromPipes = style !== 'pipes' && previousStyle === 'pipes';
-    
-    if (switchingToPipes || switchingFromPipes) {
-        // Re-render input visual editor for pipes mode change
+    // Re-render when switching to/from modes that need different DOM structure (pipes, accordion)
+    const specialModes = ['pipes', 'accordion'];
+    const switchingToSpecial = specialModes.includes(style) && !specialModes.includes(previousStyle);
+    const switchingFromSpecial = !specialModes.includes(style) && specialModes.includes(previousStyle);
+    const switchingBetweenSpecial = specialModes.includes(style) && specialModes.includes(previousStyle) && style !== previousStyle;
+
+    if (switchingToSpecial || switchingFromSpecial || switchingBetweenSpecial) {
+        // Re-render input visual editor for mode change
         if (typeof visualEditor !== 'undefined' && visualEditor && visualEditor.renderAll) {
             visualEditor.renderAll();
         }
-        
-        // Re-render visual output for pipes mode change
+
+        // Re-render visual output for mode change
         if (lastRenderedQuery) {
             if (style === 'pipes') {
                 renderPipesView(lastRenderedQuery);
@@ -851,7 +857,7 @@ function applyVisualStyle() {
     const inputVisualContainer = document.getElementById('visual-editor-container');
     const outputVisualContainer = document.getElementById('output-visual-editor-container');
 
-    const allStyles = ['visual-style-text', 'visual-style-blocky', 'visual-style-pipes'];
+    const allStyles = ['visual-style-text', 'visual-style-blocky', 'visual-style-pipes', 'visual-style-accordion'];
     const className = `visual-style-${visualStylePreference}`;
 
     if (inputVisualContainer) {
@@ -1851,13 +1857,15 @@ document.addEventListener('DOMContentLoaded', function() {
             outputVisualViewBtn.addEventListener('click', () => setOutputVisualModePreference('visual'));
         }
         
-        // Visual style toggle buttons (blocky vs text vs pipes)
+        // Visual style toggle buttons (blocky vs text vs pipes vs accordion)
         const blockyStyleBtn = document.getElementById('blocky-style-btn');
         const textStyleBtn = document.getElementById('text-style-btn');
         const pipesStyleBtn = document.getElementById('pipes-style-btn');
+        const accordionStyleBtn = document.getElementById('accordion-style-btn');
         const outputBlockyStyleBtn = document.getElementById('output-blocky-style-btn');
         const outputTextStyleBtn = document.getElementById('output-text-style-btn');
         const outputPipesStyleBtn = document.getElementById('output-pipes-style-btn');
+        const outputAccordionStyleBtn = document.getElementById('output-accordion-style-btn');
 
         if (blockyStyleBtn) {
             blockyStyleBtn.addEventListener('click', () => setVisualStylePreference('blocky'));
@@ -1868,6 +1876,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (pipesStyleBtn) {
             pipesStyleBtn.addEventListener('click', () => setVisualStylePreference('pipes'));
         }
+        if (accordionStyleBtn) {
+            accordionStyleBtn.addEventListener('click', () => setVisualStylePreference('accordion'));
+        }
         if (outputBlockyStyleBtn) {
             outputBlockyStyleBtn.addEventListener('click', () => setVisualStylePreference('blocky'));
         }
@@ -1876,6 +1887,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (outputPipesStyleBtn) {
             outputPipesStyleBtn.addEventListener('click', () => setVisualStylePreference('pipes'));
+        }
+        if (outputAccordionStyleBtn) {
+            outputAccordionStyleBtn.addEventListener('click', () => setVisualStylePreference('accordion'));
         }
         
         // Show columns toggle buttons
