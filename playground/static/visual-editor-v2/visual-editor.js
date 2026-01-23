@@ -1,11 +1,35 @@
 /**
  * Visual ASQL Editor v2 - Complete rewrite with recursive expressions
- * 
+ *
+ * ARCHITECTURE PRINCIPLES:
+ * ========================
+ * 1. THE UI IS "DUMB" - No business logic here. All smarts come from the backend.
+ *    - Transform schemas/metadata come from /api/visual/metadata
+ *    - Column options come from output_columns populated by SQLGlot qualify()
+ *    - This component just RENDERS what it's told
+ *
+ * 2. STYLE MODES ARE CSS-ONLY (except Pipes mode)
+ *    - Text mode (.visual-style-text) and Blocky mode (.visual-style-blocky)
+ *      use the SAME rendering logic, just different CSS
+ *    - Pipes mode (.visual-style-pipes) requires different DOM for node layout
+ *
+ * 3. COLUMN DROPDOWNS depend on output_columns from backend
+ *    - Each transform should have output_columns populated by the backend
+ *    - The backend uses SQLGlot's qualify() with the schema (see app.py enrich_query_with_columns)
+ *    - If dropdowns show text inputs instead of selects, check output_columns
+ *    - Column input created via createColumnInput() method
+ *
+ * 4. DON'T ADD UI LOGIC - If something looks wrong:
+ *    - Check the metadata (transform schemas from /api/visual/metadata)
+ *    - Check output_columns on the transform (from /api/visual/transpile)
+ *    - Fix the DATA, not the rendering code
+ *
  * Features:
  * - Recursive expression builder with hover-to-expand
  * - SortableJS for drag-and-drop reordering
  * - Metadata-driven UI generation
  * - Both blocky and text style modes via CSS
+ * - Pipes mode for CTE visualization
  */
 
 class VisualEditorV2 {
@@ -103,6 +127,14 @@ class VisualEditorV2 {
   }
 
   /**
+   * Check if pipes style is active
+   */
+  isPipesMode() {
+    const container = document.getElementById('visual-editor-container');
+    return container && container.classList.contains('visual-style-pipes');
+  }
+
+  /**
    * Render all pipelines
    */
   renderAll() {
@@ -118,39 +150,372 @@ class VisualEditorV2 {
     // Hide the static HTML elements that conflict with v2
     this.hideStaticElements();
 
+    // Check if pipes mode is active - if so, render pipes view
+    if (this.isPipesMode()) {
+      this.renderPipesMode(container);
+      return;
+    }
+
     this.pipelines.forEach((pipeline, pipelineIdx) => {
       const pipelineEl = this.renderPipeline(pipeline, pipelineIdx);
       container.appendChild(pipelineEl);
 
-      // Add set operation between pipelines (only for true set operations, not CTEs)
-      if (pipelineIdx < this.pipelines.length - 1) {
-        const nextPipeline = this.pipelines[pipelineIdx + 1];
-        const currentName = pipeline.name;
-        const nextFromTable = nextPipeline?.from?.table;
-        
-        // Check if next pipeline references current pipeline's stash (CTE relationship)
-        // Also check if next pipeline joins with current pipeline's stash
-        const joinsToCte = nextPipeline?.transforms?.some(t => 
-          t.type === 'join' && t.table === currentName
-        );
-        const isCteRelationship = currentName && (nextFromTable === currentName || joinsToCte);
-        
-        // Only show set operation selector if it's NOT a CTE relationship
-        // or if there's an explicit set_operation defined
-        if (!isCteRelationship || pipeline.set_operation) {
-          container.appendChild(this.renderSetOperation(pipelineIdx));
-        } else {
-          // Show a simple CTE indicator instead
-          const cteIndicator = document.createElement('div');
-          cteIndicator.className = 'cte-indicator';
-          cteIndicator.textContent = `↓ uses ${currentName}`;
-          container.appendChild(cteIndicator);
-        }
+      // Add set operation between pipelines ONLY if set_operation exists
+      // CTEs (named pipelines) don't have set_operation - they're referenced by name
+      if (pipelineIdx < this.pipelines.length - 1 && pipeline.set_operation) {
+        container.appendChild(this.renderSetOperation(pipelineIdx));
       }
     });
 
     // Add pipeline button
     container.appendChild(this.renderAddPipelineButton());
+  }
+
+  /**
+   * Render pipes mode view (Yahoo Pipes-style nodes)
+   */
+  renderPipesMode(container) {
+    // Create pipes container with relative positioning for SVG overlay
+    const pipesContainer = document.createElement('div');
+    pipesContainer.className = 'pipes-nodes-container';
+
+    // Build a map of CTE names for reference detection
+    const cteNames = new Set();
+    const cteNodeMap = new Map(); // Map CTE name -> node element
+    this.pipelines.forEach(p => {
+      if (p.name) cteNames.add(p.name.toLowerCase());
+    });
+
+    // Track CTE references for drawing connections
+    const cteReferences = []; // Array of { sourceNode, targetCteName }
+
+    // Render each pipeline as a node
+    this.pipelines.forEach((pipeline, idx) => {
+      const node = this.createPipeNode(pipeline, idx, this.pipelines.length, cteNames);
+      node.dataset.cteName = pipeline.name || '';
+      pipesContainer.appendChild(node);
+
+      // Track CTE nodes by name for connection drawing
+      if (pipeline.name) {
+        cteNodeMap.set(pipeline.name.toLowerCase(), node);
+      }
+
+      // Track if this pipeline references another CTE
+      const tableName = pipeline.from?.table || '';
+      if (cteNames.has(tableName.toLowerCase()) && tableName.toLowerCase() !== pipeline.name?.toLowerCase()) {
+        cteReferences.push({
+          sourceNode: node,
+          targetCteName: tableName.toLowerCase()
+        });
+      }
+
+      // Add set operation connector between pipelines
+      if (pipeline.set_operation && idx < this.pipelines.length - 1) {
+        const setOpDiv = document.createElement('div');
+        setOpDiv.className = 'pipe-set-operation';
+        const opText = pipeline.set_operation.all
+          ? `${pipeline.set_operation.type.toUpperCase()} ALL`
+          : pipeline.set_operation.type.toUpperCase();
+        setOpDiv.innerHTML = `<span class="pipe-set-op-badge">${opText}</span>`;
+        pipesContainer.appendChild(setOpDiv);
+      }
+    });
+
+    container.appendChild(pipesContainer);
+
+    // Add pipeline button
+    container.appendChild(this.renderAddPipelineButton());
+
+    // Draw CTE connection lines after DOM is laid out
+    if (cteReferences.length > 0) {
+      setTimeout(() => {
+        this.drawCteConnections(pipesContainer, cteReferences, cteNodeMap);
+      }, 0);
+    }
+  }
+
+  /**
+   * Draw SVG connection lines between CTE references
+   */
+  drawCteConnections(container, references, cteNodeMap) {
+    // Remove any existing SVG
+    const existingSvg = container.querySelector('.cte-connections-svg');
+    if (existingSvg) existingSvg.remove();
+
+    // Create SVG overlay
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('cte-connections-svg');
+    svg.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0;';
+
+    const containerRect = container.getBoundingClientRect();
+
+    references.forEach(({ sourceNode, targetCteName }) => {
+      const targetNode = cteNodeMap.get(targetCteName);
+      if (!targetNode) return;
+
+      const sourceRect = sourceNode.getBoundingClientRect();
+      const targetRect = targetNode.getBoundingClientRect();
+
+      // Calculate connection points relative to container
+      // Source: left edge of the source node (the one that references the CTE)
+      // Target: right edge of the target CTE node
+      const sourceX = sourceRect.left - containerRect.left;
+      const sourceY = sourceRect.top - containerRect.top + sourceRect.height / 2;
+
+      const targetX = targetRect.right - containerRect.left;
+      const targetY = targetRect.top - containerRect.top + targetRect.height / 2;
+
+      // Create a curved path
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+      // Bezier curve - curve out to the left then back
+      const midX = Math.min(sourceX, targetX) - 30;
+      const d = `M ${targetX} ${targetY} C ${midX} ${targetY}, ${midX} ${sourceY}, ${sourceX} ${sourceY}`;
+
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', 'var(--accent-color, #667eea)');
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('stroke-dasharray', '4,4');
+      path.setAttribute('opacity', '0.6');
+
+      // Add arrow marker at end
+      const arrowId = `arrow-${Math.random().toString(36).substr(2, 9)}`;
+      const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+      marker.setAttribute('id', arrowId);
+      marker.setAttribute('markerWidth', '6');
+      marker.setAttribute('markerHeight', '6');
+      marker.setAttribute('refX', '5');
+      marker.setAttribute('refY', '3');
+      marker.setAttribute('orient', 'auto');
+
+      const arrowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      arrowPath.setAttribute('d', 'M0,0 L0,6 L6,3 z');
+      arrowPath.setAttribute('fill', 'var(--accent-color, #667eea)');
+      arrowPath.setAttribute('opacity', '0.6');
+
+      marker.appendChild(arrowPath);
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      path.setAttribute('marker-end', `url(#${arrowId})`);
+      svg.appendChild(path);
+    });
+
+    // Insert SVG at the beginning of the container
+    container.style.position = 'relative';
+    container.insertBefore(svg, container.firstChild);
+  }
+
+  /**
+   * Create a pipe node for a pipeline
+   */
+  createPipeNode(pipeline, idx, totalPipelines, cteNames) {
+    const node = document.createElement('div');
+    node.className = 'pipe-node';
+    node.dataset.pipelineIndex = idx;
+
+    // Determine node title and type
+    const tableName = pipeline.from?.table || '';
+    const isNamedCTE = !!pipeline.name;
+    const nodeTitle = pipeline.name || tableName || `Query ${idx + 1}`;
+    const nodeType = isNamedCTE ? 'CTE' : (tableName ? 'TABLE' : 'QUERY');
+
+    // Check if this references another CTE
+    const referencesOtherCTE = cteNames.has(tableName.toLowerCase()) && tableName.toLowerCase() !== pipeline.name?.toLowerCase();
+
+    // Create header
+    const header = document.createElement('div');
+    header.className = 'pipe-node-header';
+
+    const icon = document.createElement('div');
+    icon.className = 'pipe-node-icon';
+    icon.textContent = isNamedCTE ? 'C' : (referencesOtherCTE ? '→' : 'T');
+
+    const title = document.createElement('div');
+    title.className = 'pipe-node-title';
+    title.textContent = nodeTitle;
+
+    const typeLabel = document.createElement('div');
+    typeLabel.className = 'pipe-node-type';
+    typeLabel.textContent = nodeType;
+
+    header.appendChild(icon);
+    header.appendChild(title);
+    header.appendChild(typeLabel);
+
+    // Add source badge or reference badge
+    if (tableName && !isNamedCTE) {
+      const sourceBadge = document.createElement('span');
+      sourceBadge.className = 'pipe-source-badge';
+      sourceBadge.textContent = 'SOURCE';
+      header.appendChild(sourceBadge);
+    } else if (referencesOtherCTE) {
+      const refBadge = document.createElement('span');
+      refBadge.className = 'pipe-ref-badge';
+      refBadge.textContent = `← ${tableName}`;
+      refBadge.title = `References CTE: ${tableName}`;
+      header.appendChild(refBadge);
+    }
+
+    node.appendChild(header);
+
+    // Create body with transforms
+    const body = document.createElement('div');
+    body.className = 'pipe-node-body';
+
+    // Show FROM source if this is a named CTE with a table source
+    if (isNamedCTE && tableName) {
+      const fromStep = document.createElement('div');
+      fromStep.className = 'pipe-step';
+      fromStep.innerHTML = `
+        <div class="pipe-step-header">
+          <span class="pipe-step-type select">FROM</span>
+        </div>
+        <div class="pipe-step-content">
+          <span class="value-column">${this.escapeHtml(tableName)}</span>
+        </div>
+      `;
+      body.appendChild(fromStep);
+    }
+
+    // Render transforms
+    if (pipeline.transforms && pipeline.transforms.length > 0) {
+      pipeline.transforms.forEach(transform => {
+        const step = this.createPipeStep(transform);
+        body.appendChild(step);
+      });
+    }
+
+    if (body.children.length === 0) {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.className = 'pipes-empty-state';
+      emptyMsg.textContent = 'No transforms';
+      body.appendChild(emptyMsg);
+    }
+
+    node.appendChild(body);
+
+    // Add output columns footer if available
+    const lastTransform = pipeline.transforms?.[pipeline.transforms.length - 1];
+    const outputCols = lastTransform?.output_columns || pipeline.from?.output_columns;
+    if (outputCols && outputCols.length > 0) {
+      const footer = document.createElement('div');
+      footer.className = 'pipe-node-footer';
+      footer.appendChild(this.renderOutputColumns(outputCols));
+      node.appendChild(footer);
+    }
+
+    // Add connection ports for multiple pipelines
+    if (totalPipelines > 1) {
+      if (idx > 0) {
+        const portIn = document.createElement('div');
+        portIn.className = 'pipe-port pipe-port-in';
+        portIn.title = 'Input';
+        node.appendChild(portIn);
+      }
+      if (idx < totalPipelines - 1) {
+        const portOut = document.createElement('div');
+        portOut.className = 'pipe-port pipe-port-out';
+        portOut.title = 'Output';
+        node.appendChild(portOut);
+      }
+    }
+
+    return node;
+  }
+
+  /**
+   * Create a step element within a pipe node
+   */
+  createPipeStep(transform) {
+    const step = document.createElement('div');
+    step.className = 'pipe-step';
+
+    const stepType = transform.type || 'unknown';
+    const header = document.createElement('div');
+    header.className = 'pipe-step-header';
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `pipe-step-type ${stepType}`;
+    typeBadge.textContent = stepType.toUpperCase().replace('_', ' ');
+    header.appendChild(typeBadge);
+
+    const content = document.createElement('div');
+    content.className = 'pipe-step-content';
+    content.innerHTML = this.renderPipeStepContent(transform);
+
+    step.appendChild(header);
+    step.appendChild(content);
+
+    return step;
+  }
+
+  /**
+   * Render the content of a pipe step based on transform type
+   */
+  renderPipeStepContent(transform) {
+    const escape = (str) => this.escapeHtml(str);
+
+    switch (transform.type) {
+      case 'where':
+        return `<span class="value-column">${escape(transform.condition || '')}</span>`;
+
+      case 'select':
+        if (transform.columns && transform.columns.length > 0) {
+          const cols = transform.columns.map(c => {
+            const expr = typeof c === 'string' ? c : (c.expression || c.name || '');
+            const alias = typeof c === 'object' && c.name ? ` <span class="value-operator">as</span> ${escape(c.name)}` : '';
+            return `<span class="value-column">${escape(expr)}</span>${alias}`;
+          });
+          return cols.join(', ');
+        }
+        return '';
+
+      case 'group_by':
+        const dims = (transform.dimensions || []).map(d => `<span class="value-column">${escape(d)}</span>`);
+        const aggs = (transform.aggregates || []).map(a => {
+          const col = a.column || '*';
+          const alias = a.alias ? ` <span class="value-operator">as</span> ${escape(a.alias)}` : '';
+          return `<span class="value-function">${escape(a.function)}</span>(<span class="value-column">${escape(col)}</span>)${alias}`;
+        });
+        return [...dims, ...aggs].join(', ');
+
+      case 'order_by':
+        if (transform.expressions && transform.expressions.length > 0) {
+          const items = transform.expressions.map(e => {
+            const col = e.column || '';
+            const dir = e.direction === 'desc' ? ' ↓' : ' ↑';
+            return `<span class="value-column">${escape(col)}</span>${dir}`;
+          });
+          return items.join(', ');
+        }
+        return '';
+
+      case 'limit':
+        return `<span class="value-number">${transform.count || ''}</span>`;
+
+      case 'join':
+        const joinType = transform.join_type || 'join';
+        const joinTable = transform.table || '';
+        const joinOn = transform.on || '';
+        return `<span class="value-operator">${escape(joinType)}</span> <span class="value-column">${escape(joinTable)}</span> <span class="value-operator">on</span> ${escape(joinOn)}`;
+
+      case 'extend':
+        if (transform.columns && transform.columns.length > 0) {
+          const cols = transform.columns.map(c => {
+            const expr = typeof c === 'string' ? c : (c.expression || '');
+            const alias = typeof c === 'object' && c.name ? ` <span class="value-operator">as</span> ${escape(c.name)}` : '';
+            return `${escape(expr)}${alias}`;
+          });
+          return cols.join(', ');
+        }
+        return '';
+
+      default:
+        return JSON.stringify(transform).slice(0, 100);
+    }
   }
 
   /**
@@ -382,7 +747,7 @@ class VisualEditorV2 {
     container.className = 'param-container';
 
     const widget = param.widget || 'text';
-    
+
     switch (widget) {
       case 'text':
         container.appendChild(this.renderTextInput(transform, param));
@@ -507,7 +872,7 @@ class VisualEditorV2 {
   renderExpressionWidget(transform, param, pipelineIdx, transformIdx = 0) {
     const value = transform[param.name] || {};
     const exprId = `${transform.id}-${param.name}`;
-    
+
     const expr = new Expression({
       value,
       id: exprId,
@@ -530,11 +895,11 @@ class VisualEditorV2 {
    */
   renderListWidget(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
-    const isExpressionType = param.type === 'expression[]' || 
-                            param.name === 'columns' || 
+    const isExpressionType = param.type === 'expression[]' ||
+                            param.name === 'columns' ||
                             param.name === 'dimensions';
     const showAlias = param.name === 'columns' && transform.type === 'select';
-    
+
     const container = document.createElement('div');
     container.className = 'expression-list';
 
@@ -547,13 +912,21 @@ class VisualEditorV2 {
     const addBtn = document.createElement('button');
     addBtn.className = 'list-add-btn';
     addBtn.textContent = '+ Add';
-    addBtn.addEventListener('click', () => {
-      const newItem = showAlias ? { expression: '', name: '' } : '';
-      items.push(newItem);
-      transform[param.name] = items;
-      this.renderAll();
-      this.notifyChange();
-    });
+    // Store references for the click handler
+    const paramName = param.name;
+    const transformRef = transform;
+    const editorRef = this;
+    const needsAlias = showAlias;
+    addBtn.onclick = function(e) {
+      e.stopPropagation();
+      const newItem = needsAlias ? { expression: '', name: '' } : '';
+      if (!transformRef[paramName]) {
+        transformRef[paramName] = [];
+      }
+      transformRef[paramName].push(newItem);
+      editorRef.renderAll();
+      editorRef.notifyChange();
+    };
     container.appendChild(addBtn);
 
     // Make sortable
@@ -565,6 +938,8 @@ class VisualEditorV2 {
           handle: '.expr-drag-handle',
           ghostClass: 'expr-ghost',
           draggable: '.expression-item',
+          filter: '.list-add-btn, .expr-remove, button',  // Don't drag when clicking buttons
+          preventOnFilter: false,  // Allow click events on filtered elements
           onEnd: (evt) => {
             const { oldIndex, newIndex } = evt;
             if (oldIndex !== newIndex) {
@@ -639,7 +1014,7 @@ class VisualEditorV2 {
     const items = transform[param.name] || [];
     const aggregates = this.metadata.aggregates || {};
     const schemaContext = this.getSchemaContext(pipelineIdx, transformIdx);
-    
+
     const container = document.createElement('div');
     container.className = 'aggregate-list';
 
@@ -652,102 +1027,20 @@ class VisualEditorV2 {
     const addBtn = document.createElement('button');
     addBtn.className = 'list-add-btn';
     addBtn.textContent = '+ Add Aggregate';
-    addBtn.addEventListener('click', () => {
-      items.push({ function: 'count', column: '', alias: '' });
-      transform[param.name] = items;
-      this.renderAll();
-      this.notifyChange();
-    });
+    const paramName = param.name;
+    const transformRef = transform;
+    const editorRef = this;
+    addBtn.onclick = function(e) {
+      e.stopPropagation();
+      if (!transformRef[paramName]) {
+        transformRef[paramName] = [];
+      }
+      transformRef[paramName].push({ function: 'count', column: '', alias: '' });
+      editorRef.renderAll();
+      editorRef.notifyChange();
+    };
     container.appendChild(addBtn);
 
-    return container;
-  }
-
-  /**
-   * Create a column input with hover dropdown
-   */
-  createColumnInput(value, placeholder, columns, onChange) {
-    const container = document.createElement('span');
-    container.className = 'column-input-container';
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'column-autocomplete';
-    input.value = value || '';
-    input.placeholder = placeholder || 'column';
-    input.addEventListener('input', (e) => onChange(e.target.value));
-
-    container.appendChild(input);
-
-    // Create dropdown menu (hidden by default)
-    const dropdown = document.createElement('div');
-    dropdown.className = 'column-dropdown';
-    
-    const updateDropdown = () => {
-      dropdown.innerHTML = '';
-      
-      if (columns.length === 0) {
-        const emptyItem = document.createElement('div');
-        emptyItem.className = 'column-dropdown-empty';
-        emptyItem.textContent = 'No columns available';
-        dropdown.appendChild(emptyItem);
-        return;
-      }
-      
-      // Show ALL columns - sort matching ones to top
-      const rawFilter = input.value.toLowerCase();
-      const filterValue = rawFilter.includes('.') ? rawFilter.split('.').pop() : rawFilter;
-      
-      // Sort: exact matches first, then partial matches, then rest
-      const sortedCols = [...columns].sort((a, b) => {
-        const aName = a.name.toLowerCase();
-        const bName = b.name.toLowerCase();
-        const aExact = aName === filterValue;
-        const bExact = bName === filterValue;
-        const aPartial = filterValue && (aName.includes(filterValue) || filterValue.includes(aName));
-        const bPartial = filterValue && (bName.includes(filterValue) || filterValue.includes(bName));
-        
-        if (aExact && !bExact) return -1;
-        if (bExact && !aExact) return 1;
-        if (aPartial && !bPartial) return -1;
-        if (bPartial && !aPartial) return 1;
-        return aName.localeCompare(bName);
-      });
-      
-      sortedCols.forEach(col => {
-        const item = document.createElement('div');
-        item.className = 'column-dropdown-item';
-        item.textContent = col.name;
-        if (col.type) {
-          const typeSpan = document.createElement('span');
-          typeSpan.className = 'column-dropdown-type';
-          typeSpan.textContent = col.type;
-          item.appendChild(typeSpan);
-        }
-        item.addEventListener('mousedown', (e) => {
-          e.preventDefault();
-          input.value = col.name;
-          onChange(col.name);
-          dropdown.classList.remove('visible');
-        });
-        dropdown.appendChild(item);
-      });
-    };
-
-    // Show dropdown on focus/hover
-    input.addEventListener('focus', () => {
-      updateDropdown();
-      dropdown.classList.add('visible');
-    });
-
-    input.addEventListener('blur', () => {
-      // Delay to allow click on dropdown item
-      setTimeout(() => dropdown.classList.remove('visible'), 150);
-    });
-
-    input.addEventListener('input', updateDropdown);
-
-    container.appendChild(dropdown);
     return container;
   }
 
@@ -864,7 +1157,7 @@ class VisualEditorV2 {
   renderOrderList(transform, param, pipelineIdx, transformIdx = 0) {
     const items = transform[param.name] || [];
     const schemaContext = this.getSchemaContext(pipelineIdx, transformIdx);
-    
+
     const container = document.createElement('div');
     container.className = 'order-list';
 
@@ -1077,7 +1370,7 @@ class VisualEditorV2 {
 
     const btn = document.createElement('button');
     btn.className = 'add-pipeline-btn';
-    btn.textContent = '+ Add Pipeline (CTE / Set Operation)';
+    btn.textContent = '+ Add CTE / Pipeline';
     btn.addEventListener('click', () => this.addPipeline());
 
     container.appendChild(btn);
@@ -1092,6 +1385,102 @@ class VisualEditorV2 {
     block.className = 'block error-block';
     block.innerHTML = `<div class="block-body"><span class="error">${this.escapeHtml(message)}</span></div>`;
     return block;
+  }
+
+  /**
+   * Create a column input with dropdown autocomplete
+   *
+   * This uses output_columns from the backend to populate dropdown options.
+   * If dropdowns aren't showing, check that output_columns are being populated.
+   */
+  createColumnInput(value, placeholder, columns, onChange) {
+    const container = document.createElement('span');
+    container.className = 'column-input-container';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'column-autocomplete';
+    input.value = value || '';
+    input.placeholder = placeholder || 'column';
+    input.addEventListener('input', (e) => onChange(e.target.value));
+
+    container.appendChild(input);
+
+    // Create dropdown menu (hidden by default)
+    const dropdown = document.createElement('div');
+    dropdown.className = 'column-dropdown';
+
+    const updateDropdown = () => {
+      dropdown.innerHTML = '';
+
+      if (columns.length === 0) {
+        const emptyItem = document.createElement('div');
+        emptyItem.className = 'column-dropdown-empty';
+        emptyItem.textContent = 'No columns available';
+        dropdown.appendChild(emptyItem);
+        return;
+      }
+
+      // Show ALL columns - sort matching ones to top
+      const rawFilter = input.value.toLowerCase();
+      const filterValue = rawFilter.includes('.') ? rawFilter.split('.').pop() : rawFilter;
+
+      // Sort: exact matches first, then partial matches, then rest
+      const sortedCols = [...columns].sort((a, b) => {
+        const aName = a.name.toLowerCase();
+        const bName = b.name.toLowerCase();
+        const aExact = aName === filterValue;
+        const bExact = bName === filterValue;
+        const aPartial = filterValue && (aName.includes(filterValue) || filterValue.includes(aName));
+        const bPartial = filterValue && (bName.includes(filterValue) || filterValue.includes(bName));
+
+        if (aExact && !bExact) return -1;
+        if (bExact && !aExact) return 1;
+        if (aPartial && !bPartial) return -1;
+        if (bPartial && !aPartial) return 1;
+        return aName.localeCompare(bName);
+      });
+
+      sortedCols.forEach(col => {
+        const item = document.createElement('div');
+        item.className = 'column-dropdown-item';
+        item.textContent = col.name;
+        if (col.type) {
+          const typeSpan = document.createElement('span');
+          typeSpan.className = 'column-type';
+          typeSpan.textContent = col.type;
+          item.appendChild(typeSpan);
+        }
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault(); // Prevent blur
+          input.value = col.name;
+          onChange(col.name);
+          dropdown.classList.remove('visible');
+        });
+        dropdown.appendChild(item);
+      });
+    };
+
+    container.appendChild(dropdown);
+
+    // Show dropdown on focus
+    input.addEventListener('focus', () => {
+      updateDropdown();
+      dropdown.classList.add('visible');
+    });
+
+    // Update dropdown on input
+    input.addEventListener('input', () => {
+      updateDropdown();
+    });
+
+    // Hide dropdown on blur
+    input.addEventListener('blur', () => {
+      // Small delay to allow click on dropdown item
+      setTimeout(() => dropdown.classList.remove('visible'), 150);
+    });
+
+    return container;
   }
 
   /**
@@ -1131,14 +1520,14 @@ class VisualEditorV2 {
   }
 
   /**
-   * Add a new pipeline
+   * Add a new pipeline (CTE by default)
+   *
+   * New pipelines are added as CTEs (named pipelines) by default.
+   * To create a UNION/INTERSECT/EXCEPT, use addSetOperation() instead.
    */
   addPipeline() {
-    // Add set operation to previous pipeline
-    if (this.pipelines.length > 0) {
-      this.pipelines[this.pipelines.length - 1].set_operation = { type: 'union', all: false };
-    }
-
+    // Don't auto-add set_operation - CTEs don't need it
+    // Set operations should be explicitly requested
     this.pipelines.push({
       name: null,
       from: { table: '' },
@@ -1156,17 +1545,16 @@ class VisualEditorV2 {
   removePipeline(pipelineIdx) {
     if (this.pipelines.length <= 1) return;
 
-    // Preserve set_operation when removing a middle pipeline
+    // Handle set_operation when removing a pipeline
     const removedSetOp = this.pipelines[pipelineIdx]?.set_operation;
-    if (pipelineIdx > 0) {
-      if (pipelineIdx < this.pipelines.length - 1) {
-        // Middle pipeline: carry forward its set_operation to previous pipeline
-        this.pipelines[pipelineIdx - 1].set_operation = 
-          removedSetOp || { type: 'union', all: false };
-      } else {
-        // Last pipeline: remove set_operation from previous
-        delete this.pipelines[pipelineIdx - 1].set_operation;
+    if (pipelineIdx > 0 && pipelineIdx < this.pipelines.length - 1) {
+      // Middle pipeline: carry forward its set_operation to previous IF it had one
+      if (removedSetOp) {
+        this.pipelines[pipelineIdx - 1].set_operation = removedSetOp;
       }
+    } else if (pipelineIdx > 0 && pipelineIdx === this.pipelines.length - 1) {
+      // Last pipeline: remove set_operation from previous
+      delete this.pipelines[pipelineIdx - 1].set_operation;
     }
 
     this.pipelines.splice(pipelineIdx, 1);
@@ -1199,34 +1587,33 @@ class VisualEditorV2 {
   }
 
   /**
-   * Get schema context for autocomplete
-   * Returns available columns from the step immediately before
+   * Get schema context for autocomplete (available columns at a given point in pipeline)
+   *
+   * This uses output_columns populated by the backend via SQLGlot qualify.
+   * If columns aren't showing in dropdowns, check:
+   * 1. Is the backend returning output_columns? (check /api/visual/transpile response)
+   * 2. Are output_columns being merged into transforms? (check onVisualEditorChange in playground.js)
+   *
+   * @param {number} pipelineIdx - Index of the pipeline
+   * @param {number} transformIdx - Index of the transform (-1 for FROM block, or index of current transform)
    */
-  getSchemaContext(pipelineIdx, transformIdx = 0) {
+  getSchemaContext(pipelineIdx, transformIdx = -1) {
     const pipeline = this.pipelines[pipelineIdx];
     if (!pipeline) return { columns: [] };
 
-    let outputColumns = null;
+    let columns = [];
 
-    // Get output_columns from the previous step
-    if (transformIdx === 0) {
-      // First transform - get columns from FROM
-      outputColumns = pipeline.from?.output_columns;
-    } else if (pipeline.transforms && transformIdx > 0) {
-      // Get columns from the previous transform
-      const prevTransform = pipeline.transforms[transformIdx - 1];
-      outputColumns = prevTransform?.output_columns;
-      
-      // Fallback: if prev transform doesn't have output_columns, try from block
-      if (!outputColumns || outputColumns.length === 0) {
-        outputColumns = pipeline.from?.output_columns;
-      }
+    if (transformIdx < 0) {
+      // For FROM block or before any transforms - use FROM's output_columns
+      columns = pipeline.from?.output_columns || [];
+    } else if (transformIdx === 0) {
+      // First transform - use FROM's output_columns
+      columns = pipeline.from?.output_columns || [];
+    } else {
+      // Use previous transform's output_columns
+      const prevTransform = pipeline.transforms?.[transformIdx - 1];
+      columns = prevTransform?.output_columns || pipeline.from?.output_columns || [];
     }
-
-    // Convert to standard format
-    const columns = (outputColumns || []).map(col => 
-      typeof col === 'string' ? { name: col } : col
-    );
 
     return { columns };
   }
@@ -1417,4 +1804,5 @@ let visualEditor = null;
 document.addEventListener('DOMContentLoaded', () => {
   visualEditor = new VisualEditorV2();
   visualEditor.init();
+  window.visualEditor = visualEditor; // Expose for debugging
 });

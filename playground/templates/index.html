@@ -38,10 +38,19 @@
                             <button id="json-view-btn" class="view-toggle-btn active" title="JSON Text View">{ }</button>
                             <button id="visual-view-btn" class="view-toggle-btn" title="Visual Block View">▦</button>
                         </div>
-                        <!-- Visual style toggle (blocky vs text) -->
+                        <!-- Visual style toggle (blocky vs text vs pipes) -->
                         <div id="visual-style-toggle" class="visual-style-toggle" style="display: none;">
                             <button id="blocky-style-btn" class="style-toggle-btn" title="Blocky UI Style">☐</button>
-                            <button id="text-style-btn" class="style-toggle-btn active" title="Text-like Style">≡</button>
+                            <button id="text-style-btn" class="style-toggle-btn active" title="Text-like Style">T</button>
+                            <button id="pipes-style-btn" class="style-toggle-btn" title="Flow/Pipes Style">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                                    <circle cx="3" cy="4" r="2"/>
+                                    <circle cx="3" cy="12" r="2"/>
+                                    <circle cx="13" cy="8" r="2"/>
+                                    <path d="M5 4 Q 9 4, 11 8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                    <path d="M5 12 Q 9 12, 11 8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                </svg>
+                            </button>
                         </div>
                         <!-- Show columns toggle -->
                         <div id="show-columns-toggle" class="show-columns-toggle" style="display: none;">
@@ -111,10 +120,19 @@
                             <button id="output-json-view-btn" class="view-toggle-btn active" title="JSON Text View">{ }</button>
                             <button id="output-visual-view-btn" class="view-toggle-btn" title="Visual Block View">▦</button>
                         </div>
-                        <!-- Visual style toggle for output (blocky vs text) -->
+                        <!-- Visual style toggle for output (blocky vs text vs pipes) -->
                         <div id="output-visual-style-toggle" class="visual-style-toggle" style="display: none;">
                             <button id="output-blocky-style-btn" class="style-toggle-btn" title="Blocky UI Style">☐</button>
-                            <button id="output-text-style-btn" class="style-toggle-btn active" title="Text-like Style">≡</button>
+                            <button id="output-text-style-btn" class="style-toggle-btn active" title="Text-like Style">T</button>
+                            <button id="output-pipes-style-btn" class="style-toggle-btn" title="Flow/Pipes Style">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                                    <circle cx="3" cy="4" r="2"/>
+                                    <circle cx="3" cy="12" r="2"/>
+                                    <circle cx="13" cy="8" r="2"/>
+                                    <path d="M5 4 Q 9 4, 11 8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                    <path d="M5 12 Q 9 12, 11 8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                </svg>
+                            </button>
                         </div>
                         <!-- Show columns toggle for output -->
                         <div id="output-show-columns-toggle" class="show-columns-toggle" style="display: none;">

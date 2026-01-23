@@ -28,7 +28,7 @@ if not HAS_PYTEST_ASYNCIO:
     pytest.skip("pytest_asyncio not installed", allow_module_level=True)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client():
     """Create an async test client for the FastAPI app."""
     if not HAS_FASTAPI:
@@ -373,6 +373,114 @@ class TestErrorHandling:
 
         # Should not crash
         assert response.status_code in [200, 400, 415, 422]
+
+
+class TestOutputColumns:
+    """Tests for output_columns enrichment via /api/visual/transpile."""
+
+    async def test_transpile_returns_output_columns_on_from(self, client):
+        """Test that transpile endpoint returns output_columns on FROM."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': []
+        }
+
+        response = await client.post(
+            '/api/visual/transpile',
+            json={'query': query_json}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+        assert 'enriched_query' in data
+
+        # The enriched_query should have output_columns on from
+        enriched = data['enriched_query']
+        assert 'from' in enriched
+        assert 'output_columns' in enriched['from'], "FROM should have output_columns"
+        assert len(enriched['from']['output_columns']) > 0, "output_columns should not be empty"
+
+    async def test_transpile_returns_output_columns_on_transforms(self, client):
+        """Test that transpile endpoint returns output_columns on transforms."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': [
+                {'id': 't0', 'type': 'where', 'condition': "status = 'active'"},
+                {'id': 't1', 'type': 'limit', 'count': 10}
+            ]
+        }
+
+        response = await client.post(
+            '/api/visual/transpile',
+            json={'query': query_json}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+
+        enriched = data['enriched_query']
+
+        # Each transform should have output_columns
+        for transform in enriched.get('transforms', []):
+            assert 'output_columns' in transform, f"Transform {transform.get('type')} missing output_columns"
+
+    async def test_output_columns_contain_expected_fields(self, client):
+        """Test that output_columns have name, type, and table fields."""
+        query_json = {
+            'from': {'table': 'users'},
+            'transforms': []
+        }
+
+        response = await client.post(
+            '/api/visual/transpile',
+            json={'query': query_json}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        output_cols = data['enriched_query']['from'].get('output_columns', [])
+        assert len(output_cols) > 0
+
+        for col in output_cols:
+            assert 'name' in col, f"Column missing 'name': {col}"
+            # type and table are optional but recommended
+
+    async def test_group_by_changes_output_columns(self, client):
+        """Test that GROUP BY changes the available output columns."""
+        query_json = {
+            'from': {'table': 'orders'},
+            'transforms': [
+                {
+                    'id': 't0',
+                    'type': 'group_by',
+                    'dimensions': ['customer_id'],
+                    'aggregates': [
+                        {'function': 'sum', 'column': 'total', 'alias': 'total_spent'}
+                    ]
+                }
+            ]
+        }
+
+        response = await client.post(
+            '/api/visual/transpile',
+            json={'query': query_json}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+
+        enriched = data['enriched_query']
+        group_transform = enriched['transforms'][0]
+        output_cols = group_transform.get('output_columns', [])
+
+        # Output should include the dimension and aggregate
+        col_names = {c['name'] for c in output_cols}
+        # Note: column names may be qualified (e.g., orders.customer_id)
+        assert any('customer_id' in name for name in col_names), f"Expected customer_id in {col_names}"
 
 
 class TestSecurityConsiderations:

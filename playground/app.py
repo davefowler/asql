@@ -831,9 +831,8 @@ async def transpile_from_visual(request: Request):
         )
         sql_text = result[0] if result else ""
         
-        # Step 3: Enrich query with column info
-        # For now, just pass through the query without full column enrichment
-        enriched_query = enrich_query_with_columns(query_json, asql_text, None)
+        # Step 3: Enrich query with column info using playground schema
+        enriched_query = enrich_query_with_columns(query_json, asql_text, PLAYGROUND_SCHEMA)
         
         return {
             "success": True,
@@ -849,64 +848,84 @@ async def transpile_from_visual(request: Request):
         return {"success": False, "error": f"Transpile error: {str(e)}"}
 
 
-def enrich_query_with_columns(query_json: dict, asql_text: str, schema) -> dict:
+def enrich_query_with_columns(query_json: dict, asql_text: str, schema: dict) -> dict:
     """
     Enrich visual JSON with output_columns at each step.
-    
-    Uses the schema to determine what columns are available after each transform.
+
+    IMPORTANT: This is the source of truth for column dropdowns in the visual editor.
+    The frontend UI is intentionally "dumb" - it just renders what we tell it.
+    Column dropdowns show options from output_columns, populated here.
+
+    How it works:
+    1. For each pipeline, we build ASQL incrementally (FROM, then each transform)
+    2. We call SQLGlot's qualify() on each partial query with the schema
+    3. qualify() resolves which columns are available after each step
+    4. We store these as output_columns on each transform
+
+    If column dropdowns aren't showing options in the UI, check:
+    - Is the schema correct? (PLAYGROUND_SCHEMA in playground/schema.py)
+    - Is json_to_asql producing valid ASQL?
+    - Is get_output_columns_for_step returning columns?
     """
     import copy
+    from sqlglot.schema import MappingSchema
+    from asql.column_tracking import get_output_columns_for_step
+    from asql.json_schema import json_to_asql
+
     enriched = copy.deepcopy(query_json)
-    
+
     # If no schema, just return the query as-is
     if schema is None:
         return enriched
-    
+
+    # Convert dict schema to MappingSchema for SQLGlot
+    mapping_schema = MappingSchema(schema)
+
     # Handle array of pipelines
     pipelines = enriched if isinstance(enriched, list) else [enriched]
-    
+
     for pipeline in pipelines:
         if not pipeline.get("from", {}).get("table"):
             continue
-            
+
         table_name = pipeline["from"]["table"]
-        
-        # Get initial columns from schema
-        table_schema = schema.get_table(table_name) if hasattr(schema, 'get_table') else None
-        if table_schema:
-            # Table schema returns column info
-            columns = []
-            for col_name in table_schema.columns:
-                col_type = table_schema.columns[col_name].type if hasattr(table_schema.columns[col_name], 'type') else 'unknown'
-                columns.append({"name": col_name, "type": str(col_type)})
-            pipeline["from"]["output_columns"] = columns
-            
-            # For now, propagate the same columns to transforms
-            # A more sophisticated implementation would track column changes through each step
-            current_columns = columns
-            for transform in pipeline.get("transforms", []):
-                # Basic column tracking - can be enhanced
-                transform_type = transform.get("type")
-                
-                if transform_type == "select":
-                    # Select modifies columns - would need expression parsing
-                    pass
-                elif transform_type == "join":
-                    # Join adds columns from joined table
-                    join_table = transform.get("table")
-                    if join_table and hasattr(schema, 'get_table'):
-                        join_schema = schema.get_table(join_table)
-                        if join_schema:
-                            for col_name in join_schema.columns:
-                                col_type = join_schema.columns[col_name].type if hasattr(join_schema.columns[col_name], 'type') else 'unknown'
-                                current_columns.append({"name": f"{join_table}.{col_name}", "type": str(col_type)})
-                elif transform_type == "group_by":
-                    # Group by changes columns to dimensions + aggregates
-                    pass
-                
-                # Set output columns for this transform
-                transform["output_columns"] = current_columns.copy()
-    
+
+        # Build ASQL incrementally and get columns at each step
+        # Start with just the FROM
+        partial_pipeline = {
+            "name": pipeline.get("name"),
+            "from": pipeline["from"],
+            "transforms": []
+        }
+
+        # Get initial columns from the FROM table
+        try:
+            partial_asql = json_to_asql([partial_pipeline] if pipeline.get("name") else partial_pipeline)
+            from_columns = get_output_columns_for_step(partial_asql, mapping_schema)
+            pipeline["from"]["output_columns"] = from_columns
+        except Exception:
+            # If it fails, get columns directly from schema
+            table_cols = schema.get(table_name, {})
+            pipeline["from"]["output_columns"] = [
+                {"name": col, "type": str(typ), "table": table_name}
+                for col, typ in table_cols.items()
+            ]
+
+        # Now add each transform and get its output columns
+        for i, transform in enumerate(pipeline.get("transforms", [])):
+            partial_pipeline["transforms"] = pipeline["transforms"][:i + 1]
+
+            try:
+                partial_asql = json_to_asql([partial_pipeline] if pipeline.get("name") else partial_pipeline)
+                columns = get_output_columns_for_step(partial_asql, mapping_schema)
+                transform["output_columns"] = columns
+            except Exception:
+                # If qualification fails, inherit from previous step
+                if i > 0 and pipeline["transforms"][i - 1].get("output_columns"):
+                    transform["output_columns"] = pipeline["transforms"][i - 1]["output_columns"].copy()
+                else:
+                    transform["output_columns"] = pipeline["from"].get("output_columns", []).copy()
+
     return enriched if isinstance(query_json, list) else pipelines[0]
 
 

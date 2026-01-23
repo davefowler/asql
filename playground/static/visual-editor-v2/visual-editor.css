@@ -1280,3 +1280,420 @@
 .sortable-chosen {
   background: #f0f8ff;
 }
+
+/* ============================================================================
+   PIPES STYLE MODE (Yahoo Pipes-like node graph)
+   ============================================================================ */
+
+.visual-style-pipes .visual-editor {
+  background: #f0f2f5;
+  min-height: 400px;
+  position: relative;
+  padding: 24px;
+}
+
+/* Pipes canvas container for SVG wires */
+.pipes-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pipes-canvas svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Connector wires between nodes */
+.pipe-wire {
+  fill: none;
+  stroke: #90a4ae;
+  stroke-width: 3;
+  stroke-linecap: round;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+  transition: stroke 0.2s, stroke-width 0.2s;
+}
+
+.pipe-wire:hover {
+  stroke: #607d8b;
+  stroke-width: 4;
+}
+
+.pipe-wire.highlighted {
+  stroke: var(--asql-red);
+  stroke-width: 4;
+  filter: drop-shadow(0 0 4px rgba(197, 48, 48, 0.4));
+}
+
+/* Nodes container - horizontal flow layout */
+.pipes-nodes-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  position: relative;
+  z-index: 1;
+  align-items: flex-start;
+}
+
+/* CTE connection lines SVG overlay */
+.cte-connections-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  overflow: visible;
+}
+
+/* Individual pipeline/CTE node */
+.pipe-node {
+  background: white;
+  border: 1px solid #d0d7de;
+  border-radius: 12px;
+  min-width: 280px;
+  max-width: 380px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08),
+              0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  position: relative;
+}
+
+.pipe-node:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12),
+              0 2px 4px rgba(0, 0, 0, 0.08);
+  border-color: var(--asql-red);
+}
+
+/* Node header (CTE name / table source) */
+.pipe-node-header {
+  background: linear-gradient(90deg, #f8f9fa 0%, #f0f2f5 100%);
+  padding: 10px 14px;
+  border-radius: 10px 10px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid #e1e4e8;
+}
+
+.pipe-node-icon {
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, var(--asql-red) 0%, #a02828 100%);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: white;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(197, 48, 48, 0.3);
+}
+
+.pipe-node-title {
+  color: #24292f;
+  font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pipe-node-type {
+  color: #656d76;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Connection ports on nodes */
+.pipe-port {
+  width: 14px;
+  height: 14px;
+  background: #90a4ae;
+  border: 2px solid white;
+  border-radius: 50%;
+  position: absolute;
+  cursor: pointer;
+  transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  z-index: 2;
+}
+
+.pipe-port:hover {
+  transform: scale(1.3);
+  background: var(--asql-red);
+  box-shadow: 0 2px 6px rgba(197, 48, 48, 0.4);
+}
+
+.pipe-port-in {
+  left: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.pipe-port-out {
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.pipe-port-in:hover,
+.pipe-port-out:hover {
+  transform: translateY(-50%) scale(1.3);
+}
+
+/* Node body content */
+.pipe-node-body {
+  padding: 12px 14px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Transform step within node */
+.pipe-step {
+  background: #f8f9fa;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.pipe-step:last-child {
+  margin-bottom: 0;
+}
+
+.pipe-step:hover {
+  background: #f0f4f8;
+  border-color: #d0d7de;
+}
+
+/* Step header with type badge */
+.pipe-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.pipe-step-type {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Color coding for different transform types */
+.pipe-step-type.where {
+  background: rgba(244, 67, 54, 0.2);
+  color: #ef9a9a;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.pipe-step-type.select {
+  background: rgba(76, 175, 80, 0.2);
+  color: #a5d6a7;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.pipe-step-type.join {
+  background: rgba(156, 39, 176, 0.2);
+  color: #ce93d8;
+  border: 1px solid rgba(156, 39, 176, 0.3);
+}
+
+.pipe-step-type.group_by {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ffcc80;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+.pipe-step-type.order_by {
+  background: rgba(33, 150, 243, 0.2);
+  color: #90caf9;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.pipe-step-type.limit {
+  background: rgba(121, 85, 72, 0.2);
+  color: #bcaaa4;
+  border: 1px solid rgba(121, 85, 72, 0.3);
+}
+
+.pipe-step-type.extend {
+  background: rgba(0, 188, 212, 0.2);
+  color: #80deea;
+  border: 1px solid rgba(0, 188, 212, 0.3);
+}
+
+/* Step content/expression */
+.pipe-step-content {
+  color: #24292f;
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+.pipe-step-content .value-operator {
+  color: var(--asql-red);
+}
+
+.pipe-step-content .value-column {
+  color: var(--asql-variable);
+}
+
+.pipe-step-content .value-function {
+  color: var(--asql-function);
+}
+
+.pipe-step-content .value-string {
+  color: var(--asql-string);
+}
+
+.pipe-step-content .value-number {
+  color: var(--asql-number);
+}
+
+/* Node footer with output columns */
+.pipe-node-footer {
+  background: #f8f9fa;
+  border-top: 1px solid #e1e4e8;
+  padding: 8px 12px;
+  border-radius: 0 0 10px 10px;
+}
+
+.pipe-node-footer .output-columns {
+  display: block;
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pipe-node-footer .output-columns table {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pipe-node-footer .output-columns th {
+  background: white;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 10px;
+  color: #24292f;
+  font-weight: 500;
+}
+
+.pipe-node-footer .output-columns .col-type {
+  color: #656d76;
+  font-size: 9px;
+}
+
+/* Set operation connector (UNION, etc.) */
+.pipe-set-operation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.pipe-set-op-badge {
+  background: linear-gradient(135deg, var(--asql-red) 0%, #a02828 100%);
+  color: white;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  box-shadow: 0 2px 6px rgba(197, 48, 48, 0.3);
+}
+
+/* Source table indicator */
+.pipe-source-badge {
+  background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+/* Reference to another CTE */
+.pipe-ref-badge {
+  background: linear-gradient(135deg, #7c4dff 0%, #651fff 100%);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+
+.pipe-ref-badge:hover {
+  transform: scale(1.05);
+}
+
+/* Empty state */
+.pipes-empty-state {
+  color: #656d76;
+  text-align: center;
+  padding: 40px;
+  font-size: 14px;
+}
+
+/* Override base styles for pipes mode - don't hide, re-render as nodes */
+.visual-style-pipes .pipeline-block {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* Hide standard blocks only when pipes-nodes-container exists (pipes rendering active) */
+.visual-style-pipes .pipes-nodes-container ~ .block,
+.visual-style-pipes .pipes-nodes-container ~ .transforms-list,
+.visual-style-pipes .pipes-nodes-container ~ .add-step-dropdown {
+  display: none;
+}
+
+/* Hide from-block when in pipes mode - it's shown in the pipe node header */
+.visual-style-pipes .input-pipeline > .from-block {
+  display: none;
+}
+
+/* Scrollbar styling for pipes mode */
+.visual-style-pipes .pipe-node-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.visual-style-pipes .pipe-node-body::-webkit-scrollbar-track {
+  background: #f0f2f5;
+  border-radius: 3px;
+}
+
+.visual-style-pipes .pipe-node-body::-webkit-scrollbar-thumb {
+  background: #c1c4c9;
+  border-radius: 3px;
+}
+
+.visual-style-pipes .pipe-node-body::-webkit-scrollbar-thumb:hover {
+  background: #a0a4a9;
+}

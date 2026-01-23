@@ -3710,5 +3710,89 @@
         ]
       }
     ]
+  },
+  {
+    "title": "Multi-CTE Pipeline (Pipes Mode)",
+    "desc": "Multiple CTEs connected in a pipeline - best viewed in Pipes style (⬡ button)",
+    "dialect": "visual-asql",
+    "query": [
+      {
+        "name": "active_users",
+        "from": {
+          "table": "users",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "where",
+            "condition": "status = 'active'"
+          },
+          {
+            "id": "t1",
+            "type": "select",
+            "columns": [
+              {"name": "user_id", "expression": "id"},
+              {"name": "email", "expression": "email"},
+              {"name": "country", "expression": "country"}
+            ]
+          }
+        ]
+      },
+      {
+        "name": "user_orders",
+        "from": {
+          "table": "active_users",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "join",
+            "join_type": "left",
+            "table": "orders",
+            "condition": "active_users.user_id = orders.customer_id"
+          },
+          {
+            "id": "t1",
+            "type": "group_by",
+            "dimensions": ["active_users.user_id", "active_users.email", "active_users.country"],
+            "aggregates": [
+              {"function": "count", "column": "orders.id", "alias": "order_count"},
+              {"function": "sum", "column": "orders.total", "alias": "total_spent"}
+            ]
+          }
+        ]
+      },
+      {
+        "name": null,
+        "from": {
+          "table": "user_orders",
+          "alias": null
+        },
+        "transforms": [
+          {
+            "id": "t0",
+            "type": "group_by",
+            "dimensions": ["country"],
+            "aggregates": [
+              {"function": "count", "column": "*", "alias": "user_count"},
+              {"function": "avg", "column": "order_count", "alias": "avg_orders"},
+              {"function": "sum", "column": "total_spent", "alias": "total_revenue"}
+            ]
+          },
+          {
+            "id": "t1",
+            "type": "order_by",
+            "expressions": [{"column": "total_revenue", "direction": "desc"}]
+          },
+          {
+            "id": "t2",
+            "type": "limit",
+            "count": 10
+          }
+        ]
+      }
+    ]
   }
 ]
