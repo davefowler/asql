@@ -43,22 +43,18 @@
 | `guarantee()` | `reference/functions.md` | *(Marked as planned)* |
 | `spine()` | `reference/keywords.md` | Gap-filling |
 
-### ❌ NOT Documented (Implemented)
+### ✅ Recently Documented (2026-01-25)
 
-| Function | Implementation | Tests | Priority |
-|----------|---------------|-------|----------|
-| **`bucket()`** | `asql/functions.py` | `tests/test_bucket.py` (336 lines) | **HIGH** |
-| **`fill_forward()`** | `asql/functions.py` | Needs verification | MEDIUM |
-| **`fill_backward()`** | `asql/functions.py` | Needs verification | MEDIUM |
-| **`key()`** | `asql/dialect/parser.py` | Needs verification | MEDIUM |
-
-### ⚠️ Partially Documented
-
-| Function | Status | Notes |
-|----------|--------|-------|
-| `slugify()` | In `spec_future.md` | Implemented but marked as "future" |
-| `rolling_min()`, `rolling_max()` | Missing from docs | Implemented in `ASQL_FUNCTION_REGISTRY` |
-| `rolling_count()` | Missing from docs | Implemented in `ASQL_FUNCTION_REGISTRY` |
+| Function | Location | Notes |
+|----------|----------|-------|
+| `bucket()` | `reference/functions.md` | Binning/discretization |
+| `fill_forward()` | `reference/functions.md` | Gap-filling (LOCF) |
+| `fill_backward()` | `reference/functions.md` | Gap-filling (reverse) |
+| `key()` | `reference/functions.md` | Surrogate key generation |
+| `slugify()` | `reference/functions.md` | URL-safe string conversion |
+| `rolling_min()` | `reference/functions.md` | Moving minimum |
+| `rolling_max()` | `reference/functions.md` | Moving maximum |
+| `rolling_count()` | `reference/functions.md` | Moving count |
 
 ---
 
@@ -90,13 +86,13 @@
 | `number`, `rank`, `dense rank` | `reference/keywords.md` | Ranking |
 | `distinct`, `distinct on` | `reference/keywords.md` | Deduplication |
 
-### ❌ NOT Documented (Implemented)
+### ✅ Recently Documented (2026-01-25)
 
-| Transform | Implementation | Notes | Priority |
-|-----------|---------------|-------|----------|
-| **`extend`** | `_parse_asql_extend` | Add computed columns (like `select *, expr`) | **HIGH** |
-| **`deduplicate by`** | `_parse_asql_deduplicate` | Sugar for `per ... first by` | MEDIUM |
-| **`recurse()`** | `_parse_asql_recurse` | Recursive CTEs | MEDIUM |
+| Transform | Location | Notes |
+|-----------|----------|-------|
+| `extend` | `reference/keywords.md` | Add computed columns |
+| `deduplicate by` | `reference/keywords.md` | Sugar for `per ... first by` |
+| `recurse()` | `reference/keywords.md` | Recursive CTEs for hierarchical data |
 
 ---
 
@@ -150,45 +146,28 @@ All operators are documented in `reference/operators.md`:
 
 ## Action Items
 
-### Immediate (HIGH Priority)
+### ✅ Completed (2026-01-25)
 
-1. **Add `bucket()` documentation** to `reference/functions.md`
-   - Boundary-based: `bucket(score, [0, 60, 70, 80, 90, 100], ['F', 'D', 'C', 'B', 'A'])`
-   - Width-based: `bucket(value, start=0, end=100, width=10)`
-   - Auto-labels: `bucket(amount, [0, 100, 500, 1000])`
+1. ✅ **`bucket()` documentation** added to `reference/functions.md`
+2. ✅ **`extend` documentation** added to `reference/keywords.md`
+3. ✅ **`fill_forward()` / `fill_backward()` documentation** added
+4. ✅ **`deduplicate by` documentation** added
+5. ✅ **`key()` documentation** added
+6. ✅ **`recurse()` documentation** added
+7. ✅ **`slugify()` documentation** added (was implemented, now documented)
+8. ✅ **Rolling functions** (`rolling_min`, `rolling_max`, `rolling_count`) documented
+9. ✅ **dbt.md updated** with `fill_forward`, `slugify`, and `key()` status
 
-2. **Add `extend` documentation** to `reference/keywords.md`
-   - Syntax: `extend expr as alias`
-   - Use case: Adding computed columns without listing all existing
+### Remaining (Low Priority)
 
-### Medium Priority
-
-3. **Add `fill_forward()` / `fill_backward()` documentation**
-   - Gap-filling for time series
-   - Propagates last/next non-null value
-
-4. **Add `deduplicate by` documentation**
-   - Syntax: `deduplicate by col1, col2 order by -date`
-   - Sugar for `per col1, col2 first by -date`
-
-5. **Add `key()` documentation**
-   - Surrogate key generation
-   - Syntax: `key(col1, col2, ...)`
-
-6. **Add `recurse()` documentation**
-   - Recursive CTEs for hierarchical data
-   - Syntax: `recurse(fk_column [, max_depth])`
-
-### Low Priority
-
-7. **Update `slugify()` status** - move from future to implemented if working
-8. **Add missing rolling functions** - `rolling_min`, `rolling_max`, `rolling_count`
-9. **Consolidate natural language syntax examples** into dedicated reference
+- Consolidate natural language syntax examples into dedicated reference
+- Add tests for `fill_forward`/`fill_backward` (implemented but untested)
 
 ---
 
 ## Notes
 
-- The `bucket()` function has 336 lines of tests but zero documentation - highest priority fix
-- `extend` is a useful feature that's fully implemented but only mentioned in future docs
-- Many "future" features in `spec_future.md` may actually be implemented - need verification pass
+- All major documentation gaps have been filled as of 2026-01-25
+- `fill_forward`/`fill_backward` work correctly but have no tests - consider adding test coverage
+- `slugify()` was listed in spec_future.md but is actually implemented - docs now reflect this
+- dbt.md updated to mark `key()` as implemented (was incorrectly marked "Planned")
