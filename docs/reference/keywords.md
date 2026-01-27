@@ -99,11 +99,13 @@ from users
 |---------|-------------|----------------|
 | `sample` | Random sampling | `ORDER BY RANDOM() LIMIT` / `TABLESAMPLE` |
 | `except` | Exclude columns | `SELECT * EXCEPT(...)` |
+| `extend` | Add computed columns | `SELECT *, expr AS alias` |
 | `rename` | Rename columns | `col AS new_name` |
 | `replace` | Replace column values | `expression AS col` |
 | `pivot` | Rows to columns | `CASE WHEN ... GROUP BY` |
 | `unpivot` | Columns to rows | `UNION ALL` |
 | `explode` | Array to rows | `CROSS JOIN UNNEST` |
+| `deduplicate` | Remove duplicate rows | `ROW_NUMBER() + WHERE rn = 1` |
 
 ### except
 
@@ -159,6 +161,42 @@ from posts
   explode tags as tag
 ```
 
+### extend
+
+Add computed columns while keeping all existing columns:
+
+```asql-play
+from orders
+  extend amount * 1.1 as amount_with_tax
+```
+
+Equivalent to `select *, expr as alias` but cleaner for adding multiple columns:
+
+```asql
+from users
+  extend 
+    age >= 18 as is_adult,
+    days_since(last_login) as days_inactive
+```
+
+### deduplicate
+
+Remove duplicate rows, keeping the first by a specified order:
+
+```asql-play
+from events
+  deduplicate by user_id, event_type
+  order by -timestamp
+```
+
+This is syntactic sugar for `per ... first by ...`:
+
+```asql
+-- These are equivalent:
+from events deduplicate by user_id order by -timestamp
+from events per user_id first by -timestamp
+```
+
 ---
 
 ## Join Keywords
@@ -180,6 +218,7 @@ from orders
 | Keyword | Description |
 |---------|-------------|
 | `stash as` | Save intermediate result as CTE |
+| `recurse` | Generate recursive CTE for hierarchical data |
 | `set` | Compiler setting statement (not a CTE) |
 
 ### stash as
@@ -192,6 +231,34 @@ from users
   stash as active_users
   group by country (# as total)
 ```
+
+### recurse
+
+Generate a recursive CTE for hierarchical data traversal (e.g., org charts, bill of materials):
+
+```asql
+from employees
+  where id = 1
+  recurse(manager_id)
+```
+
+This finds all descendants of employee 1 by following the `manager_id` foreign key recursively.
+
+**With depth limit:**
+
+```asql
+from employees
+  where id = 1
+  recurse(manager_id, 5)  -- Max 5 levels deep
+```
+
+**Use cases:**
+- Organization hierarchies (find all reports under a manager)
+- Bill of materials (find all components of a product)
+- Category trees (find all subcategories)
+- Folder structures (find all files in a directory tree)
+
+The result includes a `_level` column indicating the depth from the starting row.
 
 ### set
 

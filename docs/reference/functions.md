@@ -326,6 +326,30 @@ Moving sum with window size.
 rolling_sum(amount, 7)      -- 7-day rolling sum
 ```
 
+### rolling_min
+
+Moving minimum with window size.
+
+```asql
+rolling_min(price, 7)       -- 7-day rolling minimum
+```
+
+### rolling_max
+
+Moving maximum with window size.
+
+```asql
+rolling_max(price, 7)       -- 7-day rolling maximum
+```
+
+### rolling_count
+
+Moving count with window size.
+
+```asql
+rolling_count(events, 7)    -- 7-day rolling count
+```
+
 ### first
 
 Get first value with ordering.
@@ -447,6 +471,17 @@ Replace text.
 replace(text, "old", "new")
 ```
 
+### slugify
+
+Convert text to URL-safe slugs.
+
+```asql
+slugify(name)               -- "Hello World!" → "hello-world"
+slugify(title) as slug      -- URL-friendly version
+```
+
+Converts to lowercase, replaces non-alphanumeric characters with hyphens, and trims leading/trailing hyphens.
+
 ---
 
 ## Null Handling Functions
@@ -480,7 +515,147 @@ value::INTEGER?             -- Safe cast (NULL on failure)
 
 ---
 
+## Binning Functions
+
+### bucket
+
+Discretize continuous values into labeled bins. Compiles to portable `CASE WHEN` expressions.
+
+**Form 1: Explicit boundaries with labels**
+
+```asql
+bucket(score, [0, 60, 70, 80, 90, 100], ['F', 'D', 'C', 'B', 'A']) as grade
+```
+
+Creates bins:
+- `[0, 60)` → 'F'
+- `[60, 70)` → 'D'
+- `[70, 80)` → 'C'
+- `[80, 90)` → 'B'
+- `[90, 100]` → 'A' (last bin includes upper bound)
+
+**Form 2: Explicit boundaries with auto-labels**
+
+```asql
+bucket(amount, [0, 100, 500, 1000]) as tier
+```
+
+Auto-generates range labels: `'0-100'`, `'100-500'`, `'500-1000'`
+
+**Form 3: Width-based bins**
+
+```asql
+bucket(value, start=0, end=100, width=10) as decile
+```
+
+Generates evenly-spaced bins: `'0-10'`, `'10-20'`, ..., `'90-100'`
+
+#### Examples
+
+```asql
+-- Grade students by score
+from students
+  select name, score,
+    bucket(score, [0, 60, 70, 80, 90, 100], ['F', 'D', 'C', 'B', 'A']) as grade
+
+-- Segment customers by lifetime value
+from customers
+  select *,
+    bucket(lifetime_value, [0, 100, 1000, 10000, 100000], 
+           ['bronze', 'silver', 'gold', 'platinum']) as tier
+
+-- Age demographics with auto-labels
+from users
+  group by bucket(age, [0, 18, 30, 50, 65, 100]) (
+    # as count
+  )
+
+-- Temperature ranges (supports negative values)
+from readings
+  select *,
+    bucket(temp_celsius, [-40, -20, 0, 20, 40]) as temp_category
+
+-- Percentile-style bins
+from sales
+  select *,
+    bucket(amount, start=0, end=1000, width=100) as amount_bucket
+```
+
+#### Boundary Behavior
+
+- **Left-inclusive**: Each bin includes its lower bound
+- **Right-exclusive**: Each bin excludes its upper bound (except the last)
+- **Last bin includes upper bound**: `[90, 100]` not `[90, 100)`
+- **Out of range**: Values outside boundaries return `NULL`
+
+---
+
+## Gap-Filling Functions
+
+### fill_forward
+
+Propagate the last non-null value forward to fill gaps.
+
+```asql
+fill_forward(value)             -- Fill NULLs with previous value
+```
+
+Useful for time series where missing data should inherit the previous value.
+
+```asql
+from daily_prices
+  order by date
+  select date, fill_forward(price) as price
+```
+
+Compiles to: `LAST_VALUE(col) IGNORE NULLS OVER (ROWS UNBOUNDED PRECEDING)`
+
+### fill_backward
+
+Propagate the next non-null value backward to fill gaps.
+
+```asql
+fill_backward(value)            -- Fill NULLs with next value
+```
+
+```asql
+from forecasts
+  order by date
+  select date, fill_backward(target) as target
+```
+
+Compiles to: `FIRST_VALUE(col) IGNORE NULLS OVER (ROWS CURRENT ROW TO UNBOUNDED FOLLOWING)`
+
+---
+
 ## Special Functions
+
+### key
+
+Generate a deterministic surrogate key from one or more columns. Inspired by dbt_utils' `generate_surrogate_key`.
+
+```asql
+key(user_id, order_id) as order_key
+key(source, record_id) as unique_id
+```
+
+The function:
+- Concatenates column values with a separator
+- Handles NULLs consistently (converts to empty string)
+- Returns an MD5 hash of the concatenated values
+
+```asql
+-- Create stable keys for fact tables
+from raw_events
+  select *,
+    key(user_id, event_type, timestamp) as event_key
+
+-- Deduplicate by composite key
+from staging_data
+  group by key(source_system, record_id) (
+    first(*)
+  )
+```
 
 ### guarantee *(Planned)*
 

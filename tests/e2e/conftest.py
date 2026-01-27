@@ -1,5 +1,9 @@
 """
 Pytest configuration for E2E tests using Playwright.
+
+These tests require playwright to be installed:
+    pip install playwright
+    playwright install chromium
 """
 import pytest
 import subprocess
@@ -7,6 +11,10 @@ import time
 import socket
 import os
 import signal
+
+# Check if playwright is available
+import importlib.util
+PLAYWRIGHT_AVAILABLE = importlib.util.find_spec("playwright") is not None
 
 
 def is_port_in_use(port: int) -> bool:
