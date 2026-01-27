@@ -39,11 +39,13 @@ If you’re used to leaning on dbt macros for common transformations, the nice s
 |-----------|------|-------|
 | `{{ dbt_utils.star() }}` | Default behavior | ASQL returns all columns by default |
 | `{{ dbt_utils.star(except=[...]) }}` | `except col1, col2` | Exclude columns |
-| `{{ dbt_utils.generate_surrogate_key([...]) }}` | `key(col1, col2)` | **Planned** (inspired by dbt macros) |
+| `{{ dbt_utils.generate_surrogate_key([...]) }}` | `key(col1, col2)` | Deterministic hash key |
 | `{{ dbt_utils.pivot() }}` | `pivot ... values ('A', 'B')` | Rows to columns (static values list) |
 | `{{ dbt_utils.unpivot() }}` | `unpivot ... into ...` | Columns to rows |
 | `{{ dbt_utils.date_spine() }}` | `spine by month(date)` | Gap-filling with explicit `spine by` syntax |
 | `{{ dbt_utils.deduplicate() }}` | `per id first by -date` | Remove duplicates |
+| Forward-fill / LOCF pattern | `fill_forward(col)` | Propagate last non-null value |
+| `{{ dbt_utils.slugify() }}` | `slugify(col)` | URL-safe string conversion |
 | `{{ dbt_utils.union_relations() }}` | (future) | Not implemented yet |
 
 ---
@@ -84,7 +86,7 @@ select *, key(user_id, order_id) as order_key
 - **Deterministic**: Same inputs always produce the same hash
 - **NULL handling**: NULLs are converted to empty strings before hashing, ensuring consistent results
 - **Type normalization**: All values are cast to strings before concatenation
-- **Cross-dialect**: Automatically uses appropriate hash function for your SQL dialect (MD5, SHA256, etc.)
+- **Cross-dialect**: Uses MD5 hash for portability
 
 ### `deduplicate()` → `per ... first by ...`
 
@@ -125,6 +127,34 @@ And unpivoting (“pivot longer”) is equally direct:
 from monthly_data
 unpivot jan, feb, mar into month, value
 ```
+
+### Forward-fill (LOCF) → `fill_forward()` / `fill_backward()`
+
+For time series data where you need to carry forward the last known value:
+
+```asql
+from daily_prices
+  order by date
+  select date, fill_forward(close_price) as price
+```
+
+This is common for:
+- Stock prices (carry forward last traded price on non-trading days)
+- Sensor data (use last reading when sensor misses a measurement)
+- Inventory levels (last known count until next transaction)
+
+**Note**: Use `spine by` when you need to *create* missing rows. Use `fill_forward` when you have the rows but need to fill NULL values.
+
+### `slugify()` → `slugify()`
+
+Convert text to URL-safe slugs:
+
+```asql-play
+from products
+select name, slugify(name) as slug
+```
+
+Converts to lowercase, replaces non-alphanumeric characters with hyphens, and trims leading/trailing hyphens.
 
 ### `union_relations()` → (future) `from union(...)`
 
