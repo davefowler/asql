@@ -650,10 +650,16 @@ class VisualEditorV2 {
     step.className = `accordion-step ${isExpanded ? 'expanded' : 'collapsed'} step-type-${type}`;
     step.dataset.pipelineIndex = pipelineIdx;
     step.dataset.stepIndex = stepIdx;
+    step.setAttribute('role', 'region');
+    step.setAttribute('aria-label', `${type.toUpperCase()} step: ${label}`);
 
     // Step header (clickable to expand/collapse)
     const header = document.createElement('div');
     header.className = 'accordion-step-header';
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', String(isExpanded));
+    header.setAttribute('aria-label', `${isExpanded ? 'Collapse' : 'Expand'} ${type.toUpperCase()} step`);
 
     const headerLeft = document.createElement('div');
     headerLeft.className = 'accordion-header-left';
@@ -688,9 +694,17 @@ class VisualEditorV2 {
     header.appendChild(headerRight);
 
     // Click to expand/collapse
-    header.addEventListener('click', () => {
+    const toggleExpand = () => {
       this.accordionExpandedStep = { pipelineIdx, stepIdx };
       this.renderAll();
+    };
+    header.addEventListener('click', toggleExpand);
+    // Keyboard support for accessibility
+    header.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleExpand();
+      }
     });
 
     step.appendChild(header);
@@ -879,12 +893,19 @@ class VisualEditorV2 {
    * Show column action menu
    */
   showColumnActionMenu(headerCell, columnName, pipelineIdx, stepIdx) {
-    // Remove existing menu
+    // Remove existing menu and cleanup its listeners
     const existing = document.querySelector('.accordion-column-menu');
-    if (existing) existing.remove();
+    if (existing) {
+      if (existing._abortController) existing._abortController.abort();
+      existing.remove();
+    }
 
     const menu = document.createElement('div');
     menu.className = 'accordion-column-menu';
+    
+    // Use AbortController for proper cleanup of event listeners
+    const abortController = new AbortController();
+    menu._abortController = abortController;
 
     const actions = [
       { label: 'Filter by this column', action: 'where' },
@@ -901,8 +922,9 @@ class VisualEditorV2 {
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         this.applyColumnAction(action, columnName, pipelineIdx);
+        abortController.abort();
         menu.remove();
-      });
+      }, { signal: abortController.signal });
       menu.appendChild(item);
     });
 
@@ -917,11 +939,11 @@ class VisualEditorV2 {
     // Close menu on outside click
     const closeMenu = (e) => {
       if (!menu.contains(e.target)) {
+        abortController.abort();
         menu.remove();
-        document.removeEventListener('click', closeMenu);
       }
     };
-    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    setTimeout(() => document.addEventListener('click', closeMenu, { signal: abortController.signal }), 0);
   }
 
   /**
@@ -964,11 +986,19 @@ class VisualEditorV2 {
    */
   showAccordionAddMenu(addBtn, pipelineIdx) {
     // Remove existing menu
+    // Remove existing menu and cleanup its listeners
     const existing = document.querySelector('.accordion-add-menu');
-    if (existing) existing.remove();
+    if (existing) {
+      if (existing._abortController) existing._abortController.abort();
+      existing.remove();
+    }
 
     const menu = document.createElement('div');
     menu.className = 'accordion-add-menu';
+    
+    // Use AbortController for proper cleanup of event listeners
+    const abortController = new AbortController();
+    menu._abortController = abortController;
 
     // Group transforms by category
     const transforms = this.metadata.transforms || {};
@@ -1000,8 +1030,9 @@ class VisualEditorV2 {
           // Expand the new step
           this.accordionExpandedStep = { pipelineIdx, stepIdx: this.pipelines[pipelineIdx].transforms.length };
           this.renderAll();
+          abortController.abort();
           menu.remove();
-        });
+        }, { signal: abortController.signal });
         groupDiv.appendChild(itemDiv);
       });
 
@@ -1019,11 +1050,11 @@ class VisualEditorV2 {
     // Close menu on outside click
     const closeMenu = (e) => {
       if (!menu.contains(e.target)) {
+        abortController.abort();
         menu.remove();
-        document.removeEventListener('click', closeMenu);
       }
     };
-    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+    setTimeout(() => document.addEventListener('click', closeMenu, { signal: abortController.signal }), 0);
   }
 
   /**

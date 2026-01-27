@@ -2259,10 +2259,16 @@ function createAccordionPipeline(pipeline, pipelineIdx) {
 function createAccordionStep(type, label, columns, isExpanded) {
     const step = document.createElement('div');
     step.className = `accordion-step ${isExpanded ? 'expanded' : 'collapsed'} step-type-${type}`;
+    step.setAttribute('role', 'region');
+    step.setAttribute('aria-label', `${type.toUpperCase()} step: ${label}`);
 
     // Step header
     const header = document.createElement('div');
     header.className = 'accordion-step-header';
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', String(isExpanded));
+    header.setAttribute('aria-label', `${isExpanded ? 'Collapse' : 'Expand'} ${type.toUpperCase()} step`);
 
     const headerLeft = document.createElement('div');
     headerLeft.className = 'accordion-header-left';
@@ -2297,13 +2303,14 @@ function createAccordionStep(type, label, columns, isExpanded) {
     header.appendChild(headerRight);
 
     // Click to toggle expand/collapse
-    header.addEventListener('click', () => {
+    const toggleExpand = () => {
         const wasExpanded = step.classList.contains('expanded');
         // Collapse all siblings first
         const siblings = step.parentElement.querySelectorAll('.accordion-step');
         siblings.forEach(s => {
             s.classList.remove('expanded');
             s.classList.add('collapsed');
+            s.querySelector('.accordion-step-header')?.setAttribute('aria-expanded', 'false');
             const indicator = s.querySelector('.accordion-expand-indicator');
             if (indicator) indicator.textContent = '▶';
             const dataContainer = s.querySelector('.accordion-data-container');
@@ -2314,11 +2321,20 @@ function createAccordionStep(type, label, columns, isExpanded) {
         if (!wasExpanded) {
             step.classList.remove('collapsed');
             step.classList.add('expanded');
+            header.setAttribute('aria-expanded', 'true');
             expandIndicator.textContent = '▼';
             
             // Add data rows
             const dataContainer = createAccordionDataContainer(columns);
             step.appendChild(dataContainer);
+        }
+    };
+    header.addEventListener('click', toggleExpand);
+    // Keyboard support for accessibility
+    header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleExpand();
         }
     });
 
