@@ -4,7 +4,11 @@ Tests the new 'pipes' style toggle and node-based visualization with CTEs.
 """
 import re
 import pytest
-from playwright.sync_api import Page, expect
+
+# Skip entire module if playwright is not installed
+pytest.importorskip("playwright", reason="Playwright not installed. Install with: pip install playwright && playwright install")
+
+from playwright.sync_api import Page, expect  # noqa: E402
 
 
 # Example queries with CTEs for testing
@@ -62,13 +66,6 @@ SELECT * FROM step3 ORDER BY total DESC""",
         "expected_ctes": ["step1", "step2", "step3"],
     },
 }
-
-
-@pytest.fixture(scope="module")
-def server_url():
-    """Return the playground server URL. Override via env var if needed."""
-    import os
-    return os.environ.get("PLAYGROUND_URL", "http://localhost:5001")
 
 
 @pytest.fixture

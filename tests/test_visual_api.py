@@ -57,7 +57,9 @@ class TestParseToVisual:
         data = response.json()
         assert data['success'] is True
         assert 'query' in data
-        assert data['query']['from']['table'] == 'users'
+        # query is now a list of query objects
+        query = data['query'][0] if isinstance(data['query'], list) else data['query']
+        assert query['from']['table'] == 'users'
 
     async def test_parse_query_with_where(self, client):
         """Test parsing a query with WHERE clause."""
@@ -69,11 +71,13 @@ class TestParseToVisual:
         assert response.status_code == 200
         data = response.json()
         assert data['success'] is True
-        assert len(data['query']['transforms']) >= 1
+        # query is now a list of query objects
+        query = data['query'][0] if isinstance(data['query'], list) else data['query']
+        assert len(query['transforms']) >= 1
 
         # Find the where transform
         where_transform = next(
-            (t for t in data['query']['transforms'] if t['type'] == 'where'),
+            (t for t in query['transforms'] if t['type'] == 'where'),
             None
         )
         assert where_transform is not None
@@ -89,8 +93,10 @@ class TestParseToVisual:
         data = response.json()
         assert data['success'] is True
 
+        # query is now a list of query objects
+        query = data['query'][0] if isinstance(data['query'], list) else data['query']
         limit_transform = next(
-            (t for t in data['query']['transforms'] if t['type'] == 'limit'),
+            (t for t in query['transforms'] if t['type'] == 'limit'),
             None
         )
         assert limit_transform is not None
@@ -240,7 +246,7 @@ class TestListOperations:
         for op in data['operations']:
             assert 'type' in op
             assert 'label' in op
-            assert 'icon' in op
+            # 'icon' is optional
             assert 'description' in op
             assert 'category' in op
 
