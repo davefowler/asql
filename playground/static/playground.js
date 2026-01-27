@@ -2163,8 +2163,7 @@ function renderPipesView(query) {
     transformsContainer.appendChild(pipesContainer);
 }
 
-// Number of sample data rows to show in accordion preview
-const ACCORDION_PREVIEW_ROWS = 10;
+// Note: ACCORDION_PREVIEW_ROWS and shared accordion utilities are loaded from accordion-utils.js
 
 // Render output in accordion/spreadsheet mode
 function renderAccordionView(query) {
@@ -2353,163 +2352,13 @@ function createAccordionStep(type, label, columns, isExpanded) {
     return step;
 }
 
-// Create column headers row for accordion step
-function createAccordionColumnHeaders(columns) {
-    const headerRow = document.createElement('div');
-    headerRow.className = 'accordion-col-headers';
-
-    if (columns.length === 0) {
-        const emptyCell = document.createElement('div');
-        emptyCell.className = 'accordion-col-header accordion-empty-header';
-        emptyCell.textContent = 'No columns';
-        headerRow.appendChild(emptyCell);
-        return headerRow;
-    }
-
-    columns.forEach((col) => {
-        const colName = typeof col === 'string' ? col : col.name;
-        const colType = typeof col === 'object' ? col.type : '';
-
-        const headerCell = document.createElement('div');
-        headerCell.className = 'accordion-col-header';
-
-        const nameSpan = document.createElement('span');
-        nameSpan.className = 'accordion-col-name';
-        nameSpan.textContent = colName;
-        headerCell.appendChild(nameSpan);
-
-        if (colType) {
-            const typeSpan = document.createElement('span');
-            typeSpan.className = 'accordion-col-type';
-            typeSpan.textContent = colType;
-            headerCell.appendChild(typeSpan);
-        }
-
-        headerRow.appendChild(headerCell);
-    });
-
-    return headerRow;
-}
-
-// Create data container with sample rows
-function createAccordionDataContainer(columns) {
-    const dataContainer = document.createElement('div');
-    dataContainer.className = 'accordion-data-container';
-
-    // Generate sample data rows
-    for (let rowIdx = 0; rowIdx < ACCORDION_PREVIEW_ROWS; rowIdx++) {
-        const row = createAccordionDataRow(columns, rowIdx);
-        dataContainer.appendChild(row);
-    }
-
-    return dataContainer;
-}
-
-// Create a data row with sample data
-function createAccordionDataRow(columns, rowIdx) {
-    const row = document.createElement('div');
-    row.className = 'accordion-data-row';
-    row.dataset.rowIndex = rowIdx;
-
-    if (columns.length === 0) {
-        const emptyCell = document.createElement('div');
-        emptyCell.className = 'accordion-data-cell accordion-empty-cell';
-        emptyCell.textContent = '—';
-        row.appendChild(emptyCell);
-        return row;
-    }
-
-    columns.forEach((col, colIdx) => {
-        const colType = typeof col === 'object' ? (col.type || '').toLowerCase() : '';
-        const fakeValue = generateFakeData(colType, rowIdx, colIdx);
-
-        const cell = document.createElement('div');
-        cell.className = `accordion-data-cell cell-type-${colType || 'unknown'}`;
-        cell.textContent = fakeValue;
-        cell.dataset.columnIndex = colIdx;
-        row.appendChild(cell);
-    });
-
-    return row;
-}
-
-// Generate fake data based on column type
-function generateFakeData(colType, rowIdx, colIdx) {
-    const typeNorm = (colType || '').toLowerCase();
-    const currentYear = new Date().getFullYear();
-
-    // Integer types
-    if (typeNorm.includes('int') || typeNorm.includes('bigint')) {
-        return Math.floor(Math.random() * 10000) + rowIdx * 100;
-    }
-
-    // Float/decimal types
-    if (typeNorm.includes('float') || typeNorm.includes('double') || typeNorm.includes('decimal') || typeNorm.includes('numeric')) {
-        return (Math.random() * 1000).toFixed(2);
-    }
-
-    // Date types
-    if (typeNorm.includes('date') && !typeNorm.includes('time')) {
-        const d = new Date(currentYear, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
-        return d.toISOString().split('T')[0];
-    }
-
-    // Timestamp types
-    if (typeNorm.includes('timestamp') || typeNorm.includes('datetime')) {
-        const d = new Date(currentYear, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1,
-                          Math.floor(Math.random() * 24), Math.floor(Math.random() * 60));
-        return d.toISOString().replace('T', ' ').slice(0, 19);
-    }
-
-    // Boolean types
-    if (typeNorm.includes('bool')) {
-        return Math.random() > 0.5 ? 'true' : 'false';
-    }
-
-    // Text/string types (default)
-    const sampleStrings = [
-        'alpha', 'beta', 'gamma', 'delta', 'epsilon',
-        'sample', 'test', 'demo', 'example', 'data',
-        'foo', 'bar', 'baz', 'qux', 'quux'
-    ];
-    return sampleStrings[(rowIdx + colIdx) % sampleStrings.length] + '_' + (rowIdx + 1);
-}
-
-// Get a label for a transform
-function getTransformLabel(transform) {
-    switch (transform.type) {
-        case 'where':
-            return transform.condition || 'condition...';
-        case 'select':
-            if (transform.columns && transform.columns.length > 0) {
-                const names = transform.columns.slice(0, 3).map(c =>
-                    typeof c === 'string' ? c : (c.name || c.expression || '')
-                );
-                return names.join(', ') + (transform.columns.length > 3 ? '...' : '');
-            }
-            return '*';
-        case 'group_by':
-            const dims = (transform.dimensions || []).slice(0, 2).join(', ');
-            const aggCount = (transform.aggregates || []).length;
-            return dims + (aggCount > 0 ? ` + ${aggCount} aggs` : '');
-        case 'order_by':
-            if (transform.expressions && transform.expressions.length > 0) {
-                return transform.expressions.slice(0, 2).map(e => e.column + (e.direction === 'desc' ? ' ↓' : ' ↑')).join(', ');
-            }
-            return 'order...';
-        case 'limit':
-            return `LIMIT ${transform.count || '?'}`;
-        case 'join':
-            return `${transform.join_type || 'JOIN'} ${transform.table || '?'}`;
-        case 'extend':
-            if (transform.columns && transform.columns.length > 0) {
-                return `+ ${transform.columns.length} columns`;
-            }
-            return '+ columns';
-        default:
-            return transform.type;
-    }
-}
+// Note: The following functions are now provided by accordion-utils.js:
+// - createAccordionColumnHeaders(columns, options)
+// - createAccordionDataContainer(columns)
+// - createAccordionDataRow(columns, rowIdx)
+// - generateFakeData(colType, rowIdx, colIdx)
+// - getTransformLabel(transform)
+// - ACCORDION_PREVIEW_ROWS constant
 
 // Create a single pipe node for a pipeline/CTE
 function createPipeNode(pipeline, idx, totalPipelines, cteNames) {
