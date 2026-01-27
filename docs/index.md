@@ -124,8 +124,9 @@ ASQL adds shorthand for patterns that are verbose in SQL.
 
 ```asql
 #                    -- COUNT(*)
-# users              -- COUNT(DISTINCT user_id)
-#(distinct user_id)  -- COUNT(DISTINCT user_id) - explicit
+#col                 -- COUNT(col)
+##col                -- COUNT(DISTINCT col) - double # = distinct
+uniq(col)            -- COUNT(DISTINCT col) - function form
 ```
 
 ### Descending Sort

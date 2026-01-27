@@ -72,11 +72,19 @@ group by country ( # as total )
 group by country ( count(*) as total )
 ```
 
-**Important**: `#` by itself is always `COUNT(*)` (row count), never a distinct count. To count distinct entities, be explicit:
-- `#` → `COUNT(*)` (row count - safe, understood interpretation)
-- `# orders` or `# of orders` → `COUNT(DISTINCT order_id)` (distinct count - explicit)
+**Count variants**:
+- `#` → `COUNT(*)` (row count)
+- `#col` or `# col` → `COUNT(col)` (count non-null values)
+- `##col` or `## col` → `COUNT(DISTINCT col)` (distinct count)
+- `uniq(col)` or `uniq col` → `COUNT(DISTINCT col)` (function form)
 
-**Note**: `count(distinct col)` and `running_count(*)` must use function form (no shorthand exists).
+**Example**:
+```asql
+group by status (
+    # as total_orders,
+    ##user_id as unique_customers
+)
+```
 
 ---
 
@@ -498,53 +506,44 @@ from orders
 
 ---
 
-### Count Shorthand: Space (`# amount`) vs Parens (`#(amount)`)
+### Count Shorthand: `#`, `##`, `uniq`
 
-**Preferred**: Space shorthand `# amount` or `# of amount` for natural language feel  
-**Also acceptable**: Parens form `#(amount)` for explicit clarity  
-**NOT preferred**: Underscore form `#_amount` (not natural language)
+**Count forms**: 
+- `#` → `COUNT(*)` (row count)
+- `#col` or `# col` → `COUNT(col)` (count non-null values)
+- `#(col)` → `COUNT(col)` (explicit parens)
+
+**Distinct count forms**:
+- `##col` or `## col` → `COUNT(DISTINCT col)` (double hash = distinct)
+- `uniq(col)` or `uniq col` → `COUNT(DISTINCT col)` (function form)
 
 ```asql
--- Preferred (space - natural language)
+-- Row count
 from sales
-  group by region ( # amount as total_items )
-  -- Natural language: "count amount" or "count of amount"
-  -- Column name: count_amount (implicit alias)
+  group by region ( # as order_count )
+  -- COUNT(*)
 
--- Preferred (space with "of" filler - natural language)
+-- Count column values
 from sales
-  group by region ( # of amount as total_items )
-  -- Natural language: "count of amount"
-  -- Column name: count_amount (implicit alias)
+  group by region ( #email as emails_present )
+  -- COUNT(email)
 
--- Also acceptable (parens - explicit)
+-- Distinct count (double hash)
 from sales
-  group by region ( #(amount) as total_items )
-  -- Explicit function call form
-  -- Column name: count_amount (implicit alias)
+  group by region ( ##customer_id as unique_customers )
+  -- COUNT(DISTINCT customer_id)
 
--- NOT preferred (underscore - not natural language)
+-- Distinct count (uniq function)
 from sales
-  group by region ( #_amount as total_items )  -- ❌ Underscore doesn't work for count
+  group by region ( uniq(customer_id) as unique_customers )
+  -- COUNT(DISTINCT customer_id)
 ```
 
 **Rationale**: 
-- **Space shorthand (`# amount` or `# of amount`)** is preferred because:
-  - **Natural language** - Reads like English: "count amount" or "count of amount"
-  - **Consistent with other aggregates** - Matches `sum amount`, `avg amount` pattern
-  - **Analyst-friendly** - More accessible to non-programmers
-  - **"of" filler** - The word "of" as filler (e.g., `# of amount`) should only work in the spaces setting, making it feel more natural
-  - **Column name**: When you write `# amount`, it generates `COUNT(amount)` which creates column name `count_amount` (following the implicit alias pattern `func_col`)
-- **Parens form (`#(amount)`)** is acceptable for:
-  - Explicit clarity when needed
-  - Documentation examples where maximum clarity matters
-  - When you want to be explicit about the function call
-- **Underscore form (`#_amount`)** is NOT preferred:
-  - Doesn't read as natural language
-  - The `#` symbol is already a shorthand, so combining it with underscore feels redundant
-  - Not consistent with the natural language philosophy
-
-**Note**: The `#` count shorthand should primarily work in the spaces setting (like `# amount` or `# of amount`), aligning with ASQL's natural language approach. The parens form `#(amount)` can work but isn't the preferred style for natural language queries.
+- `#` is the shortest notation for counting rows
+- `#col` naturally reads as "count col"
+- `##` (double hash) is a visual indicator for "distinct" - easy to remember
+- `uniq()` provides a function-style alternative for those who prefer it
 
 ---
 

@@ -67,19 +67,19 @@ from orders
   )
 ```
 
-### Count Entities (New!)
+### Distinct Count (`##` or `uniq`)
 
-When followed by a table name, `#` automatically counts distinct entities:
+Use double hash `##` or `uniq()` to count distinct values:
 
 ```asql
 from orders
   group by status (
     # as total_orders,
-    # users as unique_customers
+    ##user_id as unique_customers
   )
 ```
 
-The `# users` becomes `COUNT(DISTINCT user_id)` — ASQL infers the primary key!
+The `##user_id` becomes `COUNT(DISTINCT user_id)`. You can also use `uniq(user_id)`.
 
 ---
 
@@ -363,7 +363,7 @@ This query:
 | `where x = 1` | `WHERE x = 1` |
 | `order by -col` | `ORDER BY col DESC` |
 | `#` | `COUNT(*)` |
-| `# users` | `COUNT(DISTINCT user_id)` |
+| `##col` or `uniq(col)` | `COUNT(DISTINCT col)` |
 | `&` | `INNER JOIN` |
 | `&?` | `LEFT JOIN` |
 | `@2024-01-01` | `DATE '2024-01-01'` |

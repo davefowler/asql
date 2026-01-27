@@ -17,9 +17,9 @@ from orders
 
 The syntax is: `group by <columns> ( <aggregations> )`.
 
-## Count Shorthand (`#`)
+## Count Shorthand (`#`, `##`, `uniq`)
 
-The `#` symbol provides flexible counting syntax:
+The `#` symbol provides flexible counting syntax. Use `##` (double hash) or `uniq()` for distinct counts.
 
 ### Basic Row Count
 
@@ -32,35 +32,24 @@ from users
 
 ### Count with Column
 
+Use `#col` or `# col` to count non-null values in a column:
+
 ```asql
-#(email)           -- COUNT(email)
-#(distinct email)  -- COUNT(DISTINCT email)
+#email             -- COUNT(email)
+# email            -- COUNT(email) (with space)
+#(email)           -- COUNT(email) (with parens)
 ```
 
-### Count by Table Name (Distinct Count)
+### Distinct Count (`##` or `uniq`)
 
-When followed by a table name, `#` automatically infers the primary key and counts distinct values:
-
-```asql
--- users            -- COUNT(DISTINCT user_id)
--- of users         -- COUNT(DISTINCT user_id)
--- orders           -- COUNT(DISTINCT order_id)
-```
-
-**Important distinction**:
-- `#` (standalone) → `COUNT(*)` (row count)
-- `# orders` or `# of orders` → `COUNT(DISTINCT order_id)` (distinct count)
-
-Always be explicit when you want distinct count. The standalone `#` never automatically becomes a distinct count.
-
-This uses convention: the table name (singular form) + `_id` is assumed to be the primary key.
-
-### Explicit Row Count
-
-Use `# *` when you explicitly want row count (not distinct):
+Use double hash `##` or the `uniq()` function for distinct counts:
 
 ```asql
--- *                -- COUNT(*) explicitly
+##user_id          -- COUNT(DISTINCT user_id)
+## user_id         -- COUNT(DISTINCT user_id) (with space)
+#(distinct email)  -- COUNT(DISTINCT email) (explicit)
+uniq(user_id)      -- COUNT(DISTINCT user_id)
+uniq user_id       -- COUNT(DISTINCT user_id) (space notation)
 ```
 
 ### Count Shorthand Reference
@@ -68,11 +57,13 @@ Use `# *` when you explicitly want row count (not distinct):
 | Syntax | SQL Output | Use Case |
 |--------|------------|----------|
 | `#` | `COUNT(*)` | Count all rows |
-| `# *` | `COUNT(*)` | Explicit row count |
-| `#(col)` | `COUNT(col)` | Count non-null values |
-| `#(distinct col)` | `COUNT(DISTINCT col)` | Distinct values |
-| `# users` | `COUNT(DISTINCT user_id)` | Distinct entity count |
-| `# of users` | `COUNT(DISTINCT user_id)` | Natural language variant |
+| `#*` or `# *` | `COUNT(*)` | Explicit row count |
+| `#col` or `# col` | `COUNT(col)` | Count non-null values |
+| `#(col)` | `COUNT(col)` | Count with parens |
+| `##col` or `## col` | `COUNT(DISTINCT col)` | Distinct count |
+| `#(distinct col)` | `COUNT(DISTINCT col)` | Explicit distinct |
+| `uniq(col)` | `COUNT(DISTINCT col)` | Function form |
+| `uniq col` | `COUNT(DISTINCT col)` | Space notation |
 
 ## Multiple Grouping Columns
 
@@ -218,9 +209,9 @@ from orders
     avg(amount) as avg_order_value
 ```
 
-**Important**: `#` by itself is always `COUNT(*)` (row count), never a distinct count. If you want to count distinct entities, be explicit:
-- `#` → `COUNT(*)` (row count - safe, understood interpretation)
-- `# orders` or `# of orders` → `COUNT(DISTINCT order_id)` (distinct count - explicit)
+**Important**: `#` by itself is always `COUNT(*)` (row count). For distinct counts, use `##` or `uniq()`:
+- `#` → `COUNT(*)` (row count)
+- `##col` or `uniq(col)` → `COUNT(DISTINCT col)` (distinct count)
 
 ## Conditional Aggregates
 

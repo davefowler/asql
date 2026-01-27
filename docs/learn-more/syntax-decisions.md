@@ -128,27 +128,27 @@ PRQL separates `group` and `aggregate` for orthogonality, enabling "group withou
 
 ---
 
-## Counting: `#`
+## Counting: `#`, `##`, `uniq`
 
-**Decision**: Use `#` as shorthand for COUNT.
+**Decision**: Use `#` as shorthand for COUNT, `##` for COUNT DISTINCT.
 
 | Alternative | Source | Why Not |
 |-------------|--------|---------|
 | `count(*)` only | SQL | More verbose |
 | `n` or `num` | — | Less intuitive |
 
-**Rationale**: `#` universally means "number of." It's extremely concise while remaining readable:
+**Rationale**: `#` universally means "number of." `##` (double hash) visually conveys "distinct":
 
 ```asql
 from users
   group by country (
-    # as total,              -- COUNT(*)
-    #(email) as with_email,  -- COUNT(email)
-    # users as unique_users  -- COUNT(DISTINCT user_id)
+    # as total,                -- COUNT(*)
+    #email as with_email,      -- COUNT(email)
+    ##user_id as unique_users  -- COUNT(DISTINCT user_id)
   )
 ```
 
-The `# table_name` syntax (e.g., `# users`) automatically infers the primary key and performs a distinct count. This uses ASQL's convention-based approach.
+The `uniq(col)` function is an alternative for those who prefer function-style syntax for distinct counts.
 
 ---
 
