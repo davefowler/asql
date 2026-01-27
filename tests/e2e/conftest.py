@@ -15,6 +15,30 @@ def is_port_in_use(port: int) -> bool:
         return s.connect_ex(('localhost', port)) == 0
 
 
+def check_playwright_browsers_installed() -> bool:
+    """Check if Playwright browsers are installed."""
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            # Try to get the executable path - this will fail if not installed
+            browser_path = p.chromium.executable_path
+            return os.path.exists(browser_path) if browser_path else False
+    except Exception:
+        return False
+
+
+# Skip all E2E tests if Playwright browsers aren't installed
+def pytest_collection_modifyitems(config, items):
+    """Skip E2E tests if Playwright browsers are not installed."""
+    if not check_playwright_browsers_installed():
+        skip_marker = pytest.mark.skip(
+            reason="Playwright browsers not installed. Run 'playwright install' to enable E2E tests."
+        )
+        for item in items:
+            if "e2e" in str(item.fspath):
+                item.add_marker(skip_marker)
+
+
 @pytest.fixture(scope="session")
 def server_url():
     """Return the playground server URL. Override via PLAYGROUND_URL env var."""
