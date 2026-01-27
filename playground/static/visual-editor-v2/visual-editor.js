@@ -32,6 +32,9 @@
  * - Pipes mode for CTE visualization
  */
 
+// Number of sample data rows to show in accordion preview
+const ACCORDION_PREVIEW_ROWS = 10;
+
 class VisualEditorV2 {
   constructor() {
     // Pipeline data
@@ -60,6 +63,7 @@ class VisualEditorV2 {
     this.nextTransformId = 0;
     this.expressionInstances = new Map(); // Track Expression instances
     this.sortableInstances = new Map(); // Track SortableList instances
+    this.accordionExpandedStep = null; // Track which accordion step is expanded
   }
 
   // Getter for backward compatibility
@@ -536,8 +540,17 @@ class VisualEditorV2 {
    * Render accordion mode view (spreadsheet-like accordion)
    */
   renderAccordionMode(container) {
+    // Early return if no pipelines
+    if (!this.pipelines || this.pipelines.length === 0) {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.className = 'accordion-empty-state';
+      emptyMsg.textContent = 'No query to display';
+      container.appendChild(emptyMsg);
+      return;
+    }
+
     // Track which step is expanded (default to last step in main pipeline)
-    if (this.accordionExpandedStep === undefined) {
+    if (this.accordionExpandedStep === null) {
       const mainPipeline = this.pipelines[this.pipelines.length - 1];
       const totalSteps = 1 + (mainPipeline?.transforms?.length || 0);
       this.accordionExpandedStep = { pipelineIdx: this.pipelines.length - 1, stepIdx: totalSteps - 1 };
@@ -691,8 +704,8 @@ class VisualEditorV2 {
       const dataContainer = document.createElement('div');
       dataContainer.className = 'accordion-data-container';
 
-      // Generate 10 rows of fake data
-      for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+      // Generate sample data rows
+      for (let rowIdx = 0; rowIdx < ACCORDION_PREVIEW_ROWS; rowIdx++) {
         const row = this.createAccordionDataRow(columns, rowIdx);
         dataContainer.appendChild(row);
       }
@@ -785,6 +798,7 @@ class VisualEditorV2 {
    */
   generateFakeData(colType, rowIdx, colIdx) {
     const typeNorm = (colType || '').toLowerCase();
+    const currentYear = new Date().getFullYear();
 
     // Integer types
     if (typeNorm.includes('int') || typeNorm.includes('bigint')) {
@@ -798,13 +812,13 @@ class VisualEditorV2 {
 
     // Date types
     if (typeNorm.includes('date') && !typeNorm.includes('time')) {
-      const d = new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
+      const d = new Date(currentYear, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
       return d.toISOString().split('T')[0];
     }
 
     // Timestamp types
     if (typeNorm.includes('timestamp') || typeNorm.includes('datetime')) {
-      const d = new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1,
+      const d = new Date(currentYear, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1,
                         Math.floor(Math.random() * 24), Math.floor(Math.random() * 60));
       return d.toISOString().replace('T', ' ').slice(0, 19);
     }

@@ -2163,6 +2163,9 @@ function renderPipesView(query) {
     transformsContainer.appendChild(pipesContainer);
 }
 
+// Number of sample data rows to show in accordion preview
+const ACCORDION_PREVIEW_ROWS = 10;
+
 // Render output in accordion/spreadsheet mode
 function renderAccordionView(query) {
     const transformsContainer = document.getElementById('output-transforms-container');
@@ -2175,8 +2178,17 @@ function renderAccordionView(query) {
     // Clear container
     transformsContainer.innerHTML = '';
 
-    // Normalize to array format
-    const pipelines = Array.isArray(query) ? query : [query];
+    // Normalize to array format and handle empty/null query
+    const pipelines = Array.isArray(query) ? query : (query ? [query] : []);
+    
+    // Early return if no pipelines
+    if (pipelines.length === 0) {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.className = 'accordion-empty-state';
+        emptyMsg.textContent = 'No query to display';
+        transformsContainer.appendChild(emptyMsg);
+        return;
+    }
 
     // Create accordion container
     const accordionContainer = document.createElement('div');
@@ -2368,8 +2380,8 @@ function createAccordionDataContainer(columns) {
     const dataContainer = document.createElement('div');
     dataContainer.className = 'accordion-data-container';
 
-    // Generate 10 rows of sample data
-    for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+    // Generate sample data rows
+    for (let rowIdx = 0; rowIdx < ACCORDION_PREVIEW_ROWS; rowIdx++) {
         const row = createAccordionDataRow(columns, rowIdx);
         dataContainer.appendChild(row);
     }
@@ -2408,6 +2420,7 @@ function createAccordionDataRow(columns, rowIdx) {
 // Generate fake data based on column type
 function generateFakeData(colType, rowIdx, colIdx) {
     const typeNorm = (colType || '').toLowerCase();
+    const currentYear = new Date().getFullYear();
 
     // Integer types
     if (typeNorm.includes('int') || typeNorm.includes('bigint')) {
@@ -2421,13 +2434,13 @@ function generateFakeData(colType, rowIdx, colIdx) {
 
     // Date types
     if (typeNorm.includes('date') && !typeNorm.includes('time')) {
-        const d = new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
+        const d = new Date(currentYear, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
         return d.toISOString().split('T')[0];
     }
 
     // Timestamp types
     if (typeNorm.includes('timestamp') || typeNorm.includes('datetime')) {
-        const d = new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1,
+        const d = new Date(currentYear, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1,
                           Math.floor(Math.random() * 24), Math.floor(Math.random() * 60));
         return d.toISOString().replace('T', ' ').slice(0, 19);
     }

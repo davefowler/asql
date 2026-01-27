@@ -2152,3 +2152,12 @@
 .visual-style-accordion .accordion-container {
   display: flex;
 }
+
+/* Accordion empty state */
+.accordion-empty-state {
+  color: #656d76;
+  text-align: center;
+  padding: 40px;
+  font-size: 14px;
+  font-style: italic;
+}
