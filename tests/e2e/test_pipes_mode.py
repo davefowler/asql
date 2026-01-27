@@ -64,13 +64,6 @@ SELECT * FROM step3 ORDER BY total DESC""",
 }
 
 
-@pytest.fixture(scope="module")
-def server_url():
-    """Return the playground server URL. Override via env var if needed."""
-    import os
-    return os.environ.get("PLAYGROUND_URL", "http://localhost:5001")
-
-
 @pytest.fixture
 def playground_page(page: Page, server_url: str):
     """Navigate to the playground and wait for it to load."""
