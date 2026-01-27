@@ -274,6 +274,12 @@ ASQL_FUNCTION_REGISTRY = {
 # Natural syntax = paren-free function calls where func precedes its argument.
 # =============================================================================
 
+def _build_count_distinct(args: t.List) -> exp.Count:
+    """Build COUNT(DISTINCT col) for uniq function."""
+    col = seq_get(args, 0) if isinstance(args, list) else args
+    return exp.Count(this=exp.Distinct(expressions=[col] if col else []))
+
+
 NATURAL_AGG_FUNCS = {
     # Aggregates with natural language aliases
     'SUM': build_natural_agg(exp.Sum),
@@ -281,6 +287,7 @@ NATURAL_AGG_FUNCS = {
     'AVG': build_natural_agg(exp.Avg),
     'AVERAGE': build_natural_agg(exp.Avg),  # alias
     'COUNT': build_natural_agg(exp.Count),
+    'UNIQ': _build_count_distinct,  # uniq col → COUNT(DISTINCT col)
     'MIN': build_natural_agg(exp.Min),
     'MINIMUM': build_natural_agg(exp.Min),  # alias
     'MAX': build_natural_agg(exp.Max),

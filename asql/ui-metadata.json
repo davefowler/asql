@@ -77,6 +77,7 @@
   "aggregates": {
     "count": { "label": "count", "description": "Count rows", "allows_distinct": true, "types": ["any"], "natural_syntax": true },
     "count_distinct": { "label": "unique", "description": "Count unique values", "types": ["any"], "aliases": ["unique"] },
+    "uniq": { "label": "uniq", "description": "Count unique values (shorthand)", "types": ["any"], "natural_syntax": true },
     "sum": { "label": "sum", "description": "Sum of values", "allows_distinct": true, "types": ["number", "integer", "float"], "aliases": ["total"], "natural_syntax": true },
     "avg": { "label": "avg", "description": "Average of values", "allows_distinct": true, "types": ["number", "integer", "float"], "aliases": ["average"], "natural_syntax": true },
     "min": { "label": "min", "description": "Minimum value", "types": ["any"], "aliases": ["minimum"], "natural_syntax": true },

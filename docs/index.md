@@ -1,6 +1,6 @@
 # ASQL: SQL with Analytics Built In
 
-Analytic SQL (ASQL) is a query language designed for analytics work. It adds **built-in analytics features** that SQL lacks—guaranteed complete results, cohort analysis, cross-dialect date handling—and uses a pipe syntax that flows top-to-bottom.
+Analytic SQL (ASQL) is a query language designed for analytics work. It uses a **pipe syntax** that flows top-to-bottom, includes **built-in helpers** for common analytics patterns (like dbt_utils macros), and handles **cross-dialect** differences automatically.
 
 Think of it as SQL with analytics superpowers. Write ASQL, get standard SQL for any dialect.
 
@@ -8,155 +8,7 @@ Think of it as SQL with analytics superpowers. Write ASQL, get standard SQL for 
 
 ---
 
-## The Problem with SQL for Analytics
-
-SQL was designed in the 1970s for **transactional systems**—banking, inventory, order processing. It answers "what happened?" based on rows that exist. This works great for OLTP.
-
-But **analytics is different**. When you're building dashboards, tracking trends, or calculating month-over-month metrics, SQL's design causes real problems:
-
-### Missing Data Points
-
-```sql
-SELECT month, SUM(amount) as revenue
-FROM orders
-GROUP BY month;
-```
-
-| month | revenue |
-|-------|---------|
-| Jan   | 1000    |
-| Feb   | 1500    |
-| Mar   | 800     |
-| Jun   | 1200    |
-
-April and May are missing. Your chart line jumps. Your MoM calculation uses the wrong prior month. Your dashboard looks broken.
-
-Every analytics team builds workarounds: date dimension tables, calendar CTEs, CROSS JOINs, post-processing in Python. It's tedious and error-prone.
-
-### Date Dialect Chaos
-
-```sql
--- PostgreSQL
-SELECT DATE_TRUNC('month', created_at) FROM orders;
-
--- BigQuery  
-SELECT DATE_TRUNC(created_at, MONTH) FROM orders;
-
--- MySQL
-SELECT DATE_FORMAT(created_at, '%Y-%m-01') FROM orders;
-```
-
-Same operation, different syntax per database. Copy-paste between dialects breaks.
-
-### Window Function Verbosity
-
-Getting the most recent order per customer—a common analytics pattern:
-
-```sql
-SELECT * FROM (
-    SELECT *, ROW_NUMBER() OVER (
-        PARTITION BY customer_id ORDER BY order_date DESC
-    ) as rn
-    FROM orders
-) sub WHERE rn = 1;
-```
-
-This should be one line.
-
----
-
-## ASQL's Analytics Features
-
-ASQL builds solutions to these problems **into the language**.
-
-### Guaranteed Complete Results
-
-ASQL automatically fills gaps in your grouped data:
-
-```asql-play
-from orders
-  group by month(order_date) (
-    sum(amount) ?? 0 as revenue
-  )
-```
-
-| month | revenue |
-|-------|---------|
-| Jan   | 1000    |
-| Feb   | 1500    |
-| Mar   | 800     |
-| Apr   | 0       |
-| May   | 0       |
-| Jun   | 1200    |
-
-No dimension tables. No CTEs. No post-processing. ASQL ensures all expected time periods appear in your results—analytically correct by default.
-
-See [Guaranteed Groups](concepts/guaranteed-groups.md) for details.
-
-### Cross-Dialect Date Handling
-
-Write once, run on any database:
-
-```asql
-where created_at > 7 days ago
-where due_date < 30 days from now
-select order_date + 14 days as delivery_date
-```
-
-| Operation | PostgreSQL | BigQuery | ASQL |
-|-----------|------------|----------|------|
-| Truncate to month | `DATE_TRUNC('month', d)` | `DATE_TRUNC(d, MONTH)` | `month(d)` |
-| Add days | `d + INTERVAL '7 days'` | `DATE_ADD(d, INTERVAL 7 DAY)` | `d + 7 days` |
-| Date literal | `DATE '2024-01-01'` | `DATE '2024-01-01'` | `@2024-01-01` |
-
-ASQL compiles to the correct syntax for your target database.
-
-### One-Line Window Patterns
-
-Common analytics operations become single lines:
-
-```asql-play
--- Most recent order per customer
-from orders
-  per customer_id first by -order_date
-
--- Previous period comparison
-from monthly_sales
-  select month, revenue, prior(revenue) as prev_revenue
-
--- Running totals
-from daily_sales
-  select date, revenue, running_sum(revenue) as cumulative
-```
-
-| ASQL | SQL Equivalent |
-|------|---------------|
-| `per X first by -date` | `ROW_NUMBER() OVER (PARTITION BY X ORDER BY date DESC) = 1` |
-| `prior(col)` | `LAG(col, 1) OVER (...)` |
-| `next(col)` | `LEAD(col, 1) OVER (...)` |
-| `running_sum(col)` | `SUM(col) OVER (ROWS UNBOUNDED PRECEDING)` |
-| `rolling_avg(col, 7)` | `AVG(col) OVER (ROWS 6 PRECEDING)` |
-
-### Convention-Based Inference
-
-ASQL infers relationships from naming patterns:
-
-```asql-play
--- Auto-joins on user_id → users.id
-from orders
-  & users
-  select orders.*, users.name
-
--- FK shorthand: department_id matches departments.id
-from employees
-  join departments on department_id
-```
-
-When your tables follow standard naming conventions (`user_id` → `users.id`), ASQL figures out the join conditions. No more typing the obvious.
-
----
-
-## Pipe Syntax
+## Pipe Syntax: Queries That Read Like Steps
 
 ASQL queries flow top-to-bottom in execution order:
 
@@ -197,6 +49,73 @@ from users
 
 ---
 
+## Built-in Analytics Helpers
+
+ASQL includes common analytics patterns that you'd normally get from dbt_utils or custom macros—built right into the language.
+
+### One-Line Window Functions
+
+Common analytics operations become single lines:
+
+```asql-play
+-- Most recent order per customer
+from orders
+  per customer_id first by -order_date
+
+-- Previous period comparison
+from monthly_sales
+  select month, revenue, prior(revenue) as prev_revenue
+
+-- Running totals
+from daily_sales
+  select date, revenue, running_sum(revenue) as cumulative
+```
+
+| ASQL | SQL Equivalent | dbt_utils Macro |
+|------|---------------|-----------------|
+| `per X first by -date` | `ROW_NUMBER() OVER (PARTITION BY X ORDER BY date DESC) = 1` | `deduplicate` |
+| `prior(col)` | `LAG(col, 1) OVER (...)` | — |
+| `next(col)` | `LEAD(col, 1) OVER (...)` | — |
+| `running_sum(col)` | `SUM(col) OVER (ROWS UNBOUNDED PRECEDING)` | — |
+| `rolling_avg(col, 7)` | `AVG(col) OVER (ROWS 6 PRECEDING)` | — |
+
+### Cross-Dialect Date Handling
+
+Write once, run on any database:
+
+```asql
+where created_at > 7 days ago
+where due_date < 30 days from now
+select order_date + 14 days as delivery_date
+```
+
+| Operation | PostgreSQL | BigQuery | ASQL |
+|-----------|------------|----------|------|
+| Truncate to month | `DATE_TRUNC('month', d)` | `DATE_TRUNC(d, MONTH)` | `month(d)` |
+| Add days | `d + INTERVAL '7 days'` | `DATE_ADD(d, INTERVAL 7 DAY)` | `d + 7 days` |
+| Date literal | `DATE '2024-01-01'` | `DATE '2024-01-01'` | `@2024-01-01` |
+
+ASQL compiles to the correct syntax for your target database.
+
+### Convention-Based Joins
+
+ASQL infers relationships from naming patterns:
+
+```asql-play
+-- Auto-joins on user_id → users.id
+from orders
+  & users
+  select orders.*, users.name
+
+-- FK shorthand: department_id matches departments.id
+from employees
+  join departments on department_id
+```
+
+When your tables follow standard naming conventions (`user_id` → `users.id`), ASQL figures out the join conditions. No more typing the obvious.
+
+---
+
 ## Syntax Shortcuts
 
 ASQL adds shorthand for patterns that are verbose in SQL.
@@ -204,8 +123,8 @@ ASQL adds shorthand for patterns that are verbose in SQL.
 ### Count
 
 ```asql
---                    -- COUNT(*)
--- users              -- COUNT(DISTINCT user_id)
+#                    -- COUNT(*)
+# users              -- COUNT(DISTINCT user_id)
 #(distinct user_id)  -- COUNT(DISTINCT user_id) - explicit
 ```
 
@@ -269,6 +188,32 @@ from orders sample 100 per category
 
 ---
 
+## Gap-Filling for Time Series
+
+When grouping by time, SQL only returns rows that exist—missing months simply disappear from your results. ASQL can automatically fill gaps:
+
+```asql-play
+from orders
+  group by spine(month(order_date)) (
+    sum(amount) ?? 0 as revenue
+  )
+```
+
+| month | revenue |
+|-------|---------|
+| Jan   | 1000    |
+| Feb   | 1500    |
+| Mar   | 800     |
+| Apr   | 0       |
+| May   | 0       |
+| Jun   | 1200    |
+
+The `spine()` function ensures all time periods appear—even April and May with no orders. The `?? 0` provides a default value for missing periods.
+
+See [Guaranteed Groups](concepts/guaranteed-groups.md) for details.
+
+---
+
 ## Pivot & Unpivot
 
 ```asql
@@ -297,10 +242,10 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 
 ## What ASQL Is
 
-- **Analytics-first** — Built-in features for dashboards, time series, and reporting
-- **Analytically correct** — Guaranteed complete results prevent missing data bugs
-- **SQL-compatible** — Familiar vocabulary, compiles to standard SQL
-- **Dialect-portable** — Write once, run on any database
+- **Pipe syntax** — Queries flow top-to-bottom in execution order, like dbt and pandas
+- **Built-in helpers** — Common analytics patterns (dedup, window functions, date math) built into the language
+- **Dialect-portable** — Write once, run on PostgreSQL, BigQuery, Snowflake, DuckDB, and more
+- **SQL-compatible** — Familiar vocabulary, compiles to standard SQL you can inspect
 
 ## What ASQL Is Not
 
@@ -314,8 +259,8 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 
 - [Quick Start](quick_start.md) — Get up and running quickly
 - [Tutorial](tutorial.md) — Hands-on, step-by-step learning guide
-- [Grouping & Aggregation](group_by.md) — Guaranteed groups, aggregates
 - [Window Functions](window_functions.md) — Running totals, ranking, prior/next
+- [Grouping & Aggregation](group_by.md) — GROUP BY, aggregates, gap-filling
 - [Examples](examples.md) — Real queries with SQL output
 
 ## Documentation
@@ -324,10 +269,10 @@ PostgreSQL, MySQL, SQLite, BigQuery, Snowflake, Redshift, DuckDB, Trino, Spark S
 
 Understanding ASQL's design:
 
-- [Guaranteed Groups](concepts/guaranteed-groups.md) — Automatic gap-filling
 - [Pipe Semantics](concepts/pipe-semantics.md) — Why FROM-first matters
 - [Convention Over Configuration](concepts/conventions.md) — Smart defaults
 - [Function Shorthand](concepts/shorthand.md) — Underscore/space flexibility
+- [Guaranteed Groups](concepts/guaranteed-groups.md) — Automatic gap-filling
 
 ### Syntax Guide
 
