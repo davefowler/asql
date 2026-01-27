@@ -842,6 +842,8 @@ function setVisualStylePreference(style) {
         if (lastRenderedQuery) {
             if (style === 'pipes') {
                 renderPipesView(lastRenderedQuery);
+            } else if (style === 'accordion') {
+                renderAccordionView(lastRenderedQuery);
             } else {
                 renderOutputVisual(lastRenderedQuery);
             }
@@ -1979,6 +1981,12 @@ function renderOutputVisual(query) {
         renderPipesView(query);
         return;
     }
+
+    // If in accordion mode, render the accordion view
+    if (visualStylePreference === 'accordion') {
+        renderAccordionView(query);
+        return;
+    }
     
     // Clear container
     transformsContainer.innerHTML = '';
@@ -2153,6 +2161,325 @@ function renderPipesView(query) {
     });
 
     transformsContainer.appendChild(pipesContainer);
+}
+
+// Render output in accordion/spreadsheet mode
+function renderAccordionView(query) {
+    const transformsContainer = document.getElementById('output-transforms-container');
+    if (!transformsContainer) return;
+
+    // Hide the static from block
+    const fromBlock = document.querySelector('#output-visual-editor-container .from-block');
+    if (fromBlock) fromBlock.style.display = 'none';
+
+    // Clear container
+    transformsContainer.innerHTML = '';
+
+    // Normalize to array format
+    const pipelines = Array.isArray(query) ? query : [query];
+
+    // Create accordion container
+    const accordionContainer = document.createElement('div');
+    accordionContainer.className = 'accordion-container';
+
+    // Render each pipeline
+    pipelines.forEach((pipeline, pipelineIdx) => {
+        const pipelineAccordion = createAccordionPipeline(pipeline, pipelineIdx);
+        accordionContainer.appendChild(pipelineAccordion);
+
+        // Add set operation between pipelines if exists
+        if (pipelineIdx < pipelines.length - 1 && pipeline.set_operation) {
+            const setOpDiv = document.createElement('div');
+            setOpDiv.className = 'accordion-set-operation';
+            const opText = pipeline.set_operation.all
+                ? `${pipeline.set_operation.type.toUpperCase()} ALL`
+                : pipeline.set_operation.type.toUpperCase();
+            setOpDiv.innerHTML = `<span class="accordion-set-op-badge">${opText}</span>`;
+            accordionContainer.appendChild(setOpDiv);
+        }
+    });
+
+    transformsContainer.appendChild(accordionContainer);
+}
+
+// Create an accordion pipeline with stacked spreadsheet steps
+function createAccordionPipeline(pipeline, pipelineIdx) {
+    const pipelineDiv = document.createElement('div');
+    pipelineDiv.className = 'accordion-pipeline';
+    pipelineDiv.dataset.pipelineIndex = pipelineIdx;
+
+    // Pipeline header (if named CTE)
+    if (pipeline.name) {
+        const header = document.createElement('div');
+        header.className = 'accordion-pipeline-header';
+        header.innerHTML = `<span class="accordion-cte-badge">CTE</span> <span class="accordion-cte-name">${escapeHtmlText(pipeline.name)}</span>`;
+        pipelineDiv.appendChild(header);
+    }
+
+    // Step 0: FROM step
+    const fromStep = createAccordionStep(
+        'from',
+        pipeline.from?.table || 'select table...',
+        pipeline.from?.output_columns || [],
+        true // expanded by default for FROM
+    );
+    pipelineDiv.appendChild(fromStep);
+
+    // Subsequent transform steps
+    (pipeline.transforms || []).forEach((transform, transformIdx) => {
+        const stepLabel = getTransformLabel(transform);
+        const columns = transform.output_columns || pipeline.from?.output_columns || [];
+        const isLast = transformIdx === (pipeline.transforms || []).length - 1;
+
+        const step = createAccordionStep(
+            transform.type,
+            stepLabel,
+            columns,
+            isLast // expand last step
+        );
+        pipelineDiv.appendChild(step);
+    });
+
+    return pipelineDiv;
+}
+
+// Create a single accordion step (spreadsheet section) - read-only version
+function createAccordionStep(type, label, columns, isExpanded) {
+    const step = document.createElement('div');
+    step.className = `accordion-step ${isExpanded ? 'expanded' : 'collapsed'} step-type-${type}`;
+
+    // Step header
+    const header = document.createElement('div');
+    header.className = 'accordion-step-header';
+
+    const headerLeft = document.createElement('div');
+    headerLeft.className = 'accordion-header-left';
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `accordion-step-type type-${type}`;
+    typeBadge.textContent = type.toUpperCase().replace('_', ' ');
+    headerLeft.appendChild(typeBadge);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'accordion-step-label';
+    labelSpan.textContent = label;
+    headerLeft.appendChild(labelSpan);
+
+    header.appendChild(headerLeft);
+
+    const headerRight = document.createElement('div');
+    headerRight.className = 'accordion-header-right';
+
+    // Column count indicator
+    const colCount = document.createElement('span');
+    colCount.className = 'accordion-col-count';
+    colCount.textContent = `${columns.length} cols`;
+    headerRight.appendChild(colCount);
+
+    // Expand indicator
+    const expandIndicator = document.createElement('span');
+    expandIndicator.className = 'accordion-expand-indicator';
+    expandIndicator.textContent = isExpanded ? '▼' : '▶';
+    headerRight.appendChild(expandIndicator);
+
+    header.appendChild(headerRight);
+
+    // Click to toggle expand/collapse
+    header.addEventListener('click', () => {
+        const wasExpanded = step.classList.contains('expanded');
+        // Collapse all siblings first
+        const siblings = step.parentElement.querySelectorAll('.accordion-step');
+        siblings.forEach(s => {
+            s.classList.remove('expanded');
+            s.classList.add('collapsed');
+            const indicator = s.querySelector('.accordion-expand-indicator');
+            if (indicator) indicator.textContent = '▶';
+            const dataContainer = s.querySelector('.accordion-data-container');
+            if (dataContainer) dataContainer.remove();
+        });
+        
+        // If it wasn't expanded, expand this one
+        if (!wasExpanded) {
+            step.classList.remove('collapsed');
+            step.classList.add('expanded');
+            expandIndicator.textContent = '▼';
+            
+            // Add data rows
+            const dataContainer = createAccordionDataContainer(columns);
+            step.appendChild(dataContainer);
+        }
+    });
+
+    step.appendChild(header);
+
+    // Column headers row (always visible)
+    const colHeaders = createAccordionColumnHeaders(columns);
+    step.appendChild(colHeaders);
+
+    // Data rows (only visible when expanded)
+    if (isExpanded) {
+        const dataContainer = createAccordionDataContainer(columns);
+        step.appendChild(dataContainer);
+    }
+
+    return step;
+}
+
+// Create column headers row for accordion step
+function createAccordionColumnHeaders(columns) {
+    const headerRow = document.createElement('div');
+    headerRow.className = 'accordion-col-headers';
+
+    if (columns.length === 0) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = 'accordion-col-header accordion-empty-header';
+        emptyCell.textContent = 'No columns';
+        headerRow.appendChild(emptyCell);
+        return headerRow;
+    }
+
+    columns.forEach((col) => {
+        const colName = typeof col === 'string' ? col : col.name;
+        const colType = typeof col === 'object' ? col.type : '';
+
+        const headerCell = document.createElement('div');
+        headerCell.className = 'accordion-col-header';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'accordion-col-name';
+        nameSpan.textContent = colName;
+        headerCell.appendChild(nameSpan);
+
+        if (colType) {
+            const typeSpan = document.createElement('span');
+            typeSpan.className = 'accordion-col-type';
+            typeSpan.textContent = colType;
+            headerCell.appendChild(typeSpan);
+        }
+
+        headerRow.appendChild(headerCell);
+    });
+
+    return headerRow;
+}
+
+// Create data container with sample rows
+function createAccordionDataContainer(columns) {
+    const dataContainer = document.createElement('div');
+    dataContainer.className = 'accordion-data-container';
+
+    // Generate 10 rows of sample data
+    for (let rowIdx = 0; rowIdx < 10; rowIdx++) {
+        const row = createAccordionDataRow(columns, rowIdx);
+        dataContainer.appendChild(row);
+    }
+
+    return dataContainer;
+}
+
+// Create a data row with sample data
+function createAccordionDataRow(columns, rowIdx) {
+    const row = document.createElement('div');
+    row.className = 'accordion-data-row';
+    row.dataset.rowIndex = rowIdx;
+
+    if (columns.length === 0) {
+        const emptyCell = document.createElement('div');
+        emptyCell.className = 'accordion-data-cell accordion-empty-cell';
+        emptyCell.textContent = '—';
+        row.appendChild(emptyCell);
+        return row;
+    }
+
+    columns.forEach((col, colIdx) => {
+        const colType = typeof col === 'object' ? (col.type || '').toLowerCase() : '';
+        const fakeValue = generateFakeData(colType, rowIdx, colIdx);
+
+        const cell = document.createElement('div');
+        cell.className = `accordion-data-cell cell-type-${colType || 'unknown'}`;
+        cell.textContent = fakeValue;
+        cell.dataset.columnIndex = colIdx;
+        row.appendChild(cell);
+    });
+
+    return row;
+}
+
+// Generate fake data based on column type
+function generateFakeData(colType, rowIdx, colIdx) {
+    const typeNorm = (colType || '').toLowerCase();
+
+    // Integer types
+    if (typeNorm.includes('int') || typeNorm.includes('bigint')) {
+        return Math.floor(Math.random() * 10000) + rowIdx * 100;
+    }
+
+    // Float/decimal types
+    if (typeNorm.includes('float') || typeNorm.includes('double') || typeNorm.includes('decimal') || typeNorm.includes('numeric')) {
+        return (Math.random() * 1000).toFixed(2);
+    }
+
+    // Date types
+    if (typeNorm.includes('date') && !typeNorm.includes('time')) {
+        const d = new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1);
+        return d.toISOString().split('T')[0];
+    }
+
+    // Timestamp types
+    if (typeNorm.includes('timestamp') || typeNorm.includes('datetime')) {
+        const d = new Date(2024, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1,
+                          Math.floor(Math.random() * 24), Math.floor(Math.random() * 60));
+        return d.toISOString().replace('T', ' ').slice(0, 19);
+    }
+
+    // Boolean types
+    if (typeNorm.includes('bool')) {
+        return Math.random() > 0.5 ? 'true' : 'false';
+    }
+
+    // Text/string types (default)
+    const sampleStrings = [
+        'alpha', 'beta', 'gamma', 'delta', 'epsilon',
+        'sample', 'test', 'demo', 'example', 'data',
+        'foo', 'bar', 'baz', 'qux', 'quux'
+    ];
+    return sampleStrings[(rowIdx + colIdx) % sampleStrings.length] + '_' + (rowIdx + 1);
+}
+
+// Get a label for a transform
+function getTransformLabel(transform) {
+    switch (transform.type) {
+        case 'where':
+            return transform.condition || 'condition...';
+        case 'select':
+            if (transform.columns && transform.columns.length > 0) {
+                const names = transform.columns.slice(0, 3).map(c =>
+                    typeof c === 'string' ? c : (c.name || c.expression || '')
+                );
+                return names.join(', ') + (transform.columns.length > 3 ? '...' : '');
+            }
+            return '*';
+        case 'group_by':
+            const dims = (transform.dimensions || []).slice(0, 2).join(', ');
+            const aggCount = (transform.aggregates || []).length;
+            return dims + (aggCount > 0 ? ` + ${aggCount} aggs` : '');
+        case 'order_by':
+            if (transform.expressions && transform.expressions.length > 0) {
+                return transform.expressions.slice(0, 2).map(e => e.column + (e.direction === 'desc' ? ' ↓' : ' ↑')).join(', ');
+            }
+            return 'order...';
+        case 'limit':
+            return `LIMIT ${transform.count || '?'}`;
+        case 'join':
+            return `${transform.join_type || 'JOIN'} ${transform.table || '?'}`;
+        case 'extend':
+            if (transform.columns && transform.columns.length > 0) {
+                return `+ ${transform.columns.length} columns`;
+            }
+            return '+ columns';
+        default:
+            return transform.type;
+    }
 }
 
 // Create a single pipe node for a pipeline/CTE
