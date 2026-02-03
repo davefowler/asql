@@ -32,6 +32,8 @@
  * - Pipes mode for CTE visualization
  */
 
+// Note: ACCORDION_PREVIEW_ROWS and shared accordion utilities are loaded from accordion-utils.js
+
 class VisualEditorV2 {
   constructor() {
     // Pipeline data
@@ -60,6 +62,7 @@ class VisualEditorV2 {
     this.nextTransformId = 0;
     this.expressionInstances = new Map(); // Track Expression instances
     this.sortableInstances = new Map(); // Track SortableList instances
+    this.accordionExpandedStep = null; // Track which accordion step is expanded
   }
 
   // Getter for backward compatibility
@@ -135,6 +138,14 @@ class VisualEditorV2 {
   }
 
   /**
+   * Check if accordion style is active
+   */
+  isAccordionMode() {
+    const container = document.getElementById('visual-editor-container');
+    return container && container.classList.contains('visual-style-accordion');
+  }
+
+  /**
    * Render all pipelines
    */
   renderAll() {
@@ -153,6 +164,12 @@ class VisualEditorV2 {
     // Check if pipes mode is active - if so, render pipes view
     if (this.isPipesMode()) {
       this.renderPipesMode(container);
+      return;
+    }
+
+    // Check if accordion mode is active - if so, render accordion spreadsheet view
+    if (this.isAccordionMode()) {
+      this.renderAccordionMode(container);
       return;
     }
 
@@ -516,6 +533,404 @@ class VisualEditorV2 {
       default:
         return JSON.stringify(transform).slice(0, 100);
     }
+  }
+
+  /**
+   * Render accordion mode view (spreadsheet-like accordion)
+   */
+  renderAccordionMode(container) {
+    // Early return if no pipelines
+    if (!this.pipelines || this.pipelines.length === 0) {
+      const emptyMsg = document.createElement('div');
+      emptyMsg.className = 'accordion-empty-state';
+      emptyMsg.textContent = 'No query to display';
+      container.appendChild(emptyMsg);
+      return;
+    }
+
+    // Track which step is expanded (default to last step in main pipeline)
+    if (this.accordionExpandedStep === null) {
+      const mainPipeline = this.pipelines[this.pipelines.length - 1];
+      const totalSteps = 1 + (mainPipeline?.transforms?.length || 0);
+      this.accordionExpandedStep = { pipelineIdx: this.pipelines.length - 1, stepIdx: totalSteps - 1 };
+    }
+
+    const accordionContainer = document.createElement('div');
+    accordionContainer.className = 'accordion-container';
+
+    // Render each pipeline
+    this.pipelines.forEach((pipeline, pipelineIdx) => {
+      const pipelineAccordion = this.createAccordionPipeline(pipeline, pipelineIdx);
+      accordionContainer.appendChild(pipelineAccordion);
+
+      // Add set operation between pipelines if exists
+      if (pipelineIdx < this.pipelines.length - 1 && pipeline.set_operation) {
+        const setOpDiv = document.createElement('div');
+        setOpDiv.className = 'accordion-set-operation';
+        const opText = pipeline.set_operation.all
+          ? `${pipeline.set_operation.type.toUpperCase()} ALL`
+          : pipeline.set_operation.type.toUpperCase();
+        setOpDiv.innerHTML = `<span class="accordion-set-op-badge">${opText}</span>`;
+        accordionContainer.appendChild(setOpDiv);
+      }
+    });
+
+    container.appendChild(accordionContainer);
+
+    // Add pipeline button
+    container.appendChild(this.renderAddPipelineButton());
+  }
+
+  /**
+   * Create an accordion pipeline with stacked spreadsheet steps
+   */
+  createAccordionPipeline(pipeline, pipelineIdx) {
+    const pipelineDiv = document.createElement('div');
+    pipelineDiv.className = 'accordion-pipeline';
+    pipelineDiv.dataset.pipelineIndex = pipelineIdx;
+
+    // Pipeline header (if named CTE)
+    if (pipeline.name) {
+      const header = document.createElement('div');
+      header.className = 'accordion-pipeline-header';
+      header.innerHTML = `<span class="accordion-cte-badge">CTE</span> <span class="accordion-cte-name">${this.escapeHtml(pipeline.name)}</span>`;
+      pipelineDiv.appendChild(header);
+    }
+
+    // Step 0: FROM step
+    const fromStep = this.createAccordionStep(
+      pipeline,
+      pipelineIdx,
+      0,
+      'from',
+      pipeline.from?.table || 'select table...',
+      pipeline.from?.output_columns || []
+    );
+    pipelineDiv.appendChild(fromStep);
+
+    // Subsequent transform steps
+    (pipeline.transforms || []).forEach((transform, transformIdx) => {
+      const stepIdx = transformIdx + 1;
+      const stepLabel = this.getTransformLabel(transform);
+      const columns = transform.output_columns || pipeline.from?.output_columns || [];
+
+      const step = this.createAccordionStep(
+        pipeline,
+        pipelineIdx,
+        stepIdx,
+        transform.type,
+        stepLabel,
+        columns,
+        transform
+      );
+      pipelineDiv.appendChild(step);
+    });
+
+    // Add transform button at the bottom
+    const addBtn = document.createElement('div');
+    addBtn.className = 'accordion-add-step';
+    addBtn.innerHTML = `<button class="accordion-add-btn">+ Add Transformation</button>`;
+    addBtn.querySelector('button').addEventListener('click', () => {
+      this.showAccordionAddMenu(addBtn, pipelineIdx);
+    });
+    pipelineDiv.appendChild(addBtn);
+
+    return pipelineDiv;
+  }
+
+  /**
+   * Create a single accordion step (spreadsheet section)
+   */
+  createAccordionStep(pipeline, pipelineIdx, stepIdx, type, label, columns, transform = null) {
+    const isExpanded = this.accordionExpandedStep?.pipelineIdx === pipelineIdx &&
+                       this.accordionExpandedStep?.stepIdx === stepIdx;
+
+    const step = document.createElement('div');
+    step.className = `accordion-step ${isExpanded ? 'expanded' : 'collapsed'} step-type-${type}`;
+    step.dataset.pipelineIndex = pipelineIdx;
+    step.dataset.stepIndex = stepIdx;
+    step.setAttribute('role', 'region');
+    step.setAttribute('aria-label', `${type.toUpperCase()} step: ${label}`);
+
+    // Step header (clickable to expand/collapse)
+    const header = document.createElement('div');
+    header.className = 'accordion-step-header';
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', String(isExpanded));
+    header.setAttribute('aria-label', `${isExpanded ? 'Collapse' : 'Expand'} ${type.toUpperCase()} step`);
+
+    const headerLeft = document.createElement('div');
+    headerLeft.className = 'accordion-header-left';
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `accordion-step-type type-${type}`;
+    typeBadge.textContent = type.toUpperCase().replace('_', ' ');
+    headerLeft.appendChild(typeBadge);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'accordion-step-label';
+    labelSpan.textContent = label;
+    headerLeft.appendChild(labelSpan);
+
+    header.appendChild(headerLeft);
+
+    const headerRight = document.createElement('div');
+    headerRight.className = 'accordion-header-right';
+
+    // Column count indicator
+    const colCount = document.createElement('span');
+    colCount.className = 'accordion-col-count';
+    colCount.textContent = `${columns.length} cols`;
+    headerRight.appendChild(colCount);
+
+    // Expand indicator
+    const expandIndicator = document.createElement('span');
+    expandIndicator.className = 'accordion-expand-indicator';
+    expandIndicator.textContent = isExpanded ? '▼' : '▶';
+    headerRight.appendChild(expandIndicator);
+
+    header.appendChild(headerRight);
+
+    // Click to expand/collapse
+    const toggleExpand = () => {
+      this.accordionExpandedStep = { pipelineIdx, stepIdx };
+      this.renderAll();
+    };
+    header.addEventListener('click', toggleExpand);
+    // Keyboard support for accessibility
+    header.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleExpand();
+      }
+    });
+
+    step.appendChild(header);
+
+    // Column headers row (always visible)
+    const colHeaders = this.createAccordionColumnHeaders(columns, pipelineIdx, stepIdx, type, transform);
+    step.appendChild(colHeaders);
+
+    // Data rows (only visible when expanded)
+    if (isExpanded) {
+      const dataContainer = document.createElement('div');
+      dataContainer.className = 'accordion-data-container';
+
+      // Generate sample data rows
+      for (let rowIdx = 0; rowIdx < ACCORDION_PREVIEW_ROWS; rowIdx++) {
+        const row = this.createAccordionDataRow(columns, rowIdx);
+        dataContainer.appendChild(row);
+      }
+
+      step.appendChild(dataContainer);
+    }
+
+    return step;
+  }
+
+  /**
+   * Create column headers row for accordion step
+   * Uses shared utility with interactive column click handler
+   */
+  createAccordionColumnHeaders(columns, pipelineIdx, stepIdx, type, transform) {
+    return createAccordionColumnHeaders(columns, {
+      onColumnClick: (headerCell, colName, colIdx) => {
+        this.showColumnActionMenu(headerCell, colName, pipelineIdx, stepIdx);
+      }
+    });
+  }
+
+  /**
+   * Create a data row with fake data
+   * Delegates to shared utility from accordion-utils.js
+   */
+  createAccordionDataRow(columns, rowIdx) {
+    return createAccordionDataRow(columns, rowIdx);
+  }
+
+  /**
+   * Generate fake data based on column type
+   * Delegates to shared utility from accordion-utils.js
+   */
+  generateFakeData(colType, rowIdx, colIdx) {
+    return generateFakeData(colType, rowIdx, colIdx);
+  }
+
+  /**
+   * Get a label for a transform
+   * Delegates to shared utility from accordion-utils.js
+   */
+  getTransformLabel(transform) {
+    return getTransformLabel(transform);
+  }
+
+  /**
+   * Show column action menu
+   */
+  showColumnActionMenu(headerCell, columnName, pipelineIdx, stepIdx) {
+    // Remove existing menu and cleanup its listeners
+    const existing = document.querySelector('.accordion-column-menu');
+    if (existing) {
+      if (existing._abortController) existing._abortController.abort();
+      existing.remove();
+    }
+
+    const menu = document.createElement('div');
+    menu.className = 'accordion-column-menu';
+    
+    // Use AbortController for proper cleanup of event listeners
+    const abortController = new AbortController();
+    menu._abortController = abortController;
+
+    const actions = [
+      { label: 'Filter by this column', action: 'where' },
+      { label: 'Sort ascending', action: 'order_asc' },
+      { label: 'Sort descending', action: 'order_desc' },
+      { label: 'Group by this column', action: 'group_by' },
+      { label: 'Select this column', action: 'select' },
+    ];
+
+    actions.forEach(({ label, action }) => {
+      const item = document.createElement('div');
+      item.className = 'accordion-menu-item';
+      item.textContent = label;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.applyColumnAction(action, columnName, pipelineIdx);
+        abortController.abort();
+        menu.remove();
+      }, { signal: abortController.signal });
+      menu.appendChild(item);
+    });
+
+    // Position menu
+    const rect = headerCell.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.left = `${rect.left}px`;
+
+    document.body.appendChild(menu);
+
+    // Close menu on outside click
+    const closeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        abortController.abort();
+        menu.remove();
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu, { signal: abortController.signal }), 0);
+  }
+
+  /**
+   * Apply column action (add a new transform)
+   */
+  applyColumnAction(action, columnName, pipelineIdx) {
+    const pipeline = this.pipelines[pipelineIdx];
+    const id = `t${this.nextTransformId++}`;
+
+    let transform;
+    switch (action) {
+      case 'where':
+        transform = { id, type: 'where', condition: `${columnName} = ` };
+        break;
+      case 'order_asc':
+        transform = { id, type: 'order_by', expressions: [{ column: columnName, direction: 'asc' }] };
+        break;
+      case 'order_desc':
+        transform = { id, type: 'order_by', expressions: [{ column: columnName, direction: 'desc' }] };
+        break;
+      case 'group_by':
+        transform = { id, type: 'group_by', dimensions: [columnName], aggregates: [] };
+        break;
+      case 'select':
+        transform = { id, type: 'select', columns: [{ expression: columnName, name: '' }] };
+        break;
+    }
+
+    if (transform) {
+      pipeline.transforms.push(transform);
+      // Expand the new step
+      this.accordionExpandedStep = { pipelineIdx, stepIdx: pipeline.transforms.length };
+      this.renderAll();
+      this.notifyChange();
+    }
+  }
+
+  /**
+   * Show add transform menu for accordion mode
+   */
+  showAccordionAddMenu(addBtn, pipelineIdx) {
+    // Remove existing menu
+    // Remove existing menu and cleanup its listeners
+    const existing = document.querySelector('.accordion-add-menu');
+    if (existing) {
+      if (existing._abortController) existing._abortController.abort();
+      existing.remove();
+    }
+
+    const menu = document.createElement('div');
+    menu.className = 'accordion-add-menu';
+    
+    // Use AbortController for proper cleanup of event listeners
+    const abortController = new AbortController();
+    menu._abortController = abortController;
+
+    // Group transforms by category
+    const transforms = this.metadata.transforms || {};
+    const categories = {};
+
+    Object.entries(transforms).forEach(([type, info]) => {
+      if (type === 'from') return; // Skip FROM
+      const cat = info.category || 'other';
+      if (!categories[cat]) categories[cat] = [];
+      categories[cat].push({ type, ...info });
+    });
+
+    Object.entries(categories).forEach(([cat, items]) => {
+      const groupDiv = document.createElement('div');
+      groupDiv.className = 'accordion-menu-group';
+
+      const groupLabel = document.createElement('div');
+      groupLabel.className = 'accordion-menu-group-label';
+      groupLabel.textContent = cat.charAt(0).toUpperCase() + cat.slice(1);
+      groupDiv.appendChild(groupLabel);
+
+      items.forEach(item => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'accordion-menu-item';
+        itemDiv.textContent = item.label || item.type;
+        itemDiv.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.addTransform(item.type, pipelineIdx);
+          // Expand the new step
+          this.accordionExpandedStep = { pipelineIdx, stepIdx: this.pipelines[pipelineIdx].transforms.length };
+          this.renderAll();
+          abortController.abort();
+          menu.remove();
+        }, { signal: abortController.signal });
+        groupDiv.appendChild(itemDiv);
+      });
+
+      menu.appendChild(groupDiv);
+    });
+
+    // Position menu
+    const rect = addBtn.getBoundingClientRect();
+    menu.style.position = 'fixed';
+    menu.style.top = `${rect.bottom + 4}px`;
+    menu.style.left = `${rect.left}px`;
+
+    document.body.appendChild(menu);
+
+    // Close menu on outside click
+    const closeMenu = (e) => {
+      if (!menu.contains(e.target)) {
+        abortController.abort();
+        menu.remove();
+      }
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu, { signal: abortController.signal }), 0);
   }
 
   /**

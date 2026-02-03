@@ -795,15 +795,18 @@ function updateVisualStyleToggleButtons() {
     const blockyBtn = document.getElementById('blocky-style-btn');
     const textBtn = document.getElementById('text-style-btn');
     const pipesBtn = document.getElementById('pipes-style-btn');
+    const accordionBtn = document.getElementById('accordion-style-btn');
     const outputBlockyBtn = document.getElementById('output-blocky-style-btn');
     const outputTextBtn = document.getElementById('output-text-style-btn');
     const outputPipesBtn = document.getElementById('output-pipes-style-btn');
+    const outputAccordionBtn = document.getElementById('output-accordion-style-btn');
 
     // Input panel
     if (blockyBtn && textBtn && pipesBtn) {
         blockyBtn.classList.toggle('active', visualStylePreference === 'blocky');
         textBtn.classList.toggle('active', visualStylePreference === 'text');
         pipesBtn.classList.toggle('active', visualStylePreference === 'pipes');
+        if (accordionBtn) accordionBtn.classList.toggle('active', visualStylePreference === 'accordion');
     }
 
     // Output panel (uses same preference)
@@ -811,10 +814,11 @@ function updateVisualStyleToggleButtons() {
         outputBlockyBtn.classList.toggle('active', visualStylePreference === 'blocky');
         outputTextBtn.classList.toggle('active', visualStylePreference === 'text');
         outputPipesBtn.classList.toggle('active', visualStylePreference === 'pipes');
+        if (outputAccordionBtn) outputAccordionBtn.classList.toggle('active', visualStylePreference === 'accordion');
     }
 }
 
-// Switch visual style preference (blocky vs text vs pipes)
+// Switch visual style preference (blocky vs text vs pipes vs accordion)
 function setVisualStylePreference(style) {
     const previousStyle = visualStylePreference;
     visualStylePreference = style;
@@ -822,20 +826,24 @@ function setVisualStylePreference(style) {
     updateVisualStyleToggleButtons();
     applyVisualStyle();
 
-    // Only re-render when switching to/from pipes mode (pipes needs different DOM structure)
-    const switchingToPipes = style === 'pipes' && previousStyle !== 'pipes';
-    const switchingFromPipes = style !== 'pipes' && previousStyle === 'pipes';
-    
-    if (switchingToPipes || switchingFromPipes) {
-        // Re-render input visual editor for pipes mode change
+    // Re-render when switching to/from modes that need different DOM structure (pipes, accordion)
+    const specialModes = ['pipes', 'accordion'];
+    const switchingToSpecial = specialModes.includes(style) && !specialModes.includes(previousStyle);
+    const switchingFromSpecial = !specialModes.includes(style) && specialModes.includes(previousStyle);
+    const switchingBetweenSpecial = specialModes.includes(style) && specialModes.includes(previousStyle) && style !== previousStyle;
+
+    if (switchingToSpecial || switchingFromSpecial || switchingBetweenSpecial) {
+        // Re-render input visual editor for mode change
         if (typeof visualEditor !== 'undefined' && visualEditor && visualEditor.renderAll) {
             visualEditor.renderAll();
         }
-        
-        // Re-render visual output for pipes mode change
+
+        // Re-render visual output for mode change
         if (lastRenderedQuery) {
             if (style === 'pipes') {
                 renderPipesView(lastRenderedQuery);
+            } else if (style === 'accordion') {
+                renderAccordionView(lastRenderedQuery);
             } else {
                 renderOutputVisual(lastRenderedQuery);
             }
@@ -851,7 +859,7 @@ function applyVisualStyle() {
     const inputVisualContainer = document.getElementById('visual-editor-container');
     const outputVisualContainer = document.getElementById('output-visual-editor-container');
 
-    const allStyles = ['visual-style-text', 'visual-style-blocky', 'visual-style-pipes'];
+    const allStyles = ['visual-style-text', 'visual-style-blocky', 'visual-style-pipes', 'visual-style-accordion'];
     const className = `visual-style-${visualStylePreference}`;
 
     if (inputVisualContainer) {
@@ -1851,13 +1859,15 @@ document.addEventListener('DOMContentLoaded', function() {
             outputVisualViewBtn.addEventListener('click', () => setOutputVisualModePreference('visual'));
         }
         
-        // Visual style toggle buttons (blocky vs text vs pipes)
+        // Visual style toggle buttons (blocky vs text vs pipes vs accordion)
         const blockyStyleBtn = document.getElementById('blocky-style-btn');
         const textStyleBtn = document.getElementById('text-style-btn');
         const pipesStyleBtn = document.getElementById('pipes-style-btn');
+        const accordionStyleBtn = document.getElementById('accordion-style-btn');
         const outputBlockyStyleBtn = document.getElementById('output-blocky-style-btn');
         const outputTextStyleBtn = document.getElementById('output-text-style-btn');
         const outputPipesStyleBtn = document.getElementById('output-pipes-style-btn');
+        const outputAccordionStyleBtn = document.getElementById('output-accordion-style-btn');
 
         if (blockyStyleBtn) {
             blockyStyleBtn.addEventListener('click', () => setVisualStylePreference('blocky'));
@@ -1868,6 +1878,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (pipesStyleBtn) {
             pipesStyleBtn.addEventListener('click', () => setVisualStylePreference('pipes'));
         }
+        if (accordionStyleBtn) {
+            accordionStyleBtn.addEventListener('click', () => setVisualStylePreference('accordion'));
+        }
         if (outputBlockyStyleBtn) {
             outputBlockyStyleBtn.addEventListener('click', () => setVisualStylePreference('blocky'));
         }
@@ -1876,6 +1889,9 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (outputPipesStyleBtn) {
             outputPipesStyleBtn.addEventListener('click', () => setVisualStylePreference('pipes'));
+        }
+        if (outputAccordionStyleBtn) {
+            outputAccordionStyleBtn.addEventListener('click', () => setVisualStylePreference('accordion'));
         }
         
         // Show columns toggle buttons
@@ -1963,6 +1979,12 @@ function renderOutputVisual(query) {
     // If in pipes mode, render the pipes view
     if (visualStylePreference === 'pipes') {
         renderPipesView(query);
+        return;
+    }
+
+    // If in accordion mode, render the accordion view
+    if (visualStylePreference === 'accordion') {
+        renderAccordionView(query);
         return;
     }
     
@@ -2140,6 +2162,203 @@ function renderPipesView(query) {
 
     transformsContainer.appendChild(pipesContainer);
 }
+
+// Note: ACCORDION_PREVIEW_ROWS and shared accordion utilities are loaded from accordion-utils.js
+
+// Render output in accordion/spreadsheet mode
+function renderAccordionView(query) {
+    const transformsContainer = document.getElementById('output-transforms-container');
+    if (!transformsContainer) return;
+
+    // Hide the static from block
+    const fromBlock = document.querySelector('#output-visual-editor-container .from-block');
+    if (fromBlock) fromBlock.style.display = 'none';
+
+    // Clear container
+    transformsContainer.innerHTML = '';
+
+    // Normalize to array format and handle empty/null query
+    const pipelines = Array.isArray(query) ? query : (query ? [query] : []);
+    
+    // Early return if no pipelines
+    if (pipelines.length === 0) {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.className = 'accordion-empty-state';
+        emptyMsg.textContent = 'No query to display';
+        transformsContainer.appendChild(emptyMsg);
+        return;
+    }
+
+    // Create accordion container
+    const accordionContainer = document.createElement('div');
+    accordionContainer.className = 'accordion-container';
+
+    // Render each pipeline
+    pipelines.forEach((pipeline, pipelineIdx) => {
+        const pipelineAccordion = createAccordionPipeline(pipeline, pipelineIdx);
+        accordionContainer.appendChild(pipelineAccordion);
+
+        // Add set operation between pipelines if exists
+        if (pipelineIdx < pipelines.length - 1 && pipeline.set_operation) {
+            const setOpDiv = document.createElement('div');
+            setOpDiv.className = 'accordion-set-operation';
+            const opText = pipeline.set_operation.all
+                ? `${pipeline.set_operation.type.toUpperCase()} ALL`
+                : pipeline.set_operation.type.toUpperCase();
+            setOpDiv.innerHTML = `<span class="accordion-set-op-badge">${opText}</span>`;
+            accordionContainer.appendChild(setOpDiv);
+        }
+    });
+
+    transformsContainer.appendChild(accordionContainer);
+}
+
+// Create an accordion pipeline with stacked spreadsheet steps
+function createAccordionPipeline(pipeline, pipelineIdx) {
+    const pipelineDiv = document.createElement('div');
+    pipelineDiv.className = 'accordion-pipeline';
+    pipelineDiv.dataset.pipelineIndex = pipelineIdx;
+
+    // Pipeline header (if named CTE)
+    if (pipeline.name) {
+        const header = document.createElement('div');
+        header.className = 'accordion-pipeline-header';
+        header.innerHTML = `<span class="accordion-cte-badge">CTE</span> <span class="accordion-cte-name">${escapeHtmlText(pipeline.name)}</span>`;
+        pipelineDiv.appendChild(header);
+    }
+
+    // Step 0: FROM step
+    const fromStep = createAccordionStep(
+        'from',
+        pipeline.from?.table || 'select table...',
+        pipeline.from?.output_columns || [],
+        true // expanded by default for FROM
+    );
+    pipelineDiv.appendChild(fromStep);
+
+    // Subsequent transform steps
+    (pipeline.transforms || []).forEach((transform, transformIdx) => {
+        const stepLabel = getTransformLabel(transform);
+        const columns = transform.output_columns || pipeline.from?.output_columns || [];
+        const isLast = transformIdx === (pipeline.transforms || []).length - 1;
+
+        const step = createAccordionStep(
+            transform.type,
+            stepLabel,
+            columns,
+            isLast // expand last step
+        );
+        pipelineDiv.appendChild(step);
+    });
+
+    return pipelineDiv;
+}
+
+// Create a single accordion step (spreadsheet section) - read-only version
+function createAccordionStep(type, label, columns, isExpanded) {
+    const step = document.createElement('div');
+    step.className = `accordion-step ${isExpanded ? 'expanded' : 'collapsed'} step-type-${type}`;
+    step.setAttribute('role', 'region');
+    step.setAttribute('aria-label', `${type.toUpperCase()} step: ${label}`);
+
+    // Step header
+    const header = document.createElement('div');
+    header.className = 'accordion-step-header';
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', String(isExpanded));
+    header.setAttribute('aria-label', `${isExpanded ? 'Collapse' : 'Expand'} ${type.toUpperCase()} step`);
+
+    const headerLeft = document.createElement('div');
+    headerLeft.className = 'accordion-header-left';
+
+    const typeBadge = document.createElement('span');
+    typeBadge.className = `accordion-step-type type-${type}`;
+    typeBadge.textContent = type.toUpperCase().replace('_', ' ');
+    headerLeft.appendChild(typeBadge);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'accordion-step-label';
+    labelSpan.textContent = label;
+    headerLeft.appendChild(labelSpan);
+
+    header.appendChild(headerLeft);
+
+    const headerRight = document.createElement('div');
+    headerRight.className = 'accordion-header-right';
+
+    // Column count indicator
+    const colCount = document.createElement('span');
+    colCount.className = 'accordion-col-count';
+    colCount.textContent = `${columns.length} cols`;
+    headerRight.appendChild(colCount);
+
+    // Expand indicator
+    const expandIndicator = document.createElement('span');
+    expandIndicator.className = 'accordion-expand-indicator';
+    expandIndicator.textContent = isExpanded ? '▼' : '▶';
+    headerRight.appendChild(expandIndicator);
+
+    header.appendChild(headerRight);
+
+    // Click to toggle expand/collapse
+    const toggleExpand = () => {
+        const wasExpanded = step.classList.contains('expanded');
+        // Collapse all siblings first
+        const siblings = step.parentElement.querySelectorAll('.accordion-step');
+        siblings.forEach(s => {
+            s.classList.remove('expanded');
+            s.classList.add('collapsed');
+            s.querySelector('.accordion-step-header')?.setAttribute('aria-expanded', 'false');
+            const indicator = s.querySelector('.accordion-expand-indicator');
+            if (indicator) indicator.textContent = '▶';
+            const dataContainer = s.querySelector('.accordion-data-container');
+            if (dataContainer) dataContainer.remove();
+        });
+        
+        // If it wasn't expanded, expand this one
+        if (!wasExpanded) {
+            step.classList.remove('collapsed');
+            step.classList.add('expanded');
+            header.setAttribute('aria-expanded', 'true');
+            expandIndicator.textContent = '▼';
+            
+            // Add data rows
+            const dataContainer = createAccordionDataContainer(columns);
+            step.appendChild(dataContainer);
+        }
+    };
+    header.addEventListener('click', toggleExpand);
+    // Keyboard support for accessibility
+    header.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleExpand();
+        }
+    });
+
+    step.appendChild(header);
+
+    // Column headers row (always visible)
+    const colHeaders = createAccordionColumnHeaders(columns);
+    step.appendChild(colHeaders);
+
+    // Data rows (only visible when expanded)
+    if (isExpanded) {
+        const dataContainer = createAccordionDataContainer(columns);
+        step.appendChild(dataContainer);
+    }
+
+    return step;
+}
+
+// Note: The following functions are now provided by accordion-utils.js:
+// - createAccordionColumnHeaders(columns, options)
+// - createAccordionDataContainer(columns)
+// - createAccordionDataRow(columns, rowIdx)
+// - generateFakeData(colType, rowIdx, colIdx)
+// - getTransformLabel(transform)
+// - ACCORDION_PREVIEW_ROWS constant
 
 // Create a single pipe node for a pipeline/CTE
 function createPipeNode(pipeline, idx, totalPipelines, cteNames) {
