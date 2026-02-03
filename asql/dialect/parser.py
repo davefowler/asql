@@ -716,6 +716,8 @@ class ASQLParser(Parser):
         "NEXT": lambda args: exp.Lead(this=seq_get(args, 0), offset=seq_get(args, 1) or exp.Literal.number(1)),
         # Spine function for explicit gap-filling: group by spine(month(date)), region
         "SPINE": lambda args: _build_spine_expression(args),
+        # uniq(col) → COUNT(DISTINCT col)
+        "UNIQ": lambda args: exp.Count(this=exp.Distinct(expressions=args if isinstance(args, list) else [args])),
     }
 
     def _parse_pivot(self) -> t.Optional[exp.Pivot]:
@@ -927,11 +929,23 @@ class ASQLParser(Parser):
         Syntax:
             # → COUNT(*)
             #* or # * → COUNT(*)
+            #col or # col → COUNT(col)
             #(col) → COUNT(col)
             #(distinct col) → COUNT(DISTINCT col)
-            # users → COUNT(DISTINCT user_id)
-            # of users → COUNT(DISTINCT user_id)
+            ##col or ## col → COUNT(DISTINCT col)
         """
+        # ## → COUNT(DISTINCT col) - double hash means distinct
+        if self._match(TokenType.HASH):
+            # We now have ## - parse the column for distinct count
+            if self._match(TokenType.STAR):
+                return exp.Count(this=exp.Distinct(expressions=[exp.Star()]))
+            if self._curr and self._curr.token_type == TokenType.VAR:
+                col_name = self._curr.text
+                self._advance()
+                return exp.Count(this=exp.Distinct(expressions=[exp.Column(this=exp.to_identifier(col_name))]))
+            # ## with nothing after → COUNT(DISTINCT *)
+            return exp.Count(this=exp.Distinct(expressions=[exp.Star()]))
+        
         # #* → COUNT(*)
         if self._match(TokenType.STAR):
             return exp.Count(this=exp.Star())
@@ -948,18 +962,7 @@ class ASQLParser(Parser):
                 self._match(TokenType.R_PAREN)
                 return exp.Count(this=col)
         
-        # # of <table> → COUNT(DISTINCT <table>_id)
-        if self._curr and self._curr.token_type == TokenType.VAR and self._curr.text.upper() == "OF":
-            self._advance()  # consume 'of'
-            if self._curr and self._curr.token_type == TokenType.VAR:
-                table_name = self._curr.text
-                self._advance()
-                pk_col = self._infer_primary_key_column(table_name)
-                return exp.Count(
-                    this=exp.Distinct(expressions=[exp.Column(this=exp.to_identifier(pk_col))])
-                )
-        
-        # # <table> → COUNT(DISTINCT <table>_id)
+        # #col or # col → COUNT(col) - single hash followed by identifier
         if self._curr and self._curr.token_type == TokenType.VAR:
             # Check if this is a SQL keyword that should trigger standalone # → COUNT(*)
             sql_keywords = {
@@ -968,24 +971,12 @@ class ASQLParser(Parser):
                 'true', 'false', 'union', 'except', 'intersect', 'with', 'stash'
             }
             if self._curr.text.lower() not in sql_keywords:
-                table_name = self._curr.text
+                col_name = self._curr.text
                 self._advance()
-                pk_col = self._infer_primary_key_column(table_name)
-                return exp.Count(
-                    this=exp.Distinct(expressions=[exp.Column(this=exp.to_identifier(pk_col))])
-                )
+                return exp.Count(this=exp.Column(this=exp.to_identifier(col_name)))
         
         # Standalone # → COUNT(*)
         return exp.Count(this=exp.Star())
-
-    def _infer_primary_key_column(self, table_name: str) -> str:
-        """Infer PK column name from table name: users → user_id."""
-        table_lower = table_name.lower()
-        if table_lower.endswith('s') and len(table_lower) > 1:
-            singular = table_lower[:-1]
-        else:
-            singular = table_lower
-        return f"{singular}_id"
 
     def _parse_last_ordered(self) -> exp.Expression:
         """Parse last(value ORDER BY x) into FIRST_VALUE(value) OVER (ORDER BY x DESC/ASC flipped)."""

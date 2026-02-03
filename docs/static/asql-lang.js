@@ -108,7 +108,7 @@
     };
 
     // # is the count shorthand in ASQL, NOT a comment
-    // Matches: #, # *, #(col), # users, # of users, etc.
+    // Matches: #, #col, ##col (distinct), #(col), etc.
     const ASQL_COUNT_SHORTHAND = {
       className: 'keyword',
       begin: /#/,

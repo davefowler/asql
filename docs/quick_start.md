@@ -114,6 +114,8 @@ group by product (
 ### Aggregation Functions
 
 - `#` (preferred) or `count(*)` - count rows
+- `#col` - count non-null values in column
+- `##col` or `uniq(col)` - count distinct values
 - `sum(column)` - sum values
 - `avg(column)` - average values
 - `min(column)` - minimum value

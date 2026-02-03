@@ -1,12 +1,13 @@
 """Tests for # count shorthand syntax in ASQL.
 
-The # symbol is a shorthand for COUNT(*) in ASQL.
+The # symbol is a shorthand for COUNT in ASQL.
 Variations:
 - # → COUNT(*)
+- #col or # col → COUNT(col)
+- ##col or ## col → COUNT(DISTINCT col)
 - #(col) → COUNT(col)
-- # table → COUNT(DISTINCT table_id)
-- # of table → COUNT(DISTINCT table_id)
-- # * → COUNT(*) (explicit row count)
+- #(distinct col) → COUNT(DISTINCT col)
+- uniq(col) or uniq col → COUNT(DISTINCT col)
 """
 
 from tests.validator import ASQLValidator
@@ -44,9 +45,23 @@ class TestCountShorthandBasic(ASQLValidator):
 
 
 class TestCountShorthandColumn(ASQLValidator):
-    """Test #(column) count shorthand."""
+    """Test #col count shorthand for COUNT(col)."""
     
-    def test_hash_column(self) -> None:
+    def test_hash_column_no_space(self) -> None:
+        """#col becomes COUNT(col)."""
+        self.validate_contains(
+            "from users select #email as has_email",
+            "COUNT", "email", "has_email"
+        )
+    
+    def test_hash_column_with_space(self) -> None:
+        """# col becomes COUNT(col)."""
+        self.validate_contains(
+            "from users select # email as has_email",
+            "COUNT", "email", "has_email"
+        )
+    
+    def test_hash_parens(self) -> None:
         """#(col) becomes COUNT(col)."""
         self.validate_contains(
             "from users select #(email) as has_email",
@@ -54,27 +69,70 @@ class TestCountShorthandColumn(ASQLValidator):
         )
 
 
-class TestCountShorthandTable(ASQLValidator):
-    """Test # table count distinct shorthand."""
+class TestCountDistinctShorthand(ASQLValidator):
+    """Test ##col count distinct shorthand."""
     
-    def test_hash_table_name(self) -> None:
-        """# table becomes COUNT(DISTINCT table_id)."""
+    def test_double_hash_no_space(self) -> None:
+        """##col becomes COUNT(DISTINCT col)."""
         self.validate_contains(
-            "from orders select # users as unique_customers",
-            "COUNT", "DISTINCT", "USER_ID"
+            "from orders select ##user_id as unique_customers",
+            "COUNT", "DISTINCT", "user_id", "unique_customers"
         )
     
-    def test_hash_of_table(self) -> None:
-        """# of table becomes COUNT(DISTINCT table_id)."""
+    def test_double_hash_with_space(self) -> None:
+        """## col becomes COUNT(DISTINCT col)."""
         self.validate_contains(
-            "from orders select # of users as unique_customers",
-            "COUNT", "DISTINCT", "USER_ID"
+            "from orders select ## user_id as unique_customers",
+            "COUNT", "DISTINCT", "user_id", "unique_customers"
         )
+    
+    def test_hash_parens_distinct(self) -> None:
+        """#(distinct col) becomes COUNT(DISTINCT col)."""
+        self.validate_contains(
+            "from orders select #(distinct user_id) as unique_customers",
+            "COUNT", "DISTINCT", "user_id"
+        )
+
+
+class TestUniqFunction(ASQLValidator):
+    """Test uniq() function for COUNT(DISTINCT col)."""
+    
+    def test_uniq_with_parens(self) -> None:
+        """uniq(col) becomes COUNT(DISTINCT col)."""
+        self.validate_contains(
+            "from orders select uniq(user_id) as unique_customers",
+            "COUNT", "DISTINCT", "user_id", "unique_customers"
+        )
+    
+    def test_uniq_space_notation(self) -> None:
+        """uniq col becomes COUNT(DISTINCT col)."""
+        self.validate_contains(
+            "from orders select uniq user_id as unique_customers",
+            "COUNT", "DISTINCT", "user_id", "unique_customers"
+        )
+    
+    def test_uniq_in_group_by(self) -> None:
+        """uniq in GROUP BY aggregate block."""
+        self.validate_contains(
+            "from orders group by region ( uniq(user_id) as unique_customers )",
+            "COUNT", "DISTINCT", "user_id", "unique_customers", "GROUP BY"
+        )
+
+
+class TestCountShorthandStar(ASQLValidator):
+    """Test explicit * count shorthand."""
     
     def test_hash_explicit_star(self) -> None:
         """# * becomes COUNT(*) (explicit row count)."""
         self.validate_contains(
             "from orders select # * as row_count",
+            "COUNT(*)"
+        )
+    
+    def test_hash_star_no_space(self) -> None:
+        """#* becomes COUNT(*)."""
+        self.validate_contains(
+            "from orders select #* as row_count",
             "COUNT(*)"
         )
 
@@ -106,5 +164,23 @@ class TestCountShorthandCrossDialect(ASQLValidator):
             self.validate_contains(
                 "from sales group by region ( # as orders, sum(amount) as revenue )",
                 "region", "COUNT(*)", "orders", "SUM", "amount", "revenue", "GROUP BY",
+                dialect=dialect
+            )
+    
+    def test_double_hash_cross_dialect(self) -> None:
+        """Test ## works across dialects."""
+        for dialect in ["duckdb", "postgres", "mysql", "sqlite"]:
+            self.validate_contains(
+                "from orders select ##user_id as uniq_users",
+                "COUNT", "DISTINCT", "user_id",
+                dialect=dialect
+            )
+    
+    def test_uniq_cross_dialect(self) -> None:
+        """Test uniq() works across dialects."""
+        for dialect in ["duckdb", "postgres", "mysql", "sqlite"]:
+            self.validate_contains(
+                "from orders select uniq(user_id) as uniq_users",
+                "COUNT", "DISTINCT", "user_id",
                 dialect=dialect
             )

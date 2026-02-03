@@ -157,25 +157,26 @@ order by -amount, name      -- Amount DESC, then name ASC
 
 ---
 
-## Count Shorthand
+## Count Shorthand (`#`, `##`, `uniq`)
 
 | Operator | Description | SQL Equivalent |
 |----------|-------------|----------------|
 | `#` | Count all rows | `COUNT(*)` |
-| `# *` | Explicit row count | `COUNT(*)` |
-| `#(col)` | Count column | `COUNT(col)` |
-| `#(distinct col)` | Distinct count | `COUNT(DISTINCT col)` |
-| `# users` | Distinct entity count | `COUNT(DISTINCT user_id)` |
-| `# of users` | Natural language variant | `COUNT(DISTINCT user_id)` |
+| `#*` or `# *` | Explicit row count | `COUNT(*)` |
+| `#col` or `# col` | Count column | `COUNT(col)` |
+| `#(col)` | Count column (parens) | `COUNT(col)` |
+| `##col` or `## col` | Distinct count | `COUNT(DISTINCT col)` |
+| `#(distinct col)` | Explicit distinct | `COUNT(DISTINCT col)` |
+| `uniq(col)` | Distinct count function | `COUNT(DISTINCT col)` |
+| `uniq col` | Distinct (space notation) | `COUNT(DISTINCT col)` |
 
-When followed by a table name, `#` infers the primary key using convention (table name → `{singular}_id`):
+Use `#` for simple counts, `##` (double hash) or `uniq()` for distinct counts:
 
 ```asql
--- as total_rows                    -- COUNT(*)
--- users as unique_users            -- COUNT(DISTINCT user_id)
--- of orders as order_count         -- COUNT(DISTINCT order_id)
-#(email) as emails_present         -- COUNT(email)
-#(distinct customer_id) as unique  -- COUNT(DISTINCT customer_id)
+# as total_rows                    -- COUNT(*)
+#email as with_email               -- COUNT(email)
+##customer_id as unique_customers  -- COUNT(DISTINCT customer_id)
+uniq(user_id) as unique_users      -- COUNT(DISTINCT user_id)
 ```
 
 ---

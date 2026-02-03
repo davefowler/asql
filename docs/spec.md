@@ -688,38 +688,38 @@ ASQL automatically generates meaningful column names when functions are used wit
 
 **Default return behavior**: If no `select` clause is specified, the query returns all grouping columns followed by all aggregations in the order they're listed. `select *` has the same behavior.
 
-### 5.2 Count Aggregation (`#`)
+### 5.2 Count Aggregation (`#`, `##`, `uniq`)
 
-The `#` symbol is a shortcut for counting. When followed by a table name, it infers the primary key and performs a distinct count.
+The `#` symbol is a shortcut for counting. Use `##` (double hash) or `uniq()` for distinct counts.
 
 ```asql
 -- Basic count syntaxes
---                    -- COUNT(*)
--- *                  -- COUNT(*) (explicit row count)
-#(col)               -- COUNT(col)
-#(distinct col)      -- COUNT(DISTINCT col)
+#                    -- COUNT(*)
+#*                   -- COUNT(*) (explicit)
+#col                 -- COUNT(col)
+# col                -- COUNT(col) (with space)
+#(col)               -- COUNT(col) (with parens)
 
--- Table name → distinct count with inferred primary key
--- users              -- COUNT(DISTINCT user_id)
--- of users           -- COUNT(DISTINCT user_id)
--- orders             -- COUNT(DISTINCT order_id)
+-- Distinct count syntaxes (double hash or uniq)
+##col                -- COUNT(DISTINCT col)
+## col               -- COUNT(DISTINCT col) (with space)
+#(distinct col)      -- COUNT(DISTINCT col) (explicit)
+uniq(col)            -- COUNT(DISTINCT col)
+uniq col             -- COUNT(DISTINCT col) (space notation)
 
 -- In select statements
-from Users
-  select #, birthday
-  -- Returns: COUNT(*) as #, birthday
+from orders
+  select #, ##user_id as unique_customers
+  -- Returns: COUNT(*), COUNT(DISTINCT user_id) AS unique_customers
 ```
 
-**Primary key inference**: When a table name follows `#`, ASQL infers the primary key using the convention `{singular_table_name}_id`:
-- `# users` → `COUNT(DISTINCT user_id)` (users → user_id)
-- `# orders` → `COUNT(DISTINCT order_id)` (orders → order_id)
-- `# activity` → `COUNT(DISTINCT activity_id)` (already singular)
-
-**Explicit column syntax** for when you don't want inference:
-- `#(col)` → `COUNT(col)`
-- `#(distinct col)` → `COUNT(DISTINCT col)`
-
-**Explicit row count**: Use `# *` when you want `COUNT(*)` explicitly (not distinct count).
+**Count shorthand reference**:
+- `#` → `COUNT(*)` (row count)
+- `#col` or `# col` → `COUNT(col)` (count non-null values)
+- `#(col)` → `COUNT(col)` (explicit parens)
+- `##col` or `## col` → `COUNT(DISTINCT col)` (distinct count)
+- `#(distinct col)` → `COUNT(DISTINCT col)` (explicit)
+- `uniq(col)` or `uniq col` → `COUNT(DISTINCT col)` (function form)
 
 ### 5.3 Sum & Total Aggregation
 
