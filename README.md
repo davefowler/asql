@@ -1,55 +1,84 @@
 # ASQL: Analytic SQL
 
-A modern, pipe-based query language that transpiles to SQL. ASQL uses a FROM-first, pipe syntax that makes complex analytics queries more readable and intuitive.
+A modern, pipe-based query language that transpiles to SQL. ASQL uses a FROM-first, pipeline syntax that makes complex analytics queries more readable and intuitive.
 
-## Features
+## What is ASQL?
 
-- 🚀 **Fully Pipeline-based** - Every query is a sequence of transformations, compiled to CTEs
-- 🔄 **SQL Dialect Support** - Generate SQL for PostgreSQL, MySQL, BigQuery, Snowflake, and more
-- 📊 **Powerful Aggregations** - GROUP BY with multiple aggregations
-- 🎯 **Expressive Filtering** - Rich WHERE clause with logical operators
-- 📈 **Sorting & Limiting** - Easy SORT and TAKE operations
-- 🎨 **Interactive Playground** - Try ASQL in your browser
-- 🔗 **CTE-based Compilation** - Each pipeline step becomes a descriptive CTE for readability and debugging
+ASQL (Analytic SQL) transforms how you write SQL queries. Instead of the traditional nested, inside-out SQL syntax, ASQL lets you write queries as a pipeline of operations that flow top-to-bottom:
 
-## Installation
+```asql
+from orders
+where status == "completed"
+group by region ( sum(amount) as revenue )
+order by -revenue
+limit 10
+```
+
+This compiles to standard SQL (PostgreSQL, BigQuery, Snowflake, etc.) with each step becoming a readable CTE.
+
+**Key Benefits:**
+- **Readable** - Queries flow top-to-bottom like natural thought
+- **Multi-dialect** - One query compiles to PostgreSQL, BigQuery, Snowflake, Redshift, MySQL, and more
+- **Debuggable** - Each pipeline step becomes a named CTE you can inspect
+- **Interactive** - Built-in playground to experiment in your browser
+
+## Getting Started
+
+### Prerequisites
 
 ASQL uses [just](https://github.com/casey/just) as a command runner. Install it first:
 
 ```bash
-brew install just  # macOS
-# or: cargo install just
+# macOS
+brew install just
+
+# Linux
+curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/bin
+
+# Or via cargo
+cargo install just
 ```
 
-Then set up the project:
+### Installation
 
 ```bash
+git clone <repo-url>
+cd asql
 just install
 ```
 
-This creates a virtual environment and installs all dependencies.
+That's it! This creates a Python virtual environment and installs all dependencies.
 
-## VS Code Extension
+### Start Developing
 
-ASQL has VS Code extension support for syntax highlighting, snippets, and language features!
+```bash
+just serve
+```
 
-📦 **Installation**: See [`vscode-extension/README.md`](vscode-extension/README.md) for installation instructions.
+This launches:
+- **Documentation**: http://localhost:8000
+- **Playground**: http://localhost:5001
 
-✨ **Features**:
-- Syntax highlighting for ASQL keywords, operators, and functions
-- Code snippets for common query patterns
-- Smart indentation for pipe syntax
-- File association for `.asql` files
+## Common Commands
 
-For more details, see [`vscode-extension/VSCODE_INTEGRATION.md`](vscode-extension/VSCODE_INTEGRATION.md).
+| Command | Description |
+|---------|-------------|
+| `just install` | Set up virtual environment and install all dependencies |
+| `just serve` | Start docs + playground servers (hot reload enabled) |
+| `just test` | Run all tests |
+| `just test tests/test_compiler.py` | Run a specific test file |
+| `just test -k "pattern"` | Run tests matching a pattern |
+| `just lint` | Run the linter |
+| `just lint --fix` | Run linter and auto-fix issues |
+| `just kill` | Stop any running dev servers |
+| `just --list` | Show all available commands |
 
-## Quick Start
+## Quick Example
 
 ```python
 from asql import compile
 
-# Simple query
-asql = """
+asql_query = """
 from users
 where status == "active"
 group by country ( # as total_users )
@@ -57,7 +86,7 @@ order by -total_users
 limit 10
 """
 
-sql = compile(asql, dialect="postgres")
+sql = compile(asql_query, dialect="postgres")
 print(sql)
 ```
 
@@ -75,87 +104,6 @@ SELECT country, total_users
 FROM 2_group_by_country
 ORDER BY total_users DESC
 LIMIT 10
-```
-
-Each pipeline step becomes a descriptive CTE, making the generated SQL self-documenting and easy to debug!
-
-## Documentation
-
-The ASQL documentation is served via a web server that includes:
-- 📖 Interactive documentation with dialect tabs
-- 🎮 Embedded playground for trying ASQL
-- 📚 Examples with live SQL compilation
-- 📋 Complete language specification
-
-### Serving the Documentation
-
-```bash
-just serve
-```
-
-This starts:
-- **Documentation (MkDocs)**: http://localhost:8000
-- **Playground**: http://localhost:5001
-
-### Documentation Features
-
-- **Dialect Tabs**: Every ASQL code example automatically shows tabs for different SQL dialects (PostgreSQL, BigQuery, Snowflake, Redshift, etc.)
-- **Embedded Playground**: Try ASQL directly in the documentation
-- **Live Compilation**: See SQL output for any ASQL query
-- **Navigation**: Easy navigation between docs pages with persistent sidebar
-
-### Documentation Pages
-
-- 📖 [Quick Start Guide](docs/quick_start.md) - Get started in minutes
-- 📚 [Comprehensive Examples](docs/examples.md) - Extensive examples with SQL output
-- 🎮 [Interactive Playground](docs/playground.md) - Try ASQL in your browser
-- 🏗️ [Architecture](ARCHITECTURE.md) - System design and implementation details
-- 📋 [Language Specification](docs/spec.md) - Complete ASQL syntax reference
-
-## Interactive Playground
-
-Try ASQL in your browser! The playground lets you write ASQL queries and see the generated SQL in real-time.
-
-### Start the Playground
-
-```bash
-just serve          # Start docs + playground (recommended)
-# or
-just playground     # Start playground only
-```
-
-Then open http://localhost:5001 in your browser.
-
-**Note**: The playground runs on FastAPI + Uvicorn.
-
-The playground features:
-- ✨ Real-time ASQL → SQL compilation
-- 🎨 Syntax highlighting
-- 📝 Pre-built example queries
-- 🔄 Multiple SQL dialect support
-- 📋 Copy-to-clipboard functionality
-
-## Examples Library
-
-Run all examples:
-
-```bash
-just run examples/run_all.py
-```
-
-Or import specific examples:
-
-```python
-from examples import basic_queries, aggregations, sorting_and_limiting
-
-# Run basic query examples
-basic_queries.example_from_where()
-
-# Run aggregation examples
-aggregations.example_group_by_sum()
-
-# Run sorting examples
-sorting_and_limiting.example_complete_pipeline()
 ```
 
 ## Language Overview
@@ -227,55 +175,55 @@ from users order by -total_users, name
 from users limit 10
 ```
 
-## Development
-
-```bash
-just install        # Set up virtual environment and install dependencies
-just test           # Run all tests
-just test-cov       # Run tests with coverage
-just test-file tests/test_compiler.py  # Run specific test file
-just test-k "pattern"  # Run tests matching a pattern
-just lint           # Run linter
-just fmt            # Format code
-just --list         # See all available commands
-```
-
 ## Project Structure
 
 ```
 asql/
 ├── asql/              # Core library
+│   ├── compiler.py    # ASQL → SQL compiler
+│   ├── dialect.py     # SQL dialect support
 │   ├── parser.py      # ASQL parser
-│   ├── compiler.py    # SQL compiler
-│   ├── dialect.py     # Dialect support
-│   └── errors.py     # Error handling
+│   └── schema.py      # Schema handling
+├── playground/        # Interactive web playground (FastAPI)
+├── docs/              # Documentation (MkDocs)
 ├── tests/             # Test suite
 ├── examples/          # Example queries
-├── docs/              # Documentation
-├── playground/        # Interactive web playground (FastAPI)
-└── pyproject.toml     # Project configuration
+└── vscode-extension/  # VS Code syntax highlighting
 ```
 
 ## Supported SQL Dialects
 
+ASQL compiles to multiple SQL dialects via [SQLGlot](https://github.com/tobymao/sqlglot):
+
 - PostgreSQL
-- MySQL
 - BigQuery
 - Snowflake
 - Redshift
+- MySQL
 - SQLite
-- And more (via SQLGlot)
+- DuckDB
+- And more
+
+## Documentation
+
+- [Quick Start Guide](docs/quick_start.md) - Get started in minutes
+- [Examples](docs/examples.md) - Comprehensive examples with SQL output
+- [Language Specification](docs/spec.md) - Complete ASQL syntax reference
+- [Architecture](ARCHITECTURE.md) - System design and implementation details
+
+Or run `just serve` and browse the interactive docs at http://localhost:8000.
+
+## VS Code Extension
+
+ASQL has a VS Code extension for syntax highlighting and snippets. See [`vscode-extension/README.md`](vscode-extension/README.md) for installation.
 
 ## Contributing
 
-Contributions are welcome! Please:
-
-1. Write tests for new features
-2. Follow the existing code style
-3. Update documentation as needed
-4. Run tests before submitting
-
+1. Fork the repo and create a feature branch
+2. Write tests for new features (`just test`)
+3. Ensure linting passes (`just lint`)
+4. Submit a pull request
 
 ## Status
 
-See [STATUS.md](STATUS.md) for current implementation status and known limitations.
+See [STATUS.md](STATUS.md) for current implementation status and roadmap.
