@@ -247,7 +247,7 @@ first_name ?? nickname ?? 'Unknown'
         FROM {{ ref('orders') }}
         GROUP BY 1
     )
-    SELECT 
+    SELECT
         spine.date_month,
         COALESCE(data.revenue, 0) as revenue
     FROM spine
@@ -329,7 +329,7 @@ first_name ?? nickname ?? 'Unknown'
     ```sql
     -- Different per warehouse
     {{ adapter.dispatch('safe_cast', 'dbt_utils')('value', 'integer') }}
-    
+
     -- Or manually
     TRY_CAST(value AS INTEGER)  -- Snowflake
     SAFE_CAST(value AS INT64)   -- BigQuery

@@ -125,7 +125,7 @@ limit 10                      # Limit results
 ### Comparison Operators
 
 - `==` - equals
-- `!=` - not equals  
+- `!=` - not equals
 - `<`, `>`, `<=`, `>=` - comparisons
 - `is null`, `is not null` - null checks
 

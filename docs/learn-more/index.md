@@ -7,7 +7,7 @@ This section contains advanced guides, design principles, and resources for gett
 
 **🚀 [ASQL Playground](https://play.analyticsql.com)** — The best way to explore ASQL!
 
-Often the best way to learn is to dive in and just start playing around with some examples.  That's why we've made the interactive playground.  
+Often the best way to learn is to dive in and just start playing around with some examples.  That's why we've made the interactive playground.
 
 The playground is an interactive environment where you can:
 - Write and test ASQL queries in real-time

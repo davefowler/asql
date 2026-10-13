@@ -2,6 +2,7 @@
 
 from asql import compile
 
+
 # Example 1: Simple FROM
 def example_simple_from():
     """Basic FROM clause."""
@@ -10,6 +11,7 @@ def example_simple_from():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 2: FROM with WHERE
 def example_from_where():
@@ -20,6 +22,7 @@ def example_from_where():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 3: FROM with SELECT
 def example_from_select():
     """FROM with SELECT clause."""
@@ -28,6 +31,7 @@ def example_from_select():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 4: FROM WHERE SELECT
 def example_from_where_select():
@@ -38,6 +42,7 @@ def example_from_where_select():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 5: Multiple WHERE conditions
 def example_multiple_where():
     """Multiple WHERE conditions with AND."""
@@ -46,6 +51,7 @@ def example_multiple_where():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 6: OR conditions
 def example_or_conditions():
@@ -56,6 +62,7 @@ def example_or_conditions():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 7: NOT operator
 def example_not_operator():
     """WHERE with NOT operator."""
@@ -65,26 +72,28 @@ def example_not_operator():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 8: Comparison operators
 def example_comparisons():
     """Various comparison operators."""
     examples = [
-        ('from users where age < 18', "Less than"),
-        ('from users where age > 65', "Greater than"),
-        ('from users where age <= 18', "Less than or equal"),
-        ('from users where age >= 18', "Greater than or equal"),
+        ("from users where age < 18", "Less than"),
+        ("from users where age > 65", "Greater than"),
+        ("from users where age <= 18", "Less than or equal"),
+        ("from users where age >= 18", "Greater than or equal"),
         ('from users where status != "inactive"', "Not equal"),
-        ('from users where email is null', "IS NULL"),
-        ('from users where email is not null', "IS NOT NULL"),
+        ("from users where email is null", "IS NULL"),
+        ("from users where email is not null", "IS NOT NULL"),
     ]
-    
+
     for asql, desc in examples:
         sql = compile(asql)
         print(f"\n{desc}:")
         print("ASQL:", asql)
         print("SQL:", sql)
-    
+
     return examples
+
 
 # Example 9: IN operator
 def example_in_operator():
@@ -95,6 +104,7 @@ def example_in_operator():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 10: NOT IN operator
 def example_not_in_operator():
     """WHERE with NOT IN operator."""
@@ -104,6 +114,7 @@ def example_not_in_operator():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 11: IN with numbers
 def example_in_numbers():
     """WHERE with IN operator using numbers."""
@@ -112,6 +123,7 @@ def example_in_numbers():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 if __name__ == "__main__":
     print("=== Basic ASQL Examples ===\n")

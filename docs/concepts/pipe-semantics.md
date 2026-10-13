@@ -28,7 +28,7 @@ ASQL puts operations in execution order:
 
 ```asql-play
 from sales                               -- 1st: start here
-  where year(date) = 2024                -- 2nd: filter
+  where extract(year from date) = 2024                -- 2nd: filter
   group by region (sum(amount) as revenue) -- 3rd: aggregate
   where revenue > 1000                   -- 4th: filter (HAVING)
   order by -revenue                      -- 5th: sort
@@ -110,7 +110,7 @@ from orders                    -- ✓ Orders look right
 Every pipeline step takes a table and produces a new table:
 
 ```
-orders (raw) 
+orders (raw)
   → where status = "completed" → orders (filtered)
   → group by customer_id (...) → customer_totals
   → order by -total → customer_totals (sorted)
@@ -131,6 +131,18 @@ from orders
   select id, amount, created_at
 ```
 
+### Steps After an Aggregate Block
+
+A step after `group by ... (...)` operates on the block's output, so aggregates stay available:
+
+```asql-play
+from orders
+  group by region ( sum(amount) as revenue )
+  select *, running_sum(revenue) over (order by region) as cumulative_revenue
+```
+
+`order by` and `limit` apply to the grouped result directly; `where`, `select`, `extend`, joins, and window steps read it as a table.
+
 ### Multiple WHERE Clauses
 
 Multiple WHERE clauses combine with AND:
@@ -146,8 +158,8 @@ Equivalent to:
 
 ```asql-play
 from orders
-  where status = "completed" 
-    and amount > 100 
+  where status = "completed"
+    and amount > 100
     and created_at >= @2024-01-01
 ```
 

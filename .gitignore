@@ -28,6 +28,8 @@ ENV/
 # IDE
 .vscode/
 .idea/
+.cursor/
+!.cursor/worktrees.json
 *.swp
 *.swo
 *~
@@ -47,7 +49,7 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
-# MkDocs build output (Netlify builds this fresh)
+# MkDocs build output
 site/
 
 .playwright-mcp/

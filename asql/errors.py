@@ -3,11 +3,11 @@
 
 class ASQLError(Exception):
     """Base exception for ASQL errors."""
-    
-    def __init__(self, message: str, position: int = None):
+
+    def __init__(self, message: str, position: int | None = None):
         """
         Initialize ASQL error.
-        
+
         Args:
             message: Error message
             position: Optional character position where error occurred
@@ -15,7 +15,7 @@ class ASQLError(Exception):
         super().__init__(message)
         self.message = message
         self.position = position
-    
+
     def __str__(self) -> str:
         """Return formatted error message."""
         if self.position is not None:
@@ -25,25 +25,29 @@ class ASQLError(Exception):
 
 class ASQLSyntaxError(ASQLError):
     """Syntax error in ASQL query."""
+
     pass
 
 
 class ASQLCompilationError(ASQLError):
     """Error during ASQL compilation."""
+
     pass
 
 
 class ASQLResolutionError(ASQLError):
     """Error during schema resolution."""
+
     pass
 
 
 class ASQLDialectError(ASQLError):
     """Error when using a feature not supported by the target dialect."""
+
     pass
 
 
 class ASQLDialectWarning(UserWarning):
     """Warning when using a feature with known issues or partial support for a dialect."""
-    pass
 
+    pass

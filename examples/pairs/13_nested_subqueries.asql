@@ -8,7 +8,7 @@ from customers
   & orders on customers.customer_id = orders.customer_id
   where orders.total_amount > (select avg_amount from avg_order_amount)
     and orders.status = "completed"
-  select 
+  select
     customers.customer_id,
     customers.customer_name,
     customers.email,
@@ -16,4 +16,3 @@ from customers
     orders.order_date,
     orders.total_amount
   order by -orders.total_amount
-

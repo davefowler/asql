@@ -50,7 +50,7 @@ from by_country
 
 ```asql
 from orders
-  where year(created_at) = 2024
+  where extract(year from created_at) = 2024
   group by region (sum(amount) as revenue)
   stash as regional_revenue
 
@@ -113,7 +113,7 @@ GROUP BY country
 ```asql
 -- Stage 1: Filter and prepare data
 from orders
-  where year(created_at) = 2024
+  where extract(year from created_at) = 2024
   where status = "completed"
   stash as completed_orders
 

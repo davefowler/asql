@@ -11,10 +11,10 @@ WITH funnel_stages AS (
     UNION ALL
     SELECT 'completed_purchase', COUNT(DISTINCT user_id) FROM orders WHERE status = 'completed'
 )
-SELECT 
+SELECT
     stage,
     users,
-    LAG(users) OVER (ORDER BY 
+    LAG(users) OVER (ORDER BY
         CASE stage
             WHEN 'viewed' THEN 1
             WHEN 'added_to_cart' THEN 2
@@ -22,7 +22,7 @@ SELECT
             WHEN 'completed_purchase' THEN 4
         END
     ) AS previous_stage_users,
-    ROUND(users::numeric / FIRST_VALUE(users) OVER (ORDER BY 
+    ROUND(users::numeric / FIRST_VALUE(users) OVER (ORDER BY
         CASE stage
             WHEN 'viewed' THEN 1
             WHEN 'added_to_cart' THEN 2
@@ -31,11 +31,10 @@ SELECT
         END
     ) * 100, 2) AS conversion_rate
 FROM funnel_stages
-ORDER BY 
+ORDER BY
     CASE stage
         WHEN 'viewed' THEN 1
         WHEN 'added_to_cart' THEN 2
         WHEN 'started_checkout' THEN 3
         WHEN 'completed_purchase' THEN 4
     END;
-

@@ -1,6 +1,6 @@
 {
   "$comment": "ASQL UI Metadata - data for visual editors. Validated by tests/test_schema_sync.py",
-  
+
   "operators": {
     "comparison": {
       ">": { "label": ">", "description": "Greater than" },
@@ -91,14 +91,16 @@
 
   "functions": {
     "date": {
-      "year": { "label": "year", "description": "Extract year from date", "args": ["date"], "returns": "integer", "natural_syntax": true },
-      "month": { "label": "month", "description": "Extract month from date", "args": ["date"], "returns": "integer", "natural_syntax": true },
-      "day": { "label": "day", "description": "Extract day from date", "args": ["date"], "returns": "integer", "natural_syntax": true },
-      "week": { "label": "week", "description": "Extract week number from date", "args": ["date"], "returns": "integer", "natural_syntax": true },
-      "quarter": { "label": "quarter", "description": "Extract quarter from date", "args": ["date"], "returns": "integer", "natural_syntax": true },
-      "hour": { "label": "hour", "description": "Extract hour from timestamp", "args": ["timestamp"], "returns": "integer", "natural_syntax": true },
-      "minute": { "label": "minute", "description": "Extract minute from timestamp", "args": ["timestamp"], "returns": "integer", "natural_syntax": true },
-      "second": { "label": "second", "description": "Extract second from timestamp", "args": ["timestamp"], "returns": "integer", "natural_syntax": true },
+      "year": { "label": "year", "description": "Truncate to start of year", "args": ["date"], "returns": "date", "natural_syntax": true },
+      "month": { "label": "month", "description": "Truncate to start of month", "args": ["date"], "returns": "date", "natural_syntax": true },
+      "day": { "label": "day", "description": "Truncate to start of day", "args": ["date"], "returns": "date", "natural_syntax": true },
+      "week": { "label": "week", "description": "Truncate to start of week", "args": ["date"], "returns": "date", "natural_syntax": true },
+      "week_monday": { "label": "week (Monday start)", "description": "Truncate to start of week, weeks starting Monday", "args": ["date"], "returns": "date", "natural_syntax": true },
+      "week_sunday": { "label": "week (Sunday start)", "description": "Truncate to start of week, weeks starting Sunday", "args": ["date"], "returns": "date", "natural_syntax": true },
+      "quarter": { "label": "quarter", "description": "Truncate to start of quarter", "args": ["date"], "returns": "date", "natural_syntax": true },
+      "hour": { "label": "hour", "description": "Truncate to start of hour", "args": ["timestamp"], "returns": "timestamp", "natural_syntax": true },
+      "minute": { "label": "minute", "description": "Truncate to start of minute", "args": ["timestamp"], "returns": "timestamp", "natural_syntax": true },
+      "second": { "label": "second", "description": "Truncate to start of second", "args": ["timestamp"], "returns": "timestamp", "natural_syntax": true },
       "date_trunc": { "label": "date trunc", "description": "Truncate to time unit", "args": ["unit", "date"], "returns": "date" },
       "date_diff": { "label": "date diff", "description": "Difference between dates", "args": ["unit", "start", "end"], "returns": "integer" },
       "date_add": { "label": "date add", "description": "Add interval to date", "args": ["date", "interval"], "returns": "date" },
@@ -278,10 +280,10 @@
       "category": "join",
       "description": "Join with another table",
       "parameters": [
-        { 
-          "name": "join_type", 
-          "type": "enum", 
-          "required": true, 
+        {
+          "name": "join_type",
+          "type": "enum",
+          "required": true,
           "widget": "dropdown",
           "options": [
             { "value": "inner", "label": "inner (&)" },
@@ -304,7 +306,7 @@
     "right": {
       "keywords": ["RIGHT"],
       "label": "Right Join",
-      "category": "join", 
+      "category": "join",
       "description": "Right outer join"
     },
     "full": {

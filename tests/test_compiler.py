@@ -3,16 +3,22 @@
 import pytest
 import sqlglot
 from sqlglot import exp
-from tests.fixtures import transpile
+
 from asql.errors import ASQLSyntaxError
-from tests.fixtures import assert_valid_sql, assert_sql_contains, assert_sql_structure
+
+from .fixtures import (
+    assert_sql_contains,
+    assert_sql_structure,
+    assert_valid_sql,
+    transpile,
+)
 
 
 def test_compile_simple_from() -> None:
     """Test compiling simple FROM clause."""
     asql = "from users"
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "SELECT", "FROM", "users")
     assert_sql_structure(sql, FROM="users")
     assert_valid_sql(sql)
@@ -22,11 +28,11 @@ def test_compile_from_where() -> None:
     """Test compiling FROM with WHERE clause."""
     asql = 'from users where status == "active"'
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "WHERE", "status", "active")
     assert_sql_structure(sql, FROM="users", WHERE="status")
     assert_valid_sql(sql)
-    
+
     # Verify WHERE condition is correct
     parsed = sqlglot.parse_one(sql)
     where_clause = parsed.find(exp.Where)
@@ -37,11 +43,11 @@ def test_compile_from_select() -> None:
     """Test compiling FROM with SELECT clause."""
     asql = "from users select name, email"
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "SELECT", "name", "email", "FROM", "users")
     assert_sql_structure(sql, SELECT="name", FROM="users")
     assert_valid_sql(sql)
-    
+
     # Verify columns are in SELECT
     parsed = sqlglot.parse_one(sql)
     select = parsed.find(exp.Select)
@@ -91,11 +97,11 @@ def test_compile_group_by_count() -> None:
     """Test compiling GROUP BY with COUNT (#)."""
     asql = "from users group by country ( # as total_users )"
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "GROUP BY", "COUNT", "total_users", "country")
     assert_sql_structure(sql, FROM="users", GROUP_BY="country")
     assert_valid_sql(sql)
-    
+
     # Verify GROUP BY structure
     parsed = sqlglot.parse_one(sql)
     group = parsed.find(exp.Group)
@@ -107,11 +113,11 @@ def test_compile_group_by_sum() -> None:
     """Test compiling GROUP BY with SUM."""
     asql = "from sales group by region ( sum(amount) as revenue )"
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "GROUP BY", "SUM", "revenue", "region", "amount")
     assert_sql_structure(sql, FROM="sales", GROUP_BY="region")
     assert_valid_sql(sql)
-    
+
     # Verify aggregation structure
     parsed = sqlglot.parse_one(sql)
     select = parsed.find(exp.Select)
@@ -153,11 +159,11 @@ def test_compile_order_by_ascending() -> None:
     """Test compiling ORDER BY in ascending order."""
     asql = "from users order by name"
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "ORDER BY", "name")
     assert_sql_structure(sql, FROM="users", ORDER_BY="name")
     assert_valid_sql(sql)
-    
+
     # Verify ORDER BY structure
     parsed = sqlglot.parse_one(sql)
     order = parsed.find(exp.Order)
@@ -169,11 +175,11 @@ def test_compile_order_by_descending() -> None:
     """Test compiling ORDER BY with descending order (using - prefix)."""
     asql = "from users order by -total_users"
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "ORDER BY", "total_users", "DESC")
     assert_sql_structure(sql, FROM="users", ORDER_BY="total_users")
     assert_valid_sql(sql)
-    
+
     # Verify DESC is present
     parsed = sqlglot.parse_one(sql)
     order = parsed.find(exp.Order)
@@ -247,11 +253,11 @@ def test_compile_take() -> None:
     """Test compiling TAKE/LIMIT."""
     asql = "from users limit 10"
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "LIMIT", "10")
     assert_sql_structure(sql, FROM="users", LIMIT="10")
     assert_valid_sql(sql)
-    
+
     # Verify LIMIT value
     parsed = sqlglot.parse_one(sql)
     limit = parsed.find(exp.Limit)
@@ -371,7 +377,7 @@ def test_compile_where_or() -> None:
 
 def test_compile_where_not() -> None:
     """Test compiling WHERE with NOT operator.
-    
+
     Note: The optimizer simplifies `NOT status = 'inactive'` to `status <> 'inactive'`.
     This is semantically correct.
     """
@@ -396,10 +402,10 @@ def test_compile_where_in() -> None:
     """Test compiling WHERE with IN operator."""
     asql = 'from users where status in ("active", "pending", "verified")'
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "WHERE", "IN", "active", "pending", "verified", "status")
     assert_valid_sql(sql)
-    
+
     # Verify IN structure
     parsed = sqlglot.parse_one(sql)
     where_clause = parsed.find(exp.Where)

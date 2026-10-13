@@ -30,8 +30,8 @@ We can make these decisions confidently because we don't force the change. The o
 ```asql
 from orders
   where created_at > 7 days ago
-  group by month(created_at) ( 
-    sum(amount) as revenue 
+  group by month(created_at) (
+    sum(amount) as revenue
   )
   order by -revenue
   limit 10

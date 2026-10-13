@@ -142,7 +142,7 @@ from users
 
 ```asql-play
 from sales
-  where year_sale_date = 2024
+  where sale_date >= @2024-01-01 and sale_date < @2025-01-01
   group by region (
     sum_revenue,
     avg_price,
@@ -184,6 +184,7 @@ order by -sum_amount         -- Reference auto-aliased column directly!
 | `sum(amount)` | `sum_amount` |
 | `avg(price)` | `avg_price` |
 | `count(*)` / `#` | `num` |
+| `# users` (entity count, schema required) | `num_user_id` |
 | `month(created_at)` | `month_created_at` |
 | `upper(name)` | `upper_name` |
 

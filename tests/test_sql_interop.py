@@ -5,12 +5,13 @@ Some tests are marked as expected failures (xfail) to document known limitations
 """
 
 import pytest
-from tests.fixtures import transpile
+
+from .fixtures import transpile
 
 
 class TestPureSQLPassthrough:
     """Pure SQL queries should pass through unchanged (modulo formatting)."""
-    
+
     def test_simple_select(self) -> None:
         """Standard SELECT works."""
         sql = "SELECT * FROM users WHERE active = true"
@@ -18,7 +19,7 @@ class TestPureSQLPassthrough:
         assert "SELECT" in result
         assert "FROM users" in result
         assert "active" in result
-    
+
     def test_sql_with_cte(self) -> None:
         """Standard WITH...AS works."""
         sql = """
@@ -30,7 +31,7 @@ class TestPureSQLPassthrough:
         result = transpile(sql)
         assert "WITH active_users AS" in result
         assert "SELECT * FROM active_users" in result
-    
+
     def test_nested_ctes(self) -> None:
         """Multiple CTEs work."""
         sql = """
@@ -41,7 +42,7 @@ class TestPureSQLPassthrough:
         result = transpile(sql)
         assert "WITH a AS" in result
         assert "b AS" in result
-    
+
     def test_sql_subquery_in_from(self) -> None:
         """Subquery in FROM works."""
         sql = """
@@ -55,7 +56,7 @@ class TestPureSQLPassthrough:
         result = transpile(sql)
         assert "FROM (" in result or "FROM(" in result
         assert "GROUP BY" in result
-    
+
     def test_sql_union(self) -> None:
         """UNION works."""
         sql = """
@@ -65,11 +66,11 @@ class TestPureSQLPassthrough:
         """
         result = transpile(sql)
         assert "UNION" in result
-    
+
     def test_sql_window_function(self) -> None:
         """Window functions work."""
         sql = """
-        SELECT 
+        SELECT
             user_id,
             ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) as rn
         FROM orders
@@ -77,7 +78,7 @@ class TestPureSQLPassthrough:
         result = transpile(sql)
         assert "ROW_NUMBER()" in result
         assert "PARTITION BY" in result
-    
+
     def test_sql_case_expression(self) -> None:
         """CASE expressions work."""
         sql = """
@@ -87,7 +88,7 @@ class TestPureSQLPassthrough:
         result = transpile(sql)
         assert "CASE" in result
         assert "WHEN" in result
-    
+
     def test_lateral_join(self) -> None:
         """LATERAL joins work."""
         sql = """
@@ -100,7 +101,7 @@ class TestPureSQLPassthrough:
 
 class TestASQLWithSQLExpressions:
     """ASQL syntax with SQL expressions inside."""
-    
+
     def test_from_first_with_case(self) -> None:
         """FROM-first with CASE expression."""
         asql = """
@@ -110,7 +111,7 @@ class TestASQLWithSQLExpressions:
         result = transpile(asql)
         assert "CASE" in result
         assert "SELECT" in result
-    
+
     def test_asql_join(self) -> None:
         """ASQL with JOIN syntax."""
         asql = """
@@ -121,15 +122,9 @@ class TestASQLWithSQLExpressions:
         result = transpile(asql)
         assert "JOIN" in result
         assert "SELECT" in result
-    
-    @pytest.mark.xfail(reason="Optimizer removes unused CTEs - stash functionality tested elsewhere")
+
     def test_stash_as_creates_cte(self) -> None:
-        """stash as creates proper CTE.
-        
-        Note: When stash is the final operation, the optimizer removes the CTE
-        because it's not "used" in a subsequent operation. This test is xfailed
-        but the core stash functionality is covered by tests in test_store_as.py.
-        """
+        """stash as creates proper CTE."""
         asql = """
         from users
         where active
@@ -141,7 +136,7 @@ class TestASQLWithSQLExpressions:
 
 class TestKnownLimitations:
     """Document known limitations with SQL/ASQL mixing."""
-    
+
     def test_subquery_in_where(self) -> None:
         """SQL subquery in WHERE clause - now works correctly."""
         sql = """
@@ -151,10 +146,9 @@ class TestKnownLimitations:
         result = transpile(sql)
         # Should have two separate WHERE clauses
         assert "WHERE premium" in result
-    
-    @pytest.mark.xfail(reason="Preparser converts nested WHERE to AND")
+
     def test_exists_subquery(self) -> None:
-        """EXISTS with subquery - KNOWN LIMITATION."""
+        """EXISTS with subquery."""
         sql = """
         SELECT * FROM customers c
         WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id)
@@ -162,7 +156,7 @@ class TestKnownLimitations:
         result = transpile(sql)
         assert "EXISTS" in result
         assert "WHERE o.customer_id" in result
-    
+
     def test_with_asql_body(self) -> None:
         """WITH clause with ASQL body - now works correctly."""
         asql = """
@@ -174,7 +168,7 @@ class TestKnownLimitations:
         """
         result = transpile(asql)
         assert "WITH revenue AS" in result
-    
+
     @pytest.mark.xfail(reason="FROM-first only transforms first query in UNION")
     def test_union_with_asql(self) -> None:
         """UNION with ASQL queries - KNOWN LIMITATION."""
@@ -186,7 +180,7 @@ class TestKnownLimitations:
         result = transpile(asql)
         # Both should have SELECT
         assert result.count("SELECT") >= 2
-    
+
     @pytest.mark.xfail(reason="Stash chaining not fully supported")
     def test_multiple_stash_as(self) -> None:
         """Multiple stash as in sequence - KNOWN LIMITATION."""
@@ -200,7 +194,7 @@ class TestKnownLimitations:
 
 class TestRecommendedPatterns:
     """Show the recommended ASQL way to do things."""
-    
+
     def test_use_stash_instead_of_with(self) -> None:
         """Use stash as instead of WITH...AS for ASQL bodies."""
         # RECOMMENDED: Use stash as
@@ -212,7 +206,7 @@ class TestRecommendedPatterns:
         result = transpile(asql)
         assert "WITH revenue_by_month AS" in result
         assert "SUM(amount)" in result
-    
+
     def test_asql_for_subquery_logic(self) -> None:
         """Break subquery logic into stash as CTEs."""
         # Instead of: SELECT * FROM orders WHERE id IN (SELECT id FROM vip_orders)

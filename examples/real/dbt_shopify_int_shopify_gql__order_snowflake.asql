@@ -11,11 +11,10 @@ from stg_shopify_gql__order stash as orders
 from stg_shopify_gql__customer_visit stash as customer_visit
 
 from orders
-  &? customer_visit 
+  &? customer_visit
     on orders.order_id = customer_visit.order_id
     and orders.source_relation = customer_visit.source_relation
-  select 
+  select
     orders.*,
     customer_visit.referring_site,
     customer_visit.landing_page as landing_site_base_url
-

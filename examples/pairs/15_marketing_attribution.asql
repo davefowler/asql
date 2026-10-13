@@ -1,6 +1,6 @@
 -- Marketing attribution: First-touch and last-touch attribution
 from marketing_touchpoints
-  select 
+  select
     customer_id,
     campaign_id,
     touchpoint_date,
@@ -9,7 +9,7 @@ from marketing_touchpoints
   stash as first_touch
 
 from marketing_touchpoints
-  select 
+  select
     customer_id,
     campaign_id,
     touchpoint_date,
@@ -28,4 +28,3 @@ from campaigns
     sum(orders.total_amount) as attributed_revenue
   )
   order by -attributed_revenue
-

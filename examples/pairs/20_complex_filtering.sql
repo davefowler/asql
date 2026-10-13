@@ -1,5 +1,5 @@
 -- Complex filtering: Multi-condition queries
-SELECT 
+SELECT
     o.order_id,
     o.order_date,
     c.customer_name,
@@ -13,12 +13,11 @@ WHERE o.status = 'completed'
     AND o.total_amount >= 100
     AND c.country IN ('US', 'CA', 'UK')
     AND EXISTS (
-        SELECT 1 
-        FROM order_items oi2 
-        WHERE oi2.order_id = o.order_id 
+        SELECT 1
+        FROM order_items oi2
+        WHERE oi2.order_id = o.order_id
         AND oi2.price > 50
     )
 GROUP BY o.order_id, o.order_date, c.customer_name, o.total_amount
 HAVING COUNT(oi.product_id) >= 2
 ORDER BY o.order_date DESC, o.total_amount DESC;
-

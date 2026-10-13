@@ -18,39 +18,42 @@ from asql.visual_dialect.generator import VisualASQLGenerator
 
 class VisualASQL(Dialect):
     """JSON-based visual ASQL dialect.
-    
+
     Supports bidirectional conversion:
     - JSON → SQL: Parses JSON input, converts to ASQL, then to SQL AST
     - SQL → JSON: Generates JSON with column tracking at each pipeline stage
-    
+
     Usage:
         # JSON → SQL
         sqlglot.transpile(json_str, read="visual_asql", write="postgres")
-        
-        # SQL → JSON  
+
+        # SQL → JSON
         sqlglot.transpile(sql, read="postgres", write="visual_asql")
     """
 
     class Tokenizer(ASQLTokenizer):
         """Reuse ASQL tokenizer."""
+
         pass
 
     class Parser(ASQLParser):
         """Reuse ASQL parser."""
+
         pass
 
     class Generator(VisualASQLGenerator):
         """JSON generator with column tracking."""
+
         pass
 
-    def parse(self, sql: str, **opts: t.Any) -> t.List[t.Optional[exp.Expression]]:
+    def parse(self, sql: str, **opts: t.Any) -> list[exp.Expr | None]:
         """Intercept JSON input before tokenization.
-        
+
         If input looks like JSON (starts with { or [), convert it to ASQL text
         first, then parse using the ASQL parser.
         """
         stripped = sql.strip()
-        
+
         # Check if input is JSON
         if stripped.startswith("{") or stripped.startswith("["):
             try:
@@ -58,7 +61,7 @@ class VisualASQL(Dialect):
             except json.JSONDecodeError:
                 # Not valid JSON, try parsing as regular ASQL
                 return super().parse(sql, **opts)
-            
+
             try:
                 asql_text = json_to_asql(query_json)
                 # Delegate to ASQL parser
@@ -66,7 +69,7 @@ class VisualASQL(Dialect):
             except (KeyError, TypeError, ValueError) as e:
                 # JSON is valid but schema is wrong
                 raise ValueError(f"Invalid visual_asql JSON structure: {e}") from e
-        
+
         # Not JSON - parse as regular ASQL
         return super().parse(sql, **opts)
 

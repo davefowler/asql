@@ -47,14 +47,11 @@ Examples use MkDocs Material's tabbed code blocks to show ASQL compiled to multi
 ## Local Development
 
 ```bash
-# Install dependencies
-pip install -r requirements-docs.txt
+# Serve locally (from repo root)
+just asql docs
 
-# Serve locally
-mkdocs serve
-
-# Build site
-mkdocs build
+# Or build the site directly
+uv run --group dev mkdocs build -f libs/asql/mkdocs.yml
 ```
 
 ## Adding Examples
@@ -65,4 +62,3 @@ When adding new examples:
 2. Include ASQL tab first, then SQL dialect tabs
 3. Supported dialects: PostgreSQL, MySQL, BigQuery, Snowflake, Redshift
 4. Generate SQL using: `python scripts/generate_example_sql.py '<asql_query>'`
-

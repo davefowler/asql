@@ -170,24 +170,28 @@ limit 10
 
 ## Date Functions
 
-### Date Extraction
+### Date Truncation by Unit
 
-Extract parts of dates:
+`year`, `quarter`, `month`, `week`, `day`, and `hour` truncate to the start of the unit, so January 2024 and January 2025 stay separate groups:
 
 ```asql-play
 from events
-group by year(date), month(date) (
+group by month(date) (
     # as event_count
 )
 ```
 
 Available functions:
-- `year(date)` - extract year
-- `month(date)` - extract month
-- `day(date)` - extract day
+- `year(date)` - start of the year
+- `month(date)` - start of the month
+- `day(date)` - start of the day
 - `date(date)` - extract date (remove time)
 
-### Date Truncation
+### Date Extraction
+
+To get a number instead of a date, use `month of year date` (1-12), `day of week date`, and the other forms in [Dates](syntax/dates.md), or `extract(year from date)`.
+
+### Explicit `date_trunc`
 
 ```asql-play
 from events
@@ -200,7 +204,7 @@ group by date_trunc("month", date) (
 
 ```asql
 from events
-select 
+select
     date_format(date, "%Y-%m") as month,
     #
 ```
@@ -234,10 +238,10 @@ from users &? orders on users.id = orders.user_id
 ### Multiple Joins
 
 ```asql
-from orders 
+from orders
   & users on orders.user_id = users.id
   & products on orders.product_id = products.id
-select 
+select
     users.name,
     products.name as product_name,
     orders.amount
@@ -250,7 +254,7 @@ If your columns follow the `{name}_id` pattern, you can use dot notation for aut
 ```asql
 -- orders has user_id column → auto-joins to users
 from orders
-select 
+select
     orders.amount,
     orders.user.name,      -- Auto LEFT JOIN via user_id
     orders.user.email
@@ -274,7 +278,7 @@ Get values from previous or next rows:
 ```asql
 from monthly_sales
 order by month
-select 
+select
     month,
     revenue,
     prior(revenue) as prev_month,           # Previous row's revenue
@@ -289,7 +293,7 @@ Calculate cumulative totals:
 ```asql
 from transactions
 order by date
-select 
+select
     date,
     amount,
     running_sum(amount) as cumulative_total,
@@ -304,7 +308,7 @@ Calculate moving averages with a window size:
 ```asql
 from daily_sales
 order by date
-select 
+select
     date,
     revenue,
     rolling_avg(revenue, 7) as seven_day_avg
@@ -373,7 +377,7 @@ Daily revenue for the last 30 days:
 ```asql-play
 from orders
 where date >= 30 days ago
-group by date(date) (
+group by date_trunc("day", date) (
     sum(amount) as daily_revenue,
     # as order_count
 )

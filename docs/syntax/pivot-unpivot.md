@@ -29,15 +29,12 @@ from orders
   group by customer_id
 ```
 
-Generates:
+The trailing `group by` names the pivot's key columns: one row per `customer_id`, one column per status. Only plain columns are allowed. It compiles to a native `PIVOT` over a projection of the key, pivot, and value columns:
 
 ```sql
-SELECT customer_id,
-  SUM(CASE WHEN status = 'pending' THEN amount END) AS pending,
-  SUM(CASE WHEN status = 'shipped' THEN amount END) AS shipped,
-  SUM(CASE WHEN status = 'delivered' THEN amount END) AS delivered
-FROM orders
-GROUP BY customer_id
+SELECT *
+FROM (SELECT customer_id, amount, status FROM orders)
+PIVOT (SUM(amount) FOR status IN ('pending', 'shipped', 'delivered'))
 ```
 
 ### Without Aggregation (MAX)
@@ -98,7 +95,7 @@ The subquery is compiled to a CTE (Common Table Expression), and pivot expressio
 ```asql
 from orders
   pivot sum(total) by status values (
-    from orders 
+    from orders
     where order_date >= '2024-01-01'
     select distinct status
   )

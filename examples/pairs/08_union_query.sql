@@ -1,5 +1,5 @@
 -- Union: Combined sales from multiple sources
-SELECT 
+SELECT
     'online' AS source,
     order_date,
     amount,
@@ -7,7 +7,7 @@ SELECT
 FROM online_orders
 WHERE status = 'completed'
 UNION ALL
-SELECT 
+SELECT
     'retail' AS source,
     sale_date AS order_date,
     total_amount AS amount,
@@ -15,4 +15,3 @@ SELECT
 FROM retail_sales
 WHERE status = 'completed'
 ORDER BY order_date DESC;
-

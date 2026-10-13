@@ -28,4 +28,3 @@ def test_sqlglot_schema_adapter_converts_tables_and_columns() -> None:
     assert sqlglot_schema.has_column("orders", "id")
     assert sqlglot_schema.has_column("orders", "user_id")
     assert sqlglot_schema.has_column("users", "id")
-

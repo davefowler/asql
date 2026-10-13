@@ -17,13 +17,13 @@ ASQL may add support for automatic join traversal using FK dot notation:
 ```asql
 -- Proposed syntax
 from orders
-  select 
+  select
     orders.amount,
     orders.user.name,       -- Auto-joins via user_id → users.id
     orders.user.email       -- Same join, different column
 
 -- Would compile to:
-SELECT 
+SELECT
   orders.amount,
   user_1.name,
   user_1.email
@@ -96,14 +96,14 @@ tables:
     columns: [id, user_id, amount, created_at]
   users:
     columns: [id, name, email]
-    
+
 relationships:
   # Explicit FK from database
   - from: orders.user_id
     to: users.id
     alias: user
     source: explicit
-  
+
   # Inferred from naming convention
   - from: orders.customer_id
     to: customers.id
@@ -448,7 +448,7 @@ Standard SQL doesn't allow referencing an alias defined in the same SELECT claus
 
 ```sql
 -- Standard SQL: Must repeat the expression or use subquery/CTE
-SELECT 
+SELECT
     unit_price * (1 - discount) AS discount_price,
     unit_price * (1 - discount) * quantity AS total_price,  -- repeated!
     unit_price * (1 - discount) * quantity * (1 + tax_rate) AS taxed_price  -- repeated again!
@@ -564,7 +564,7 @@ Gets the most recent quote as of each trade time.
 
 ```asql
 from trades
-  asof join quotes on symbol 
+  asof join quotes on symbol
     and trades.timestamp >= quotes.timestamp
 ```
 
@@ -613,11 +613,161 @@ Or use raw SQL with correlated subquery.
 
 ---
 
+## Automatic Fanout Protection (Future Consideration)
+
+ASQL may add automatic fanout protection for grouped join queries using the
+pre-aggregation approach described in [The Fanout Problem](concepts/fanout.md).
+
+### Motivation
+
+When a query joins a one-to-many relationship and aggregates columns from the
+"one" side, additive measures get silently inflated.
+
+Example:
+
+```sql
+SELECT state, SUM(shipping_cost), SUM(quantity)
+FROM orders
+JOIN order_items USING (order_id)
+JOIN customers USING (customer_id)
+GROUP BY 1
+```
+
+`SUM(quantity)` is correct, but `SUM(shipping_cost)` is inflated because the join
+duplicates each order once per item.
+
+### Recommended Approach
+
+Instead of using symmetric aggregates or deduping after the join, ASQL should
+pre-aggregate the many-side table before joining:
+
+```sql
+SELECT customers.state, SUM(orders.shipping_cost), SUM(order_items.quantity)
+FROM orders
+JOIN (
+    SELECT order_id, SUM(quantity) AS quantity
+    FROM order_items
+    GROUP BY 1
+) AS order_items USING (order_id)
+JOIN customers USING (customer_id)
+GROUP BY 1
+```
+
+This is the cleanest and most efficient strategy when schema metadata proves the
+foreign key relationship.
+
+### Proposed MVP
+
+1. ~~Gate behind a compile setting~~ Shipped: `fanout_protection` is on by default; `SET fanout_protection = false` opts out per query
+2. Require schema metadata with PK/FK relationships
+3. Only rewrite grouped queries
+4. Only rewrite aggregates that can be safely decomposed across a pre-aggregated many-side subquery
+5. Support `SUM`, selected `COUNT` cases, and `AVG` first
+6. Leave unsupported cross-table aggregate expressions unchanged or warn
+
+### Pipe-Stage Boundary
+
+ASQL's pipeline structure helps here, but only up to a point.
+
+If a query computes a derived value in an earlier pipeline step and then groups in a
+later step, fanout protection can reason about the later grouped step independently.
+For example, this is a good workaround for cross-table expressions:
+
+```asql
+from orders
+  join order_items using (order_id)
+  derive extended_price = orders.tax_rate * order_items.price
+  group by customer_id (
+    sum(extended_price) as taxed_revenue
+  )
+```
+
+In that shape, the grouped step is no longer aggregating a raw cross-table expression.
+
+However, grouping, filtering, or ordering by many-side columns in the *same grouped
+step being rewritten* is still a real constraint. The rewrite works by replacing the
+many-side table with a pre-aggregated one-row-per-key subquery. If the current grouped
+step still depends on raw many-side row shape, the rewrite can change semantics and
+must be skipped.
+
+So the rule is:
+
+1. Earlier pipeline stages can normalize row-level expressions and make later fanout-safe rewrites possible
+2. The grouped step currently being rewritten must still be grain-compatible with the pre-aggregated many-side result
+
+### Why Aggregate Coverage Is Not Uniform
+
+Not all aggregates can be handled with the same rewrite:
+
+1. `SUM(expr)` decomposes cleanly: inner `SUM`, then outer `SUM`
+2. `COUNT(expr)` also decomposes cleanly in selected non-`DISTINCT` cases
+3. `AVG(expr)` needs different treatment: inner `SUM` + inner `COUNT`, then outer weighted average
+4. `MIN`/`MAX` have different semantics again and need explicit treatment rather than assuming the additive pattern
+5. `COUNT(DISTINCT ...)`, percentiles, medians, arbitrary UDAFs, and windowed aggregates generally cannot be rewritten with the same generic rule
+6. Cross-table expressions like `SUM(orders.tax_rate * order_items.price)` require expression decomposition and pushdown analysis, not just aggregate rewriting
+
+So ASQL should eventually support more aggregates, but it should do so deliberately,
+by aggregate family, rather than pretending one rule covers all of them.
+
+### Cross-Table Aggregate Expressions
+
+Expressions like:
+
+```sql
+SUM(orders.tax_rate * order_items.price)
+```
+
+are a known next-step feature. They are not the same as ordinary many-side aggregate
+protection because the expression depends on columns from both sides of the join.
+
+In ASQL, the recommended workaround is to compute such expressions in an earlier pipe
+stage, then aggregate the derived column later. That keeps the grouped step simple and
+avoids needing the compiler to decompose the expression automatically.
+
+Future work:
+
+1. Detect these expressions explicitly
+2. Emit a warning or error with guidance to pre-calculate them in an earlier pipeline step
+3. Later, add expression decomposition / pushdown support where safe
+
+### Likely Out Of Scope For Automatic Rewriting
+
+Some fanout-sensitive cases should probably remain explicit rather than automatic,
+even in a future ASQL planner:
+
+1. arbitrary cross-table aggregate expressions when the compiler cannot cleanly factor them into an earlier row-level stage
+2. `COUNT(DISTINCT ...)` across fanout-sensitive join paths, unless ASQL adopts stronger measure-locality semantics
+3. percentiles, medians, and arbitrary UDAFs without a declared combine strategy
+
+For these, the preferred ASQL pattern is:
+
+1. compute the intended row-level value in an earlier pipe step
+2. aggregate it later at the intended grain
+3. or use an explicit subquery/CTE when the semantics need to stay fully manual
+
+### Benefits
+
+1. Cleaner SQL than symmetric aggregates
+2. Better performance than deduping after fanout
+3. No patent concerns
+4. Uses schema metadata ASQL already understands
+
+### Open Design Questions
+
+1. Should the setting default to `false` or only activate when schema is present?
+2. How should unsupported cross-table aggregates be surfaced: warning, error, or pass-through?
+3. Which non-additive aggregate families should be supported next after `SUM`/`COUNT`/`AVG`?
+4. Should ASQL add warnings even when automatic rewriting is disabled?
+
+**Priority**: High - fanout is a common analytics correctness bug, and the recommended rewrite produces readable, portable SQL.
+
+---
+
 ## List Comprehensions / Array Transformations (Future Consideration)
 
 ASQL may add Python-style list comprehensions for transforming array columns.
 
-**Tracking**: [Issue #82](https://github.com/davefowler/asql/issues/82)  
+**Tracking**: [Issue #82](https://github.com/davefowler/asql/issues/82)
 **Research**: See [ai_notes/archive/research/list-comprehensions-research.md](../ai_notes/archive/research/list-comprehensions-research.md) for detailed analysis.
 
 ### Proposed Syntax
@@ -734,7 +884,7 @@ Or use `select *` and filter in downstream processing.
 
 ASQL may adopt compatibility with the emerging SQL pipe syntax standard used by BigQuery, Spark/Databricks, and (with variation) Snowflake. This would position ASQL as a **multi-dialect transpiler for pipe syntax**, allowing users to write the emerging standard and deploy anywhere.
 
-**Tracking**: Not yet tracked  
+**Tracking**: Not yet tracked
 **Research**: See [ai_notes/archive/research/pipe-syntax-adoption-analysis.md](../ai_notes/archive/research/pipe-syntax-adoption-analysis.md)
 
 ### Background
@@ -796,7 +946,7 @@ Pipe syntax uses `AGGREGATE ... GROUP BY`. ASQL would accept this as alternative
 ```asql
 -- Pipe syntax style
 from orders
-  aggregate 
+  aggregate
     sum(total) as revenue,
     count(*) as order_count
   group by region
@@ -828,12 +978,12 @@ from sales
   select *, profit / revenue as margin
 ```
 
-**Key behavior**: 
+**Key behavior**:
 - `extend` implicitly includes all existing columns (like `select *`)
 - Multiple `extend` statements can chain, each seeing columns from previous extends
 - This naturally enables column reuse (see "Reusable Column Aliases" section)
 
-**Implementation**: 
+**Implementation**:
 - `extend expr as col` → `select *, expr as col`
 - With column reuse feature, later extends can reference earlier ones
 

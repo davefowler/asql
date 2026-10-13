@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASQL Playground</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    <link rel="stylesheet" href="/static/playground/playground.css">
+    <link rel="stylesheet" href="/static/playground/visual-editor-v2/visual-editor.css">
+</head>
+<body>
+    <div class="container">
+        <div class="top-nav">
+            <h1>🚀 ASQL Playground</h1>
+            <div class="top-nav-buttons">
+                <button onclick="openSettingsModal()" class="settings-btn" id="settings-btn" title="Compiler Settings">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22l-1.92 3.32c-.12.21-.07.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+                    </svg>
+                    Settings
+                </button>
+                <button onclick="openExamplesModal()" class="nav-button">📚 Examples</button>
+                <a href="__DOCS_URL__" class="nav-button">Documentation</a>
+            </div>
+        </div>
+
+        <div class="playground">
+            <div class="panel" id="input-panel">
+                <div class="panel-header" id="input-header">
+                    <div class="language-selector-inline">
+                        <label>From:</label>
+                        <select id="from-dialect">
+                            <!-- FROM_DIALECT_OPTIONS -->
+                        </select>
+                        <!-- Visual mode toggle (shown only for visual-asql) -->
+                        <div id="visual-mode-toggle" class="visual-mode-toggle" style="display: none;">
+                            <button id="json-view-btn" class="view-toggle-btn active" title="JSON Text View">{ }</button>
+                            <button id="visual-view-btn" class="view-toggle-btn" title="Visual Block View">▦</button>
+                        </div>
+                        <!-- Visual style toggle (blocky vs text vs pipes vs accordion) -->
+                        <div id="visual-style-toggle" class="visual-style-toggle" style="display: none;">
+                            <button id="blocky-style-btn" class="style-toggle-btn" title="Blocky UI Style">☐</button>
+                            <button id="text-style-btn" class="style-toggle-btn active" title="Text-like Style">T</button>
+                            <button id="pipes-style-btn" class="style-toggle-btn" title="Flow/Pipes Style">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                                    <circle cx="3" cy="4" r="2"/>
+                                    <circle cx="3" cy="12" r="2"/>
+                                    <circle cx="13" cy="8" r="2"/>
+                                    <path d="M5 4 Q 9 4, 11 8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                    <path d="M5 12 Q 9 12, 11 8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                </svg>
+                            </button>
+                            <button id="accordion-style-btn" class="style-toggle-btn" title="Accordion Spreadsheet Style">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                                    <rect x="1" y="1" width="14" height="3" rx="0.5"/>
+                                    <rect x="1" y="6" width="14" height="3" rx="0.5" opacity="0.6"/>
+                                    <rect x="1" y="11" width="14" height="3" rx="0.5" opacity="0.3"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <!-- Show columns toggle -->
+                        <div id="show-columns-toggle" class="show-columns-toggle" style="display: none;">
+                            <button id="show-columns-btn" class="columns-toggle-btn" title="Show output columns">⊞ cols</button>
+                        </div>
+                    </div>
+                    <button class="copy-btn" onclick="copyInput()" title="Copy">
+                        <svg viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path>
+                            <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="panel-content">
+                    <!-- Text Editor (CodeMirror) -->
+                    <div id="input-editor-container">
+                        <div id="input-editor"></div>
+                        <span class="detected-dialect" id="detected-dialect" style="display: none;"></span>
+                    </div>
+
+                    <!-- Visual Editor -->
+                    <div id="visual-editor-container" style="display: none;">
+                        <div class="visual-editor">
+                            <!-- FROM block (always visible) -->
+                            <div class="block from-block">
+                                <div class="block-body">
+                                    <span class="value-operator">from</span>
+                                    <select id="from-table" class="from-table-select">
+                                        <option value="">select table...</option>
+                                        <!-- Options will be populated by JavaScript -->
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Transform blocks container -->
+                            <div id="transforms-container">
+                                <!-- Blocks will be added here dynamically -->
+                            </div>
+
+                            <!-- Add step dropdown -->
+                            <select id="add-step-btn" class="add-step-dropdown">
+                                <option value="" disabled selected>+ add step</option>
+                                <!-- Options will be populated by JavaScript -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-header-swap">
+                <button class="swap-button-inline" onclick="swapLanguages()" title="Swap languages">
+                    <svg class="swap-icon" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M6.99 11L3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="panel" id="output-panel">
+                <div class="panel-header" id="output-header">
+                    <div class="language-selector-inline">
+                        <label>To:</label>
+                        <select id="to-dialect">
+                            <!-- TO_DIALECT_OPTIONS -->
+                        </select>
+                        <!-- Visual mode toggle for output (shown only for visual-asql) -->
+                        <div id="output-visual-mode-toggle" class="visual-mode-toggle" style="display: none;">
+                            <button id="output-json-view-btn" class="view-toggle-btn active" title="JSON Text View">{ }</button>
+                            <button id="output-visual-view-btn" class="view-toggle-btn" title="Visual Block View">▦</button>
+                        </div>
+                        <!-- Visual style toggle for output (blocky vs text vs pipes vs accordion) -->
+                        <div id="output-visual-style-toggle" class="visual-style-toggle" style="display: none;">
+                            <button id="output-blocky-style-btn" class="style-toggle-btn" title="Blocky UI Style">☐</button>
+                            <button id="output-text-style-btn" class="style-toggle-btn active" title="Text-like Style">T</button>
+                            <button id="output-pipes-style-btn" class="style-toggle-btn" title="Flow/Pipes Style">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                                    <circle cx="3" cy="4" r="2"/>
+                                    <circle cx="3" cy="12" r="2"/>
+                                    <circle cx="13" cy="8" r="2"/>
+                                    <path d="M5 4 Q 9 4, 11 8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                    <path d="M5 12 Q 9 12, 11 8" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                                </svg>
+                            </button>
+                            <button id="output-accordion-style-btn" class="style-toggle-btn" title="Accordion Spreadsheet Style">
+                                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                                    <rect x="1" y="1" width="14" height="3" rx="0.5"/>
+                                    <rect x="1" y="6" width="14" height="3" rx="0.5" opacity="0.6"/>
+                                    <rect x="1" y="11" width="14" height="3" rx="0.5" opacity="0.3"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <!-- Show columns toggle for output -->
+                        <div id="output-show-columns-toggle" class="show-columns-toggle" style="display: none;">
+                            <button id="output-show-columns-btn" class="columns-toggle-btn" title="Show output columns">⊞ cols</button>
+                        </div>
+                    </div>
+                    <button class="copy-btn" onclick="copyOutput()" title="Copy">
+                        <svg viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path>
+                            <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="panel-content">
+                    <div id="error" style="display: none;"></div>
+                    <!-- Text Editor (CodeMirror) -->
+                    <div id="output-editor-container">
+                        <div id="output-editor"></div>
+                    </div>
+                    <!-- Visual Editor (for output) -->
+                    <div id="output-visual-editor-container" style="display: none;">
+                        <div class="visual-editor visual-editor-readonly">
+                            <div class="block from-block">
+                                <div class="block-body">
+                                    <span class="value-operator">from</span> <span class="value-column" id="output-from-table-display"></span>
+                                </div>
+                                <input type="hidden" id="output-from-table">
+                            </div>
+                            <div id="output-transforms-container"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Examples Modal -->
+    <div id="examples-modal" class="modal" onclick="closeExamplesModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2>📚 Example Queries</h2>
+                <button class="modal-close" onclick="closeExamplesModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="examples-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal settings-modal" onclick="closeSettingsModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2>⚙️ Compiler Settings</h2>
+                <button class="modal-close" onclick="closeSettingsModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="settings-body">
+                <div class="settings-section" id="compile-settings-section">
+                    <div class="settings-section-title">Compile Settings</div>
+                    <div class="settings-section-desc">Settings that affect how ASQL is compiled to SQL</div>
+                    <div class="settings-grid" id="compile-settings-grid"></div>
+                </div>
+                <div class="settings-section" id="style-settings-section">
+                    <div class="settings-section-title">Style Settings</div>
+                    <div class="settings-section-desc">Settings that affect ASQL output style (for SQL → ASQL)</div>
+                    <div class="settings-grid" id="style-settings-grid"></div>
+                </div>
+            </div>
+            <div class="settings-footer">
+                <div class="settings-footer-left">
+                    <button class="reset-btn" onclick="resetSettings()">Reset to Defaults</button>
+                    <span class="settings-modified-indicator" id="settings-modified">● Modified</span>
+                </div>
+                <button class="nav-button" onclick="closeSettingsModal()">Done</button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- CodeMirror Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+    <script src="/static/syntax/codemirror/asql-mode.js"></script>
+
+    <!-- Examples Data (injected by server) -->
+    <script>
+        // EXAMPLES_DATA_PLACEHOLDER will be replaced by server with actual JSON
+        const EXAMPLES_DATA = /* EXAMPLES_DATA_PLACEHOLDER */ {};
+    </script>
+
+    <!-- SortableJS for drag-and-drop -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+    <!-- Playground Application -->
+    <script src="/static/playground/playground.js"></script>
+
+    <!-- Visual Editor v2 (recursive expression system) -->
+    <script src="/static/playground/visual-editor-v2/accordion-utils.js"></script>
+    <script src="/static/playground/visual-editor-v2/expression.js"></script>
+    <script src="/static/playground/visual-editor-v2/sortable-list.js"></script>
+    <script src="/static/playground/visual-editor-v2/visual-editor.js"></script>
+</body>
+</html>

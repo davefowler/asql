@@ -2,7 +2,7 @@
 """Generate visual ASQL examples from ASQL source queries.
 
 This is the SOURCE OF TRUTH for visual ASQL examples. Edit the EXAMPLES list
-below and run this script to regenerate playground/examples/visual_asql.json.
+below and run this script to regenerate asql/playground/examples/visual_asql.json.
 
 The frontend is a DUMB RENDERER - it just displays what this script produces.
 All column tracking, transform parsing, etc. happens here via the transpiler.
@@ -12,25 +12,23 @@ Usage:
 """
 
 import json
-import sys
 from pathlib import Path
 
-# Add parent to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import asql
+from asql.playground.schema import PLAYGROUND_SCHEMA
 from asql.schema import Schema
-from playground.schema import PLAYGROUND_SCHEMA
 
 # Convert PLAYGROUND_SCHEMA (SQLGlot format) to ASQL Schema format
 # PLAYGROUND_SCHEMA is: {"table": {"col": "type", ...}}
 # Schema.from_dict expects: {"tables": {"table": {"columns": {"col": "type"}}}}
-SCHEMA = Schema.from_dict({
-    "tables": {
-        table_name: {"columns": columns}
-        for table_name, columns in PLAYGROUND_SCHEMA.items()
+SCHEMA = Schema.from_dict(
+    {
+        "tables": {
+            table_name: {"columns": columns}
+            for table_name, columns in PLAYGROUND_SCHEMA.items()
+        }
     }
-})
+)
 
 # =============================================================================
 # VISUAL ASQL EXAMPLES - Edit these to update the playground examples
@@ -124,7 +122,7 @@ EXAMPLES = [
             join customers on orders.customer_id = customers.id
             left join products on orders.product_id = products.id
             where orders.status = 'completed' and orders.total > 50
-            extend 
+            extend
                 year(orders.created_at) as order_year,
                 month(orders.created_at) as order_month,
                 upper(customers.country) as country_code
@@ -205,42 +203,52 @@ def generate_visual_json(query: str) -> list[dict]:
 
 def main() -> None:
     """Generate visual_asql.json from ASQL examples."""
-    output_path = Path(__file__).parent.parent / "playground" / "examples" / "visual_asql.json"
-    
+    output_path = (
+        Path(__file__).parent.parent
+        / "asql"
+        / "playground"
+        / "examples"
+        / "visual_asql.json"
+    )
+
     print("Generating visual ASQL examples...")
     print(f"Schema tables: {list(SCHEMA.tables.keys())}")
-    
+
     visual_examples = []
-    
+
     for i, example in enumerate(EXAMPLES):
         title = example["title"]
-        print(f"  [{i+1}/{len(EXAMPLES)}] {title}...")
-        
+        print(f"  [{i + 1}/{len(EXAMPLES)}] {title}...")
+
         try:
             visual_json = generate_visual_json(example["query"])
-            
-            visual_examples.append({
-                "title": title,
-                "desc": example["desc"],
-                "dialect": "visual-asql",
-                "query": visual_json,
-            })
-            
-        except Exception as e:
+
+            visual_examples.append(
+                {
+                    "title": title,
+                    "desc": example["desc"],
+                    "dialect": "visual-asql",
+                    "query": visual_json,
+                }
+            )
+
+        except Exception as e:  # noqa: BLE001
             print(f"    ERROR: {e}")
             # Include failed example with error message
-            visual_examples.append({
-                "title": title,
-                "desc": example["desc"],
-                "dialect": "visual-asql",
-                "query": [],
-                "error": str(e),
-            })
-    
+            visual_examples.append(
+                {
+                    "title": title,
+                    "desc": example["desc"],
+                    "dialect": "visual-asql",
+                    "query": [],
+                    "error": str(e),
+                }
+            )
+
     print(f"\nWriting {output_path}")
     with open(output_path, "w") as f:
         json.dump(visual_examples, f, indent=2)
-    
+
     print(f"Done! Generated {len(visual_examples)} examples.")
 
 

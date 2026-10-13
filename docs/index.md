@@ -1,10 +1,59 @@
 # ASQL: SQL with Analytics Built In
 
-Analytic SQL (ASQL) is a query language designed for analytics work. It uses a **pipe syntax** that flows top-to-bottom, includes **built-in helpers** for common analytics patterns (like dbt_utils macros), and handles **cross-dialect** differences automatically.
+Analytic SQL (ASQL) is a query language designed for analytics work. It's a **superset of SQL** — any standard SQL query is valid ASQL — with a **pipe syntax** that flows top-to-bottom, **built-in helpers** for common analytics patterns (like dbt_utils macros), and **cross-dialect** compilation handled automatically.
 
 Think of it as SQL with analytics superpowers. Write ASQL, get standard SQL for any dialect.
 
 **Status**: Experimental. [GitHub](https://github.com/davefowler/asql)
+
+---
+
+## Why ASQL
+
+- [Pipe syntax](syntax/pipe.md) — queries flow top-to-bottom in execution order (`from` → `where` → `group by` → `order by`), not SQL's inside-out shape. Written once, read many times.
+- [Auto aliases](reference/auto-aliasing.md) — each function gets a consistent, intuitive alias automatically. No more `AS inconsistent_name` after every aggregation, and no unusable `f0_`/`count` defaults.
+- [spine by](concepts/guaranteed-groups.md) — an alternative to `group by` that guarantees the groups exist with a spine. No more missing dates punching holes in your time series.
+- [Filter after aggregation](syntax/aggregations.md) — write a plain `where` after a `group by` instead of reaching for `HAVING` or wrapping the query in a CTE.
+- [Window helpers](syntax/window-functions.md) — `prior`, `next`, `running_sum`, `rolling_avg`, and `per X first by` collapse verbose `OVER (...)` clauses into a single readable line.
+- [Cross-dialect dates](syntax/dates.md) — `7 days ago`, `month(d)`, and `@2024-01-01` compile to the right syntax per database. Write date logic once, run it anywhere.
+- [Convention-based joins](syntax/joins.md) — ASQL infers join conditions from naming (`user_id` → `users.id`), so you stop typing the obvious `ON` clauses.
+- [Count shorthand](concepts/shorthand.md) — `#` is `COUNT(*)`, `##col` is `COUNT(DISTINCT col)`, and `order by -x` sorts descending. Less punctuation for the patterns you write constantly.
+- [Multi-dialect output](reference/index.md) — compiles to standard SQL for PostgreSQL, BigQuery, Snowflake, DuckDB, and more, so you can always read and run the generated query.
+
+---
+
+## Start From the SQL You Know
+
+Any SQL query is already an ASQL query:
+
+```asql-play
+select * from users where status = 'active'
+```
+
+The upgrades start inside the familiar form — `#` for counts, `-` for
+descending, dates in plain language:
+
+```asql-play
+select country, # as signups
+from users
+where created_at > 30 days ago
+group by country
+order by -signups
+```
+
+And then your SELECT statement can just... keep going. Filter after the
+aggregation with a plain `where` — no HAVING, no CTE wrapping:
+
+```asql-play
+select region, sum(amount) as revenue
+from orders
+group by region
+where revenue > 1000
+order by -revenue
+```
+
+Once your queries read top-to-bottom anyway, the leading `select *` is dead
+weight. Drop it — yup, ASQL is a pipe syntax. Really, it's both.
 
 ---
 
@@ -14,7 +63,7 @@ ASQL queries flow top-to-bottom in execution order:
 
 ```asql-play
 from sales
-  where year(date) = 2024
+  where extract(year from date) = 2024
   group by region ( sum(amount) as revenue )
   where revenue > 1000
   order by -revenue
@@ -61,13 +110,18 @@ Common analytics operations become single lines:
 -- Most recent order per customer
 from orders
   per customer_id first by -order_date
+```
 
+```asql-play
 -- Previous period comparison
 from monthly_sales
   select month, revenue, prior(revenue) as prev_revenue
+```
 
--- Running totals
+```asql-play
+-- Running totals (the running_sum accumulates in the query's order)
 from daily_sales
+  order by date
   select date, revenue, running_sum(revenue) as cumulative
 ```
 
@@ -76,8 +130,8 @@ from daily_sales
 | `per X first by -date` | `ROW_NUMBER() OVER (PARTITION BY X ORDER BY date DESC) = 1` | `deduplicate` |
 | `prior(col)` | `LAG(col, 1) OVER (...)` | — |
 | `next(col)` | `LEAD(col, 1) OVER (...)` | — |
-| `running_sum(col)` | `SUM(col) OVER (ROWS UNBOUNDED PRECEDING)` | — |
-| `rolling_avg(col, 7)` | `AVG(col) OVER (ROWS 6 PRECEDING)` | — |
+| `running_sum(col)` | `SUM(col) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING)` | — |
+| `rolling_avg(col, 7)` | `AVG(col) OVER (ORDER BY date ROWS 6 PRECEDING)` | — |
 
 ### Cross-Dialect Date Handling
 
@@ -106,7 +160,9 @@ ASQL infers relationships from naming patterns:
 from orders
   & users
   select orders.*, users.name
+```
 
+```asql-play
 -- FK shorthand: department_id matches departments.id
 from employees
   join departments on department_id

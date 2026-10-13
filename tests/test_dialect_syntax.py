@@ -4,22 +4,22 @@ These tests ensure that ASQL generates valid SQL for all target dialects
 using SQLGlot's parsing capabilities, without requiring database connections.
 """
 
-import pytest
 from pathlib import Path
-from typing import List
 
-from tests.fixtures import transpile
+import pytest
+
 from asql.testing.syntax_validator import (
-    SUPPORTED_DIALECTS,
     DIALECT_LIMITATIONS,
+    SUPPORTED_DIALECTS,
     validate_syntax,
 )
 
+from .fixtures import transpile
 
 # =============================================================================
 # Core Queries - Basic functionality every dialect should support
 # =============================================================================
-CORE_QUERIES: List[str] = [
+CORE_QUERIES: list[str] = [
     # Basic SELECT
     "from users select name",
     "from users select name, email",
@@ -44,7 +44,7 @@ CORE_QUERIES: List[str] = [
 # =============================================================================
 # Aggregation Queries - GROUP BY and aggregate functions
 # =============================================================================
-AGGREGATION_QUERIES: List[str] = [
+AGGREGATION_QUERIES: list[str] = [
     # Basic aggregates
     "from sales group by region (sum(amount) as total)",
     "from sales group by region (count(*) as cnt)",
@@ -63,7 +63,7 @@ AGGREGATION_QUERIES: List[str] = [
 # =============================================================================
 # Join Queries - Various join types
 # =============================================================================
-JOIN_QUERIES: List[str] = [
+JOIN_QUERIES: list[str] = [
     # Inner join
     "from orders & customers on orders.customer_id = customers.id select orders.id, customers.name",
     # Left join
@@ -78,7 +78,7 @@ JOIN_QUERIES: List[str] = [
 # =============================================================================
 # Window Function Queries
 # =============================================================================
-WINDOW_QUERIES: List[str] = [
+WINDOW_QUERIES: list[str] = [
     # ROW_NUMBER
     "from orders select order_id, row_number() over (order by order_date) as rn",
     # ROW_NUMBER with PARTITION
@@ -97,7 +97,7 @@ WINDOW_QUERIES: List[str] = [
 # =============================================================================
 # CTE Queries - Common Table Expressions (using stash as syntax)
 # =============================================================================
-CTE_QUERIES: List[str] = [
+CTE_QUERIES: list[str] = [
     # Simple CTE with stash as - creates a CTE and selects from original table (implicit)
     "from users where status = 'active' stash as active_users",
     # CTE with aggregation stash
@@ -110,7 +110,7 @@ CTE_QUERIES: List[str] = [
 # =============================================================================
 # Expression Queries - Arithmetic, CASE, etc.
 # =============================================================================
-EXPRESSION_QUERIES: List[str] = [
+EXPRESSION_QUERIES: list[str] = [
     # Arithmetic
     "from items select price * quantity as total",
     "from items select (price * quantity) - discount as net",
@@ -132,7 +132,7 @@ EXPRESSION_QUERIES: List[str] = [
 # =============================================================================
 # QUALIFY Queries - Window function filtering (dialect-specific)
 # =============================================================================
-QUALIFY_QUERIES: List[str] = [
+QUALIFY_QUERIES: list[str] = [
     "from orders qualify row_number() over (partition by customer_id order by order_date desc) = 1",
 ]
 
@@ -141,114 +141,131 @@ QUALIFY_QUERIES: List[str] = [
 # Test Classes
 # =============================================================================
 
+
 class TestCoreSyntax:
     """Test that core SQL features generate valid syntax for all dialects."""
-    
+
     @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)
     @pytest.mark.parametrize("asql_query", CORE_QUERIES)
     def test_core_queries(self, dialect: str, asql_query: str) -> None:
         """Basic queries should generate valid SQL for all dialects."""
         sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
-        assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        assert is_valid, (
+            f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        )
 
 
 class TestAggregationSyntax:
     """Test that aggregation queries generate valid syntax for all dialects."""
-    
+
     @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)
     @pytest.mark.parametrize("asql_query", AGGREGATION_QUERIES)
     def test_aggregation_queries(self, dialect: str, asql_query: str) -> None:
         """Aggregation queries should generate valid SQL for all dialects."""
         sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
-        assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        assert is_valid, (
+            f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        )
 
 
 class TestJoinSyntax:
     """Test that JOIN queries generate valid syntax for all dialects."""
-    
+
     @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)
     @pytest.mark.parametrize("asql_query", JOIN_QUERIES)
     def test_join_queries(self, dialect: str, asql_query: str) -> None:
         """JOIN queries should generate valid SQL for all dialects."""
         sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
-        assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        assert is_valid, (
+            f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        )
 
 
 class TestWindowSyntax:
     """Test that window function queries generate valid syntax for all dialects."""
-    
+
     @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)
     @pytest.mark.parametrize("asql_query", WINDOW_QUERIES)
     def test_window_queries(self, dialect: str, asql_query: str) -> None:
         """Window function queries should generate valid SQL for all dialects."""
         sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
-        assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        assert is_valid, (
+            f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        )
 
 
 class TestCTESyntax:
     """Test that CTE queries generate valid syntax for all dialects."""
-    
+
     @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)
     @pytest.mark.parametrize("asql_query", CTE_QUERIES)
     def test_cte_queries(self, dialect: str, asql_query: str) -> None:
         """CTE queries should generate valid SQL for all dialects."""
         sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
-        assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        assert is_valid, (
+            f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        )
 
 
 class TestExpressionSyntax:
     """Test that expression queries generate valid syntax for all dialects."""
-    
+
     @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)
     @pytest.mark.parametrize("asql_query", EXPRESSION_QUERIES)
     def test_expression_queries(self, dialect: str, asql_query: str) -> None:
         """Expression queries should generate valid SQL for all dialects."""
         sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
-        assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        assert is_valid, (
+            f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        )
 
 
 class TestQualifySyntax:
     """Test QUALIFY clause (dialect-specific support).
-    
+
     Note: SQLGlot transpiles QUALIFY to a subquery pattern for dialects that
     don't support it natively (MySQL, Trino, Postgres, etc.), so QUALIFY
     actually works across all dialects.
     """
-    
+
     @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)
     @pytest.mark.parametrize("asql_query", QUALIFY_QUERIES)
     def test_qualify_queries(self, dialect: str, asql_query: str) -> None:
         """QUALIFY queries work for all dialects (SQLGlot transpiles to subquery where needed)."""
         sql = transpile(asql_query, dialect=dialect)
         is_valid, error = validate_syntax(sql, dialect)
-        assert is_valid, f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        assert is_valid, (
+            f"Invalid {dialect} SQL for '{asql_query}':\n{error}\nGenerated SQL:\n{sql}"
+        )
 
 
 class TestExampleFiles:
     """Test that ASQL example files generate valid SQL for all dialects.
-    
+
     Note: Example files may use advanced features that don't work for all dialects.
     This test is more lenient and tracks coverage rather than strict pass/fail.
     """
-    
+
     @pytest.fixture
-    def example_asql_files(self) -> List[Path]:
+    def example_asql_files(self) -> list[Path]:
         """Get all .asql example files."""
         examples_dir = Path(__file__).parent.parent / "examples" / "pairs"
         if not examples_dir.exists():
             return []
         return list(examples_dir.glob("*.asql"))
-    
+
     @pytest.mark.parametrize("dialect", SUPPORTED_DIALECTS)
-    def test_example_files_valid(self, dialect: str, example_asql_files: List[Path]) -> None:
+    def test_example_files_valid(
+        self, dialect: str, example_asql_files: list[Path]
+    ) -> None:
         """Example ASQL files should generate valid SQL for most dialects.
-        
+
         This test is informational - it tracks how many example files work
         for each dialect but doesn't fail unless a significant majority fail.
         Example files often use advanced features that may not work across
@@ -256,27 +273,29 @@ class TestExampleFiles:
         """
         if not example_asql_files:
             pytest.skip("No example files found")
-        
-        errors: List[str] = []
-        successes: List[str] = []
-        
+
+        errors: list[str] = []
+        successes: list[str] = []
+
         for asql_file in example_asql_files:
             try:
                 asql_content = asql_file.read_text()
                 sql = transpile(asql_content, dialect=dialect)
                 is_valid, error = validate_syntax(sql, dialect)
                 if not is_valid:
-                    errors.append(f"{asql_file.name}: Syntax validation error - {error}")
+                    errors.append(
+                        f"{asql_file.name}: Syntax validation error - {error}"
+                    )
                 else:
                     successes.append(asql_file.name)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 # Some examples may use features not supported by all dialects
                 # or may have syntax that the preparser doesn't handle yet
                 error_str = str(e)
                 if len(error_str) > 200:
                     error_str = error_str[:200] + "..."
                 errors.append(f"{asql_file.name}: Compilation error - {error_str}")
-        
+
         # Allow failures for dialect-specific features
         # Only fail if more than 75% fail - example files are aspirational
         total_files = len(example_asql_files)
@@ -294,14 +313,14 @@ class TestExampleFiles:
 
 class TestDialectLimitations:
     """Test that dialect limitations are properly documented."""
-    
+
     def test_limitations_dict_has_expected_keys(self) -> None:
         """DIALECT_LIMITATIONS should only contain known dialects."""
         for dialect in DIALECT_LIMITATIONS:
             assert dialect in SUPPORTED_DIALECTS, (
                 f"Unknown dialect in DIALECT_LIMITATIONS: {dialect}"
             )
-    
+
     def test_limitations_values_are_lists(self) -> None:
         """DIALECT_LIMITATIONS values should be lists of feature strings."""
         for dialect, features in DIALECT_LIMITATIONS.items():

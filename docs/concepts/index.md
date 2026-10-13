@@ -8,6 +8,8 @@ This section explains the core ideas and design values behind ASQL.
 - **[Guaranteed Groups](guaranteed-groups.md)** — Automatic gap-filling for complete analytics
 - **[Convention Over Configuration](conventions.md)** — How ASQL infers relationships and defaults
 - **[Function Shorthand](shorthand.md)** — Underscore/space flexibility explained
+- **[The Fanout Problem](fanout.md)** — Why joins inflate aggregates and 4 ways to fix it
+- **[Metrics and Relationships](semantic-layer.md)** — Query a graph.yaml semantic layer with metric names and `relationship.attribute`
 
 ## Design Values
 
@@ -26,7 +28,7 @@ HAVING SUM(amount) > 1000       -- 4th
 ORDER BY 2 DESC                 -- 6th
 ```
 
-ASQL writes queries in the order they execute. Data flows top-to-bottom. This not only reads more naturally, but eliminates the messy subquery and CTE scaffolding that traditional SQL requires due to its choice to be projection-first.  
+ASQL writes queries in the order they execute. Data flows top-to-bottom. This not only reads more naturally, but eliminates the messy subquery and CTE scaffolding that traditional SQL requires due to its choice to be projection-first.
 
 #### Related Features
 
@@ -107,7 +109,7 @@ Every character should carry meaning. If the computer can infer it, you shouldn'
 - [Joins](../syntax/joins.md) — implicit and shorthand join syntax
 - [Aggregations](../syntax/aggregations.md) — inline grouping syntax
 
-### 7. Code Comments Over Catalogues
+### 7. Code Comments Over Catalogs
 
 Software engineering learned this decades ago: external documentation rots. The wiki says one thing, the code does another, and nobody knows which is right. Data teams are still catching up. When comments live in the query, they travel with it—versioned, reviewed, and maintained together.
 

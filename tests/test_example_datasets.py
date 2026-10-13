@@ -1,29 +1,47 @@
 """Test ASQL with example datasets and real-world scenarios."""
 
-from tests.fixtures import transpile
-
+from .fixtures import transpile
 
 # Example dataset descriptions (for documentation/testing)
 EXAMPLE_DATASETS = {
     "users": {
         "description": "User accounts table",
-        "columns": ["id", "name", "email", "status", "age", "country", "created_at", "updated_at"],
+        "columns": [
+            "id",
+            "name",
+            "email",
+            "status",
+            "age",
+            "country",
+            "created_at",
+            "updated_at",
+        ],
         "sample_queries": [
             "from users",
             'from users where status == "active"',
             "from users where age >= 18",
             "from users group by country ( # as total_users )",
-        ]
+        ],
     },
     "sales": {
         "description": "Sales transactions",
-        "columns": ["id", "user_id", "amount", "region", "month", "year", "status", "product_category", "created_at"],
+        "columns": [
+            "id",
+            "user_id",
+            "amount",
+            "region",
+            "month",
+            "year",
+            "status",
+            "product_category",
+            "created_at",
+        ],
         "sample_queries": [
             "from sales",
             'from sales where status == "completed"',
             "from sales group by region ( sum(amount) as revenue )",
             "from sales group by region, month ( sum(amount) as revenue, # as orders )",
-        ]
+        ],
     },
     "orders": {
         "description": "Customer orders",
@@ -32,14 +50,14 @@ EXAMPLE_DATASETS = {
             "from orders",
             'from orders where status == "pending"',
             "from orders group by status ( sum(total) as total_revenue )",
-        ]
+        ],
     },
 }
 
 
 class TestExampleDatasets:
     """Test queries against example datasets."""
-    
+
     def test_users_dataset_queries(self) -> None:
         """Test common queries on users dataset."""
         queries = EXAMPLE_DATASETS["users"]["sample_queries"]
@@ -48,7 +66,7 @@ class TestExampleDatasets:
             assert sql is not None
             assert "users" in sql.lower()
             assert "SELECT" in sql.upper()
-    
+
     def test_sales_dataset_queries(self) -> None:
         """Test common queries on sales dataset."""
         queries = EXAMPLE_DATASETS["sales"]["sample_queries"]
@@ -57,7 +75,7 @@ class TestExampleDatasets:
             assert sql is not None
             assert "sales" in sql.lower()
             assert "SELECT" in sql.upper()
-    
+
     def test_orders_dataset_queries(self) -> None:
         """Test common queries on orders dataset."""
         queries = EXAMPLE_DATASETS["orders"]["sample_queries"]
@@ -70,7 +88,7 @@ class TestExampleDatasets:
 
 class TestRealWorldScenarios:
     """Test real-world query scenarios."""
-    
+
     def test_user_segmentation(self) -> None:
         """Test user segmentation query."""
         asql = """
@@ -86,7 +104,7 @@ limit 20
         assert "GROUP BY" in sql.upper()
         assert "ORDER BY" in sql.upper()
         assert "LIMIT" in sql.upper()
-    
+
     def test_sales_analytics(self) -> None:
         """Test sales analytics query."""
         asql = """
@@ -104,7 +122,7 @@ limit 10
         assert "COUNT" in sql.upper()
         assert "ORDER BY" in sql.upper()
         assert "LIMIT" in sql.upper()
-    
+
     def test_user_filtering(self) -> None:
         """Test complex user filtering."""
         asql = """
@@ -120,17 +138,19 @@ where status in ("active", "pending", "verified")
         assert "IN" in sql.upper()
         assert "NOT" in sql.upper()
         assert "AND" in sql.upper()
-    
+
     def test_time_based_analysis(self) -> None:
         """Test time-based analysis query."""
         # Note: GROUP BY with function calls requires aggregation
         # Use single-line format (multi-line not fully supported yet)
-        asql = "from users group by month(created_at) ( # as signups ) order by -signups"
+        asql = (
+            "from users group by month(created_at) ( # as signups ) order by -signups"
+        )
         sql = transpile(asql)
         assert "GROUP BY" in sql.upper()
         assert "MONTH" in sql.upper() or "month" in sql.lower()
         assert "ORDER BY" in sql.upper()
-    
+
     def test_top_performers(self) -> None:
         """Test top performers query."""
         asql = """
@@ -147,7 +167,7 @@ limit 100
         assert "DESC" in sql.upper()
         assert "LIMIT" in sql.upper()
         assert "100" in sql
-    
+
     def test_status_distribution(self) -> None:
         """Test status distribution query."""
         asql = """
@@ -159,7 +179,7 @@ order by -count
         assert "GROUP BY" in sql.upper()
         assert "COUNT" in sql.upper()
         assert "ORDER BY" in sql.upper()
-    
+
     def test_region_comparison(self) -> None:
         """Test region comparison query."""
         asql = """

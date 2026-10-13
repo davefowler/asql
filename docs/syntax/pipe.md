@@ -63,7 +63,7 @@ Operations can be combined in any logical order:
 
 ```asql-play
 from orders
-  where year(created_at) = 2024
+  where extract(year from created_at) = 2024
   where status = "completed"
   & customers on orders.customer_id = customers.id
   group by customers.country (

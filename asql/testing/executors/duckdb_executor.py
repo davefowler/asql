@@ -1,11 +1,11 @@
 """DuckDB executor for testing compiled ASQL queries."""
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 try:
     import duckdb
 except ImportError:
-    duckdb = None  # type: ignore
+    duckdb = None  # type: ignore[assignment]
 
 from asql.testing.executors.base import ExecutorBase
 
@@ -26,13 +26,13 @@ class DuckDBExecutor(ExecutorBase):
         """Return the ASQL dialect name."""
         return "duckdb"
 
-    def execute(self, sql: str) -> List[Tuple[Any, ...]]:
+    def execute(self, sql: str) -> list[tuple[Any, ...]]:
         """Execute SQL and return rows as tuples."""
         return self.conn.execute(sql).fetchall()
 
     def execute_and_fetch_columns(
         self, sql: str
-    ) -> Tuple[List[str], List[Tuple[Any, ...]]]:
+    ) -> tuple[list[str], list[tuple[Any, ...]]]:
         """Execute SQL and return column names and rows."""
         result = self.conn.execute(sql)
         columns = [desc[0] for desc in result.description]
@@ -40,7 +40,7 @@ class DuckDBExecutor(ExecutorBase):
         return columns, rows
 
     def create_table(
-        self, name: str, columns: Dict[str, str], rows: List[Tuple[Any, ...]]
+        self, name: str, columns: dict[str, str], rows: list[tuple[Any, ...]]
     ) -> None:
         """Create a table with given schema and data."""
         # Build CREATE TABLE statement
@@ -59,15 +59,16 @@ class DuckDBExecutor(ExecutorBase):
         try:
             # Strip all comments before processing (they can contain semicolons)
             import re
-            clean_sql = re.sub(r'/\*.*?\*/', '', sql, flags=re.DOTALL)
-            
+
+            clean_sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
+
             # Handle multiple statements separated by semicolons
             statements = [s.strip() for s in clean_sql.split(";") if s.strip()]
             for stmt in statements:
                 # Use EXPLAIN to validate syntax without executing
                 self.conn.execute(f"EXPLAIN {stmt}")
             return True
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     def teardown(self) -> None:

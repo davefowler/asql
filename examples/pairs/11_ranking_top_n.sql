@@ -2,7 +2,7 @@
 -- Source: Inspired by patterns from Fivetran dbt packages
 --   - https://github.com/fivetran/dbt_shopify
 WITH product_revenue AS (
-    SELECT 
+    SELECT
         p.product_id,
         p.product_name,
         p.category,
@@ -14,7 +14,7 @@ WITH product_revenue AS (
     WHERE o.status = 'completed' AND o.order_date >= '2024-01-01'
     GROUP BY p.product_id, p.product_name, p.category
 )
-SELECT 
+SELECT
     product_id,
     product_name,
     category,
@@ -25,4 +25,3 @@ SELECT
 FROM product_revenue
 ORDER BY total_revenue DESC
 LIMIT 50;
-

@@ -6,30 +6,63 @@ A hands-on guide to learning ASQL. Follow along step-by-step to master the langu
 
 This tutorial assumes you're familiar with basic SQL concepts like SELECT, FROM, WHERE, and GROUP BY. If you've written SQL queries before, you're ready to go.
 
-## Part 1: Your First ASQL Query
+## Part 1: You Already Write ASQL
 
-### Start with FROM
+### Start with the SQL you know
 
-Every ASQL query starts with `from`. No more jumping around to find where your data comes from:
+Paste a normal SQL query into ASQL and it just works:
+
+```asql-play
+select * from users where status = 'active'
+```
+
+Nothing to learn yet — standard SQL is valid ASQL. The first upgrades appear
+*inside* the familiar form: count rows with `#`, sort descending with a `-`
+prefix, and write date math you can read aloud:
+
+```asql-play
+select country, # as signups
+from users
+where created_at > 30 days ago
+group by country
+order by -signups
+```
+
+### The query that keeps going
+
+Here's where SQL stops and ASQL doesn't. Want to filter *after* the
+aggregation? In SQL that means HAVING or wrapping everything in a CTE. In
+ASQL you just keep typing:
+
+```asql-play
+select region, sum(amount) as revenue
+from orders
+group by region
+where revenue > 1000
+order by -revenue
+```
+
+The trailing `where` filters the aggregated result — ASQL builds the CTE for
+you. And when you want to name a step and keep going, `stash as` replaces the
+whole `WITH ... AS (...)` ceremony:
+
+```asql-play
+select country, # as signups from users group by country stash as counts
+where signups > 100
+```
+
+### Now drop the SELECT
+
+Look back at those queries: the leading `select` was doing the least
+interesting work. Drop it and start from the data instead — surprise, ASQL is
+a pipe syntax (really, it's both):
 
 ```asql
 from users
 ```
 
-This compiles to `SELECT * FROM users`. Simple.
-
-### Add a Filter
-
-Chain a `where` clause:
-
-```asql
-from users
-  where status = "active"
-```
-
-Notice we indent with 2 spaces. This visual hierarchy shows the data flow.
-
-### Select Specific Columns
+This compiles to `SELECT * FROM users`. Every transform then chains
+top-to-bottom in execution order:
 
 ```asql
 from users
@@ -37,7 +70,12 @@ from users
   select name, email, created_at
 ```
 
-**Key insight**: Read top-to-bottom. Data flows from `users` → filtered → projected.
+Notice we indent with 2 spaces. This visual hierarchy shows the data flow.
+
+**Key insight**: Read top-to-bottom. Data flows from `users` → filtered →
+projected. The FROM-first form is where ASQL's power tools live — aggregate
+blocks, `spine by` gap-filling, `per` window shortcuts — so the rest of this
+tutorial uses it. Your plain SQL keeps working either way.
 
 ---
 
@@ -171,7 +209,7 @@ Group by month:
 ```asql
 from orders
   group by month(created_at) (
-    sum_amount  -- No alias needed - 
+    sum_amount  -- No alias needed -
   )
 ```
 
@@ -417,7 +455,7 @@ from orders
 **3. Monthly revenue:**
 ```asql
 from orders
-  where year(created_at) = 2024
+  where extract(year from created_at) = 2024
   group by month(created_at) (
     sum_amount  -- Column named sum_amount, referenced in order by
   )
@@ -447,7 +485,7 @@ from orders
 ```asql
 from events
   join users
-  group by 
+  group by
     month(users.signup_date) as cohort,
     months_between(events.event_date, users.signup_date) as period
   (count(distinct user_id) as active)
@@ -474,7 +512,7 @@ Cohort analysis groups users by when they started (their "cohort") and tracks th
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -497,7 +535,7 @@ To calculate retention percentages, add cohort size using a window function:
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -516,7 +554,7 @@ Track revenue by first purchase cohort and calculate lifetime value:
 ```asql
 from orders
 join customers
-group by 
+group by
   month(customers.first_order_date) as cohort,
   months_between(orders.order_date, customers.first_order_date) as period
 (
@@ -536,7 +574,7 @@ Add window functions for period-over-period comparisons:
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -566,7 +604,7 @@ cohort_sizes AS (
     FROM user_cohorts GROUP BY 1
 ),
 cohort_activity AS (
-    SELECT 
+    SELECT
         uc.cohort_month,
         EXTRACT(YEAR FROM AGE(am.activity_month, uc.cohort_month)) * 12 +
         EXTRACT(MONTH FROM AGE(am.activity_month, uc.cohort_month)) AS period,
@@ -576,7 +614,7 @@ cohort_activity AS (
     WHERE am.activity_month >= uc.cohort_month
     GROUP BY 1, 2
 )
-SELECT 
+SELECT
     ca.cohort_month, cs.size, ca.period,
     ca.active, ROUND(ca.active::numeric / cs.size * 100, 1) AS retention
 FROM cohort_activity ca
@@ -588,7 +626,7 @@ ORDER BY ca.cohort_month, ca.period;
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (count(distinct user_id) as active)

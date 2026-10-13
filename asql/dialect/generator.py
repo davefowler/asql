@@ -8,14 +8,71 @@ import typing as t
 from sqlglot import exp
 from sqlglot.generator import Generator
 
+from asql.functions import ALIAS_FUNC_META, unit_function_arg
+
+# ASQL's `month(x)` truncates, so sqlglot's extraction nodes must not print as
+# `MONTH(x)`. Value: (documented `<unit> of <period>` spelling, EXTRACT part).
+_EXTRACTION_SPELLINGS: dict[type[exp.Expr], tuple[str | None, str]] = {
+    exp.Month: ("month of year", "MONTH"),
+    exp.Quarter: ("quarter of year", "QUARTER"),
+    exp.Day: ("day of month", "DAY"),
+    exp.DayOfMonth: ("day of month", "DAY"),
+    exp.Week: ("week of year", "WEEK"),
+    exp.WeekOfYear: ("week of year", "WEEK"),
+    exp.DayOfYear: ("day of year", "DOY"),
+    exp.Year: (None, "YEAR"),
+    exp.Hour: (None, "HOUR"),
+    exp.Minute: (None, "MINUTE"),
+    exp.Second: (None, "SECOND"),
+}
+
+_TRUNC_UNIT_FUNCTIONS = frozenset(
+    {"year", "quarter", "month", "week", "day", "hour", "minute", "second"}
+)
+
+
+def _extraction_sql(generator: Generator, expression: exp.Expr) -> str:
+    spelling, part = _EXTRACTION_SPELLINGS[type(expression)]
+    arg = expression.this
+    if spelling and isinstance(arg, exp.Column):
+        return f"{spelling} {generator.sql(arg)}"
+    return f"EXTRACT({part} FROM {generator.sql(arg)})"
+
+
+def _paren_sql(generator: Generator, expression: exp.Paren) -> str:
+    written = expression.meta.get(ALIAS_FUNC_META)  # shifted Sunday week
+    if written:
+        return f"{written}({generator.sql(unit_function_arg(expression))})"
+    return generator.paren_sql(expression)
+
+
+def _trunc_sql(
+    generator: Generator, expression: exp.DateTrunc | exp.TimestampTrunc
+) -> str:
+    unit = expression.args["unit"]
+    if isinstance(unit, exp.WeekStart):
+        # A parsed `week(x)` keeps its written name; its start is the setting's.
+        name = expression.meta.get(ALIAS_FUNC_META) or f"week_{unit.name.lower()}"
+    elif unit.name.lower() == "week":
+        name = (
+            "week_monday"  # plain DATE_TRUNC('week') is Monday-start outside BigQuery
+        )
+    else:
+        name = unit.name.lower()
+    if expression.args.get("zone") is None and (
+        name in _TRUNC_UNIT_FUNCTIONS or name.startswith("week_") or name == "week"
+    ):
+        return f"{name}({generator.sql(expression.this)})"
+    return generator.function_fallback_sql(expression)
+
 
 class ASQLGenerator(Generator):
     """Generator for ASQL. Converts SQLGlot AST back to ASQL syntax.
-    
+
     Settings are read from self.dialect.settings:
         asql = ASQL(cast="function", equality="double")
         sqlglot.transpile(sql, read="postgres", write=asql)
-    
+
     Style settings:
         - equality: "single" (=) or "double" (==)
         - count: "hash" (#) or "function" (count(*))
@@ -24,7 +81,7 @@ class ASQLGenerator(Generator):
         - cast: "double_colon" (::) or "function" (CAST())
         - quotes: "double" (") or "single" (')
         - function_shorthand: "underscore", "space", or "parens"
-    
+
     Handles ASQL-specific output formatting:
     - CAST(x AS TYPE) → x::TYPE (if cast="double_colon")
     - WITH cte AS (...) → from ... stash as cte
@@ -32,26 +89,25 @@ class ASQLGenerator(Generator):
     - Joins with symbols: INNER JOIN → &
     - Pipeline-style formatting with newlines between stages
     """
-    
+
     def maybe_comment(
         self,
         sql: str,
-        expression: t.Optional[exp.Expression] = None,
-        comments: t.Optional[t.List[str]] = None,
+        expression: exp.Expr | None = None,
+        comments: list[str] | None = None,
         separated: bool = False,
     ) -> str:
         """Override to always put comments on their own line for readability.
-        
+
         ASQL output should be readable pipeline-style, so comments get their own line:
             /* header comment */
             from users
             where status = 'active'
         """
-        comments = (
-            ((expression and expression.comments) if comments is None else comments)
-            if self.comments
-            else None
-        )
+        if not self.comments:
+            comments = None
+        elif comments is None and expression is not None:
+            comments = expression.comments
 
         if not comments or isinstance(expression, self.EXCLUDE_COMMENTS):
             return sql
@@ -68,16 +124,24 @@ class ASQLGenerator(Generator):
         if sql and not sql[0].isspace():
             return f"{comments_sql}\n{sql}"
         return f"{comments_sql}{sql}"
-    
+
     def _get_setting(self, name: str, default: t.Any = None) -> t.Any:
         """Get a style setting from dialect.settings with fallback to default."""
-        if hasattr(self, 'dialect') and self.dialect and hasattr(self.dialect, 'settings'):
+        if hasattr(self.dialect, "settings"):
             return self.dialect.settings.get(name, default)
         return default
-    
+
+    TRANSFORMS: t.ClassVar[dict[type[exp.Expr], t.Callable[..., str]]] = {
+        **Generator.TRANSFORMS,
+        **dict.fromkeys(_EXTRACTION_SPELLINGS, _extraction_sql),
+        exp.DateTrunc: _trunc_sql,
+        exp.TimestampTrunc: _trunc_sql,
+        exp.Paren: _paren_sql,
+    }
+
     # Join symbols for ASQL output
     # Maps (side, kind) combinations to ASQL syntax
-    JOIN_SYMBOLS: t.Dict[str, str] = {
+    JOIN_SYMBOLS: dict[str, str] = {
         "INNER": "&",
         "LEFT": "&?",
         "LEFT OUTER": "&?",
@@ -87,19 +151,19 @@ class ASQLGenerator(Generator):
         "FULL OUTER": "?&?",
         "CROSS": "cross join",
     }
-    
+
     def count_sql(self, expression: exp.Count) -> str:
         """Generate count syntax based on settings.
-        
+
         If count="hash" (default): #
         If count="function": COUNT(*)
         """
         count_style = self._get_setting("count", "hash")
-        
+
         # Check if it's COUNT(*)
         this = expression.this
         is_star = isinstance(this, exp.Star) or this is None
-        
+
         if count_style == "hash" and is_star:
             return "#"
         else:
@@ -108,52 +172,52 @@ class ASQLGenerator(Generator):
                 return "COUNT(*)"
             else:
                 return f"COUNT({self.sql(this)})"
-    
+
     def coalesce_sql(self, expression: exp.Coalesce) -> str:
         """Generate coalesce syntax based on settings.
-        
+
         If coalesce="operator" (default): a ?? b
         If coalesce="function": COALESCE(a, b)
         """
         coalesce_style = self._get_setting("coalesce", "operator")
-        
+
         # Coalesce has 'this' (first arg) and 'expressions' (remaining args)
         first = expression.this
         rest = expression.expressions or []
-        
+
         all_args = [first] + list(rest) if first else list(rest)
         args = [self.sql(e) for e in all_args]
-        
+
         if coalesce_style == "operator" and len(args) == 2:
             return f"{args[0]} ?? {args[1]}"
         else:
             return f"COALESCE({', '.join(args)})"
-    
+
     def eq_sql(self, expression: exp.EQ) -> str:
         """Generate equality syntax based on settings.
-        
+
         If equality="single" (default): a = b
         If equality="double": a == b
         """
         equality_style = self._get_setting("equality", "single")
         left = self.sql(expression, "this")
         right = self.sql(expression, "expression")
-        
+
         if equality_style == "double":
             return f"{left} == {right}"
         else:
             return f"{left} = {right}"
-    
+
     def ordered_sql(self, expression: exp.Ordered) -> str:
         """Generate ORDER BY column syntax based on settings.
-        
+
         If descending="prefix" (default): -col
         If descending="suffix": col DESC
         """
         descending_style = self._get_setting("descending", "prefix")
         col = self.sql(expression, "this")
         desc = expression.args.get("desc")
-        
+
         if desc:
             if descending_style == "prefix":
                 return f"-{col}"
@@ -161,13 +225,13 @@ class ASQLGenerator(Generator):
                 return f"{col} DESC"
         else:
             return col
-    
-    def cast_sql(self, expression: exp.Cast, safe_prefix: t.Optional[str] = None) -> str:
+
+    def cast_sql(self, expression: exp.Cast, safe_prefix: str | None = None) -> str:
         """Generate ASQL cast syntax based on settings.
-        
+
         If cast="double_colon" (default): x::TYPE
         If cast="function": CAST(x AS TYPE)
-        
+
         Note: safe_prefix (for TRY_CAST) is intentionally ignored - ASQL uses
         the same syntax for both CAST and TRY_CAST, leaving error handling
         to the target dialect during compilation.
@@ -175,54 +239,54 @@ class ASQLGenerator(Generator):
         cast_style = self._get_setting("cast", "double_colon")
         expr_sql = self.sql(expression, "this")
         type_sql = self.sql(expression, "to")
-        
+
         if cast_style == "function":
             return f"CAST({expr_sql} AS {type_sql})"
         else:
             return f"{expr_sql}::{type_sql}"
-    
+
     def with_sql(self, expression: exp.With) -> str:
         """Convert CTEs to stash statements for ASQL output.
-        
+
         WITH cte AS (SELECT ...) SELECT ... FROM cte
         →
         from ... stash as cte
-        
+
         from cte
-        
+
         Comments on the WITH clause are preserved at the start of output.
         """
-        cte_parts: t.List[str] = []
-        
+        cte_parts: list[str] = []
+
         for cte in expression.expressions:
             if isinstance(cte, exp.CTE):
                 cte_alias = cte.alias
                 cte_query = cte.this
-                
+
                 # Generate the inner query
                 inner_sql = self.sql(cte_query)
-                
+
                 # Format as: inner_query stash as cte_name
                 cte_name = self.sql(cte_alias) if cte_alias else ""
                 cte_parts.append(f"{inner_sql} stash as {cte_name}")
-        
+
         result = "\n\n".join(cte_parts)
-        
+
         # Preserve comments from the WITH clause (e.g., header comments before CTEs)
         return self.maybe_comment(result, expression, separated=True)
-    
+
     def from_sql(self, expression: exp.From) -> str:
         """Generate ASQL-style FROM clause (lowercase 'from')."""
         table_sql = self.sql(expression, "this")
         return f"from {table_sql}"
-    
+
     def select_sql(self, expression: exp.Select) -> str:
         """Generate ASQL-style SELECT with FROM first.
-        
+
         For SELECT * FROM table → from table
         For SELECT cols FROM table → from table select cols
         For SELECT DISTINCT cols → from table select distinct cols
-        
+
         Outputs pipeline-style formatting with newlines between stages:
             from table
             where condition
@@ -238,59 +302,61 @@ class ASQLGenerator(Generator):
         having = expression.args.get("having")
         with_ = expression.args.get("with_")
         distinct = expression.args.get("distinct")
-        
+
         # Build FROM clause first
-        parts: t.List[str] = []
-        
+        parts: list[str] = []
+
         # Handle CTEs first if present (separated by blank lines)
         if with_:
             cte_sql = self.with_sql(with_)
             parts.append(cte_sql)
             # Add blank line separator before main query
             parts.append("")
-        
+
         # FROM clause - output "from table"
         if from_:
             table_sql = self.sql(from_.this)  # Get just the table expression
             parts.append(f"from {table_sql}")
-        
+
         # Handle joins - each join on its own line, indented
         joins = expression.args.get("joins")
         if joins:
             for join in joins:
                 join_sql = self.join_sql(join)
                 parts.append(join_sql)
-        
+
         # WHERE clause
         if where:
             where_cond = self.sql(where.this)
             parts.append(f"where {where_cond}")
-        
+
         # GROUP BY clause
         if group:
             group_cols = ", ".join(self.sql(e) for e in group.expressions)
             parts.append(f"group by {group_cols}")
-        
+
         # HAVING clause (note: ASQL typically uses WHERE after GROUP BY)
         if having:
             having_cond = self.sql(having.this)
             parts.append(f"having {having_cond}")
-        
+
         # SELECT columns (only if not SELECT *)
         select_expressions = expression.expressions
         is_select_star = (
-            len(select_expressions) == 1 
+            len(select_expressions) == 1
             and isinstance(select_expressions[0], exp.Star)
-            and not select_expressions[0].args.get("except_")  # Star with EXCEPT needs select
+            and not select_expressions[0].args.get(
+                "except_"
+            )  # Star with EXCEPT needs select
         )
-        
+
         # Handle DISTINCT - check if it's a simple DISTINCT (not DISTINCT ON)
         # Note: DISTINCT ON (col1, col2) is PostgreSQL-specific and falls back to
         # standard SQL generation. ASQL only uses "distinct" for simple DISTINCT.
         distinct_keyword = ""
         if distinct and not distinct.args.get("on"):
             distinct_keyword = "distinct "
-        
+
         if not is_select_star and select_expressions:
             # Format columns - if many columns, put each on its own line
             col_strs = [self.sql(e) for e in select_expressions]
@@ -304,28 +370,28 @@ class ASQLGenerator(Generator):
         elif distinct_keyword and is_select_star:
             # SELECT DISTINCT * → select distinct *
             parts.append(f"select {distinct_keyword}*")
-        
+
         # ORDER BY clause
         if order:
             order_cols = ", ".join(self.sql(e) for e in order.expressions)
             parts.append(f"order by {order_cols}")
-        
+
         # LIMIT clause
         if limit:
             limit_val = self.sql(limit.expression)
             parts.append(f"limit {limit_val}")
-        
+
         # OFFSET clause
         offset = expression.args.get("offset")
         if offset:
             offset_val = self.sql(offset.expression)
             parts.append(f"offset {offset_val}")
-        
+
         return "\n".join(parts)
-    
+
     def join_sql(self, expression: exp.Join) -> str:
         """Generate ASQL join syntax with symbols.
-        
+
         Converts SQL joins to ASQL notation:
         - INNER JOIN → &
         - LEFT [OUTER] JOIN → &?
@@ -336,7 +402,7 @@ class ASQLGenerator(Generator):
         """
         kind = (expression.args.get("kind") or "").upper()
         side = (expression.args.get("side") or "").upper()
-        
+
         # Build the key for lookup: "LEFT OUTER", "RIGHT", "INNER", etc.
         if side and kind:
             lookup_key = f"{side} {kind}"
@@ -346,18 +412,18 @@ class ASQLGenerator(Generator):
             lookup_key = kind
         else:
             lookup_key = "INNER"  # Default to INNER JOIN
-        
+
         # Look up ASQL symbol, fall back to standard SQL syntax for unsupported types
         join_word = self.JOIN_SYMBOLS.get(lookup_key)
         if join_word is None:
             # Unsupported join type - use SQL syntax (NATURAL JOIN, SEMI JOIN, etc.)
             join_word = f"{lookup_key} join".strip().lower()
-        
+
         # Get the join table
         table_sql = self.sql(expression.this)
-        
+
         # Get the ON condition
         on = expression.args.get("on")
         on_sql = f" on {self.sql(on)}" if on else ""
-        
+
         return f"{join_word} {table_sql}{on_sql}"

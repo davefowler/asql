@@ -9,11 +9,8 @@ This package integrates ASQL with dbt, allowing you to write
 __version__ = "0.1.0"
 
 from dbt_asql.compiler import compile_asql_model
-from dbt_asql.plugin import Plugin
 
 __all__ = [
     "compile_asql_model",
-    "Plugin",
     "__version__",
 ]
-

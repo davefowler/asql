@@ -207,7 +207,7 @@ SELECT * FROM users WHERE email IS NOT NULL
 **ASQL:**
 ```asql-play
 from users
-where status = "active" 
+where status = "active"
     and age >= 18
 ```
 
@@ -219,7 +219,7 @@ SELECT * FROM users WHERE status = 'active' AND age >= 18
 **ASQL:**
 ```asql-play
 from users
-where status = "active" 
+where status = "active"
     or status = "pending"
 ```
 
@@ -244,8 +244,8 @@ SELECT * FROM users WHERE NOT status = 'inactive'
 **ASQL:**
 ```asql-play
 from users
-where status = "active" 
-    and age >= 18 
+where status = "active"
+    and age >= 18
     and email is not null
 ```
 
@@ -339,17 +339,17 @@ SELECT country, AVG(age) AS avg_age FROM users GROUP BY country
 **ASQL:**
 ```asql-play
 from sales
-group by region ( 
-    sum(amount) as revenue, 
-    # as orders, 
-    avg(amount) as avg_order 
+group by region (
+    sum(amount) as revenue,
+    # as orders,
+    avg(amount) as avg_order
 )
 ```
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT region, SUM(amount) AS revenue, COUNT(*) AS orders, AVG(amount) AS avg_order 
-FROM sales 
+SELECT region, SUM(amount) AS revenue, COUNT(*) AS orders, AVG(amount) AS avg_order
+FROM sales
 GROUP BY region
 ```
 
@@ -377,9 +377,9 @@ group by region ( sum(amount) as revenue )
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT region, SUM(amount) AS revenue 
-FROM sales 
-WHERE year = 2024 
+SELECT region, SUM(amount) AS revenue
+FROM sales
+WHERE year = 2024
 GROUP BY region
 ```
 
@@ -399,14 +399,14 @@ group by region (
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT 
-    region, 
+SELECT
+    region,
     SUM(amount) AS total_revenue,
     AVG(amount) AS avg_order,
     COUNT(*) AS order_count,
     MIN(amount) AS min_order,
     MAX(amount) AS max_order
-FROM sales 
+FROM sales
 GROUP BY region
 ```
 
@@ -477,9 +477,9 @@ order by -total_users
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT country, COUNT(*) AS total_users 
-FROM users 
-GROUP BY country 
+SELECT country, COUNT(*) AS total_users
+FROM users
+GROUP BY country
 ORDER BY total_users DESC
 ```
 
@@ -487,20 +487,20 @@ ORDER BY total_users DESC
 
 **ASQL:**
 ```asql-play
-from users 
-where status = "active" 
-group by country ( # as total_users ) 
-order by -total_users 
+from users
+where status = "active"
+group by country ( # as total_users )
+order by -total_users
 limit 10
 ```
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT country, COUNT(*) AS total_users 
-FROM users 
-WHERE status = 'active' 
-GROUP BY country 
-ORDER BY total_users DESC 
+SELECT country, COUNT(*) AS total_users
+FROM users
+WHERE status = 'active'
+GROUP BY country
+ORDER BY total_users DESC
 LIMIT 10
 ```
 
@@ -538,9 +538,9 @@ The `-` prefix makes it easy to order by by columns in descending order. It also
 
 **ASQL:**
 ```asql-play
-from sales 
+from sales
 where status = "completed" and amount > 100
-group by region, month ( 
+group by region, month (
     sum(amount) as revenue,
     # as order_count,
     avg(amount) as avg_order
@@ -551,16 +551,16 @@ limit 20
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT 
-    region, 
-    month, 
-    SUM(amount) AS revenue, 
-    COUNT(*) AS order_count, 
-    AVG(amount) AS avg_order 
-FROM sales 
-WHERE status = 'completed' AND amount > 100 
-GROUP BY region, month 
-ORDER BY revenue DESC 
+SELECT
+    region,
+    month,
+    SUM(amount) AS revenue,
+    COUNT(*) AS order_count,
+    AVG(amount) AS avg_order
+FROM sales
+WHERE status = 'completed' AND amount > 100
+GROUP BY region, month
+ORDER BY revenue DESC
 LIMIT 20
 ```
 
@@ -579,13 +579,13 @@ order by -total_users
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT 
-    country, 
-    COUNT(*) AS total_users, 
-    AVG(age) AS avg_age 
-FROM users 
-WHERE status = 'active' AND age >= 18 AND email IS NOT NULL 
-GROUP BY country 
+SELECT
+    country,
+    COUNT(*) AS total_users,
+    AVG(age) AS avg_age
+FROM users
+WHERE status = 'active' AND age >= 18 AND email IS NOT NULL
+GROUP BY country
 ORDER BY total_users DESC
 ```
 
@@ -594,8 +594,8 @@ ORDER BY total_users DESC
 **ASQL:**
 ```asql-play
 from sales
-where (status = "completed" or status = "pending") 
-    and amount >= 50 
+where (status = "completed" or status = "pending")
+    and amount >= 50
     and created_at is not null
 group by product_category (
     sum(amount) as total_revenue,
@@ -609,18 +609,18 @@ limit 10
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT 
-    product_category, 
-    SUM(amount) AS total_revenue, 
-    COUNT(*) AS total_orders, 
-    AVG(amount) AS avg_order_value, 
-    MAX(amount) AS max_order_value 
-FROM sales 
-WHERE (status = 'completed' OR status = 'pending') 
-    AND amount >= 50 
-    AND created_at IS NOT NULL 
-GROUP BY product_category 
-ORDER BY total_revenue DESC 
+SELECT
+    product_category,
+    SUM(amount) AS total_revenue,
+    COUNT(*) AS total_orders,
+    AVG(amount) AS avg_order_value,
+    MAX(amount) AS max_order_value
+FROM sales
+WHERE (status = 'completed' OR status = 'pending')
+    AND amount >= 50
+    AND created_at IS NOT NULL
+GROUP BY product_category
+ORDER BY total_revenue DESC
 LIMIT 10
 ```
 
@@ -636,7 +636,7 @@ Cohort analysis tracks user behavior over time by grouping users by when they st
 ```asql-play
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -653,7 +653,7 @@ ASQL's alias reuse lets you reference `cohort` immediately after defining it - n
 ```asql-play
 from orders
 join customers
-group by 
+group by
   month(customers.first_order_date) as cohort,
   months_between(orders.order_date, customers.first_order_date) as period
 (
@@ -661,7 +661,7 @@ group by
   count(distinct customer_id) as customers
 )
 select *,
-  first(customers) over cohort as cohort_size,
+  first(customers order by period) over cohort as cohort_size,
   running_sum(revenue) over cohort / cohort_size as ltv
 order by cohort, period
 ```
@@ -672,14 +672,14 @@ order by cohort, period
 ```asql-play
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
   count(distinct user_id) as active
 )
 select *,
-  first(active) over cohort as cohort_size,
+  first(active order by period) over cohort as cohort_size,
   round(active::numeric / cohort_size * 100, 1) as retention_pct
 order by cohort, period
 ```
@@ -690,7 +690,7 @@ order by cohort, period
 ```asql-play
 from events
 join users
-group by 
+group by
   users.channel,
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
@@ -714,10 +714,10 @@ You can also use ASQL as a Python library:
 import asql
 
 asql_query = """
-from users 
-where status = "active" 
-group by country ( # as total_users ) 
-order by -total_users 
+from users
+where status = "active"
+group by country ( # as total_users )
+order by -total_users
 limit 10
 """
 

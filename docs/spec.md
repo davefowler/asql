@@ -1,7 +1,7 @@
 # ASQL: Analytic SQL — Language Specification
 
-**Version:** 0.3  
-**Status:** Draft  
+**Version:** 0.3
+**Status:** Draft
 **Last Updated:** December 2025
 
 ---
@@ -11,7 +11,7 @@
 
 ⚠️ <b>This language specification and implementation are a heavy work-in-progress (WIP).</b>
 
-This project is in active development and contains many known issues, bugs, and incomplete features.  Much of the specification is just brainstorming and prototyping.  Do not rely on this for anything yet. 
+This project is in active development and contains many known issues, bugs, and incomplete features.  Much of the specification is just brainstorming and prototyping.  Do not rely on this for anything yet.
 
 
 </div>
@@ -215,7 +215,7 @@ from users where phone matches "555-___-____"
 
 **With logical operators:**
 ```asql
-from users 
+from users
   where email contains "@gmail.com" and status = "active"
   where name starts with "John" or name starts with "Jane"
 ```
@@ -289,7 +289,7 @@ condition ? true_value : false_value
 **Examples:**
 ```asql
 from orders
-  select 
+  select
     amount > 1000 ? "high" : "low" as tier,
     status = "active" ? 1 : 0 as is_active
 
@@ -383,7 +383,7 @@ from orders
 
 **Operators supported:**
 - `is` / `=` - equality
-- `is not` / `!=` - inequality  
+- `is not` / `!=` - inequality
 - `<`, `>`, `<=`, `>=` - comparisons
 - `in (values)` - multiple value match
 
@@ -476,13 +476,29 @@ from orders
 
 Output includes helpful explanation:
 ```sql
-/* ASQL spine: Gap-filling CTEs were generated to ensure all 
+/* ASQL spine: Gap-filling CTEs were generated to ensure all
    expected time periods appear (even with zero/null aggregates). */
 WITH month_order_date_spine AS (...)
 ...
 ```
 
 This is especially useful when learning how ASQL transformations work or when debugging generated SQL.
+
+**`fanout_protection`** (default: `true`): When schema metadata proves a one-to-many join, ASQL rewrites supported grouped queries so metrics aggregate at their home grain - this is the language default, not an opt-in. Disable it per query when the fanned-out result is intentional:
+
+```asql
+SET fanout_protection = false;
+```
+
+This works best when the grouped step aggregates columns that belong to a single table.
+If an aggregate expression mixes columns from both sides of a join, compute that row-level
+expression in an earlier pipe step and aggregate the derived column later.
+
+When ASQL can prove fanout risk from the schema but does not rewrite the query —
+a reverse-direction join (the FROM side is the many side), a join no aggregate
+references, or a bare `COUNT(*)` next to a multiplying join — it emits an
+`ASQL fanout warning` transpilation comment instead of staying silent (visible
+when `include_transpilation_comments` is on).
 
 ### 4.10 String Functions
 
@@ -514,7 +530,7 @@ ASQL supports Python-style slice syntax for extracting substrings:
 
 ```asql
 from users
-  select 
+  select
     email[1:5] as email_prefix,        -- characters 1-5
     email[1:] as from_start,           -- from position 1 to end
     email[-5:] as last_five,           -- last 5 characters
@@ -563,7 +579,7 @@ Use `min()` and `max()` with multiple arguments to find the smallest or largest 
 
 ```asql
 from products
-  select 
+  select
     max(price1, price2, price3) as highest_price,
     min(start_date, end_date) as earliest_date
 ```
@@ -587,7 +603,7 @@ Instead of SQL's `NULLIF()` function, use ASQL's `when` expression (or SQL `NULL
 
 ```asql
 from transactions
-  select 
+  select
     when
       amount = 0 then null
       otherwise amount
@@ -679,7 +695,7 @@ ASQL automatically generates meaningful column names when functions are used wit
 
 **Pattern rules**:
 - Single-arg functions: `func(col)` → `func_col`
-- Multi-arg functions: `func(a, b)` → `func_a_b`  
+- Multi-arg functions: `func(a, b)` → `func_a_b`
 - Special cases: `count(*)` → `num`, `row_number()` → `row_num`
 
 **Explicit aliases always win**: If you provide an `as` alias, it overrides the auto-generated name.
@@ -1068,7 +1084,7 @@ from opportunities & owners
 from opportunities &? owners
   select opportunities.amount, owners.name
 
--- RIGHT JOIN: all owners, opportunities may be NULL  
+-- RIGHT JOIN: all owners, opportunities may be NULL
 from opportunities ?& owners
   select opportunities.amount, owners.name
 
@@ -1150,7 +1166,7 @@ If a column follows the pattern `{name}_id`, you can traverse it using `.{name}.
 ```asql
 -- opportunities has owner_id column (FK to users table)
 from opportunities
-  select 
+  select
     opportunities.amount,
     opportunities.owner.name,      -- Auto-joins via owner_id
     opportunities.owner.email      -- Same join, different column
@@ -1158,7 +1174,7 @@ from opportunities
 
 Compiles to:
 ```sql
-SELECT 
+SELECT
   opportunities.amount,
   owner_1.name,
   owner_1.email
@@ -1179,7 +1195,7 @@ Navigate through multiple relationships:
 ```asql
 -- order_items.order_id → orders.user_id → users
 from order_items
-  select 
+  select
     order_items.quantity,
     order_items.order.total,           -- → orders
     order_items.order.user.name        -- → orders → users
@@ -1192,9 +1208,9 @@ When a table has multiple FKs to the same table, use the `<alias>_<table>_id` co
 ```asql
 -- accounts has owner_user_id, manager_user_id, support_rep_user_id all → users
 from accounts
-  select 
+  select
     accounts.owner.name as owner_name,           -- via owner_user_id
-    accounts.manager.name as manager_name,       -- via manager_user_id  
+    accounts.manager.name as manager_name,       -- via manager_user_id
     accounts.support_rep.name as support_name    -- via support_rep_user_id
 ```
 
@@ -1202,7 +1218,7 @@ The FK naming pattern `<alias>_user_id` enables `.alias.` dot traversal to the `
 
 Or with explicit joins:
 ```asql
-from accounts 
+from accounts
   &? users as owner on accounts.owner_user_id = owner.id
   &? users as manager on accounts.manager_user_id = manager.id
   select owner.name, manager.name
@@ -1240,8 +1256,8 @@ from employees &? employees as manager on employees.manager_id = manager.id
 
 -- Or with dot notation (uses manager_id FK automatically)
 from employees
-  select 
-    employees.name, 
+  select
+    employees.name,
     employees.manager.name as manager_name,
     employees.manager.manager.name as skip_level_manager
 ```
@@ -1256,12 +1272,25 @@ relationships:
   - from: opportunities.owner_id
     to: users.id
     alias: owner
-    
+
   - from: accounts.primary_contact
     to: contacts.id  # Non-standard name, needs explicit mapping
 ```
 
 **dbt Compatibility**: ASQL can read dbt's `schema.yml` files to infer relationships from `relationships` tests.
+
+**Column uniqueness**: a column can be declared `unique: true` (a `primary_key`
+is implicitly unique). A foreign-key column that is itself unique makes the
+relationship 1:1, so fanout protection knows the join cannot multiply rows and
+skips its rewrite entirely:
+
+```yaml
+tables:
+  order_profiles:
+    columns:
+      - name: order_id
+        unique: true   # 1:1 with orders - no fanout rewrite needed
+```
 
 ### 7.11 Join Quick Reference
 
@@ -1381,7 +1410,7 @@ order_date + 7 days          -- plural
 -- PostgreSQL
 order_date + INTERVAL '7 days'
 
--- SQL Server  
+-- SQL Server
 DATEADD(day, 7, order_date)
 
 -- MySQL
@@ -1409,7 +1438,7 @@ months_between(start_date, end_date)
 **Example:**
 ```asql
 from orders
-  select 
+  select
     days(shipped_date - order_date) as fulfillment_days,
     months(now() - customer_since) as customer_tenure_months
 ```
@@ -1490,7 +1519,7 @@ from tasks
 
 **Compiles to (PostgreSQL):**
 ```sql
-SELECT name, 
+SELECT name,
        DATEDIFF('day', last_login, CURRENT_TIMESTAMP),
        DATEDIFF('month', signup_date, CURRENT_TIMESTAMP),
        DATEDIFF('year', birth_date, CURRENT_TIMESTAMP) AS age
@@ -1702,6 +1731,7 @@ ASQL supports SQL-style `SET` statements for **compile settings** (not CTE varia
 - `dialect` (string) — Target SQL dialect
 - `week_start` (string) — `"monday"` or `"sunday"`
 - `relative_date_type` (string) — `"timestamp"` or `"date"`
+- `fanout_protection` (boolean) — Pre-aggregate many-side tables in supported grouped joins
 - `include_transpilation_comments` (boolean) — Add explanatory comments about transformations
 - `passthrough_comments` (boolean) — Preserve source comments in output
 
@@ -1719,7 +1749,7 @@ from orders
 ```asql
 -- Enable explanatory comments for debugging/learning
 SET include_transpilation_comments = true;
--- Strip source comments from output  
+-- Strip source comments from output
 SET passthrough_comments = false;
 
 from orders
@@ -1758,7 +1788,7 @@ When `stash as` appears in the middle, it stashes everything before it as a CTE,
 **Multiple queries reusing a stashed CTE:**
 ```asql
 from sales
-  where year(date) = 2025
+  where extract(year from date) = 2025
   group by region ( sum(amount) as revenue )
   stash as use_this_later
   order by -revenue
@@ -1976,7 +2006,7 @@ Cohort analysis in ASQL is just computed columns + GROUP BY:
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -1993,7 +2023,7 @@ Traditional SQL requires CTEs because you can't reference a computed column in t
 
 ```sql
 -- This DOESN'T work in SQL:
-SELECT 
+SELECT
   DATE_TRUNC('month', signup_date) AS cohort,
   DATEDIFF(month, cohort, event_date) AS period  -- ERROR!
 FROM ...
@@ -2013,7 +2043,7 @@ ASQL's alias reuse handles this automatically - each alias becomes available to 
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -2026,7 +2056,7 @@ order by cohort, period
 ```asql
 from orders
 join customers
-group by 
+group by
   month(customers.first_order_date) as cohort,
   months_between(orders.order_date, customers.first_order_date) as period
 (
@@ -2043,7 +2073,7 @@ order by cohort, period
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -2060,7 +2090,7 @@ order by cohort, period
 ```asql
 from events
 join users
-group by 
+group by
   users.channel,
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
@@ -2089,7 +2119,7 @@ For complete cohort matrices (showing 0 for periods with no activity), use `spin
 ```asql
 from events
 join users
-spine by 
+spine by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -2157,8 +2187,8 @@ from users
 from countries
 | select {
     name,
-    users = from users 
-      | filter users.country = countries.code 
+    users = from users
+      | filter users.country = countries.code
       | select name, age
   }
 ```
@@ -2204,13 +2234,13 @@ from Users
 -- ASQL matches them correctly without requiring exact case
 ```
 
-**Important clarification**: 
+**Important clarification**:
 - `from Users` will query the `users` table (case-insensitive match)
 - `from USERS` will NOT query a different table - it matches `users` case-insensitively
 - You can use `firstName` in your query even if the database column is `first_name`
 - Aliases can be in any case: `select firstName as UserName` works fine
 
-**Why this matters**: 
+**Why this matters**:
 - **Database best practices** often recommend snake_case (`created_at`, `user_id`)
 - **Frontend development** typically uses camelCase (`createdAt`, `userId`)
 - **APIs** might return PascalCase (`CreatedAt`, `UserId`)
@@ -2324,7 +2354,7 @@ select users.id as user_id, orders.id as order_id
 
 ```asql
 from sales
-  where year(date) = 2025
+  where extract(year from date) = 2025
   group by region ( sum(amount) as revenue )
   order by -revenue
 ```
@@ -2667,6 +2697,3 @@ aggregate_func := 'count' | 'sum' | 'avg' | 'min' | 'max'
 ---
 
 **End of Specification**
-
-
-

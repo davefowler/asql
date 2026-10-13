@@ -9,7 +9,7 @@
 from stg_stripe__balance_transaction_tmp stash as base
 
 from base
-  select 
+  select
     id as balance_transaction_id,
     amount,
     available_on,
@@ -26,4 +26,3 @@ from base
     type as transaction_type,
     source_relation
   where status is not null
-

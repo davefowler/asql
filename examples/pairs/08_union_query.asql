@@ -2,7 +2,7 @@
 -- Note: ASQL may need explicit UNION support
 from online_orders
   where status == "completed"
-  select 
+  select
     "online" as source,
     order_date,
     amount,
@@ -10,10 +10,9 @@ from online_orders
 union all
 from retail_sales
   where status == "completed"
-  select 
+  select
     "retail" as source,
     sale_date as order_date,
     total_amount as amount,
     customer_id
 order by -order_date
-

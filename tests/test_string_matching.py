@@ -2,18 +2,18 @@
 
 import sqlglot
 from sqlglot import exp
-from tests.fixtures import transpile
-from tests.fixtures import assert_valid_sql, assert_sql_contains
+
+from .fixtures import assert_sql_contains, assert_valid_sql, transpile
 
 
 def test_contains_operator() -> None:
     """Test contains operator."""
     asql = 'from users where email contains "@gmail.com"'
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "LIKE", "email", "gmail.com")
     assert_valid_sql(sql)
-    
+
     # Verify LIKE pattern structure
     parsed = sqlglot.parse_one(sql)
     where_clause = parsed.find(exp.Where)
@@ -38,10 +38,10 @@ def test_starts_with_operator() -> None:
     """Test starts with operator."""
     asql = 'from users where name starts with "John"'
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "LIKE", "name", "John")
     assert_valid_sql(sql)
-    
+
     # Verify LIKE pattern for starts_with (should end with %)
     parsed = sqlglot.parse_one(sql)
     where_clause = parsed.find(exp.Where)
@@ -66,10 +66,10 @@ def test_ends_with_operator() -> None:
     """Test ends with operator."""
     asql = 'from users where filename ends with ".pdf"'
     sql = transpile(asql)
-    
+
     assert_sql_contains(sql, "LIKE", "filename", ".pdf")
     assert_valid_sql(sql)
-    
+
     # Verify LIKE pattern for ends_with (should start with %)
     parsed = sqlglot.parse_one(sql)
     where_clause = parsed.find(exp.Where)
@@ -92,7 +92,7 @@ def test_iends_with_operator() -> None:
 
 def test_matches_operator() -> None:
     """Test matches operator (regex matching).
-    
+
     Note: 'matches' uses REGEXP, not LIKE. For pattern matching use 'contains'.
     """
     asql = 'from users where email matches "%@gmail.com"'
@@ -178,16 +178,18 @@ def test_icontains_postgres_dialect() -> None:
     """Test icontains generates ILIKE for PostgreSQL."""
     asql = 'from users where email icontains "gmail"'
     sql = transpile(asql, dialect="postgres")
-    
+
     assert_sql_contains(sql, "ILIKE", "email", "gmail", case_sensitive=True)
     assert_valid_sql(sql, dialect="postgres")
-    
+
     # Verify ILIKE is used (PostgreSQL-specific)
     parsed = sqlglot.parse_one(sql, dialect="postgres")
     where_clause = parsed.find(exp.Where)
     assert where_clause is not None
     ilike_expr = where_clause.find(exp.ILike)
-    assert ilike_expr is not None, "ILIKE expression not found (PostgreSQL should use ILIKE)"
+    assert ilike_expr is not None, (
+        "ILIKE expression not found (PostgreSQL should use ILIKE)"
+    )
 
 
 def test_starts_with_in_select() -> None:

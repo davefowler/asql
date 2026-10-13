@@ -1,7 +1,6 @@
 """Tests for python-style slice syntax in ASQL (dialect-native)."""
 
-from tests.fixtures import transpile
-from tests.fixtures import assert_sql_contains, assert_valid_sql
+from .fixtures import assert_sql_contains, assert_valid_sql, transpile
 
 
 class TestSliceSyntax:
@@ -47,5 +46,3 @@ class TestSliceSyntax:
         sql = transpile("from users where email[1:5] = 'test@'")
         assert_sql_contains(sql, "WHERE", "SUBSTRING", "email")
         assert_valid_sql(sql)
-
-

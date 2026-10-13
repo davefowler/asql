@@ -1,20 +1,20 @@
 /**
  * ASQL Language Definition for Highlight.js
- * 
+ *
  * Provides syntax highlighting for ASQL (Analytic SQL) queries
  * in highlight.js-based documentation.
  */
 
 (function() {
   'use strict';
-  
+
   function registerASQLLanguage() {
     const hljs = window.hljs;
     if (!hljs || !hljs.registerLanguage) {
       console.warn('Highlight.js not available. ASQL syntax highlighting will not work.');
       return false;
     }
-    
+
     // Check if already registered
     if (hljs.getLanguage && hljs.getLanguage('asql')) {
       console.log('ASQL language already registered');
@@ -171,7 +171,7 @@
       return false;
     }
   }
-  
+
   // Try to register immediately if hljs is available
   if (window.hljs && window.hljs.registerLanguage) {
     registerASQLLanguage();
@@ -184,15 +184,14 @@
         setTimeout(waitForHljs, 100);
       }
     }
-    
+
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', waitForHljs);
     } else {
       waitForHljs();
     }
   }
-  
+
   // Export registration function for manual calls if needed
   window.registerASQLLanguage = registerASQLLanguage;
 })();
-

@@ -8,4 +8,3 @@ from users
     avg(days(last_login_date - signup_date)) as avg_days_to_first_login
   )
   order by -month(signup_date)
-

@@ -267,7 +267,7 @@ ASQL uses SQL-style comments:
 -- This is a single-line comment
 from users
   where is_active  -- inline comment
-  
+
 /* This is a
    multi-line comment */
 ```

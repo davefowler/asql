@@ -1,6 +1,6 @@
 """Tests for Fivetran dbt model examples converted to ASQL."""
 
-from tests.fixtures import transpile
+from .fixtures import transpile
 
 
 def test_shopify_line_items_structure() -> None:
@@ -11,7 +11,7 @@ def test_shopify_line_items_structure() -> None:
     join stg_shopify_gql__order on order_line.order_id == order.order_id
     """
     sql = transpile(asql)
-    
+
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()
     assert "JOIN" in sql.upper() or "join" in sql.lower()
@@ -26,7 +26,7 @@ def test_stripe_customer_overview_structure() -> None:
     group by customer_id ( sum(balance_transaction_amount) as total_sales )
     """
     sql = transpile(asql)
-    
+
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()
     assert "GROUP BY" in sql.upper() or "group" in sql.lower()
@@ -41,7 +41,7 @@ def test_zendesk_ticket_enriched_structure() -> None:
     join int_zendesk__user_aggregates on ticket.requester_id == user_aggregates.user_id
     """
     sql = transpile(asql)
-    
+
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()
     assert "JOIN" in sql.upper() or "join" in sql.lower()
@@ -52,11 +52,11 @@ def test_stripe_balance_transactions_structure() -> None:
     # Simplified version - using regular join (left join not yet supported)
     asql = """
     from stg_stripe__balance_transaction
-    join stg_stripe__charge 
+    join stg_stripe__charge
         on charge.balance_transaction_id == balance_transaction.balance_transaction_id
     """
     sql = transpile(asql)
-    
+
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()
     assert "JOIN" in sql.upper() or "join" in sql.lower()
@@ -73,8 +73,7 @@ def test_shopify_customer_cohorts_structure() -> None:
     )
     """
     sql = transpile(asql)
-    
+
     # Simple queries don't need CTEs
     assert "FROM" in sql.upper()
     assert "GROUP BY" in sql.upper() or "group" in sql.lower()
-

@@ -9,4 +9,3 @@ from users
   )
   where user_count >= 10
   order by -user_count
-

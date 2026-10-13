@@ -7,22 +7,22 @@ Validation that ui-metadata.json matches the parser is done in tests/test_schema
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, cast
 
 _SCHEMA_PATH = Path(__file__).parent / "ui-metadata.json"
-_schema_cache: Optional[Dict] = None
+_schema_cache: dict[str, Any] | None = None
 
 
-def get_schema() -> Dict:
+def get_schema() -> dict[str, Any]:
     """Get the full ASQL UI schema."""
     global _schema_cache
     if _schema_cache is None:
         with open(_SCHEMA_PATH) as f:
             _schema_cache = json.load(f)
-    return _schema_cache
+    return cast(dict[str, Any], _schema_cache)
 
 
-def get_operation_schema(operation_type: str) -> Dict:
+def get_operation_schema(operation_type: str) -> dict[str, Any]:
     """
     Get UI schema for an operation type.
 
@@ -35,7 +35,7 @@ def get_operation_schema(operation_type: str) -> Dict:
     return get_schema().get("transforms", {}).get(operation_type, {})
 
 
-def list_all_operations() -> List[Dict]:
+def list_all_operations() -> list[dict[str, Any]]:
     """
     List all available operations with their metadata.
 
@@ -56,22 +56,7 @@ def list_all_operations() -> List[Dict]:
     return operations
 
 
-def get_join_type_options() -> List[Dict]:
-    """Get join type options for UI dropdown."""
-    options = []
-    joins = get_schema().get("joins", {})
-    for name, join_data in joins.items():
-        options.append(
-            {
-                "value": name,
-                "label": join_data.get("label", name),
-                "description": join_data.get("description", ""),
-            }
-        )
-    return options
-
-
-def get_aggregate_options() -> List[Dict]:
+def get_aggregate_options() -> list[dict[str, Any]]:
     """Get aggregate function options for UI dropdown."""
     options = []
     aggregates = get_schema().get("aggregates", {})
@@ -92,23 +77,23 @@ def get_aggregate_options() -> List[Dict]:
     return options
 
 
-def get_function_options(category: Optional[str] = None) -> List[Dict]:
+def get_function_options(category: str | None = None) -> list[dict[str, Any]]:
     """Get function options for UI dropdown.
-    
+
     Args:
         category: Optional category filter (e.g., 'date', 'window', 'string')
-    
+
     Returns:
         List of function metadata dicts
     """
     options = []
     functions = get_schema().get("functions", {})
-    
+
     for cat_name, funcs in functions.items():
         # Skip if category filter doesn't match
         if category and cat_name != category:
             continue
-            
+
         for name, func_data in funcs.items():
             option = {
                 "value": name,
@@ -126,47 +111,49 @@ def get_function_options(category: Optional[str] = None) -> List[Dict]:
             if func_data.get("natural_syntax"):
                 option["natural_syntax"] = True
             options.append(option)
-    
+
     return options
 
 
-def get_function_categories() -> List[Dict]:
+def get_function_categories() -> list[dict[str, Any]]:
     """Get function categories with their functions.
-    
+
     Returns:
         List of category dicts with functions
     """
     categories = []
     functions = get_schema().get("functions", {})
-    
+
     for cat_name, funcs in functions.items():
         category = {
             "name": cat_name,
             "label": cat_name.replace("_", " ").title(),
-            "functions": []
+            "functions": [],
         }
         for name, func_data in funcs.items():
-            category["functions"].append({
-                "value": name,
-                "label": func_data.get("label", name),
-            })
+            category["functions"].append(
+                {
+                    "value": name,
+                    "label": func_data.get("label", name),
+                }
+            )
         categories.append(category)
-    
+
     return categories
 
 
-def get_operators() -> Dict:
+def get_operators() -> dict[str, Any]:
     """Get all operator definitions.
-    
+
     Returns:
         Dict with operator categories (comparison, string, null, list, logical)
     """
     return get_schema().get("operators", {})
 
 
-def get_metadata() -> Dict:
+def get_metadata() -> dict[str, Any]:
     """Get all visual editor metadata in a single call.
-    
+
     Returns:
         Dict with operators, aggregates, functions, transforms, joins, data_types, time_units
     """

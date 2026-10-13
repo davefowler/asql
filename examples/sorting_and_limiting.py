@@ -2,6 +2,7 @@
 
 from asql import compile
 
+
 # Example 1: Simple SORT ascending
 def example_sort_ascending():
     """SORT in ascending order."""
@@ -10,6 +11,7 @@ def example_sort_ascending():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 2: SORT descending
 def example_sort_descending():
@@ -20,6 +22,7 @@ def example_sort_descending():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 3: Multiple order by columns
 def example_sort_multiple():
     """SORT with multiple columns."""
@@ -28,6 +31,7 @@ def example_sort_multiple():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 4: TAKE/LIMIT
 def example_take():
@@ -38,6 +42,7 @@ def example_take():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 5: GROUP BY + SORT
 def example_group_by_sort():
     """GROUP BY followed by SORT."""
@@ -47,18 +52,20 @@ def example_group_by_sort():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 6: Complete pipeline
 def example_complete_pipeline():
     """Complete pipeline: WHERE, GROUP BY, SORT, TAKE."""
-    asql = """from users 
-where status == "active" 
-group by country ( # as total_users ) 
-order by -total_users 
+    asql = """from users
+where status == "active"
+group by country ( # as total_users )
+order by -total_users
 limit 10"""
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 7: Top N by revenue
 def example_top_n():
@@ -69,6 +76,7 @@ def example_top_n():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 8: Sort by column descending
 def example_sort_by_column_descending():
     """SORT by column in descending order."""
@@ -78,6 +86,7 @@ def example_sort_by_column_descending():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 9: Sort by column with multiple columns
 def example_sort_column_multiple():
     """SORT by column with multiple columns."""
@@ -86,6 +95,7 @@ def example_sort_column_multiple():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 if __name__ == "__main__":
     print("=== Sorting and Limiting Examples ===\n")

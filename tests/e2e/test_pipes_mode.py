@@ -2,14 +2,18 @@
 Playwright E2E tests for the Yahoo Pipes-style visual mode in the ASQL Playground.
 Tests the new 'pipes' style toggle and node-based visualization with CTEs.
 """
+
 import re
+
 import pytest
 
 # Skip entire module if playwright is not installed
-pytest.importorskip("playwright", reason="Playwright not installed. Install with: pip install playwright && playwright install")
+pytest.importorskip(
+    "playwright",
+    reason="Playwright not installed. Install with: pip install playwright && playwright install",
+)
 
 from playwright.sync_api import Page, expect  # noqa: E402
-
 
 # Example queries with CTEs for testing
 CTE_EXAMPLES = {
@@ -120,7 +124,9 @@ class TestPipesStyleToggle:
         playground_page.wait_for_timeout(200)
 
         # Check localStorage
-        style_pref = playground_page.evaluate("localStorage.getItem('asql_visual_style')")
+        style_pref = playground_page.evaluate(
+            "localStorage.getItem('asql_visual_style')"
+        )
         assert style_pref == "pipes"
 
 
@@ -163,7 +169,9 @@ class TestPipesVisualization:
         input_editor = playground_page.locator("#input-editor .CodeMirror")
         input_editor.click()
         playground_page.keyboard.press("Control+A")
-        playground_page.keyboard.type("SELECT name, email FROM users WHERE active = true")
+        playground_page.keyboard.type(
+            "SELECT name, email FROM users WHERE active = true"
+        )
         playground_page.wait_for_timeout(1000)
 
         # Switch to pipes mode and visual view
@@ -189,12 +197,14 @@ class TestPipesVisualization:
         input_editor = playground_page.locator("#input-editor .CodeMirror")
         input_editor.click()
         playground_page.keyboard.press("Control+A")
-        playground_page.keyboard.type("""SELECT country, COUNT(*) as cnt
+        playground_page.keyboard.type(
+            """SELECT country, COUNT(*) as cnt
 FROM users
 WHERE active = true
 GROUP BY country
 ORDER BY cnt DESC
-LIMIT 10""")
+LIMIT 10"""
+        )
         playground_page.wait_for_timeout(1000)
 
         # Switch to pipes mode and visual view
@@ -242,7 +252,9 @@ class TestPipesWithCTEs:
 
         # We expect at least len(expected_ctes) nodes
         expected_min = len(example["expected_ctes"])
-        assert node_count >= expected_min, f"Expected at least {expected_min} nodes, got {node_count}"
+        assert node_count >= expected_min, (
+            f"Expected at least {expected_min} nodes, got {node_count}"
+        )
 
     def test_cte_node_shows_name(self, playground_page: Page):
         """Test that CTE nodes display their names."""
@@ -362,7 +374,9 @@ class TestPipesStyleModes:
         # Get the output JSON before switching
         playground_page.locator("#output-json-view-btn").click()
         playground_page.wait_for_timeout(200)
-        output_before = playground_page.locator("#output-editor .CodeMirror").inner_text()
+        output_before = playground_page.locator(
+            "#output-editor .CodeMirror"
+        ).inner_text()
 
         # Switch to pipes and back to JSON
         playground_page.locator("#output-pipes-style-btn").click()
@@ -371,7 +385,9 @@ class TestPipesStyleModes:
         playground_page.wait_for_timeout(200)
 
         # Output should be the same
-        output_after = playground_page.locator("#output-editor .CodeMirror").inner_text()
+        output_after = playground_page.locator(
+            "#output-editor .CodeMirror"
+        ).inner_text()
         assert output_before == output_after
 
 

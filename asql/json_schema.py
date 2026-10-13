@@ -16,10 +16,10 @@ JSON Format:
     - set_operation: {"type": "union"|"intersect"|"except", "all": bool}
 """
 
-from typing import Dict, Any, List, Union
+from typing import Any
 
 
-def json_to_asql(query_json: Union[Dict[str, Any], List[Dict[str, Any]]]) -> str:
+def json_to_asql(query_json: dict[str, Any] | list[dict[str, Any]]) -> str:
     """
     Convert JSON representation to ASQL text.
 
@@ -32,21 +32,20 @@ def json_to_asql(query_json: Union[Dict[str, Any], List[Dict[str, Any]]]) -> str
         ASQL query as string
     """
     # Handle legacy single-pipeline format
-    if isinstance(query_json, dict):
-        pipelines = [query_json]
-    else:
-        pipelines = query_json
+    pipelines = [query_json] if isinstance(query_json, dict) else query_json
 
     if not pipelines:
         return "from # Enter table name"
 
     # Track CTE names we've created so we can chain them properly
-    cte_names: set = set()
-    result_lines: List[str] = []
+    cte_names: set[str] = set()
+    result_lines: list[str] = []
 
     for i, pipeline in enumerate(pipelines):
         from_clause = pipeline.get("from", {})
-        from_table = from_clause.get("table", "") if isinstance(from_clause, dict) else ""
+        from_table = (
+            from_clause.get("table", "") if isinstance(from_clause, dict) else ""
+        )
         name = pipeline.get("name")
 
         # Check if this pipeline continues from a CTE we just created
@@ -81,9 +80,9 @@ def json_to_asql(query_json: Union[Dict[str, Any], List[Dict[str, Any]]]) -> str
     return "\n".join(result_lines)
 
 
-def _transforms_to_asql_lines(transforms: List[Dict[str, Any]]) -> List[str]:
+def _transforms_to_asql_lines(transforms: list[dict[str, Any]]) -> list[str]:
     """Convert transforms list to ASQL lines (without FROM clause)."""
-    lines: List[str] = []
+    lines: list[str] = []
 
     for transform in transforms:
         transform_type = transform.get("type")
@@ -138,7 +137,9 @@ def _transforms_to_asql_lines(transforms: List[Dict[str, Any]]) -> List[str]:
         elif transform_type == "except":
             columns = transform.get("columns", [])
             if columns:
-                col_names = [c.get("name", c) if isinstance(c, dict) else c for c in columns]
+                col_names = [
+                    c.get("name", c) if isinstance(c, dict) else c for c in columns
+                ]
                 lines.append(f"  except {', '.join(col_names)}")
 
         # === AGGREGATE TRANSFORMS ===
@@ -204,7 +205,9 @@ def _transforms_to_asql_lines(transforms: List[Dict[str, Any]]) -> List[str]:
         elif transform_type == "deduplicate":
             columns = transform.get("columns", [])
             if columns:
-                col_names = [c.get("name", c) if isinstance(c, dict) else c for c in columns]
+                col_names = [
+                    c.get("name", c) if isinstance(c, dict) else c for c in columns
+                ]
                 lines.append(f"  deduplicate {', '.join(col_names)}")
             else:
                 lines.append("  deduplicate")
@@ -240,7 +243,9 @@ def _transforms_to_asql_lines(transforms: List[Dict[str, Any]]) -> List[str]:
         elif transform_type == "per":
             columns = transform.get("columns", [])
             if columns:
-                col_names = [c.get("name", c) if isinstance(c, dict) else c for c in columns]
+                col_names = [
+                    c.get("name", c) if isinstance(c, dict) else c for c in columns
+                ]
                 lines.append(f"  per {', '.join(col_names)}")
 
         elif transform_type == "number":
@@ -269,9 +274,9 @@ def _transforms_to_asql_lines(transforms: List[Dict[str, Any]]) -> List[str]:
     return lines
 
 
-def _pipeline_to_asql(pipeline: Dict[str, Any]) -> str:
+def _pipeline_to_asql(pipeline: dict[str, Any]) -> str:
     """Convert a single pipeline to ASQL text (including FROM clause)."""
-    lines: List[str] = []
+    lines: list[str] = []
 
     # FROM clause
     from_clause = pipeline.get("from", {})
@@ -288,7 +293,7 @@ def _pipeline_to_asql(pipeline: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _columns_to_asql(columns: List[Any]) -> List[str]:
+def _columns_to_asql(columns: list[Any]) -> list[str]:
     """Convert column list to ASQL strings."""
     column_strs = []
     for col in columns:
@@ -302,16 +307,16 @@ def _columns_to_asql(columns: List[Any]) -> List[str]:
     return column_strs
 
 
-def _expression_to_asql(expr: Union[Dict[str, Any], str]) -> str:
+def _expression_to_asql(expr: dict[str, Any] | str) -> str:
     """Convert JSON expression to ASQL text.
-    
+
     Args:
         expr: Either a dict with 'type' field for structured expressions,
               or a plain string that gets returned as-is.
     """
     if not expr:
         return ""
-    
+
     # If it's already a string (plain SQL condition), return as-is
     if isinstance(expr, str):
         return expr
@@ -452,12 +457,8 @@ def _expression_to_asql(expr: Union[Dict[str, Any], str]) -> str:
 # Validation Functions
 # ============================================================================
 
-class PipelineValidationError(Exception):
-    """Exception raised for pipeline validation errors."""
-    pass
 
-
-def validate_pipelines(pipelines: Union[Dict[str, Any], List[Dict[str, Any]]]) -> List[str]:
+def validate_pipelines(pipelines: dict[str, Any] | list[dict[str, Any]]) -> list[str]:
     """
     Validate pipeline JSON for common errors.
 
@@ -473,10 +474,10 @@ def validate_pipelines(pipelines: Union[Dict[str, Any], List[Dict[str, Any]]]) -
     if not pipelines:
         return ["No pipelines provided"]
 
-    errors: List[str] = []
+    errors: list[str] = []
 
     # Track defined pipeline names for reference validation
-    defined_names: List[str] = []
+    defined_names: list[str] = []
 
     for i, pipeline in enumerate(pipelines):
         pipeline_label = f"Pipeline {i + 1}"
@@ -530,31 +531,31 @@ def _is_valid_identifier(name: str) -> bool:
     if not name:
         return False
     # Must start with letter or underscore
-    if not (name[0].isalpha() or name[0] == '_'):
+    if not (name[0].isalpha() or name[0] == "_"):
         return False
     # Rest must be alphanumeric or underscore
-    return all(c.isalnum() or c == '_' for c in name)
+    return all(c.isalnum() or c == "_" for c in name)
 
 
-def _looks_like_cte_reference(table: str, defined_names: List[str]) -> bool:
+def _looks_like_cte_reference(table: str, defined_names: list[str]) -> bool:
     """Check if table name looks like it could be a CTE reference."""
     # If it's a simple identifier (no dots), it could be a CTE
-    return '.' not in table and _is_valid_identifier(table)
+    return "." not in table and _is_valid_identifier(table)
 
 
-def _check_circular_references(pipelines: List[Dict[str, Any]]) -> List[str]:
+def _check_circular_references(pipelines: list[dict[str, Any]]) -> list[str]:
     """
     Check for circular references between pipelines.
 
     A circular reference occurs when pipeline A references pipeline B,
     and pipeline B (directly or indirectly) references pipeline A.
     """
-    errors: List[str] = []
+    errors: list[str] = []
 
     # Build dependency graph
     # name -> set of names it references
-    dependencies: Dict[str, set] = {}
-    name_to_idx: Dict[str, int] = {}
+    dependencies: dict[str, set[str]] = {}
+    name_to_idx: dict[str, int] = {}
 
     for i, pipeline in enumerate(pipelines):
         name = pipeline.get("name")
@@ -562,7 +563,7 @@ def _check_circular_references(pipelines: List[Dict[str, Any]]) -> List[str]:
             continue
 
         name_to_idx[name] = i
-        deps: set = set()
+        deps: set[str] = set()
 
         # Check FROM clause
         from_table = pipeline.get("from", {}).get("table", "")
@@ -579,16 +580,14 @@ def _check_circular_references(pipelines: List[Dict[str, Any]]) -> List[str]:
         dependencies[name] = deps
 
     # Check for cycles using DFS
-    visited: set = set()
-    rec_stack: set = set()
+    visited: set[str] = set()
+    rec_stack: set[str] = set()
 
-    def has_cycle(name: str, path: List[str]) -> bool:
+    def has_cycle(name: str, path: list[str]) -> bool:
         if name in rec_stack:
             cycle_start = path.index(name)
             cycle = path[cycle_start:] + [name]
-            errors.append(
-                f"Circular reference detected: {' -> '.join(cycle)}"
-            )
+            errors.append(f"Circular reference detected: {' -> '.join(cycle)}")
             return True
 
         if name in visited:

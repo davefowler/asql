@@ -12,4 +12,3 @@ from sales
   )
   where total_revenue > 10000
   order by -month(order_date), -total_revenue
-

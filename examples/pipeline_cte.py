@@ -8,10 +8,10 @@ def example_simple_pipeline() -> None:
     print("=" * 60)
     print("Example: Simple Pipeline")
     print("=" * 60)
-    
+
     asql = "from users"
     sql = compile(asql, pretty=True)
-    
+
     print("ASQL:")
     print(asql)
     print("\nGenerated SQL:")
@@ -24,10 +24,10 @@ def example_pipeline_with_where() -> None:
     print("=" * 60)
     print("Example: Pipeline with WHERE")
     print("=" * 60)
-    
+
     asql = 'from users where status == "active"'
     sql = compile(asql, pretty=True)
-    
+
     print("ASQL:")
     print(asql)
     print("\nGenerated SQL:")
@@ -40,10 +40,10 @@ def example_pipeline_with_group_by() -> None:
     print("=" * 60)
     print("Example: Pipeline with GROUP BY (Multiple CTEs)")
     print("=" * 60)
-    
+
     asql = 'from users where status == "active" group by country ( # as total_users )'
     sql = compile(asql, pretty=True)
-    
+
     print("ASQL:")
     print(asql)
     print("\nGenerated SQL:")
@@ -57,7 +57,7 @@ def example_complete_pipeline() -> None:
     print("=" * 60)
     print("Example: Complete Pipeline")
     print("=" * 60)
-    
+
     asql = """
     from users
     where status == "active"
@@ -66,7 +66,7 @@ def example_complete_pipeline() -> None:
     limit 10
     """
     sql = compile(asql, pretty=True)
-    
+
     print("ASQL:")
     print(asql.strip())
     print("\nGenerated SQL:")
@@ -79,10 +79,10 @@ def example_pipeline_with_join() -> None:
     print("=" * 60)
     print("Example: Pipeline with JOIN")
     print("=" * 60)
-    
+
     asql = "from users join orders on users.id == orders.user_id"
     sql = compile(asql, pretty=True)
-    
+
     print("ASQL:")
     print(asql)
     print("\nGenerated SQL:")
@@ -95,10 +95,10 @@ def example_pipeline_with_select() -> None:
     print("=" * 60)
     print("Example: Pipeline with SELECT")
     print("=" * 60)
-    
+
     asql = 'from users where status == "active" select name, email'
     sql = compile(asql, pretty=True)
-    
+
     print("ASQL:")
     print(asql)
     print("\nGenerated SQL:")
@@ -113,4 +113,3 @@ if __name__ == "__main__":
     example_complete_pipeline()
     example_pipeline_with_join()
     example_pipeline_with_select()
-

@@ -11,7 +11,7 @@ Analytic SQL is implemented as a Python library that parses ASQL syntax and gene
 ## High-Level Flow
 
 ```
-ASQL Text 
+ASQL Text
   → ASQLParser (custom parser)
   → PipelineStep objects
   → SQLGlot AST (with CTEs)

@@ -10,29 +10,28 @@ from customers
   stash as customer_rfm
 
 from customer_rfm
-  select 
+  select
     customer_id,
     customer_name,
     frequency,
     monetary_value,
     days_since_last_order,
-    case 
+    case
       when days_since_last_order <= 30 then "Active"
       when days_since_last_order <= 90 then "At Risk"
       when days_since_last_order <= 180 then "Churned"
       else "Lost"
     end as recency_segment,
-    case 
+    case
       when frequency >= 10 then "High"
       when frequency >= 5 then "Medium"
       when frequency >= 1 then "Low"
       else "None"
     end as frequency_segment,
-    case 
+    case
       when monetary_value >= 5000 then "High"
       when monetary_value >= 1000 then "Medium"
       when monetary_value >= 100 then "Low"
       else "None"
     end as monetary_segment
   order by -monetary_value
-

@@ -2,7 +2,7 @@
 -- Source: Inspired by patterns from Fivetran dbt packages
 --   - https://github.com/fivetran/dbt_stripe
 --   - https://github.com/fivetran/dbt_salesforce
-SELECT 
+SELECT
     order_id,
     customer_id,
     order_date,
@@ -14,4 +14,3 @@ SELECT
 FROM orders
 WHERE status = 'completed'
 ORDER BY customer_id, order_date;
-

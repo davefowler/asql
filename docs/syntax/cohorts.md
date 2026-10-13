@@ -17,7 +17,7 @@ In ASQL, cohort analysis is just computed columns + GROUP BY:
 ```asql
 from orders
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(orders.created_at, users.signup_date) as period
 (
@@ -33,7 +33,7 @@ Traditional SQL requires CTEs because you can't reference a computed column in t
 
 ```sql
 -- This DOESN'T work in SQL:
-SELECT 
+SELECT
   DATE_TRUNC('month', signup_date) AS cohort,
   DATEDIFF(month, cohort, order_date) AS period  -- ERROR!
 FROM ...
@@ -50,7 +50,7 @@ Track monthly active users by their signup month:
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -71,7 +71,7 @@ Track revenue by first purchase cohort:
 ```asql
 from orders
 join customers
-group by 
+group by
   month(customers.first_order_date) as cohort,
   months_between(orders.order_date, customers.first_order_date) as period
 (
@@ -88,7 +88,7 @@ Track weekly active users with weekly periods:
 ```asql
 from events
 join users
-group by 
+group by
   week(users.signup_date) as cohort,
   weeks_between(events.event_date, users.signup_date) as period
 (
@@ -104,7 +104,7 @@ To calculate retention percentage, you need cohort size. Use a window function:
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -125,7 +125,7 @@ Use `running_sum()` for lifetime value:
 ```asql
 from orders
 join customers
-group by 
+group by
   month(customers.first_order_date) as cohort,
   months_between(orders.order_date, customers.first_order_date) as period
 (
@@ -149,7 +149,7 @@ from (
   select *,
     month(first(created_at) over customer_id) as cohort
 )
-group by 
+group by
   cohort,
   months_between(created_at, cohort) as period
 (
@@ -165,7 +165,7 @@ Add segment dimensions to compare cohorts across segments:
 ```asql
 from events
 join users
-group by 
+group by
   users.channel,
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
@@ -197,7 +197,7 @@ For complete cohort matrices (showing 0 for periods with no activity), use `spin
 ```asql
 from events
 join users
-spine by 
+spine by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -215,7 +215,7 @@ The `spine by` ensures you get a row for every (cohort, period) combination.
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
@@ -233,7 +233,7 @@ order by cohort, period
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (

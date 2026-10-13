@@ -49,7 +49,7 @@ Transpiles ASQL to SQL for a target dialect.
   - `mssql` / `sqlserver`
   - And more (see SQLGlot dialects)
 - `pretty` (bool): Whether to format SQL output with indentation. Default: `False`
-- `schema` (dict or Schema, optional): Schema information for column operators, join inference, etc.
+- `schema` (dict or Schema, optional): Schema information for column operators, join inference, etc. Pass `Schema.from_graph(load_graph("graph.yaml"))` to resolve metric names and `relationship.attribute` references; see [Metrics and Relationships](concepts/semantic-layer.md).
 - `**kwargs`: Additional settings passed to the ASQL dialect (e.g., `week_start`, `infer_join_keys`)
 
 **Returns:**
@@ -58,6 +58,7 @@ Transpiles ASQL to SQL for a target dialect.
 **Raises:**
 - `ASQLSyntaxError`: If ASQL syntax is invalid
 - `ASQLCompilationError`: If compilation fails
+- `ASQLResolutionError`: If a metric or `relationship.attribute` reference can't be resolved safely against the semantic graph
 
 **Example:**
 ```python
@@ -200,11 +201,11 @@ from stg_orders
 
 **Features:**
 - **No wrappers** — Use `.asql` file extension, no `{% asql %}` tags
-- **Auto `ref()` detection** — Just use table names, dbt-asql finds model dependencies  
+- **Auto `ref()` detection** — Just use table names, dbt-asql finds model dependencies
 - **Simplified variables** — `{{ start_date }}` instead of `{{ var('start_date') }}`
 - **Native config** — `SET materialized = table;` instead of `{{ config(...) }}`
 
-See the [dbt-asql README](https://github.com/definite-app/asql/tree/main/integrations/dbt-asql) for more details.
+See the [dbt-asql README](https://github.com/davefowler/asql/tree/main/integrations/dbt-asql) for more details.
 
 #### Manual Integration Options
 
@@ -240,13 +241,13 @@ python scripts/compile_asql.py && dbt run
 # models/active_users.py
 def model(dbt, session):
     import asql
-    
+
     asql_query = """
     from users
     where status == 'active'
     group by country ( # as total_users )
     """
-    
+
     sql = asql.transpile(asql_query, write=dbt.config.get('target_type', 'postgres'))[0]
     return session.sql(sql)
 ```
@@ -307,11 +308,11 @@ import pyodbc
 def execute_asql(asql_query, connection_string, dialect="mssql"):
     """Execute ASQL query in Power BI."""
     sql = asql.transpile(asql_query, write=dialect)[0]
-    
+
     conn = pyodbc.connect(connection_string)
     df = pd.read_sql(sql, conn)
     conn.close()
-    
+
     return df
 ```
 
@@ -329,7 +330,7 @@ import psycopg2
 def create_asql_function(conn):
     """Create PostgreSQL function for ASQL compilation."""
     cursor = conn.cursor()
-    
+
     # This would require a PostgreSQL extension
     # For now, use Python wrapper
     pass
@@ -348,18 +349,18 @@ import psycopg2
 
 class ASQLConnection:
     """Database connection that accepts ASQL queries."""
-    
+
     def __init__(self, connection_string, dialect="postgres"):
         self.conn = psycopg2.connect(connection_string)
         self.dialect = dialect
-    
+
     def execute(self, asql_query):
         """Execute ASQL query."""
         sql = asql.transpile(asql_query, write=self.dialect)[0]
         cursor = self.conn.cursor()
         cursor.execute(sql)
         return cursor.fetchall()
-    
+
     def close(self):
         self.conn.close()
 
@@ -390,7 +391,7 @@ def compile_asql():
     asql_query = data.get('asql')
     dialect = data.get('dialect', 'postgres')
     pretty = data.get('pretty', False)
-    
+
     try:
         sql = asql.transpile(asql_query, write=dialect, pretty=pretty)[0]
         return jsonify({'sql': sql})
@@ -420,15 +421,15 @@ def main():
     parser.add_argument('--dialect', default='postgres', help='SQL dialect')
     parser.add_argument('--pretty', action='store_true', help='Pretty print SQL')
     parser.add_argument('--file', help='Read ASQL from file')
-    
+
     args = parser.parse_args()
-    
+
     if args.file:
         with open(args.file) as f:
             asql_query = f.read()
     else:
         asql_query = args.query
-    
+
     try:
         sql = asql.transpile(asql_query, write=args.dialect, pretty=args.pretty)[0]
         print(sql)
@@ -452,10 +453,10 @@ from IPython.display import display, Markdown
 def asql_query(query, dialect="postgres", show_sql=True):
     """Execute ASQL query in Jupyter."""
     sql = asql.transpile(query, write=dialect, pretty=True)[0]
-    
+
     if show_sql:
         display(Markdown(f"**Generated SQL:**\n```sql\n{sql}\n```"))
-    
+
     return sql
 
 # Usage in notebook
@@ -479,17 +480,17 @@ export function activate(context: vscode.ExtensionContext) {
     let compileCommand = vscode.commands.registerCommand('asql.compile', () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) return;
-        
+
         const asqlQuery = editor.document.getText();
         const dialect = vscode.workspace.getConfiguration('asql').get('dialect', 'postgres');
-        
-        exec(`python -c "import asql; print(asql.transpile('''${asqlQuery}''', write='${dialect}')[0])"`, 
+
+        exec(`python -c "import asql; print(asql.transpile('''${asqlQuery}''', write='${dialect}')[0])"`,
             (error, stdout, stderr) => {
                 if (error) {
                     vscode.window.showErrorMessage(`Compilation error: ${stderr}`);
                     return;
                 }
-                
+
                 // Open new document with SQL
                 vscode.workspace.openTextDocument({
                     content: stdout,
@@ -499,7 +500,7 @@ export function activate(context: vscode.ExtensionContext) {
                 });
             });
     });
-    
+
     context.subscriptions.push(compileCommand);
 }
 ```
@@ -580,23 +581,23 @@ from typing import List, Dict
 
 class ASQLPipeline:
     """Data pipeline using ASQL."""
-    
+
     def __init__(self, connection_string, dialect="postgres"):
         self.conn = psycopg2.connect(connection_string)
         self.dialect = dialect
-    
+
     def execute_query(self, asql_query: str) -> List[Dict]:
         """Execute ASQL query and return results."""
         sql = asql.transpile(asql_query, write=self.dialect)[0]
         cursor = self.conn.cursor()
         cursor.execute(sql)
-        
+
         columns = [desc[0] for desc in cursor.description]
         results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        
+
         cursor.close()
         return results
-    
+
     def close(self):
         """Close database connection."""
         self.conn.close()
@@ -623,4 +624,3 @@ pipeline.close()
 - Check out the [Language Specification](spec.md) for complete syntax reference
 - See [Examples](examples.md) for more query patterns
 - Review [Architecture](architecture.md) for implementation details
-

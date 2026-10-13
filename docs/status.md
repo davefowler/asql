@@ -1,7 +1,7 @@
 # ASQL Implementation Status
 
-**Last Updated**: December 2024  
-**Test Status**: ✅ 434 tests passing  
+**Last Updated**: December 2024
+**Test Status**: ✅ 434 tests passing
 **Implementation Phase**: Core Complete
 
 ## ✅ Fully Implemented Features
@@ -55,6 +55,7 @@
 
 ### Compile Settings
 - **SET**: `SET dialect = 'postgres'`, `SET week_start = 'sunday'`, etc.
+- **Fanout protection**: on by default; rewrites supported grouped joins when schema metadata is available — pre-aggregates many-side tables, collapses join-as-filter many sides to `SELECT DISTINCT <fk>`, and re-aggregates reverse-direction (`FROM many JOIN one`) selects through an inner `GROUP BY` join-key stage; provable risk it cannot rewrite emits `ASQL fanout warning` comments
 
 ### Utility Functions
 - **safe_divide()**: Returns NULL on divide-by-zero

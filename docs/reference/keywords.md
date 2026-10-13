@@ -174,7 +174,7 @@ Equivalent to `select *, expr as alias` but cleaner for adding multiple columns:
 
 ```asql
 from users
-  extend 
+  extend
     age >= 18 as is_adult,
     days_since(last_login) as days_inactive
 ```
@@ -279,6 +279,7 @@ from orders
 | `dialect` | string | `"duckdb"` | Target SQL dialect |
 | `week_start` | string | `"monday"` | Week start day: `"monday"` or `"sunday"` |
 | `relative_date_type` | string | `"timestamp"` | Type for relative dates: `"timestamp"` or `"date"` |
+| `fanout_protection` | bool | `true` | Protect grouped joins from additive fanout (pre-aggregate, collapse, or stage-2 rewrite; warn when unrewritable). Disable per query for intentional fanout |
 | `include_transpilation_comments` | bool | `false` | Add explanatory comments about ASQL transformations |
 | `passthrough_comments` | bool | `true` | Preserve source comments in output |
 
@@ -300,7 +301,7 @@ from orders
 When `include_transpilation_comments` is enabled, the generated SQL includes helpful comments explaining complex transformations:
 
 ```sql
-/* ASQL spine: Gap-filling CTEs were generated to ensure all 
+/* ASQL spine: Gap-filling CTEs were generated to ensure all
    expected time periods appear (even with zero/null aggregates). */
 WITH month_order_date_spine AS (...)
 ...

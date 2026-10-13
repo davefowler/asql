@@ -2,7 +2,9 @@
 
 import pytest
 import sqlglot
-import asql.dialect  # noqa: F401 - registers ASQL dialect with SQLGlot
+import sqlglot.errors
+
+import asql.dialect  # noqa: F401 — registers ASQL dialect with SQLGlot  # pyright: ignore[reportUnusedImport]
 
 
 def test_transpile_simple_select() -> None:
@@ -86,7 +88,7 @@ def test_transpile_empty_query() -> None:
     """Test reverse compilation with empty query returns single empty string."""
     result = sqlglot.transpile("", write="asql")
     # SQLGlot returns [''] for empty input, not []
-    assert result == ['']
+    assert result == [""]
 
 
 def test_transpile_with_dialect() -> None:

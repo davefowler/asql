@@ -2,7 +2,7 @@
 -- Source: Inspired by patterns from Fivetran dbt packages
 --   - https://github.com/fivetran/dbt_shopify
 --   - https://github.com/fivetran/dbt_stripe
-SELECT 
+SELECT
     o.order_id,
     o.order_date,
     c.customer_name,
@@ -18,4 +18,3 @@ INNER JOIN order_items oi ON o.order_id = oi.order_id
 INNER JOIN products p ON oi.product_id = p.product_id
 WHERE o.status = 'completed'
 ORDER BY o.order_date DESC;
-

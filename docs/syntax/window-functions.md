@@ -228,7 +228,7 @@ You can use standard SQL window functions directly:
 
 ```asql
 from orders
-  select 
+  select
     *,
     row_number() over (partition by customer_id order by -order_date) as rn,
     rank() over (partition by category order by -amount) as category_rank,
@@ -245,7 +245,7 @@ from sales
     date,
     revenue,
     sum(revenue) over (
-      order by date 
+      order by date
       rows between 6 preceding and current row
     ) as seven_day_sum
 ```

@@ -16,21 +16,24 @@ import typing as t
 
 from sqlglot import exp
 from sqlglot.generator import Generator
-from sqlglot.schema import MappingSchema
-from sqlglot.optimizer.qualify_columns import qualify_columns
 from sqlglot.optimizer.annotate_types import annotate_types
+from sqlglot.optimizer.qualify_columns import qualify_columns
+from sqlglot.schema import MappingSchema
+
+from asql.functions import ALIAS_FUNC_META, unit_function_arg
+
 
 class VisualASQLGenerator(Generator):
     """Generator that outputs JSON array of pipelines with column tracking."""
 
     # Declarative mappings per .cursorrules - use dicts instead of elif chains
-    _SIDE_JOIN_MAP: t.ClassVar[t.Dict[str, str]] = {
+    _SIDE_JOIN_MAP: t.ClassVar[dict[str, str]] = {
         "LEFT": "left",
         "RIGHT": "right",
         "FULL": "full",
     }
 
-    _KIND_JOIN_MAP: t.ClassVar[t.Dict[str, str]] = {
+    _KIND_JOIN_MAP: t.ClassVar[dict[str, str]] = {
         "CROSS": "cross",
         "INNER": "inner",
         "LEFT": "left",
@@ -38,7 +41,7 @@ class VisualASQLGenerator(Generator):
         "FULL": "full",
     }
 
-    _BINARY_OP_MAP: t.ClassVar[t.Dict[t.Type[exp.Expression], str]] = {
+    _BINARY_OP_MAP: t.ClassVar[dict[type[exp.Expr], str]] = {
         exp.EQ: "=",
         exp.NEQ: "!=",
         exp.LT: "<",
@@ -47,19 +50,17 @@ class VisualASQLGenerator(Generator):
         exp.GTE: ">=",
     }
 
-    _SET_OP_MAP: t.ClassVar[t.Dict[t.Type[exp.Expression], str]] = {
+    _SET_OP_MAP: t.ClassVar[dict[type[exp.Expr], str]] = {
         exp.Union: "union",
         exp.Intersect: "intersect",
         exp.Except: "except",
     }
 
-    def __init__(self, schema: t.Optional[MappingSchema] = None, **kwargs: t.Any) -> None:
+    def __init__(self, schema: MappingSchema | None = None, **kwargs: t.Any) -> None:
         super().__init__(**kwargs)
         self._schema = schema
 
-    def generate(
-        self, expression: exp.Expression, copy: bool = True
-    ) -> str:
+    def generate(self, expression: exp.Expr, copy: bool = True) -> str:
         """Generate JSON string from AST - always outputs array format."""
         if copy:
             expression = expression.copy()
@@ -69,9 +70,9 @@ class VisualASQLGenerator(Generator):
 
         return json.dumps(result, indent=2)
 
-    def _build_pipelines(self, expression: exp.Expression) -> t.List[t.Dict[str, t.Any]]:
+    def _build_pipelines(self, expression: exp.Expr) -> list[dict[str, t.Any]]:
         """Build array of pipeline representations."""
-        pipelines: t.List[t.Dict[str, t.Any]] = []
+        pipelines: list[dict[str, t.Any]] = []
 
         # Handle CTEs (WITH clause) - note: SQLGlot uses 'with_' not 'with'
         if isinstance(expression, exp.Select) and expression.args.get("with_"):
@@ -90,19 +91,14 @@ class VisualASQLGenerator(Generator):
         elif isinstance(expression, exp.Select):
             # Pre-qualify columns if schema provided
             if self._schema:
+                # sqlglot qualification is best-effort: schema lookup can fail
+                # for missing tables, SELECT *, complex expressions, etc.
                 try:
-                    expression = qualify_columns(
-                        expression,
-                        schema=self._schema,
-                        expand_stars=True
+                    qualified = qualify_columns(
+                        expression, schema=self._schema, expand_stars=True
                     )
-                    expression = annotate_types(expression, schema=self._schema)
-                except (ValueError, KeyError, AttributeError):
-                    # Schema lookup/qualification can fail for various reasons
-                    # (missing tables, SELECT *, complex expressions, etc.)
-                    pass
-                except Exception:
-                    # Catch other sqlglot optimizer errors (e.g., OptimizeError)
+                    expression = annotate_types(qualified, schema=self._schema)
+                except Exception:  # noqa: BLE001, S110 - sqlglot errors non-fatal
                     pass
 
             pipeline = self._build_single_pipeline(expression)
@@ -110,18 +106,21 @@ class VisualASQLGenerator(Generator):
             pipelines.append(pipeline)
         else:
             # Unsupported expression type
-            pipelines.append({
-                "name": None,
-                "from": {"table": "", "error": f"Unsupported: {type(expression).__name__}"},
-                "transforms": []
-            })
+            pipelines.append(
+                {
+                    "name": None,
+                    "from": {
+                        "table": "",
+                        "error": f"Unsupported: {type(expression).__name__}",
+                    },
+                    "transforms": [],
+                }
+            )
 
         return pipelines
 
     def _build_set_operation_pipelines(
-        self,
-        expression: exp.Expression,
-        pipelines: t.List[t.Dict[str, t.Any]]
+        self, expression: exp.Expr, pipelines: list[dict[str, t.Any]]
     ) -> None:
         """Recursively build pipelines for set operations."""
         if isinstance(expression, (exp.Union, exp.Intersect, exp.Except)):
@@ -149,13 +148,11 @@ class VisualASQLGenerator(Generator):
                 pipeline["name"] = None
                 pipelines.append(pipeline)
 
-    def _build_single_pipeline(self, expression: exp.Select) -> t.Dict[str, t.Any]:
+    def _build_single_pipeline(self, expression: exp.Select) -> dict[str, t.Any]:
         """Build JSON representation of a single SELECT query."""
-        if not isinstance(expression, exp.Select):
-            return {"from": {"table": "", "error": f"Expected Select, got {type(expression).__name__}"}, "transforms": []}
 
-        result: t.Dict[str, t.Any] = {"name": None, "from": None, "transforms": []}
-        current_columns: t.List[t.Dict[str, t.Any]] = []
+        result: dict[str, t.Any] = {"name": None, "from": None, "transforms": []}
+        current_columns: list[dict[str, t.Any]] = []
         transform_id = 0
 
         # Pre-extract column references from the query for fallback when no schema
@@ -168,7 +165,7 @@ class VisualASQLGenerator(Generator):
 
         # Check if this is a multi-table query (has JOINs)
         has_joins = bool(expression.args.get("joins"))
-        
+
         # FROM clause (uses 'from_' because 'from' is a Python keyword)
         if from_clause := expression.args.get("from_"):
             table_expr = from_clause.this
@@ -177,13 +174,15 @@ class VisualASQLGenerator(Generator):
                 table_alias = self._get_alias(table_expr)
                 # Only qualify column names if there are joins (to avoid ambiguity)
                 table_cols = self._get_table_columns(table_name, qualify=has_joins)
-                
+
                 # If no schema columns, use inferred columns from query
                 if not table_cols:
                     # Get columns for this table (try both name and alias)
                     table_cols = inferred_columns_by_table.get(table_name, [])
                     if table_alias and table_alias != table_name:
-                        table_cols = table_cols + inferred_columns_by_table.get(table_alias, [])
+                        table_cols = table_cols + inferred_columns_by_table.get(
+                            table_alias, []
+                        )
                     # Deduplicate by name
                     seen = set()
                     unique_cols = []
@@ -192,10 +191,12 @@ class VisualASQLGenerator(Generator):
                             seen.add(col["name"])
                             unique_cols.append(col)
                     table_cols = unique_cols
-                
+
                 current_columns = table_cols.copy()
 
-                from_comments = self._get_comments(from_clause) or self._get_comments(table_expr)
+                from_comments = self._get_comments(from_clause) or self._get_comments(
+                    table_expr
+                )
                 result["from"] = {
                     "table": table_name,
                     "alias": table_alias if table_alias != table_name else None,
@@ -210,12 +211,14 @@ class VisualASQLGenerator(Generator):
             join_table = self._get_table_name(join_table_expr)
             join_alias = self._get_alias(join_table_expr)
             join_cols = self._get_table_columns(join_table)
-            
+
             # If no schema columns, use inferred columns from query
             if not join_cols:
                 join_cols = inferred_columns_by_table.get(join_table, [])
                 if join_alias and join_alias != join_table:
-                    join_cols = join_cols + inferred_columns_by_table.get(join_alias, [])
+                    join_cols = join_cols + inferred_columns_by_table.get(
+                        join_alias, []
+                    )
                 # Deduplicate by name
                 seen = set()
                 unique_cols = []
@@ -224,7 +227,7 @@ class VisualASQLGenerator(Generator):
                         seen.add(col["name"])
                         unique_cols.append(col)
                 join_cols = unique_cols
-            
+
             current_columns.extend(join_cols)
 
             join_type = self._get_join_type(join)
@@ -232,7 +235,7 @@ class VisualASQLGenerator(Generator):
             if on_clause := join.args.get("on"):
                 condition = self._expression_to_json(on_clause)
 
-            transform: t.Dict[str, t.Any] = {
+            transform: dict[str, t.Any] = {
                 "id": f"t{transform_id}",
                 "type": "join",
                 "join_type": join_type,
@@ -265,7 +268,7 @@ class VisualASQLGenerator(Generator):
             dims, aggs = self._extract_group_by_columns(expression, group)
             current_columns = dims + aggs
 
-            transform = { 
+            transform = {
                 "id": f"t{transform_id}",
                 "type": "group_by",
                 "dimensions": [d["name"] for d in dims],
@@ -291,7 +294,7 @@ class VisualASQLGenerator(Generator):
                 current_columns = select_cols
 
                 # Collect comments from individual select expressions
-                select_comments: t.List[str] = []
+                select_comments: list[str] = []
                 for expr in exprs:
                     if expr_comments := self._get_comments(expr):
                         select_comments.extend(expr_comments)
@@ -367,7 +370,7 @@ class VisualASQLGenerator(Generator):
 
         return result
 
-    def _get_table_name(self, table_expr: exp.Expression) -> str:
+    def _get_table_name(self, table_expr: exp.Expr) -> str:
         """Extract table name from expression."""
         if isinstance(table_expr, exp.Table):
             return table_expr.name
@@ -375,13 +378,13 @@ class VisualASQLGenerator(Generator):
             return str(table_expr.name)
         return str(table_expr)
 
-    def _get_alias(self, table_expr: exp.Expression) -> t.Optional[str]:
+    def _get_alias(self, table_expr: exp.Expr) -> str | None:
         """Extract alias from table expression."""
         if isinstance(table_expr, exp.Table) and table_expr.alias:
             return table_expr.alias
         return None
 
-    def _get_comments(self, expr: exp.Expression) -> t.Optional[t.List[str]]:
+    def _get_comments(self, expr: exp.Expr) -> list[str] | None:
         """Extract comments from an expression node."""
         if hasattr(expr, "comments") and expr.comments:
             # Clean up comments (strip whitespace, remove empty ones)
@@ -389,24 +392,26 @@ class VisualASQLGenerator(Generator):
             return cleaned if cleaned else None
         return None
 
-    def _collect_all_comments(self, expr: exp.Expression) -> t.List[str]:
+    def _collect_all_comments(self, expr: exp.Expr) -> list[str]:
         """Recursively collect all comments from an expression tree."""
-        comments: t.List[str] = []
-        
-        def collect(node: exp.Expression) -> None:
+        comments: list[str] = []
+
+        def collect(node: exp.Expr) -> None:
             if hasattr(node, "comments") and node.comments:
                 for c in node.comments:
                     if c and c.strip():
                         comments.append(c.strip())
             for child in node.iter_expressions():
                 collect(child)
-        
+
         collect(expr)
         return comments
 
-    def _get_table_columns(self, table_name: str, qualify: bool = True) -> t.List[t.Dict[str, t.Any]]:
+    def _get_table_columns(
+        self, table_name: str, qualify: bool = True
+    ) -> list[dict[str, t.Any]]:
         """Get columns for a table from schema.
-        
+
         Args:
             table_name: The table name to look up
             qualify: If True, include qualified name (table.column) for disambiguation
@@ -419,18 +424,17 @@ class VisualASQLGenerator(Generator):
             cols = self._schema.column_names(table_expr)
             result = []
             for col in cols:
-                col_type = self._schema.get_column_type(
-                    table_expr, 
-                    exp.column(col)
-                )
-                type_str = str(col_type) if col_type else "UNKNOWN"
+                col_type = self._schema.get_column_type(table_expr, exp.column(col))
+                type_str = str(col_type)
                 # Use qualified name (table.column) for clarity after JOINs
                 qualified_name = f"{table_name}.{col}" if qualify else col
-                result.append({
-                    "name": qualified_name,
-                    "type": type_str,
-                    "source": table_name,
-                })
+                result.append(
+                    {
+                        "name": qualified_name,
+                        "type": type_str,
+                        "source": table_name,
+                    }
+                )
             return result
         except (KeyError, AttributeError, TypeError, ValueError):
             # Schema lookup can fail for missing tables, invalid column refs, etc.
@@ -438,51 +442,53 @@ class VisualASQLGenerator(Generator):
 
     def _extract_columns_from_query(
         self, expression: exp.Select
-    ) -> t.Dict[str, t.List[t.Dict[str, t.Any]]]:
+    ) -> dict[str, list[dict[str, t.Any]]]:
         """Extract all column references from a query, grouped by table.
-        
+
         Uses SQLGlot's find_all() to locate all Column nodes in the AST.
         Provides fallback column info when no schema is available.
         """
-        columns_by_table: t.Dict[str, t.List[t.Dict[str, t.Any]]] = {}
-        seen: t.Set[str] = set()
-        
+        columns_by_table: dict[str, list[dict[str, t.Any]]] = {}
+        seen: set[str] = set()
+
         # Get FROM table name for unqualified columns in single-table queries
-        from_table_name: t.Optional[str] = None
+        from_table_name: str | None = None
         if from_clause := expression.args.get("from_"):
             if table_expr := from_clause.this:
                 from_table_name = self._get_table_name(table_expr)
-        
+
         # Count tables to determine if single or multi-table query
         table_count = 1 if from_table_name else 0
         table_count += len(expression.args.get("joins") or [])
-        
+
         # Use SQLGlot's find_all to get all Column nodes
         for col in expression.find_all(exp.Column):
             table = col.table
             name = col.name
             if not name:
                 continue
-            
+
             # For single-table queries, unqualified columns belong to FROM table
             if not table and table_count == 1 and from_table_name:
                 table = from_table_name
-            
+
             # Build qualified key for deduplication
             qualified_key = f"{table}.{name}" if table else name
             if qualified_key in seen:
                 continue
             seen.add(qualified_key)
-            
+
             # Group by table (or "_unqualified_" if no table)
             source = table or "_unqualified_"
             if source not in columns_by_table:
                 columns_by_table[source] = []
-            columns_by_table[source].append({
-                "name": name,  # Use just the column name, not qualified
-                "source": table,
-            })
-        
+            columns_by_table[source].append(
+                {
+                    "name": name,  # Use just the column name, not qualified
+                    "source": table,
+                }
+            )
+
         return columns_by_table
 
     def _get_join_type(self, join: exp.Join) -> str:
@@ -500,10 +506,19 @@ class VisualASQLGenerator(Generator):
 
         return "inner"
 
-    def _expression_to_json(self, expr: exp.Expression) -> t.Dict[str, t.Any]:
+    def _expression_to_json(self, expr: exp.Expr | None) -> dict[str, t.Any]:
         """Convert SQLGlot expression to JSON representation."""
+        if expr is None:
+            return {"type": "null"}
+        written = expr.meta.get(ALIAS_FUNC_META)
+        if written:
+            return {
+                "type": "function",
+                "name": written,
+                "args": [self._expression_to_json(unit_function_arg(expr))],
+            }
         if isinstance(expr, exp.Column):
-            result: t.Dict[str, t.Any] = {
+            result: dict[str, t.Any] = {
                 "type": "column",
                 "name": expr.name,
             }
@@ -518,7 +533,9 @@ class VisualASQLGenerator(Generator):
             if expr.is_number:
                 data_type = "number"
                 try:
-                    typed_value: t.Any = int(value) if "." not in str(value) else float(value)
+                    typed_value: t.Any = (
+                        int(value) if "." not in str(value) else float(value)
+                    )
                 except (ValueError, TypeError):
                     typed_value = value
             else:
@@ -569,11 +586,18 @@ class VisualASQLGenerator(Generator):
         # IS NULL / IS NOT NULL
         elif isinstance(expr, exp.Is):
             if isinstance(expr.expression, exp.Null):
-                return {
+                null_check = {
                     "type": "null_check",
                     "operator": "is null",
                     "operand": self._expression_to_json(expr.this),
                 }
+                if expr.args.get("negate"):
+                    return {
+                        "type": "unary_op",
+                        "operator": "not",
+                        "operand": null_check,
+                    }
+                return null_check
             return {"type": "unknown", "value": str(expr)}
 
         # IN operator
@@ -606,14 +630,14 @@ class VisualASQLGenerator(Generator):
 
         # Function calls
         elif isinstance(expr, exp.Func):
-            args = []
+            args: list[dict[str, t.Any]] = []
             for arg in expr.args.values():
                 if arg is not None:
                     if isinstance(arg, list):
                         args.extend(self._expression_to_json(a) for a in arg if a)
-                    elif isinstance(arg, exp.Expression):
+                    elif isinstance(arg, exp.Expr):
                         args.append(self._expression_to_json(arg))
-            
+
             return {
                 "type": "function",
                 "name": expr.sql_name(),
@@ -628,20 +652,26 @@ class VisualASQLGenerator(Generator):
         else:
             return {"type": "unknown", "value": str(expr)}
 
-    def _is_select_star(self, exprs: t.List[exp.Expression]) -> bool:
+    @staticmethod
+    def _sql_text(expr: exp.Expr) -> str:
+        """SQL text for a column entry; unit functions keep their ASQL spelling."""
+        written = expr.meta.get(ALIAS_FUNC_META)
+        if written:
+            return f"{written}({unit_function_arg(expr).sql()})"
+        return expr.sql()
+
+    def _is_select_star(self, exprs: list[exp.Expr]) -> bool:
         """Check if expressions represent SELECT *."""
         return len(exprs) == 1 and isinstance(exprs[0], exp.Star)
 
-    def _extract_select_columns(
-        self, exprs: t.List[exp.Expression]
-    ) -> t.List[t.Dict[str, t.Any]]:
+    def _extract_select_columns(self, exprs: list[exp.Expr]) -> list[dict[str, t.Any]]:
         """Extract column info from SELECT expressions."""
         columns = []
         for expr in exprs:
             if isinstance(expr, exp.Alias):
-                col_info: t.Dict[str, t.Any] = {
+                col_info: dict[str, t.Any] = {
                     "name": expr.alias,
-                    "expression": expr.this.sql() if expr.this else None,
+                    "expression": self._sql_text(expr.this) if expr.this else None,
                 }
                 if hasattr(expr, "type") and expr.type:
                     col_info["type"] = str(expr.type)
@@ -654,37 +684,39 @@ class VisualASQLGenerator(Generator):
                     col_info["type"] = str(expr.type)
                 columns.append(col_info)
             else:
-                columns.append({
-                    "name": expr.sql(),
-                    "expression": expr.sql(),
-                })
+                columns.append(
+                    {
+                        "name": self._sql_text(expr),
+                        "expression": self._sql_text(expr),
+                    }
+                )
         return columns
 
     def _extract_group_by_columns(
         self, select: exp.Select, group: exp.Group
-    ) -> t.Tuple[t.List[t.Dict[str, t.Any]], t.List[t.Dict[str, t.Any]]]:
+    ) -> tuple[list[dict[str, t.Any]], list[dict[str, t.Any]]]:
         """Extract dimensions and aggregates from GROUP BY context."""
-        dims: t.List[t.Dict[str, t.Any]] = []
-        aggs: t.List[t.Dict[str, t.Any]] = []
+        dims: list[dict[str, t.Any]] = []
+        aggs: list[dict[str, t.Any]] = []
 
         # Get dimension columns from GROUP BY
         for expr in group.expressions:
             if isinstance(expr, exp.Column):
-                dim_info: t.Dict[str, t.Any] = {"name": expr.name}
+                dim_info: dict[str, t.Any] = {"name": expr.name}
                 if expr.table:
                     dim_info["source"] = expr.table
                 if hasattr(expr, "type") and expr.type:
                     dim_info["type"] = str(expr.type)
                 dims.append(dim_info)
             else:
-                dims.append({"name": expr.sql()})
+                dims.append({"name": self._sql_text(expr)})
 
         # Get aggregates from SELECT clause
         for expr in select.args.get("expressions") or []:
             if isinstance(expr, exp.Alias) and isinstance(expr.this, exp.AggFunc):
                 agg_func = expr.this
                 func_name = agg_func.__class__.__name__.lower()
-                
+
                 # Get the column being aggregated
                 source_col = ""
                 if agg_func.this:
@@ -695,7 +727,7 @@ class VisualASQLGenerator(Generator):
                     else:
                         source_col = agg_func.this.sql()
 
-                agg_info: t.Dict[str, t.Any] = {
+                agg_info: dict[str, t.Any] = {
                     "name": expr.alias,
                     "function": func_name,
                     "source_column": source_col,
@@ -706,7 +738,7 @@ class VisualASQLGenerator(Generator):
 
         return dims, aggs
 
-    def _extract_order_columns(self, order: exp.Order) -> t.List[t.Dict[str, t.Any]]:
+    def _extract_order_columns(self, order: exp.Order) -> list[dict[str, t.Any]]:
         """Extract order by expressions."""
         expressions = []
         for ordered in order.expressions:
@@ -718,7 +750,7 @@ class VisualASQLGenerator(Generator):
 
         return expressions
 
-    def _extract_limit_value(self, limit: exp.Limit) -> t.Optional[int]:
+    def _extract_limit_value(self, limit: exp.Limit) -> int | None:
         """Extract limit count value. Returns None if parsing fails."""
         limit_expr = limit.expression if hasattr(limit, "expression") else limit.this
         if limit_expr:
@@ -732,7 +764,9 @@ class VisualASQLGenerator(Generator):
 
     def _extract_offset_value(self, offset: exp.Offset) -> int:
         """Extract offset count value."""
-        offset_expr = offset.expression if hasattr(offset, "expression") else offset.this
+        offset_expr = (
+            offset.expression if hasattr(offset, "expression") else offset.this
+        )
         if offset_expr:
             try:
                 if hasattr(offset_expr, "this"):

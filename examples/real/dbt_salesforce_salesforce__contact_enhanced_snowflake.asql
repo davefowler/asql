@@ -16,7 +16,7 @@ from stg_salesforce__user stash as salesforce_user
 from contact
   &? account on contact.account_id = account.account_id
   &? salesforce_user on contact.owner_id = salesforce_user.user_id
-  select 
+  select
     contact.contact_id,
     contact.contact_name,
     contact.account_id,
@@ -52,4 +52,3 @@ from contact
     account.parent_id as account_parent_id,
     account.rating as account_rating,
     account.type as account_type
-

@@ -12,17 +12,17 @@ from __future__ import annotations
 from sqlglot import exp
 from sqlglot.optimizer.qualify_columns import qualify_columns
 
+from asql.compiler.sqlglot_schema_adapter import to_sqlglot_schema
 from asql.config import CompileSettings
 from asql.dialect_features import supports_column_exclude
 from asql.errors import ASQLDialectError
-from asql.compiler.sqlglot_schema_adapter import to_sqlglot_schema
 
 
 def transform_column_operators_for_dialect(
-    stmt: exp.Expression,
+    stmt: exp.Expr,
     dialect: str | None,
     settings: CompileSettings,
-) -> exp.Expression:
+) -> exp.Expr:
     """Rewrite star column operators into explicit columns for unsupported dialects.
 
     This uses SQLGlot's schema-aware star expansion (`qualify_columns(..., expand_stars=True)`),
@@ -57,5 +57,3 @@ def transform_column_operators_for_dialect(
         allow_partial_qualification=True,
         dialect=dialect,
     )
-
-

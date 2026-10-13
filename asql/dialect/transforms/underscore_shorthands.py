@@ -13,7 +13,6 @@ from sqlglot import exp
 from asql.config import CompileSettings
 from asql.functions import ASQL_FUNCTION_REGISTRY, NATURAL_AGG_FUNCS
 
-
 _SINCE_UNTIL_PATTERN = re.compile(
     r"^(?P<unit>day|days|week|weeks|month|months|year|years|hour|hours|minute|minutes|second|seconds)_(?P<dir>since|until)_(?P<col>[a-zA-Z_][a-zA-Z0-9_]*)$",
     re.IGNORECASE,
@@ -22,7 +21,7 @@ _SINCE_UNTIL_PATTERN = re.compile(
 _IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
-def _single_from_table_name(stmt: exp.Expression) -> str | None:
+def _single_from_table_name(stmt: exp.Expr) -> str | None:
     """Return the single FROM table name if the query is a simple single-table query."""
     query = stmt.find(exp.Query)
     if not isinstance(query, exp.Query):
@@ -40,9 +39,9 @@ def _single_from_table_name(stmt: exp.Expression) -> str | None:
 
 
 def apply_since_until_underscore_shorthands(
-    stmt: exp.Expression,
+    stmt: exp.Expr,
     settings: CompileSettings,
-) -> exp.Expression:
+) -> exp.Expr:
     """Expand unit_since_col / unit_until_col shorthands into DateDiff expressions.
 
     Behavior:
@@ -56,7 +55,7 @@ def apply_since_until_underscore_shorthands(
     schema = settings.schema
     from_table = _single_from_table_name(stmt) if schema else None
 
-    def _rewrite(node: exp.Expression) -> exp.Expression:
+    def _rewrite(node: exp.Expr) -> exp.Expr:
         if not isinstance(node, exp.Column):
             return node
 
@@ -99,15 +98,15 @@ def apply_since_until_underscore_shorthands(
                 return node
 
         col_expr = exp.Column(this=exp.to_identifier(col_name))
-        return t.cast(exp.Expression, builder([col_expr]))
+        return t.cast(exp.Expr, builder([col_expr]))
 
     return stmt.transform(_rewrite, copy=False)
 
 
 def apply_implicit_function_aliases(
-    stmt: exp.Expression,
+    stmt: exp.Expr,
     settings: CompileSettings,
-) -> exp.Expression:
+) -> exp.Expr:
     """Expand `func_col` shorthand projections into `FUNC(col) AS func_col`.
 
     This is the compiler/AST equivalent of the legacy preparser transform
@@ -127,7 +126,7 @@ def apply_implicit_function_aliases(
 
     prefixes: list[str] = sorted(NATURAL_AGG_FUNCS.keys(), key=len, reverse=True)
 
-    def _rewrite_projection(expr: exp.Expression) -> exp.Expression:
+    def _expand_column(expr: exp.Expr) -> exp.Expr:
         if not isinstance(expr, exp.Column):
             return expr
 
@@ -176,14 +175,20 @@ def apply_implicit_function_aliases(
 
             col_expr = exp.Column(this=exp.to_identifier(col_name))
             built = builder([col_expr])
-            if not built:
-                continue
-
-            return exp.Alias(this=t.cast(exp.Expression, built), alias=exp.to_identifier(name))
+            return exp.Alias(this=built, alias=exp.to_identifier(name))
 
         return expr
 
-    def _rewrite_select(node: exp.Expression) -> exp.Expression:
+    def _rewrite_projection(expr: exp.Expr) -> exp.Expr:
+        # `sum_amount as rev`: expand the shorthand, keep the user's alias.
+        if isinstance(expr, exp.Alias):
+            expanded = _expand_column(expr.this)
+            if isinstance(expanded, exp.Alias):
+                expr.set("this", expanded.this)
+            return expr
+        return _expand_column(expr)
+
+    def _rewrite_select(node: exp.Expr) -> exp.Expr:
         if not isinstance(node, exp.Select):
             return node
 
@@ -191,5 +196,3 @@ def apply_implicit_function_aliases(
         return node
 
     return stmt.transform(_rewrite_select, copy=False)
-
-

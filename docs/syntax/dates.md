@@ -66,6 +66,11 @@ Extract specific parts (returns integers, not dates):
 | `month of year date` | 1-12 | 6 |
 | `quarter of year date` | 1-4 | 2 |
 
+!!! note "Numbering follows the database"
+    Extraction compiles to the database's own function, so numbering can differ by dialect: `week of year` is the ISO week (1-53) on PostgreSQL and DuckDB, but BigQuery's `EXTRACT(WEEK)` counts Sunday-start weeks from 0, and Snowflake's follows its `WEEK_OF_YEAR_POLICY` setting. `day of week` likewise returns the dialect's native numbering. Use `week(date)` truncation when you need weeks that line up across dialects. There is no `year of ...` extraction form; use `extract(year from date)`.
+
+Comparing a truncating unit function with a number, such as `year(created_at) = 2024`, is a compile error because it compares a date with an integer. Write `extract(year from created_at) = 2024` or filter on a date range.
+
 ```asql
 -- Weekend orders
 from orders
@@ -142,7 +147,7 @@ Example:
 
 ```asql
 from orders
-  select 
+  select
     days(shipped_date - order_date) as fulfillment_days,
     months(now() - customer_since) as customer_tenure_months
 ```
@@ -213,7 +218,7 @@ from users
   select
     name,
     days_since(last_login),           -- Function call
-    months since signup_date,          -- Space notation  
+    months since signup_date,          -- Space notation
     years_since_birth_date as age      -- Underscore alias
 
 from tasks

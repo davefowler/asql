@@ -44,7 +44,7 @@ When a table has multiple FKs to the same table:
 ```asql
 -- accounts has owner_user_id, manager_user_id
 from accounts
-  select 
+  select
     accounts.owner.name,     -- via owner_user_id → users
     accounts.manager.name    -- via manager_user_id → users
 ```

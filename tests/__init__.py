@@ -1,2 +1,1 @@
 """ASQL test suite."""
-

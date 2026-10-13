@@ -3,7 +3,22 @@ site_description: A modern, pipeline-based query language designed for analytics
 site_author: Analytic SQL Contributors
 site_url: https://analyticsql.com
 
+# Emit one real file per page (syntax/pipe.html) instead of directory URLs
+# (syntax/pipe/index.html). The site is served from a GCS bucket behind our
+# external Application Load Balancer, and a backend bucket does not resolve
+# subdirectory index files — `/syntax/pipe/` would look up an object literally
+# named `syntax/pipe/` and 404. Only `/` is covered, by the bucket's
+# main_page_suffix. Turning this back on 404s every page but the homepage.
+use_directory_urls: false
+
 # Exclude internal/notes pages from build (often contain WIP syntax).
+#
+# macros.py and __pycache__/ are not notes — they are the macros plugin's own
+# source, and they live under docs_dir only because mkdocs' `module_name` wants
+# them there. mkdocs copies anything it doesn't recognize as a page verbatim into
+# the site output, and that output is served to allUsers from a public bucket, so
+# leaving them in publishes non-doc source files. They were live at
+# https://analyticsql.com/macros.py until this exclusion landed.
 exclude_docs: |
   github_issues_to_create.md
   unimplemented_features.md
@@ -12,6 +27,8 @@ exclude_docs: |
   playground.md
   style_analysis.md
   README.md
+  macros.py
+  __pycache__/
 
 # Repository
 repo_name: asql
@@ -99,15 +116,19 @@ plugins:
   #     minify_html: true
 
 # Navigation
-# With navigation.indexes, use index.md directly for clickable section headers
+# With navigation.indexes, use index.md directly for clickable section headers.
+# Give every section-landing index.md an explicit label: an untitled nav entry
+# falls back to a filename-derived title, so all six landed in the browser tab
+# and in prev/next links as the word "Index". (mkdocs would otherwise use the
+# page's H1 only for a *top-level* entry — these are all nested in a section.)
 nav:
   - Home:
-    - index.md
+    - Overview: index.md
     - Quick Start: quick_start.md
     - Tutorial: tutorial.md
     - Examples: examples.md
   - Syntax:
-    - syntax/index.md
+    - Syntax Guide: syntax/index.md
     - Pipe Basics: syntax/pipe.md
     - Expressions & Operators: syntax/expressions.md
     - Aggregations: syntax/aggregations.md
@@ -119,26 +140,28 @@ nav:
     - Sampling: syntax/sampling.md
     - Pivot, Unpivot & Explode: syntax/pivot-unpivot.md
   - Concepts:
-    - concepts/index.md
+    - Concepts: concepts/index.md
     - Pipe Semantics: concepts/pipe-semantics.md
     - Guaranteed Groups: concepts/guaranteed-groups.md
     - Convention Over Configuration: concepts/conventions.md
     - Function Shorthand: concepts/shorthand.md
+    - The Fanout Problem: concepts/fanout.md
+    - Metrics and Relationships: concepts/semantic-layer.md
   - Reference:
-    - reference/index.md
+    - Reference: reference/index.md
     - Functions: reference/functions.md
     - Operators: reference/operators.md
     - Keywords: reference/keywords.md
     - Dialect Limitations: dialect-limitations.md
     - Full Specification: spec.md
   - Coming From:
-    - coming-from/index.md
+    - Coming from X: coming-from/index.md
     - pandas: coming-from/pandas.md
     - dbt: coming-from/dbt.md
     - R / dplyr: coming-from/r.md
     - SQL: coming-from/sql.md
   - Learn More:
-    - learn-more/index.md
+    - Learn More: learn-more/index.md
     - Grouping Guide: group_by.md
     - Window Functions Deep Dive: window_functions.md
     - Style Guide: style_guide.md
@@ -146,4 +169,3 @@ nav:
     - Syntax Decisions: learn-more/syntax-decisions.md
     - Integrating ASQL: integrating.md
     - Architecture: architecture.md
-

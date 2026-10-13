@@ -25,9 +25,9 @@ with change_data as (
     -- we need the current state to work backwards from to backfill the slowly changing dimension model
     select *
     from leads
-    
+
     union all
-    
+
     select *
     from change_data
 

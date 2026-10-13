@@ -23,4 +23,3 @@ from viewed
   union all from added_to_cart
   union all from started_checkout
   union all from completed_purchase
-

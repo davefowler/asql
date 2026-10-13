@@ -5,18 +5,18 @@ This module is loaded by mkdocs-macros-plugin and provides:
 2. Pre-compilation of ASQL to all supported SQL dialects
 """
 
-import re
-import os
-import json
 import base64
-import html
+import functools
 import hashlib
-import warnings
+import html
+import json
 import logging
-from typing import Dict
+import os
+import re
+import warnings
 
 # Suppress SQLGlot warnings during compilation (they're noisy for unsupported features)
-logging.getLogger('sqlglot').setLevel(logging.ERROR)
+logging.getLogger("sqlglot").setLevel(logging.ERROR)
 
 
 # Top 4 dialects (most commonly used, shown as tabs)
@@ -24,9 +24,21 @@ TOP_DIALECTS = ["postgres", "snowflake", "bigquery", "databricks"]
 
 # All available dialects
 ALL_DIALECTS = [
-    "postgres", "mysql", "sqlite", "oracle", "tsql", "bigquery",
-    "snowflake", "redshift", "presto", "trino", "spark", "hive",
-    "clickhouse", "duckdb", "databricks"
+    "postgres",
+    "mysql",
+    "sqlite",
+    "oracle",
+    "tsql",
+    "bigquery",
+    "snowflake",
+    "redshift",
+    "presto",
+    "trino",
+    "spark",
+    "hive",
+    "clickhouse",
+    "duckdb",
+    "databricks",
 ]
 
 # Dialect display names
@@ -60,7 +72,9 @@ def _normalize_base_url(url: str) -> str:
 def _runtime_config_script_tag() -> str:
     """Inject runtime config for docs JavaScript (per-page)."""
     docs_url = _normalize_base_url(os.environ.get("DOCS_URL", DEFAULT_DOCS_URL))
-    playground_url = _normalize_base_url(os.environ.get("PLAYGROUND_URL", DEFAULT_PLAYGROUND_URL))
+    playground_url = _normalize_base_url(
+        os.environ.get("PLAYGROUND_URL", DEFAULT_PLAYGROUND_URL)
+    )
     return (
         "<script>"
         f"window.__ASQL_DOCS_URL__ = {json.dumps(docs_url)};"
@@ -136,7 +150,7 @@ def format_asql_for_docs(asql_query: str) -> str:
             out.append(raw)
             continue
 
-        leading_ws = re.match(r"^\s*", raw).group(0)
+        leading_ws = raw[: len(raw) - len(raw.lstrip())]
         body = raw.strip()
 
         # select (a, b, c)
@@ -144,7 +158,10 @@ def format_asql_for_docs(asql_query: str) -> str:
             m = re.match(r"^select\s*\((.*)\)\s*$", body, flags=re.IGNORECASE)
             if m:
                 inner = m.group(1)
-                out.append(leading_ws + _format_paren_list_block("select ", inner, leading_ws + "  "))
+                out.append(
+                    leading_ws
+                    + _format_paren_list_block("select ", inner, leading_ws + "  ")
+                )
                 continue
 
         # group by <keys> (a, b, c)
@@ -152,12 +169,17 @@ def format_asql_for_docs(asql_query: str) -> str:
             # Require a whitespace boundary before the aggregation parens so we don't
             # accidentally treat function-call parens in the grouping keys (e.g. month(created_at))
             # as the start of the aggregation list.
-            m = re.match(r"^group\s+by\s+(.+?)\s+\((.*)\)\s*$", body, flags=re.IGNORECASE)
+            m = re.match(
+                r"^group\s+by\s+(.+?)\s+\((.*)\)\s*$", body, flags=re.IGNORECASE
+            )
             if m:
                 keys = m.group(1).strip()
                 inner = m.group(2)
                 prefix = f"group by {keys} "
-                out.append(leading_ws + _format_paren_list_block(prefix, inner, leading_ws + "  "))
+                out.append(
+                    leading_ws
+                    + _format_paren_list_block(prefix, inner, leading_ws + "  ")
+                )
                 continue
 
         out.append(raw)
@@ -166,27 +188,48 @@ def format_asql_for_docs(asql_query: str) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Dict[str, str]:
+@functools.lru_cache(maxsize=1)
+def _docs_schema():
+    """Schema for docs examples — reuses the playground's table/column set.
+
+    Column operators (`except`/`rename`/`replace`) need a schema to expand into an
+    explicit column list on dialects without native EXCLUDE support (Postgres, MySQL,
+    …); without one those examples error on most dialect tabs. Docs examples compile
+    *with* this schema by design so every dialect tab renders. Reuses PLAYGROUND_SCHEMA
+    (rather than a bespoke fixture) so the docs' tables match the playground's.
+    """
+    from asql.playground.schema import PLAYGROUND_SCHEMA
+    from asql.schema import Schema
+
+    return Schema.from_dict(
+        {"tables": {t: {"columns": cols} for t, cols in PLAYGROUND_SCHEMA.items()}}
+    )
+
+
+def precompile_asql_query(
+    asql_query: str, skip_compilation: bool = False
+) -> dict[str, str]:
     """
     Pre-compile an ASQL query to all dialects.
-    
+
     Args:
         asql_query: The ASQL query to compile
         skip_compilation: If True, skip SQL compilation and only return formatted ASQL
-    
+
     Returns a dict mapping dialect -> SQL string.
     """
-    import sys
     import io
+    import sys
+
     import asql
-    
+
     formatted_asql = format_asql_for_docs(asql_query)
     results = {"asql": formatted_asql}
-    
+
     # Skip compilation if flag is set
     if skip_compilation:
         return results
-    
+
     compilation_errors: list[str] = []
 
     for dialect in ALL_DIALECTS:
@@ -197,8 +240,15 @@ def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Di
                 old_stdout, old_stderr = sys.stdout, sys.stderr
                 sys.stdout = sys.stderr = io.StringIO()
                 try:
-                    # Use asql.transpile() with infer_join_keys for docs examples
-                    sql_list = asql.transpile(formatted_asql, write=dialect, infer_join_keys=True)
+                    # Use asql.transpile() with infer_join_keys for docs examples.
+                    # Pass the playground schema so column operators expand on
+                    # dialects without native EXCLUDE support (see _docs_schema).
+                    sql_list = asql.transpile(
+                        formatted_asql,
+                        write=dialect,
+                        infer_join_keys=True,
+                        schema=_docs_schema(),
+                    )
                     sql = sql_list[0] if sql_list else ""
                 finally:
                     sys.stdout, sys.stderr = old_stdout, old_stderr
@@ -208,12 +258,12 @@ def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Di
 
                 parsed = sqlglot.parse_one(sql, dialect=dialect)
                 results[dialect] = parsed.sql(dialect=dialect, pretty=True)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # If pretty formatting fails for any reason, fall back to raw SQL
                 results[dialect] = sql
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             compilation_errors.append(f"{dialect}: {e}")
-    
+
     if compilation_errors:
         # Fail fast: docs build should fail if any compiled example doesn't compile.
         msg = (
@@ -227,19 +277,21 @@ def precompile_asql_query(asql_query: str, skip_compilation: bool = False) -> Di
     return results
 
 
-def generate_mini_playground_html(compiled: Dict[str, str], block_id: str, show_split_pane: bool = True) -> str:
+def generate_mini_playground_html(
+    compiled: dict[str, str], block_id: str, show_split_pane: bool = True
+) -> str:
     """Generate HTML for the ASQL mini-playground (split pane + global 'to' dialect).
-    
+
     Args:
         compiled: Dict mapping dialect -> SQL string
         block_id: Unique ID for this code block
         show_split_pane: If False, only show ASQL pane (no compiled SQL)
     """
     initial_asql = html.escape(compiled.get("asql", ""))
-    
+
     # If split pane is disabled, return simple single-pane HTML
     if not show_split_pane:
-        return f'''<div class="asql-code-block asql-mini-playground" data-block-id="{block_id}">
+        return f"""<div class="asql-code-block asql-mini-playground" data-block-id="{block_id}">
   <div class="asql-mp-pane asql-mp-pane-left">
     <div class="asql-mp-pane-header">
       <span class="asql-mp-pane-title">ASQL</span>
@@ -252,7 +304,7 @@ def generate_mini_playground_html(compiled: Dict[str, str], block_id: str, show_
     </div>
     <pre><code class="language-asql" id="asql-{block_id}">{initial_asql}</code></pre>
   </div>
-</div>'''
+</div>"""
 
     # Encode compiled SQL for embedding in HTML
     compiled_json = json.dumps(compiled)
@@ -269,9 +321,11 @@ def generate_mini_playground_html(compiled: Dict[str, str], block_id: str, show_
             continue
         dialect_name = get_dialect_name(dialect)
         selected_attr = ' selected="selected"' if dialect == default_to_dialect else ""
-        options_html += f'<option value="{dialect}"{selected_attr}>{dialect_name}</option>\n'
+        options_html += (
+            f'<option value="{dialect}"{selected_attr}>{dialect_name}</option>\n'
+        )
 
-    playground_html = f'''<div class="asql-code-block asql-mini-playground" data-block-id="{block_id}" data-compiled="{compiled_b64}">
+    playground_html = f"""<div class="asql-code-block asql-mini-playground" data-block-id="{block_id}" data-compiled="{compiled_b64}">
 <div class="asql-mp-grid">
   <div class="asql-mp-pane asql-mp-pane-left">
     <div class="asql-mp-pane-header">
@@ -297,7 +351,7 @@ def generate_mini_playground_html(compiled: Dict[str, str], block_id: str, show_
   </div>
 </div>
 </div>
-'''
+"""
 
     return playground_html
 
@@ -306,7 +360,7 @@ def process_asql_blocks(markdown_content: str, show_split_pane: bool = True) -> 
     """
     Process markdown content, finding ASQL playground blocks and replacing them
     with split-pane mini-playground HTML (ASQL → compiled SQL).
-    
+
     Args:
         markdown_content: The markdown content to process
         show_split_pane: If False, skip compilation and only show ASQL pane
@@ -316,33 +370,40 @@ def process_asql_blocks(markdown_content: str, show_split_pane: bool = True) -> 
     # We intentionally do NOT auto-compile plain ```asql fences anymore.
     # - ```asql       : syntax-highlight only (snippets, templates, reference docs)
     # - ```asql-play  : must be a runnable query; compiled and shown as mini-playground
-    asql_pattern = r'```asql-play\s*\n(.*?)```'
+    asql_pattern = r"```asql-play\s*\n(.*?)```"
 
     def replace_asql_block(match):
         asql_query = match.group(1).strip()
-        
+
         # Skip if empty
         if not asql_query:
             return match.group(0)
-        
+
         # Pre-compile to all dialects (skip if split pane is disabled)
-        compiled = precompile_asql_query(asql_query, skip_compilation=not show_split_pane)
-        
+        compiled = precompile_asql_query(
+            asql_query, skip_compilation=not show_split_pane
+        )
+
         # Create a unique ID for this code block
         block_id = hashlib.md5(asql_query.encode()).hexdigest()[:8]
-        
+
         # Generate HTML for mini playground
-        tabs_html = generate_mini_playground_html(compiled, block_id, show_split_pane=show_split_pane)
-        
+        tabs_html = generate_mini_playground_html(
+            compiled, block_id, show_split_pane=show_split_pane
+        )
+
         return tabs_html
-    
+
     # Replace all ASQL blocks
-    processed_content = re.sub(asql_pattern, replace_asql_block, markdown_content, flags=re.DOTALL)
-    
+    processed_content = re.sub(
+        asql_pattern, replace_asql_block, markdown_content, flags=re.DOTALL
+    )
+
     return processed_content
 
 
 # MkDocs macros plugin hooks
+
 
 def define_env(env):
     """
@@ -370,28 +431,32 @@ def define_env(env):
                 # If macros is just a string, it has no config
                 macros_config = {}
                 break
-        
+
         if macros_config is not None:
             show_split_pane = macros_config.get("show_split_pane", False)
         else:
             # Default to False if not configured
             show_split_pane = False
-    
+
     # Store in env for use in hooks
     env.variables["asql_show_split_pane"] = show_split_pane
-    
+
     @env.macro
     def asql(query: str) -> str:
         """
         Macro to render an ASQL query with dialect tabs.
-        
+
         Usage in markdown:
             {{ asql("SELECT * FROM users |> WHERE active") }}
         """
-        compiled = precompile_asql_query(query.strip(), skip_compilation=not show_split_pane)
+        compiled = precompile_asql_query(
+            query.strip(), skip_compilation=not show_split_pane
+        )
         block_id = hashlib.md5(query.encode()).hexdigest()[:8]
-        return generate_mini_playground_html(compiled, block_id, show_split_pane=show_split_pane)
-    
+        return generate_mini_playground_html(
+            compiled, block_id, show_split_pane=show_split_pane
+        )
+
     @env.macro
     def dialect_name(dialect: str) -> str:
         """Get display name for a dialect."""
@@ -400,7 +465,9 @@ def define_env(env):
     @env.macro
     def playground_url() -> str:
         """Get the configured playground base URL."""
-        return _normalize_base_url(os.environ.get("PLAYGROUND_URL", DEFAULT_PLAYGROUND_URL))
+        return _normalize_base_url(
+            os.environ.get("PLAYGROUND_URL", DEFAULT_PLAYGROUND_URL)
+        )
 
     @env.macro
     def docs_url() -> str:
@@ -414,8 +481,10 @@ def on_pre_page_macros(env) -> None:
     This automatically converts ```asql-play blocks to the mini-playground.
     """
     # Access the markdown content and process it
-    if hasattr(env, 'markdown') and env.markdown:
-        playground_url = _normalize_base_url(os.environ.get("PLAYGROUND_URL", DEFAULT_PLAYGROUND_URL))
+    if hasattr(env, "markdown") and env.markdown:
+        playground_url = _normalize_base_url(
+            os.environ.get("PLAYGROUND_URL", DEFAULT_PLAYGROUND_URL)
+        )
 
         # Make markdown links environment-aware (so mkdocs serve can point at localhost).
         env.markdown = env.markdown.replace(DEFAULT_PLAYGROUND_URL, playground_url)
@@ -427,10 +496,14 @@ def on_pre_page_macros(env) -> None:
         show_split_pane = env.variables.get("asql_show_split_pane", True)
 
         try:
-            env.markdown = process_asql_blocks(env.markdown, show_split_pane=show_split_pane)
+            env.markdown = process_asql_blocks(
+                env.markdown, show_split_pane=show_split_pane
+            )
         except Exception as e:
             page = getattr(env, "page", None)
             page_file = getattr(page, "file", None) if page is not None else None
-            src_path = getattr(page_file, "src_path", None) if page_file is not None else None
+            src_path = (
+                getattr(page_file, "src_path", None) if page_file is not None else None
+            )
             page_hint = f" (page: {src_path})" if src_path else ""
             raise RuntimeError(f"{e}{page_hint}") from e

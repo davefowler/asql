@@ -6,7 +6,7 @@ WITH active_users AS (
     SELECT * FROM users WHERE status = 'active' AND last_login_date >= CURRENT_DATE - INTERVAL '30 days'
 ),
 user_orders AS (
-    SELECT 
+    SELECT
         customer_id,
         COUNT(*) AS order_count,
         SUM(total_amount) AS lifetime_value
@@ -14,7 +14,7 @@ user_orders AS (
     WHERE status = 'completed'
     GROUP BY customer_id
 )
-SELECT 
+SELECT
     au.country,
     COUNT(DISTINCT au.user_id) AS active_user_count,
     AVG(COALESCE(uo.order_count, 0)) AS avg_orders_per_user,
@@ -23,4 +23,3 @@ FROM active_users au
 LEFT JOIN user_orders uo ON au.user_id = uo.customer_id
 GROUP BY au.country
 ORDER BY active_user_count DESC;
-

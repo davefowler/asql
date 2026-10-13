@@ -8,7 +8,7 @@ from orders
     and customers.country in ("US", "CA", "UK")
     and exists (
       from order_items as oi2
-      where oi2.order_id = orders.order_id 
+      where oi2.order_id = orders.order_id
         and oi2.price > 50
     )
   group by orders.order_id, orders.order_date, customers.customer_name, orders.total_amount (
@@ -16,4 +16,3 @@ from orders
   )
   where item_count >= 2
   order by -orders.order_date, -orders.total_amount
-

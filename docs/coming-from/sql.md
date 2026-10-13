@@ -17,6 +17,43 @@ ASQL is still “real SQL” (it compiles to your warehouse dialect), but it’s
 - **Less ceremony**: fewer CTEs, fewer “select lists as the control plane”, fewer giant macro helpers.
 - **Ergonomic shortcuts**: things like `??`, `-col` for descending, and `per ...` for common window patterns.
 
+## Standard SQL is valid ASQL
+
+You don't have to convert anything to start — you can begin every query with
+`SELECT` if you want. ASQL has two entry points, one language:
+
+- **A standard SQL statement.** SELECT queries, CTEs, HAVING, subqueries,
+  unions, window functions — all pass through and compile to your target
+  dialect. ASQL's expression-level sugar works inside them: `==`, `#`, `??`,
+  `order by -col`, `30 days ago`, `when/then`, safe casts (`::int?`), alias
+  reuse.
+- **A FROM-first pipeline.** Start with `from` and chain transforms
+  top-to-bottom. This form owns the pipeline-only tools: aggregate blocks
+  (`group by region ( sum(amount) as revenue )`), `spine by` gap-filling,
+  and `per` window shortcuts.
+
+A SELECT query can also keep going past standard SQL's ceiling — trailing
+pipeline transforms continue it:
+
+```asql-play
+select region, sum(amount) as revenue
+from orders
+group by region
+where revenue > 1000
+stash as top_regions
+```
+
+| In a SELECT-first query | Supported? |
+|---|---|
+| Expression sugar (`==`, `#`, `??`, `-col`, relative dates, `when/then`, safe casts, alias reuse) | ✅ |
+| Trailing `stash as`, `rename`, `replace`, `except`, `cohort` | ✅ |
+| Trailing `where` after `group by` (post-aggregation filter) | ✅ — identical to the pipeline form |
+| Aggregate blocks `group by x ( ... )` | ❌ pipe-only — ASQL raises a clear error |
+| `spine by`, `per` | ❌ pipe-only |
+
+When intent would be ambiguous, ASQL errors instead of guessing — you never
+get plausible-looking wrong SQL.
+
 ## Key Differences
 
 | SQL | ASQL | Why |
@@ -46,7 +83,7 @@ If you can write:
 
 === "SQL"
     ```sql
-    SELECT 
+    SELECT
         region,
         SUM(amount) as revenue,
         COUNT(DISTINCT customer_id) as customers
@@ -118,7 +155,7 @@ If you can write:
     ```sql
     SELECT
         id,
-        CASE 
+        CASE
             WHEN amount > 1000 THEN 'high'
             WHEN amount > 100 THEN 'medium'
             ELSE 'low'
@@ -164,7 +201,7 @@ If you can write:
     ```sql
     SELECT *,
         ROW_NUMBER() OVER (
-            PARTITION BY customer_id 
+            PARTITION BY customer_id
             ORDER BY created_at DESC
         ) as rn
     FROM orders
@@ -204,7 +241,7 @@ If you can write:
         SELECT * FROM users WHERE is_active
     ),
     user_orders AS (
-        SELECT 
+        SELECT
             u.id,
             u.name,
             COUNT(*) as order_count
@@ -254,7 +291,7 @@ If you can write:
     DATE_TRUNC(created_at, MONTH)             -- BigQuery
     TRUNC(created_at, 'MONTH')                -- Oracle
     DATETRUNC(MONTH, created_at)              -- SQL Server
-    
+
     CURRENT_DATE - INTERVAL '7 days'          -- Postgres
     DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)  -- BigQuery
     ```
@@ -263,7 +300,7 @@ If you can write:
     ```asql
     -- Same syntax everywhere, compiles to right dialect
     month(created_at)
-    
+
     7 days ago
     today() - 7 days
     ```
@@ -286,14 +323,14 @@ If you can write:
 === "SQL"
     ```sql
     COALESCE(first_name, nickname, 'Unknown')
-    
+
     NULLIF(amount, 0)
     ```
 
 === "ASQL"
     ```asql
     first_name ?? nickname ?? 'Unknown'
-    
+
     when amount = 0 then null, else amount
     ```
 
@@ -304,7 +341,7 @@ If you can write:
 === "SQL"
     ```sql
     CAST(value AS INTEGER)
-    
+
     -- Safe casting (varies by dialect)
     TRY_CAST(value AS INTEGER)   -- Snowflake
     SAFE_CAST(value AS INT64)    -- BigQuery
@@ -313,10 +350,10 @@ If you can write:
 === "ASQL"
     ```asql
     value::integer
-    
+
     -- Safe casting (returns NULL on failure)
     value::integer?
-    
+
     -- With default
     value::integer? ?? 0
     ```
@@ -327,7 +364,7 @@ If you can write:
 
 === "SQL"
     ```sql
-    SELECT 
+    SELECT
         region,
         SUM(amount) as total,
         COUNT(*) as count,
@@ -357,7 +394,7 @@ One of SQL's biggest annoyances: every function needs an explicit alias or you g
 === "SQL"
     ```sql
     -- Without aliases, you get useless names
-    SELECT 
+    SELECT
         SUM(amount),     -- Column name: "sum" or "SUM(amount)" or "f0_"
         AVG(amount),     -- Column name: "avg" or "AVG(amount)" or "f1_"
         COUNT(*)         -- Column name: "count" or "COUNT(*)" or "f2_"
@@ -366,7 +403,7 @@ One of SQL's biggest annoyances: every function needs an explicit alias or you g
     -- Can't reference these in ORDER BY without aliases!
 
     -- Must add aliases everywhere:
-    SELECT 
+    SELECT
         SUM(amount) AS sum_amount,
         AVG(amount) AS avg_amount,
         COUNT(*) AS num

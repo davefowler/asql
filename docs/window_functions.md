@@ -12,13 +12,13 @@ Getting the most recent order per customer in SQL requires this:
 
 ```sql
 SELECT * FROM (
-    SELECT *, 
+    SELECT *,
         ROW_NUMBER() OVER (
-            PARTITION BY customer_id 
+            PARTITION BY customer_id
             ORDER BY order_date DESC
         ) as rn
     FROM orders
-) subquery 
+) subquery
 WHERE rn = 1;
 ```
 
@@ -135,7 +135,7 @@ Instead of verbose `LAG()` and `LEAD()` syntax, use `prior()` and `next()`:
 ```asql
 from monthly_sales
   order by month
-  select 
+  select
     month,
     revenue,
     prior(revenue) as prev_month,          -- LAG(revenue, 1)
@@ -145,7 +145,7 @@ from monthly_sales
 
 **Compiles to:**
 ```sql
-SELECT 
+SELECT
   month,
   revenue,
   LAG(revenue, 1) AS prev_month,
@@ -164,7 +164,7 @@ Calculate cumulative totals with `running_sum()`, `running_avg()`, and `running_
 ```asql
 from transactions
   order by date
-  select 
+  select
     date,
     amount,
     running_sum(amount) as cumulative_total,
@@ -174,15 +174,24 @@ from transactions
 
 **Compiles to:**
 ```sql
-SELECT 
+SELECT
   date,
   amount,
-  SUM(amount) OVER (ROWS UNBOUNDED PRECEDING) AS cumulative_total,
-  AVG(amount) OVER (ROWS UNBOUNDED PRECEDING) AS avg_to_date,
-  COUNT(*) OVER (ROWS UNBOUNDED PRECEDING) AS transaction_number
+  SUM(amount) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING) AS cumulative_total,
+  AVG(amount) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING) AS avg_to_date,
+  COUNT(*) OVER (ORDER BY date ROWS UNBOUNDED PRECEDING) AS transaction_number
 FROM transactions
 ORDER BY date
 ```
+
+The running aggregate **inherits the query's `ORDER BY`** so it accumulates in the same
+order the query returns rows — that's almost always what you want. The grain follows
+too: put a running aggregate in a `group by` block and it accumulates over the grouped
+rows.
+
+A running total over an undefined order is meaningless, so a `running_*`/`rolling_*` with
+no `order by` in the query is an **error** — add an `order by`, or write an explicit
+`over (order by ...)`.
 
 ---
 
@@ -193,7 +202,7 @@ Calculate moving averages with `rolling_avg()` and `rolling_sum()`:
 ```asql
 from daily_sales
   order by date
-  select 
+  select
     date,
     revenue,
     rolling_avg(revenue, 7) as seven_day_avg,
@@ -202,11 +211,11 @@ from daily_sales
 
 **Compiles to:**
 ```sql
-SELECT 
+SELECT
   date,
   revenue,
-  AVG(revenue) OVER (ROWS 6 PRECEDING) AS seven_day_avg,
-  SUM(revenue) OVER (ROWS 29 PRECEDING) AS thirty_day_total
+  AVG(revenue) OVER (ORDER BY date ROWS 6 PRECEDING) AS seven_day_avg,
+  SUM(revenue) OVER (ORDER BY date ROWS 29 PRECEDING) AS thirty_day_total
 FROM daily_sales
 ORDER BY date
 ```
@@ -219,7 +228,7 @@ Get the first or last value based on ordering:
 
 ```asql
 from orders
-  select 
+  select
     customer_id,
     first(order_id order by order_date) as first_order,
     last(order_id order by order_date) as latest_order
@@ -233,7 +242,7 @@ Get the value of one column where another column is at its maximum or minimum:
 
 ```asql
 from orders
-  select 
+  select
     customer_id,
     arg_max(order_id, order_date) as latest_order_id,
     arg_min(order_id, order_date) as earliest_order_id
@@ -251,7 +260,7 @@ ASQL also supports the full window function syntax with `OVER`:
 
 ```asql
 from employees
-  select *, 
+  select *,
     row_number() over (partition by department order by -salary) as salary_rank,
     rank() over (partition by department order by -salary) as rank,
     sum(salary) over (partition by department) as dept_total
@@ -287,11 +296,11 @@ from employees
 | `prior(col, n)` | `LAG(col, n)` | Value from n rows before |
 | `next(col)` | `LEAD(col, 1)` | Value from next row |
 | `next(col, n)` | `LEAD(col, n)` | Value from n rows after |
-| `running_sum(col)` | `SUM(col) OVER (ROWS UNBOUNDED PRECEDING)` | Cumulative sum |
-| `running_avg(col)` | `AVG(col) OVER (ROWS UNBOUNDED PRECEDING)` | Cumulative average |
-| `running_count(*)` | `COUNT(*) OVER (ROWS UNBOUNDED PRECEDING)` | Cumulative count |
-| `rolling_sum(col, n)` | `SUM(col) OVER (ROWS n-1 PRECEDING)` | Rolling sum of n rows |
-| `rolling_avg(col, n)` | `AVG(col) OVER (ROWS n-1 PRECEDING)` | Rolling average of n rows |
+| `running_sum(col)` | `SUM(col) OVER (ORDER BY <query> ROWS UNBOUNDED PRECEDING)` | Cumulative sum |
+| `running_avg(col)` | `AVG(col) OVER (ORDER BY <query> ROWS UNBOUNDED PRECEDING)` | Cumulative average |
+| `running_count(*)` | `COUNT(*) OVER (ORDER BY <query> ROWS UNBOUNDED PRECEDING)` | Cumulative count |
+| `rolling_sum(col, n)` | `SUM(col) OVER (ORDER BY <query> ROWS n-1 PRECEDING)` | Rolling sum of n rows |
+| `rolling_avg(col, n)` | `AVG(col) OVER (ORDER BY <query> ROWS n-1 PRECEDING)` | Rolling average of n rows |
 | `first(col order by x)` | `FIRST_VALUE(col) OVER (ORDER BY x)` | First value when ordered |
 | `last(col order by x)` | `FIRST_VALUE(col) OVER (ORDER BY x DESC)` | Last value when ordered |
 | `arg_max(col, x)` | Value of col where x is MAX | ClickHouse-style argMax |
@@ -323,7 +332,7 @@ from orders
 
 ```asql
 from monthly_revenue
-  select 
+  select
     month,
     revenue,
     prior(revenue) as prev_month,
@@ -337,7 +346,7 @@ from monthly_revenue
 ```asql
 from daily_metrics
   order by date
-  select 
+  select
     date,
     value,
     rolling_avg(value, 7) as seven_day_avg
@@ -348,7 +357,7 @@ from daily_metrics
 ```asql
 from transactions
   order by date
-  select 
+  select
     date,
     amount,
     running_sum(amount) as balance
@@ -364,7 +373,7 @@ from employees
 
 -- Pattern 2: Using QUALIFY
 from employees
-  select 
+  select
     department,
     name,
     salary,

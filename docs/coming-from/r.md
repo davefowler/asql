@@ -65,9 +65,9 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
 === "ASQL"
     ```asql
     from orders
-    select 
-        id, 
-        customer_id, 
+    select
+        id,
+        customer_id,
         amount,
         price * quantity as total,
         amount > 1000 as is_large
@@ -123,7 +123,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     # Left join
     orders %>%
       left_join(customers, by = "customer_id")
-    
+
     # Inner join
     orders %>%
       inner_join(customers, by = c("cust_id" = "id"))
@@ -201,7 +201,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     # Top 5 overall
     orders %>%
       slice_max(amount, n = 5)
-    
+
     # Top 3 per group
     orders %>%
       group_by(region) %>%
@@ -271,7 +271,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
         names_to = "month",
         values_to = "value"
       )
-    
+
     # Pivot wider
     df %>%
       pivot_wider(
@@ -290,4 +290,3 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     from sales
     pivot amount by category
     ```
-

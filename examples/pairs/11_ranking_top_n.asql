@@ -10,7 +10,7 @@ from products
   stash as product_revenue
 
 from product_revenue
-  select 
+  select
     product_id,
     product_name,
     category,
@@ -20,4 +20,3 @@ from product_revenue
     rank() over (partition by category order by total_revenue desc) as category_rank
   order by -total_revenue
   take 50
-

@@ -9,17 +9,16 @@ This enables dynamic column suggestions in dropdowns based on:
 2. Previous pipeline steps (what columns exist at this point)
 """
 
-from typing import List, Dict, Optional
 from sqlglot import exp
-from asql.errors import ASQLError
 from sqlglot.optimizer import qualify
 from sqlglot.schema import MappingSchema
 
+from asql.errors import ASQLError
+
 
 def get_output_columns_for_step(
-    asql_up_to_step: str,
-    schema: Optional[MappingSchema] = None
-) -> List[Dict[str, str]]:
+    asql_up_to_step: str, schema: MappingSchema | None = None
+) -> list[dict[str, str]]:
     """
     Get available output columns after executing ASQL up to a given step.
 
@@ -31,6 +30,7 @@ def get_output_columns_for_step(
         List of dicts with column info: [{"name": "col", "type": "VARCHAR", "table": "users"}, ...]
     """
     import sqlglot
+    import sqlglot.errors
 
     # Parse ASQL to AST
     try:
@@ -63,129 +63,26 @@ def get_output_columns_for_step(
 
 
 def _extract_column_info(
-    expr: exp.Expression,
-    schema: Optional[MappingSchema] = None
-) -> Optional[Dict[str, str]]:
+    expr: exp.Expr, schema: MappingSchema | None = None
+) -> dict[str, str] | None:
     """Extract column information from a SELECT expression."""
 
     # Get output name (handles aliases)
     col_name = expr.output_name
-    if col_name is None:
+    if not col_name:
         # Complex expressions without aliases may not have an output name
         return None
 
     # Try to determine type from schema
     col_type = "UNKNOWN"
     table_name = None
-
-    if isinstance(expr, exp.Column):
-        table_name = expr.table
+    column = expr.this if isinstance(expr, exp.Alias) else expr
+    if isinstance(column, exp.Column):
+        table_name = column.table
         if schema and table_name:
-            # Look up type in schema
-            # Note: SQLGlot's MappingSchema format is {table: {col: type}}
-            table_schema = schema.mapping.get(table_name, {})
-            col_type = table_schema.get(expr.name, "UNKNOWN")
+            # SQLGlot's MappingSchema format is {table: {col: type}}
+            table_schema = schema.mapping.get(table_name)
+            if isinstance(table_schema, dict):
+                col_type = table_schema.get(column.name, "UNKNOWN")
 
-    elif isinstance(expr, exp.Alias):
-        # For aliased expressions, try to infer from the inner expression
-        if isinstance(expr.this, exp.Column):
-            inner = expr.this
-            table_name = inner.table
-            if schema and table_name:
-                table_schema = schema.mapping.get(table_name, {})
-                col_type = table_schema.get(inner.name, "UNKNOWN")
-
-    return {
-        "name": col_name,
-        "type": col_type,
-        "table": table_name or ""
-    }
-
-
-def get_available_tables(schema: Optional[MappingSchema] = None) -> List[str]:
-    """Get list of available tables from schema."""
-    if not schema:
-        return []
-
-    return list(schema.mapping.keys())
-
-
-def get_columns_for_table(
-    table_name: str,
-    schema: Optional[MappingSchema] = None
-) -> List[Dict[str, str]]:
-    """
-    Get all columns for a specific table.
-
-    Args:
-        table_name: Name of table
-        schema: Schema containing table definitions
-
-    Returns:
-        List of column dicts: [{"name": "id", "type": "INT"}, ...]
-    """
-    if not schema or table_name not in schema.mapping:
-        return []
-
-    table_schema = schema.mapping[table_name]
-    return [
-        {"name": col_name, "type": col_type}
-        for col_name, col_type in table_schema.items()
-    ]
-
-
-# Example usage for visual editor:
-
-def populate_select_columns(
-    current_step_index: int,
-    all_steps: List[Dict],
-    schema: Optional[MappingSchema] = None
-) -> List[Dict[str, str]]:
-    """
-    Populate column options for SELECT step based on previous steps.
-
-    Args:
-        current_step_index: Index of current SELECT step
-        all_steps: List of all pipeline steps up to current
-        schema: Optional schema for resolution
-
-    Returns:
-        List of available columns with metadata
-    """
-    # Build ASQL up to this point
-    asql_steps = []
-    for i, step in enumerate(all_steps[:current_step_index + 1]):
-        if step['type'] == 'from':
-            asql_steps.append(f"from {step['table']}")
-        # Add other step types...
-
-    asql_query = "\n".join(asql_steps)
-    return get_output_columns_for_step(asql_query, schema)
-
-
-def populate_where_columns(
-    current_step_index: int,
-    all_steps: List[Dict],
-    schema: Optional[MappingSchema] = None
-) -> List[Dict[str, str]]:
-    """
-    Populate column options for WHERE expression.
-    Same as SELECT - shows all available columns at this point.
-    """
-    return populate_select_columns(current_step_index, all_steps, schema)
-
-
-def populate_join_tables(schema: Optional[MappingSchema] = None) -> List[str]:
-    """Populate table options for JOIN step."""
-    return get_available_tables(schema)
-
-
-def populate_join_columns(
-    join_table: str,
-    schema: Optional[MappingSchema] = None
-) -> List[Dict[str, str]]:
-    """
-    Populate column options for JOIN ON condition.
-    Shows columns from the table being joined.
-    """
-    return get_columns_for_table(join_table, schema)
+    return {"name": col_name, "type": col_type, "table": table_name or ""}

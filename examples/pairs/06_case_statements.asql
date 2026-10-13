@@ -8,21 +8,20 @@ from customers
   stash as customer_stats
 
 from customer_stats
-  select 
+  select
     customer_id,
     customer_name,
     total_orders,
     total_spent,
-    case 
+    case
       when total_spent >= 10000 then "VIP"
       when total_spent >= 5000 then "Premium"
       when total_spent >= 1000 then "Regular"
       else "New"
     end as customer_tier,
-    case 
+    case
       when total_orders >= 20 then "High Frequency"
       when total_orders >= 10 then "Medium Frequency"
       else "Low Frequency"
     end as order_frequency
   order by -total_spent
-

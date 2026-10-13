@@ -46,17 +46,16 @@ def to_sqlglot_schema(
     # ASQL schema object
     tables = getattr(schema, "tables", None)
     if isinstance(tables, dict):
-        mapping: dict[str, dict[str, str | None]] = {}
+        mapping: dict[str, object] = {}
         for table_name, table in tables.items():
             cols = getattr(table, "columns", None)
             if isinstance(cols, dict):
                 # Best-effort: use known types if available, otherwise None.
                 mapping[table_name] = {
-                    col_name: getattr(col, "type", None) for col_name, col in cols.items()
+                    col_name: getattr(col, "type", None)
+                    for col_name, col in cols.items()
                 }
 
         return MappingSchema(schema=mapping, dialect=dialect)
 
     return None
-
-

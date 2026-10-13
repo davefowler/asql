@@ -85,10 +85,10 @@ This spines the month column (filling date gaps) but NOT the region column (only
 
 When you spine a date truncation function (`month()`, `year()`, `week()`, etc.), ASQL:
 
-1. Infers the date range from your WHERE clause
+1. Infers the date range from your WHERE clause (or the data's MIN/MAX)
 2. Generates all values in that range using `generate_series` (or equivalent)
-3. LEFT JOINs your data to the complete range
-4. Fills missing values with NULL (use `??` for defaults)
+3. LEFT JOINs your data **onto** the complete range, so empty periods survive; your WHERE filters become part of that join
+4. Fills missing values with NULL (use `??` for defaults); `count(*)` is 0 for an empty period
 
 ### Non-Date Columns
 
@@ -238,7 +238,7 @@ from orders
 The output will include a helpful explanation:
 
 ```sql
-/* ASQL spine: Gap-filling CTEs were generated to ensure all 
+/* ASQL spine: Gap-filling CTEs were generated to ensure all
    expected time periods appear (even with zero/null aggregates). */
 WITH month_order_date_spine AS (...)
 ...
@@ -263,7 +263,7 @@ aggregated AS (
   WHERE order_date >= '2024-01-01' AND order_date < '2024-07-01'
   GROUP BY 1
 )
-SELECT 
+SELECT
   date_spine.month,
   COALESCE(aggregated.revenue, 0) AS revenue
 FROM date_spine
@@ -323,7 +323,7 @@ When spining by multiple columns, spines are cross-joined:
 
 ```
 12 months × 5 regions = 60 spine rows
-12 months × 50 states = 600 spine rows  
+12 months × 50 states = 600 spine rows
 365 days × 100 products = 36,500 spine rows
 ```
 
@@ -357,7 +357,7 @@ from orders
 
 ```asql
 from orders
-  where created_at > updated_at 
+  where created_at > updated_at
     and created_at >= @2024-01-01  -- Explicit bound added
   group by month(created_at) (sum(amount) ?? 0 as revenue)
 ```
@@ -419,7 +419,7 @@ from tickets
 
 ```asql-play
 from sales
-  where year(sale_date) = 2024
+  where extract(year from sale_date) = 2024
   spine by region, quarter(sale_date) (
     sum(amount) ?? 0 as revenue
   )

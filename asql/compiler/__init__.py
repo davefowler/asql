@@ -15,40 +15,39 @@ join_fk_shorthand, cohort_transform), see asql/dialect/transforms/.
 """
 
 # Re-export join_inference from its new location for backwards compatibility
-from asql.dialect.transforms.join_inference import resolve_join_condition, JoinCondition
-
 # Spine helpers (used by spine.py and tests)
 from asql.compiler.spine_helpers import (
-    _build_categorical_spine_sql,
-    _build_date_spine_from_data_sql,
-    _build_date_spine_sql,
-    _build_distinct_values_spine_sql,
-    _columns_match,
-    _detect_rollup_cube,
-    _extract_date_bounds_from_where,
-    _find_date_trunc_in_group_by,
-    _find_non_date_group_by_columns,
-    _get_all_group_by_columns,
-    _get_source_column_from_trunc,
     DATE_TRUNC_FUNCTIONS,
     TRUNC_TO_INTERVAL,
+    _columns_match,
+    _get_source_column_from_trunc,
+    build_categorical_spine_sql,
+    build_date_spine_from_data_sql,
+    build_date_spine_sql,
+    build_distinct_values_spine_sql,
+    detect_rollup_cube,
+    extract_date_bounds_from_where,
+    find_date_trunc_in_group_by,
+    find_non_date_group_by_columns,
+    get_all_group_by_columns,
 )
+from asql.dialect.transforms.join_inference import JoinCondition, resolve_join_condition
 
 __all__ = [
     # Join inference (re-exported from dialect/transforms/)
     "resolve_join_condition",
     "JoinCondition",
     # Spine helpers
-    "_build_categorical_spine_sql",
-    "_build_date_spine_from_data_sql",
-    "_build_date_spine_sql",
-    "_build_distinct_values_spine_sql",
+    "build_categorical_spine_sql",
+    "build_date_spine_from_data_sql",
+    "build_date_spine_sql",
+    "build_distinct_values_spine_sql",
     "_columns_match",
-    "_detect_rollup_cube",
-    "_extract_date_bounds_from_where",
-    "_find_date_trunc_in_group_by",
-    "_find_non_date_group_by_columns",
-    "_get_all_group_by_columns",
+    "detect_rollup_cube",
+    "extract_date_bounds_from_where",
+    "find_date_trunc_in_group_by",
+    "find_non_date_group_by_columns",
+    "get_all_group_by_columns",
     "_get_source_column_from_trunc",
     "DATE_TRUNC_FUNCTIONS",
     "TRUNC_TO_INTERVAL",

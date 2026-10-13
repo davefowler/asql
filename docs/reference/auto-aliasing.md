@@ -108,13 +108,13 @@ Create `asql.config.yaml` in your project root:
 compile:
   # Default template for all functions
   alias_template: "{prefix}_{col}"
-  
+
   # Function-specific prefixes
   alias_prefixes:
     sum: "sum"
     avg: "avg"
     count: "num"
-    
+
   # Function-specific templates
   alias_templates:
     count: "{prefix}"  # count(*) → "num" (no column suffix)

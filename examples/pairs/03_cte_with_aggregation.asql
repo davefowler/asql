@@ -19,4 +19,3 @@ from active_users
     sum(coalesce(user_orders.lifetime_value, 0)) as total_lifetime_value
   )
   order by -active_user_count
-

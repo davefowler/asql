@@ -1,33 +1,28 @@
 """SQL executors for testing compiled ASQL queries against real databases."""
 
-from typing import List, Type
-
 from asql.testing.executors.base import ExecutorBase
 from asql.testing.executors.duckdb_executor import DuckDBExecutor
 
 # Registry of available executors
-EXECUTORS: dict[str, Type[ExecutorBase]] = {
+EXECUTORS: dict[str, type[ExecutorBase]] = {
     "duckdb": DuckDBExecutor,
-    # Future executors:
-    # 'postgres': PostgresExecutor,
-    # 'snowflake': SnowflakeExecutor,
 }
 
 
-def get_available_executors() -> List[str]:
+def get_available_executors() -> list[str]:
     """Return list of available executor names (those that can be instantiated).
-    
+
     Returns:
         List of executor names that are available (dependencies installed).
     """
-    available: List[str] = []
+    available: list[str] = []
     for name, cls in EXECUTORS.items():
         try:
             # Try to instantiate to check if dependencies are available
             cls()
             available.append(name)
-        except (ImportError, Exception):
-            # Dependency not installed or other initialization error
+        # Feature detection probe — swallow all init errors so missing deps just hide the executor.
+        except Exception:  # noqa: BLE001, S110
             pass
     return available
 

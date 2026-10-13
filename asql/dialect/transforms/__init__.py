@@ -7,26 +7,22 @@ For dialect-aware transforms (spine, alias_reuse, column_operators, list_compreh
 see asql/compiler/ - these are applied in asql.transpile().
 """
 
-from asql.dialect.transforms.underscore_shorthands import (
-    apply_since_until_underscore_shorthands,
-    apply_implicit_function_aliases,
-)
-
 from asql.dialect.transforms.auto_alias import (
     apply_auto_aliasing,
 )
-
 from asql.dialect.transforms.auto_qualify import (
     auto_qualify_columns,
 )
-
 from asql.dialect.transforms.join_fk_shorthand import (
     transform_fk_shorthand,
 )
-
 from asql.dialect.transforms.join_inference import (
-    resolve_join_condition,
     JoinCondition,
+    resolve_join_condition,
+)
+from asql.dialect.transforms.underscore_shorthands import (
+    apply_implicit_function_aliases,
+    apply_since_until_underscore_shorthands,
 )
 
 __all__ = [

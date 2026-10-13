@@ -561,7 +561,7 @@ from students
 -- Segment customers by lifetime value
 from customers
   select *,
-    bucket(lifetime_value, [0, 100, 1000, 10000, 100000], 
+    bucket(lifetime_value, [0, 100, 1000, 10000, 100000],
            ['bronze', 'silver', 'gold', 'platinum']) as tier
 
 -- Age demographics with auto-labels

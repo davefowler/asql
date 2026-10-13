@@ -52,6 +52,47 @@ uniq(user_id)      -- COUNT(DISTINCT user_id)
 uniq user_id       -- COUNT(DISTINCT user_id) (space notation)
 ```
 
+### Entity Count (`# <table>`)
+
+With a schema, `# <table>` counts the distinct entities of another table, using
+the foreign key in the query:
+
+```asql-play
+from order_items
+  group by category (
+    # as line_items,
+    # orders as unique_orders,
+    # products as unique_products
+  )
+```
+
+`# orders` is `COUNT(DISTINCT order_id)`. Without an alias it is named
+`num_order_id`, exactly like `#(distinct order_id)`.
+
+Entity inference needs a schema that proves `name` is a table. **Without a
+schema, `# name` is always `COUNT(name)`**: ASQL never guesses from plural
+names. Use `#(distinct <column>)` there. `#(name)` always counts a column.
+
+With a schema, `# name` over the query's tables (`from` plus joins):
+
+1. A column of a query table: `COUNT(name)`.
+2. A schema table: `COUNT(DISTINCT key)`, where the key is, in order:
+    - the query table's own primary key, if `name` is itself a query table;
+    - the `from_column` of a relationship from any query table to `name`
+      (explicit relationships win over inferred ones; more than one distinct
+      column in the winning tier is ambiguous and raises);
+    - a `<singular>_id` column on exactly one query table.
+
+    If the table appears more than once (self-join) the key is ambiguous and
+    raises. If no key resolves and some query table is unknown to the schema,
+    `COUNT(name)` is kept.
+3. Neither: `COUNT(name)` if some query table is unknown to the schema (a CTE,
+   derived table, or partial schema may own the column); otherwise an error.
+
+An unresolvable key raises an error naming the token and suggesting
+`#(distinct <column>)`. With joins, the key is qualified with the table that
+owns it.
+
 ### Count Shorthand Reference
 
 | Syntax | SQL Output | Use Case |
@@ -60,6 +101,7 @@ uniq user_id       -- COUNT(DISTINCT user_id) (space notation)
 | `#*` or `# *` | `COUNT(*)` | Explicit row count |
 | `#col` or `# col` | `COUNT(col)` | Count non-null values |
 | `#(col)` | `COUNT(col)` | Count with parens |
+| `# table` | `COUNT(DISTINCT <fk>)` | Distinct entities (see above) |
 | `##col` or `## col` | `COUNT(DISTINCT col)` | Distinct count |
 | `#(distinct col)` | `COUNT(DISTINCT col)` | Explicit distinct |
 | `uniq(col)` | `COUNT(DISTINCT col)` | Function form |
@@ -271,7 +313,7 @@ from orders
 
 ```asql-play
 from orders
-  where year(created_at) = 2024
+  where extract(year from created_at) = 2024
   group by month(created_at) (
     sum(amount) as revenue,
     # as orders,

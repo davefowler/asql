@@ -75,4 +75,3 @@ python3 scripts/fetch_fivetran_real.py
 ```
 
 This will discover and fetch SQL files from Fivetran repos.
-

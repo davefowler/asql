@@ -1,9 +1,10 @@
 """Tests for alias reuse functionality."""
 
 import pytest
-from tests.fixtures import transpile
+
 from asql.errors import ASQLCompilationError
-from tests.fixtures import assert_valid_sql
+
+from .fixtures import assert_valid_sql, transpile
 
 
 def test_alias_reuse_duckdb() -> None:
@@ -16,7 +17,7 @@ def test_alias_reuse_duckdb() -> None:
         total_price * (1 + tax_rate) as taxed_price
     """
     sql = transpile(asql, dialect="duckdb")
-    
+
     # DuckDB should emit directly without CTEs
     assert "WITH" not in sql.upper()
     assert "discount_price" in sql
@@ -34,7 +35,7 @@ def test_alias_reuse_postgres_cte() -> None:
         discount_price * quantity as total_price
     """
     sql = transpile(asql, dialect="postgres")
-    
+
     # PostgreSQL should generate CTE chain
     assert "WITH" in sql.upper()
     # CTE names use _alias prefix (e.g., _alias1_0, _alias1_1)
@@ -53,7 +54,7 @@ def test_alias_reuse_simple() -> None:
         upper(full_name) as full_name_upper
     """
     sql = transpile(asql, dialect="postgres")
-    
+
     assert "WITH" in sql.upper()
     assert "full_name" in sql
     assert "full_name_upper" in sql
@@ -70,7 +71,7 @@ def test_alias_reuse_three_levels() -> None:
         discounted_revenue * tax_rate as tax_amount
     """
     sql = transpile(asql, dialect="postgres")
-    
+
     assert "WITH" in sql.upper()
     assert "revenue" in sql
     assert "discounted_revenue" in sql
@@ -88,7 +89,7 @@ def test_alias_reuse_with_where() -> None:
       where total_price > 100
     """
     sql = transpile(asql, dialect="postgres")
-    
+
     assert "WITH" in sql.upper()
     assert "WHERE" in sql.upper()
     assert "total_price > 100" in sql or "total_price > 100" in sql.replace(" ", "")
@@ -105,7 +106,7 @@ def test_alias_reuse_with_order_by() -> None:
       order by total_price desc
     """
     sql = transpile(asql, dialect="postgres")
-    
+
     assert "WITH" in sql.upper()
     assert "ORDER BY" in sql.upper()
     assert "total_price" in sql
@@ -122,16 +123,18 @@ def test_alias_reuse_no_dependencies() -> None:
         age * 2 as double_age
     """
     sql = transpile(asql, dialect="postgres")
-    
+
     # Should not generate CTEs if no dependencies
     assert "WITH" not in sql.upper() or "_step" not in sql
     assert_valid_sql(sql, dialect="postgres")
 
 
-@pytest.mark.xfail(reason="Forward references (alias_b undefined when referenced) not detected as circular yet")
+@pytest.mark.xfail(
+    reason="Forward references (alias_b undefined when referenced) not detected as circular yet"
+)
 def test_alias_reuse_circular_dependency() -> None:
     """Test that circular dependencies are detected and raise error.
-    
+
     Note: This test uses a forward reference pattern where alias_b is referenced
     before it's defined. The current implementation only detects backward references.
     A true circular dependency would need both aliases defined before the cycle.
@@ -143,11 +146,13 @@ def test_alias_reuse_circular_dependency() -> None:
         alias_b as alias_a,
         alias_a as alias_b
     """
-    
+
     with pytest.raises(ASQLCompilationError) as exc_info:
         transpile(asql, dialect="postgres")
-    
-    assert "circular" in str(exc_info.value).lower() or "Circular" in str(exc_info.value)
+
+    assert "circular" in str(exc_info.value).lower() or "Circular" in str(
+        exc_info.value
+    )
 
 
 def test_alias_reuse_multiple_dependencies() -> None:
@@ -160,7 +165,7 @@ def test_alias_reuse_multiple_dependencies() -> None:
         revenue * (1 - discount_percent / 100) as final_revenue
     """
     sql = transpile(asql, dialect="postgres")
-    
+
     assert "WITH" in sql.upper()
     assert "revenue" in sql
     assert "discount_percent" in sql
@@ -179,7 +184,7 @@ def test_alias_reuse_mixed_expressions() -> None:
         discount_price * quantity as total_price
     """
     sql = transpile(asql, dialect="postgres")
-    
+
     assert "WITH" in sql.upper()
     assert "unit_price" in sql
     assert "discount_price" in sql
@@ -197,7 +202,7 @@ def test_alias_reuse_bigquery() -> None:
         discount_price * quantity as total_price
     """
     sql = transpile(asql, dialect="bigquery")
-    
+
     assert "WITH" in sql.upper()
     assert "discount_price" in sql
     assert "total_price" in sql

@@ -2,7 +2,7 @@
 -- Source: Inspired by patterns from Fivetran dbt packages
 --   - https://github.com/fivetran/dbt_shopify
 --   - https://github.com/fivetran/dbt_stripe
-SELECT 
+SELECT
     region,
     DATE_TRUNC('month', order_date) AS month,
     COUNT(DISTINCT order_id) AS order_count,
@@ -17,4 +17,3 @@ WHERE order_date >= '2024-01-01'
 GROUP BY region, DATE_TRUNC('month', order_date)
 HAVING SUM(amount) > 10000
 ORDER BY month DESC, total_revenue DESC;
-

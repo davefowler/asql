@@ -20,4 +20,4 @@ Cool big features (and decisions) - tracked by Dave:
 - pipeline (so many less cte's - so much more readable)
 - convention and declarative join syntax
 - date and time functions are obvious and natural language
-- 
+-

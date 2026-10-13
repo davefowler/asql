@@ -1,0 +1,1097 @@
+"""ASQL Interactive Playground - FastAPI application."""
+
+import json
+import os
+import re
+import typing as t
+from pathlib import Path
+
+import sqlglot
+import sqlglot.errors
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from sqlglot.dialects import Dialects
+
+import asql
+from asql.errors import ASQLCompilationError, ASQLSyntaxError
+from asql.json_schema import json_to_asql
+
+from .examples import (
+    COHORT_EXAMPLES,
+    COLUMN_OPERATOR_EXAMPLES,
+    COUNT_INFERENCE_EXAMPLES,
+    PIPE_EXAMPLES,
+    RESHAPING_EXAMPLES,
+    SAMPLING_EXAMPLES,
+    SQL_EXAMPLES,
+    SYNTAX_STYLES_EXAMPLES,
+    get_visual_asql_examples,
+)
+from .jinja_utils import strip_jinja_templates
+from .schema import (
+    PLAYGROUND_SCHEMA,
+    get_columns_for_table,
+    get_schema_with_metadata,
+    get_table_names,
+)
+
+
+def get_dialect_options(panel: str = "from") -> list[dict[str, t.Any]]:
+    """
+    Get list of available dialects from SQLGlot with metadata.
+
+    Args:
+        panel: "from" for input panel, "to" for output panel
+
+    Returns list of dicts with: value, label, editor (text/visual).
+    """
+    # Special entries that aren't SQLGlot dialects
+    dialects = [
+        {"value": "asql", "label": "ASQL", "editor": "text"},
+        {"value": "visual-asql", "label": "Visual ASQL", "editor": "visual"},
+    ]
+
+    # Get SQLGlot dialects
+    sqlglot_dialects: list[dict[str, str]] = []
+    for d in Dialects:
+        if d.value:  # Skip empty DIALECT entry
+            # Create nice display name
+            label = d.value.replace("_", " ").title()
+            # Special cases for better display
+            label_map = {
+                "bigquery": "BigQuery",
+                "clickhouse": "ClickHouse",
+                "databricks": "Databricks",
+                "duckdb": "DuckDB",
+                "mysql": "MySQL",
+                "postgres": "PostgreSQL",
+                "prql": "PRQL",
+                "redshift": "Redshift",
+                "snowflake": "Snowflake",
+                "spark": "Spark",
+                "spark2": "Spark 2",
+                "sqlite": "SQLite",
+                "tsql": "T-SQL (SQL Server)",
+                "athena": "AWS Athena",
+                "trino": "Trino",
+                "presto": "Presto",
+                "hive": "Hive",
+                "oracle": "Oracle",
+                "teradata": "Teradata",
+                "starrocks": "StarRocks",
+                "risingwave": "RisingWave",
+                "materialize": "Materialize",
+                "doris": "Apache Doris",
+                "druid": "Apache Druid",
+                "dremio": "Dremio",
+                "drill": "Apache Drill",
+                "dune": "Dune Analytics",
+                "fabric": "Microsoft Fabric",
+                "tableau": "Tableau",
+                "solr": "Apache Solr",
+                "exasol": "Exasol",
+            }
+            label = str(label_map.get(d.value, label))
+            sqlglot_dialects.append(
+                {"value": str(d.value), "label": label, "editor": "text"}
+            )
+
+    # Sort SQLGlot dialects alphabetically by label
+    sqlglot_dialects.sort(key=lambda x: x["label"].lower())
+
+    # Add SQL option - "Auto-detect" for input, "ANSI" for output
+    if panel == "from":
+        dialects.append({"value": "", "label": "SQL (Auto-detect)", "editor": "text"})
+    else:
+        dialects.append({"value": "", "label": "SQL (ANSI)", "editor": "text"})
+
+    dialects.extend(sqlglot_dialects)
+
+    return dialects
+
+
+def generate_dialect_options_html(
+    dialects: list[dict[str, t.Any]], selected: str = ""
+) -> str:
+    """Generate HTML <option> elements for dialect select."""
+    options = []
+    for d in dialects:
+        selected_attr = " selected" if d["value"] == selected else ""
+        # Store editor type as data attribute
+        options.append(
+            f'<option value="{d["value"]}" data-editor="{d["editor"]}"{selected_attr}>'
+            f"{d['label']}</option>"
+        )
+    return "\n                            ".join(options)
+
+
+app = FastAPI(title="ASQL Playground", version="1.0.0")
+
+# Mount static files
+SYNTAX_DIR = Path(__file__).parent.parent.parent / "syntax"
+STATIC_DIR = Path(__file__).parent / "static"
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+
+# Middleware to disable caching for static files in development
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next: t.Any) -> t.Any:
+    response = await call_next(request)
+    # Add no-cache headers for static files to help with Safari's aggressive caching
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
+# Mount static files
+if STATIC_DIR.exists():
+    app.mount(
+        "/static/playground",
+        StaticFiles(directory=str(STATIC_DIR)),
+        name="playground_static",
+    )
+
+if SYNTAX_DIR.exists():
+    app.mount("/static/syntax", StaticFiles(directory=str(SYNTAX_DIR)), name="syntax")
+
+
+# --- Pydantic Models ---
+
+
+class CompileRequest(BaseModel):
+    asql: str
+    dialect: str = ""
+    settings: dict[str, t.Any] = {}  # CompileSettings overrides
+
+
+class ReverseCompileRequest(BaseModel):
+    sql: str
+    source_dialect: str = ""
+    settings: dict[str, t.Any] = {}  # StyleConfig overrides
+
+
+class DetectDialectRequest(BaseModel):
+    sql: str
+
+
+class NormalizeRequest(BaseModel):
+    asql: str
+    style: dict[str, t.Any] = {}
+
+
+# --- Routes ---
+
+
+def _normalize_base_url(url: str) -> str:
+    """Normalize a base URL (no trailing slash)."""
+    return url.strip().rstrip("/")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index() -> HTMLResponse:
+    """Render the playground interface."""
+    import time
+
+    template_path = TEMPLATES_DIR / "index.html"
+    if template_path.exists():
+        content = template_path.read_text()
+
+        # Add cache-busting query param to static files for development
+        # This forces Safari (and other aggressive cachers) to fetch fresh copies
+        cache_buster = f"?v={int(time.time())}"
+        content = content.replace('.css">', f'.css{cache_buster}">')
+        content = content.replace('.js">', f'.js{cache_buster}">')
+        content = content.replace(".js'></script>", f".js{cache_buster}'></script>")
+
+        docs_url = _normalize_base_url(
+            os.environ.get("DOCS_URL", "https://analyticsql.com")
+        )
+        playground_url = _normalize_base_url(
+            os.environ.get("PLAYGROUND_URL", "https://play.analyticsql.com")
+        )
+        content = content.replace("__DOCS_URL__", docs_url)
+        content = content.replace("__PLAYGROUND_URL__", playground_url)
+
+        # Inject examples data directly into the template
+        import json
+
+        examples_data = {
+            "pipe": PIPE_EXAMPLES,
+            "cohort": COHORT_EXAMPLES,
+            "sampling": SAMPLING_EXAMPLES,
+            "reshaping": RESHAPING_EXAMPLES,
+            "column_operators": COLUMN_OPERATOR_EXAMPLES,
+            "count_inference": COUNT_INFERENCE_EXAMPLES,
+            "syntax_styles": SYNTAX_STYLES_EXAMPLES,
+            "sql": SQL_EXAMPLES,
+            "visual_asql": get_visual_asql_examples(),
+        }
+        examples_json = json.dumps(examples_data)
+
+        # Escape </script> to prevent breaking HTML parser
+        # Use \u003c instead of < in the closing script tag
+        examples_json = examples_json.replace("</script>", r"<\/script>")
+        examples_json = examples_json.replace("</Script>", r"<\/Script>")
+        examples_json = examples_json.replace("</SCRIPT>", r"<\/SCRIPT>")
+
+        # Replace the placeholder with actual data
+        content = content.replace("/* EXAMPLES_DATA_PLACEHOLDER */ {}", examples_json)
+
+        # Inject dialect options (dynamically from SQLGlot)
+        from_dialects = get_dialect_options(panel="from")
+        to_dialects = get_dialect_options(panel="to")
+        from_options = generate_dialect_options_html(from_dialects, selected="asql")
+        to_options = generate_dialect_options_html(to_dialects, selected="snowflake")
+        content = content.replace("<!-- FROM_DIALECT_OPTIONS -->", from_options)
+        content = content.replace("<!-- TO_DIALECT_OPTIONS -->", to_options)
+
+        return HTMLResponse(content=content)
+    return HTMLResponse(content="<h1>Template not found</h1>", status_code=500)
+
+
+@app.post("/api/compile")
+async def api_compile(request: CompileRequest) -> dict[str, t.Any]:
+    """API endpoint to compile ASQL to SQL.
+
+    Uses asql.transpile() to apply full ASQL transforms including:
+    - Spine (explicit gap-filling via spine by syntax)
+    - Alias reuse (column references in same SELECT)
+    - List comprehensions (dialect-specific conversion)
+    - Column operators (EXCEPT expansion for non-native dialects)
+    """
+    try:
+        if not request.asql.strip():
+            return {"error": "Empty ASQL query"}
+
+        # Build settings from request
+        compile_settings = {}
+        if request.settings:
+            compile_settings.update(request.settings)
+
+        # Use asql.transpile() for full transform support
+        import asql
+
+        results = asql.transpile(
+            request.asql,
+            write=request.dialect,
+            pretty=True,
+            **compile_settings,
+        )
+        sql = results[0] if results else ""
+
+        return {"sql": sql}
+
+    except ASQLSyntaxError as e:
+        return {"error": f"Syntax Error: {str(e)}"}
+    except ASQLCompilationError as e:
+        return {"error": f"Compilation Error: {str(e)}"}
+    except sqlglot.errors.ParseError as e:
+        return {"error": f"Syntax Error: {str(e)}"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"Error: {str(e)}"}
+
+
+@app.post("/api/reverse-compile")
+async def api_reverse_compile(request: ReverseCompileRequest) -> dict[str, t.Any]:
+    """API endpoint to compile SQL to ASQL using sqlglot.transpile().
+
+    Style settings (equality, count, coalesce, etc.) flow through dialect.settings.
+    """
+    try:
+        if not request.sql.strip():
+            return {"error": "Empty SQL query"}
+
+        # Build ASQL dialect with style settings
+        from asql.dialect import ASQL
+
+        style_settings = request.settings if request.settings else {}
+        asql_dialect = ASQL(**style_settings)
+
+        # Use sqlglot.transpile to convert SQL to ASQL
+        source_dialect = request.source_dialect if request.source_dialect else None
+        results = sqlglot.transpile(
+            request.sql,
+            read=source_dialect,
+            write=asql_dialect,
+        )
+
+        if not results or not results[0]:
+            return {"error": "Failed to convert SQL to ASQL"}
+
+        asql = results[0]
+        return {"asql": asql}
+
+    except sqlglot.errors.ParseError as e:
+        error_msg = str(e)
+        error_msg = re.sub(r"\x1b\[[0-9;]*m", "", error_msg)
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        return {"error": f"Parse Error: {error_msg}"}
+    except Exception as e:  # noqa: BLE001
+        error_msg = str(e)
+        error_msg = re.sub(r"\x1b\[[0-9;]*m", "", error_msg)
+        if len(error_msg) > 500:
+            error_msg = error_msg[:500] + "..."
+        return {"error": f"Error: {error_msg}"}
+
+
+@app.post("/api/detect-dialect")
+async def api_detect_dialect(request: DetectDialectRequest) -> dict[str, t.Any]:
+    """API endpoint to detect SQL dialect.
+
+    Note: Dialect detection is heuristic-based. Returns None if unable to
+    determine a specific dialect (the SQL is generic enough to work in multiple).
+    """
+    try:
+        if not request.sql.strip():
+            return {"dialect": None}
+
+        # Try parsing with common dialects and see which one works best
+        # For now, return None since dialect detection is complex and
+        # sqlglot.transpile works without specifying a source dialect
+        return {"dialect": None}
+    except Exception as e:  # noqa: BLE001
+        return {"dialect": None, "error": str(e)}
+
+
+@app.post("/api/normalize")
+async def api_normalize(request: NormalizeRequest) -> dict[str, t.Any]:
+    """Normalize ASQL to configured style using sqlglot.transpile().
+
+    Note: Style configuration is currently limited - use transpile's built-in
+    normalization. Full style options will be added to the ASQL generator.
+    """
+    try:
+        if not request.asql.strip():
+            return {"error": "Empty ASQL query"}
+
+        # Use sqlglot.transpile for ASQL → ASQL normalization
+        # This applies the ASQL generator's standard formatting
+        results = sqlglot.transpile(request.asql, read="asql", write="asql")
+
+        if not results or not results[0]:
+            return {"error": "Failed to normalize ASQL"}
+
+        normalized = results[0]
+        return {"normalized": normalized}
+
+    except ASQLSyntaxError as e:
+        return {"error": f"Syntax Error: {str(e)}"}
+    except sqlglot.errors.ParseError as e:
+        return {"error": f"Parse Error: {str(e)}"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"Error: {str(e)}"}
+
+
+@app.get("/api/settings-schema")
+async def api_settings_schema() -> dict[str, t.Any]:
+    """Get the settings schema for the playground settings modal."""
+    return {
+        "compile": {
+            "title": "Compile Settings",
+            "description": "Settings that affect how ASQL is compiled to SQL",
+            "fields": [
+                {
+                    "name": "week_start",
+                    "label": "Week Start",
+                    "type": "select",
+                    "options": ["monday", "sunday"],
+                    "default": "monday",
+                    "description": "Which day the week() function starts on",
+                },
+                {
+                    "name": "relative_date_type",
+                    "label": "Relative Date Type",
+                    "type": "select",
+                    "options": ["timestamp", "date"],
+                    "default": "timestamp",
+                    "description": "What type '7 days ago' compiles to",
+                },
+                {
+                    "name": "infer_join_keys",
+                    "label": "Infer Join Keys",
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Infer join keys using {table}_id convention when no schema is available",
+                },
+                {
+                    "name": "passthrough_comments",
+                    "label": "Passthrough Comments",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Preserve ASQL source comments in the generated SQL output",
+                },
+                {
+                    "name": "include_transpilation_comments",
+                    "label": "Transpilation Comments",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Add explanatory comments about ASQL transformations (auto-spine, cohort, etc.)",
+                },
+            ],
+        },
+        "style": {
+            "title": "Style Settings",
+            "description": "Settings that affect ASQL output style (for SQL → ASQL)",
+            "fields": [
+                {
+                    "name": "equality",
+                    "label": "Equality Operator",
+                    "type": "select",
+                    "options": [
+                        {"value": "single", "label": "= (SQL style)"},
+                        {"value": "double", "label": "== (Python style)"},
+                    ],
+                    "default": "single",
+                    "description": "Which equality operator to use",
+                },
+                {
+                    "name": "count",
+                    "label": "Count Notation",
+                    "type": "select",
+                    "options": [
+                        {"value": "hash", "label": "# (shorthand)"},
+                        {"value": "function", "label": "count(*) (function)"},
+                    ],
+                    "default": "hash",
+                    "description": "How to write count expressions",
+                },
+                {
+                    "name": "coalesce",
+                    "label": "Null Coalescing",
+                    "type": "select",
+                    "options": [
+                        {"value": "operator", "label": "?? (operator)"},
+                        {"value": "function", "label": "coalesce() (function)"},
+                    ],
+                    "default": "operator",
+                    "description": "How to write null coalescing",
+                },
+                {
+                    "name": "descending",
+                    "label": "Descending Order",
+                    "type": "select",
+                    "options": [
+                        {"value": "prefix", "label": "-col (prefix)"},
+                        {"value": "suffix", "label": "col DESC (suffix)"},
+                    ],
+                    "default": "prefix",
+                    "description": "How to write descending order",
+                },
+                {
+                    "name": "cast",
+                    "label": "Type Casting",
+                    "type": "select",
+                    "options": [
+                        {"value": "double_colon", "label": ":: (PostgreSQL)"},
+                        {"value": "function", "label": "CAST() (SQL standard)"},
+                    ],
+                    "default": "double_colon",
+                    "description": "How to write type casts",
+                },
+                {
+                    "name": "quotes",
+                    "label": "String Quotes",
+                    "type": "select",
+                    "options": [
+                        {"value": "double", "label": '"double"'},
+                        {"value": "single", "label": "'single'"},
+                    ],
+                    "default": "double",
+                    "description": "Which quote style to use for strings",
+                },
+                {
+                    "name": "function_shorthand",
+                    "label": "Function Shorthand",
+                    "type": "select",
+                    "options": [
+                        {"value": "underscore", "label": "sum_amount (underscore)"},
+                        {"value": "space", "label": "sum amount (space)"},
+                        {"value": "parens", "label": "sum(amount) (parens)"},
+                    ],
+                    "default": "underscore",
+                    "description": "How to write function shorthands",
+                },
+                {
+                    "name": "ignore_aliases",
+                    "label": "Ignore Aliases",
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Strip column aliases from output (lets ASQL's auto-naming generate clean output)",
+                },
+            ],
+        },
+    }
+
+
+@app.get("/api/examples")
+async def api_examples() -> dict[str, t.Any]:
+    """Get all ASQL examples organized by category."""
+    return {
+        "pipe": PIPE_EXAMPLES,
+        "cohort": COHORT_EXAMPLES,
+        "sampling": SAMPLING_EXAMPLES,
+        "reshaping": RESHAPING_EXAMPLES,
+        "column_operators": COLUMN_OPERATOR_EXAMPLES,
+        "count_inference": COUNT_INFERENCE_EXAMPLES,
+        "syntax_styles": SYNTAX_STYLES_EXAMPLES,
+    }
+
+
+@app.get("/api/sql-examples")
+async def api_sql_examples() -> list[t.Any]:
+    """API endpoint to get SQL translation examples."""
+    return SQL_EXAMPLES
+
+
+@app.get("/api/fivetran-examples")
+async def api_fivetran_examples() -> list[t.Any]:
+    """API endpoint to get Fivetran dbt examples."""
+    examples: list[t.Any] = []
+
+    # Try multiple possible paths for the examples directory
+    possible_paths = [
+        Path(__file__).parent.parent.parent / "examples" / "real",
+        Path("examples") / "real",
+        Path(os.getcwd()) / "examples" / "real",
+    ]
+
+    real_examples_dir = None
+    for path in possible_paths:
+        if path.exists() and path.is_dir():
+            real_examples_dir = path
+            break
+
+    if not real_examples_dir or not real_examples_dir.exists():
+        return examples
+
+    sql_files = sorted(real_examples_dir.glob("dbt_*.sql"))
+
+    for sql_file in sql_files:
+        try:
+            content = sql_file.read_text()
+
+            # Skip files that are too small or contain errors
+            if len(content) < 100 or "404: Not Found" in content:
+                continue
+
+            # Parse metadata from header comments
+            model = None
+            dialect = "snowflake"
+
+            for line in content.split("\n")[:10]:
+                if line.startswith("-- Model:"):
+                    model = line.replace("-- Model:", "").strip()
+                elif line.startswith("-- Dialect:"):
+                    dialect = line.replace("-- Dialect:", "").strip().lower()
+
+            # Generate title from filename
+            filename = sql_file.stem
+            filename_dialect = None
+            for d in ["snowflake", "bigquery", "postgres", "redshift", "mysql"]:
+                if filename.endswith("_" + d):
+                    filename_dialect = d
+                    break
+
+            name_base = filename.replace("dbt_", "")
+            if filename_dialect:
+                name_base = name_base.replace("_" + filename_dialect, "")
+            name_parts = name_base.split("_")
+
+            repo = name_parts[0] if name_parts else "unknown"
+            repo_display = repo.replace("_", " ").title()
+            model_name = (
+                " ".join(name_parts[1:])
+                if len(name_parts) > 1
+                else name_parts[0]
+                if name_parts
+                else "model"
+            )
+            model_name = model_name.replace("__", " ").replace("_", " ").title()
+
+            title = f"{repo_display}: {model_name}"
+            desc = f"Real query from {repo_display} dbt package"
+            if model:
+                desc += f" ({model})"
+
+            final_dialect = filename_dialect or dialect
+            dialect_map = {
+                "snowflake": "snowflake",
+                "bigquery": "bigquery",
+                "postgres": "postgres",
+                "redshift": "redshift",
+            }
+            sql_dialect = dialect_map.get(final_dialect.lower(), "snowflake")
+
+            cleaned_content = strip_jinja_templates(content)
+
+            examples.append(
+                {
+                    "title": title,
+                    "desc": desc,
+                    "language": sql_dialect,
+                    "toLanguage": "asql",
+                    "query": cleaned_content,
+                }
+            )
+        except Exception as e:  # noqa: BLE001
+            import sys
+
+            print(f"Warning: Could not load example {sql_file}: {e}", file=sys.stderr)
+            continue
+
+    return examples
+
+
+@app.get("/api/debug/examples-path")
+async def api_debug_examples_path() -> dict[str, t.Any]:
+    """Debug endpoint to check examples directory access."""
+    debug_info: dict[str, t.Any] = {
+        "current_working_directory": os.getcwd(),
+        "playground_file": __file__,
+        "playground_dir": str(Path(__file__).parent),
+        "possible_paths": [],
+        "found_path": None,
+        "examples_count": 0,
+    }
+
+    possible_paths = [
+        Path(__file__).parent.parent.parent / "examples" / "real",
+        Path("examples") / "real",
+        Path(os.getcwd()) / "examples" / "real",
+    ]
+
+    for path in possible_paths:
+        path_str = str(path)
+        exists = path.exists()
+        is_dir = path.is_dir() if exists else False
+        file_count = len(list(path.glob("*.sql"))) if exists and is_dir else 0
+
+        debug_info["possible_paths"].append(
+            {
+                "path": path_str,
+                "exists": exists,
+                "is_dir": is_dir,
+                "file_count": file_count,
+            }
+        )
+
+        if exists and is_dir and not debug_info["found_path"]:
+            debug_info["found_path"] = path_str
+            debug_info["examples_count"] = file_count
+
+    return debug_info
+
+
+# --- Visual Editor API Endpoints ---
+
+
+@app.post("/api/visual/parse")
+async def parse_to_visual(request: Request) -> dict[str, t.Any]:
+    """
+    Convert ASQL text to JSON representation for visual editor.
+
+    Request body:
+        {"asql": "from users where status == \"active\"", "schema": {...} (optional)}
+
+    Response:
+        {"success": true, "query": {...}} or {"success": false, "error": "..."}
+
+    If schema is not provided, uses the built-in playground schema.
+    """
+    try:
+        data = await request.json()
+        asql_text = data.get("asql", "").strip()
+        custom_schema = data.get("schema")
+
+        if not asql_text:
+            return {"success": False, "error": "No ASQL query provided"}
+
+        # Use custom schema if provided, otherwise use playground schema
+        schema_dict = custom_schema if custom_schema else PLAYGROUND_SCHEMA
+
+        # Parse ASQL to AST
+        ast = sqlglot.parse(asql_text, dialect="asql")[0]
+        if ast is None:
+            return {"success": False, "error": "Empty ASQL query"}
+
+        # Convert dict schema to MappingSchema for sqlglot
+        from sqlglot.schema import MappingSchema
+
+        # dict() only re-types the mapping to sqlglot's invariant dict[str, object]
+        mapping_schema = MappingSchema(schema=dict(schema_dict))
+
+        # Get the visual_asql dialect's generator
+        from asql.visual_dialect import VisualASQLGenerator
+
+        generator = VisualASQLGenerator(schema=mapping_schema)
+        json_str = generator.generate(ast)
+        query_json = json.loads(json_str)
+
+        return {"success": True, "query": query_json}
+    except ASQLSyntaxError as e:
+        return {"success": False, "error": f"Syntax error: {str(e)}"}
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "error": f"Parse error: {str(e)}"}
+
+
+@app.post("/api/visual/parse-sql")
+async def parse_sql_to_visual(request: Request) -> dict[str, t.Any]:
+    """
+    Convert SQL from any dialect directly to JSON representation for visual editor.
+
+    This bypasses the ASQL text step, allowing complex CTEs and window functions
+    to be converted directly to visual format.
+
+    Request body:
+        {"sql": "SELECT * FROM users WHERE ...", "dialect": "snowflake"}
+
+    Response:
+        {"success": true, "query": [...]} or {"success": false, "error": "..."}
+    """
+    try:
+        data = await request.json()
+        sql_text = data.get("sql", "").strip()
+        source_dialect = data.get("dialect", "")
+
+        if not sql_text:
+            return {"success": False, "error": "No SQL query provided"}
+
+        # Use sqlglot.transpile to go directly from SQL to visual_asql JSON
+        # This preserves the AST structure without going through ASQL text
+        json_results = sqlglot.transpile(
+            sql_text,
+            read=source_dialect if source_dialect else None,
+            write="visual_asql",
+        )
+
+        if not json_results or not json_results[0]:
+            return {"success": False, "error": "Failed to convert SQL to visual format"}
+
+        query_json = json.loads(json_results[0])
+        return {"success": True, "query": query_json}
+
+    except sqlglot.errors.ParseError as e:
+        error_msg = str(e)
+        # Remove ANSI codes
+        error_msg = re.sub(r"\x1b\[[0-9;]*m", "", error_msg)
+        return {"success": False, "error": f"SQL Parse error: {error_msg}"}
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "error": f"Error: {str(e)}"}
+
+
+@app.post("/api/visual/compile")
+async def compile_from_visual(request: Request) -> dict[str, t.Any]:
+    """
+    Convert JSON representation from visual editor to ASQL text.
+
+    Request body:
+        {"query": {"from": {"table": "users"}, "transforms": [...]}}
+
+    Response:
+        {"success": true, "asql": "from users\\n  where ..."} or {"success": false, "error": "..."}
+    """
+    try:
+        data = await request.json()
+        query_json = data.get("query", {})
+
+        if not query_json:
+            return {"success": False, "error": "No query provided"}
+
+        # Convert JSON to ASQL
+        asql_text = json_to_asql(query_json)
+
+        return {"success": True, "asql": asql_text}
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "error": f"Compilation error: {str(e)}"}
+
+
+@app.post("/api/visual/transpile")
+async def transpile_from_visual(request: Request) -> dict[str, t.Any]:
+    """
+    Full transpile from visual JSON: JSON → ASQL → SQL, with column tracking.
+
+    This is the main endpoint for the visual editor. It:
+    1. Converts visual JSON to ASQL
+    2. Transpiles ASQL to target SQL dialect
+    3. Enriches the visual JSON with output_columns at each step
+
+    Request body:
+        {
+            "query": {"from": {"table": "orders"}, "transforms": [...]},
+            "target_dialect": "duckdb"  // optional, defaults to "duckdb"
+        }
+
+    Response:
+        {
+            "success": true,
+            "asql": "from orders...",
+            "sql": "SELECT * FROM orders...",
+            "enriched_query": {...}  // query with output_columns populated
+        }
+    """
+    try:
+        data = await request.json()
+        query_json = data.get("query", {})
+        target_dialect = data.get("target_dialect", "duckdb")
+
+        if not query_json:
+            return {"success": False, "error": "No query provided"}
+
+        # Step 1: Convert JSON to ASQL
+        asql_text = json_to_asql(query_json)
+
+        # Step 2: Transpile to target dialect
+        result = asql.transpile(
+            asql_text,
+            read="asql",
+            write=target_dialect,
+        )
+        sql_text = result[0] if result else ""
+
+        # Step 3: Enrich query with column info using playground schema
+        enriched_query = enrich_query_with_columns(
+            query_json, asql_text, PLAYGROUND_SCHEMA
+        )
+
+        return {
+            "success": True,
+            "asql": asql_text,
+            "sql": sql_text,
+            "enriched_query": enriched_query,
+        }
+    except ASQLSyntaxError as e:
+        return {"success": False, "error": f"Syntax error: {str(e)}"}
+    except Exception as e:  # noqa: BLE001
+        import traceback
+
+        traceback.print_exc()
+        return {"success": False, "error": f"Transpile error: {str(e)}"}
+
+
+def enrich_query_with_columns(
+    query_json: dict[str, t.Any] | list[t.Any], asql_text: str, schema: dict[str, t.Any]
+) -> dict[str, t.Any] | list[t.Any]:
+    """
+    Enrich visual JSON with output_columns at each step.
+
+    IMPORTANT: This is the source of truth for column dropdowns in the visual editor.
+    The frontend UI is intentionally "dumb" - it just renders what we tell it.
+    Column dropdowns show options from output_columns, populated here.
+
+    How it works:
+    1. For each pipeline, we build ASQL incrementally (FROM, then each transform)
+    2. We call SQLGlot's qualify() on each partial query with the schema
+    3. qualify() resolves which columns are available after each step
+    4. We store these as output_columns on each transform
+
+    If column dropdowns aren't showing options in the UI, check:
+    - Is the schema correct? (PLAYGROUND_SCHEMA in playground/schema.py)
+    - Is json_to_asql producing valid ASQL?
+    - Is get_output_columns_for_step returning columns?
+    """
+    import copy
+
+    from sqlglot.schema import MappingSchema
+
+    from asql.column_tracking import get_output_columns_for_step
+    from asql.json_schema import json_to_asql
+
+    enriched = copy.deepcopy(query_json)
+
+    # Convert dict schema to MappingSchema for SQLGlot
+    mapping_schema = MappingSchema(schema)
+
+    # Handle array of pipelines
+    pipelines = enriched if isinstance(enriched, list) else [enriched]
+
+    for pipeline in pipelines:
+        if not pipeline.get("from", {}).get("table"):
+            continue
+
+        table_name = pipeline["from"]["table"]
+
+        # Build ASQL incrementally and get columns at each step
+        # Start with just the FROM
+        partial_pipeline = {
+            "name": pipeline.get("name"),
+            "from": pipeline["from"],
+            "transforms": [],
+        }
+
+        # Get initial columns from the FROM table
+        try:
+            partial_asql = json_to_asql(
+                [partial_pipeline] if pipeline.get("name") else partial_pipeline
+            )
+            from_columns = get_output_columns_for_step(partial_asql, mapping_schema)
+            pipeline["from"]["output_columns"] = from_columns
+        except Exception:  # noqa: BLE001
+            # If it fails, get columns directly from schema
+            table_cols = schema.get(table_name, {})
+            pipeline["from"]["output_columns"] = [
+                {"name": col, "type": str(typ), "table": table_name}
+                for col, typ in table_cols.items()
+            ]
+
+        # Now add each transform and get its output columns
+        for i, transform in enumerate(pipeline.get("transforms", [])):
+            partial_pipeline["transforms"] = pipeline["transforms"][: i + 1]
+
+            try:
+                partial_asql = json_to_asql(
+                    [partial_pipeline] if pipeline.get("name") else partial_pipeline
+                )
+                columns = get_output_columns_for_step(partial_asql, mapping_schema)
+                transform["output_columns"] = columns
+            except Exception:  # noqa: BLE001
+                # If qualification fails, inherit from previous step
+                if i > 0 and pipeline["transforms"][i - 1].get("output_columns"):
+                    transform["output_columns"] = pipeline["transforms"][i - 1][
+                        "output_columns"
+                    ].copy()
+                else:
+                    transform["output_columns"] = (
+                        pipeline["from"].get("output_columns", []).copy()
+                    )
+
+    return enriched if isinstance(query_json, list) else pipelines[0]
+
+
+@app.get("/api/visual/operations")
+async def list_visual_operations() -> dict[str, t.Any]:
+    """
+    List available operations for the visual editor.
+    Dynamically generated from ui_schema.
+    """
+    from asql.ui_schema import list_all_operations
+
+    return {"operations": list_all_operations()}
+
+
+@app.get("/api/visual/operations/{operation_type}/schema")
+async def get_operation_schema(operation_type: str) -> dict[str, t.Any]:
+    """
+    Get UI schema for a specific operation type.
+
+    Returns the schema needed to render the operation's form,
+    including parameter definitions, widgets, and validation.
+    """
+    from asql.ui_schema import get_operation_schema
+
+    schema = get_operation_schema(operation_type)
+
+    if not schema:
+        return {"error": f"Unknown operation type: {operation_type}"}
+
+    return schema
+
+
+@app.get("/api/visual/aggregates")
+async def list_aggregate_functions() -> dict[str, t.Any]:
+    """
+    List all available aggregate functions for the visual editor.
+
+    Returns aggregates with labels, descriptions, aliases, and type restrictions.
+    """
+    from asql.ui_schema import get_aggregate_options
+
+    return {"aggregates": get_aggregate_options()}
+
+
+@app.get("/api/visual/functions")
+async def list_functions(category: str | None = None) -> dict[str, t.Any]:
+    """
+    List all available functions for the visual editor.
+
+    Args:
+        category: Optional filter by category (date, string, window, etc.)
+
+    Returns functions with labels, descriptions, aliases, and metadata.
+    """
+    from asql.ui_schema import get_function_options
+
+    return {"functions": get_function_options(category)}
+
+
+@app.get("/api/visual/functions/categories")
+async def list_function_categories() -> dict[str, t.Any]:
+    """
+    List function categories with their functions.
+
+    Used for grouped dropdowns in the visual editor.
+    """
+    from asql.ui_schema import get_function_categories
+
+    return {"categories": get_function_categories()}
+
+
+@app.get("/api/visual/operators")
+async def list_operators() -> dict[str, t.Any]:
+    """
+    List all available operators for the visual editor.
+
+    Returns operators grouped by type (comparison, string, null, list, logical).
+    """
+    from asql.ui_schema import get_operators
+
+    return {"operators": get_operators()}
+
+
+@app.get("/api/visual/metadata")
+async def get_visual_metadata() -> dict[str, t.Any]:
+    """
+    Get all visual editor metadata in a single call.
+
+    Returns operators, aggregates, functions, transforms, joins, and data types.
+    More efficient than multiple API calls for editor initialization.
+    """
+    from asql.ui_schema import get_metadata
+
+    return get_metadata()
+
+
+# --- Schema API Endpoints ---
+
+
+@app.get("/api/schema")
+async def api_schema() -> dict[str, t.Any]:
+    """
+    Get the playground schema with metadata.
+
+    Returns all tables and columns used in playground examples,
+    with type information and table metadata.
+    """
+    return {
+        "schema": get_schema_with_metadata(),
+        "tables": get_table_names(),
+    }
+
+
+@app.get("/api/schema/tables")
+async def api_schema_tables() -> dict[str, t.Any]:
+    """Get list of all table names."""
+    return {"tables": get_table_names()}
+
+
+@app.get("/api/schema/tables/{table_name}")
+async def api_schema_table(table_name: str) -> dict[str, t.Any]:
+    """Get column definitions for a specific table."""
+    columns = get_columns_for_table(table_name)
+    if not columns:
+        return {"error": f"Unknown table: {table_name}"}
+    return {"table": table_name, "columns": columns}
+
+
+@app.get("/api/schema/raw")
+async def api_schema_raw() -> dict[str, t.Any]:
+    """
+    Get raw schema in SQLGlot MappingSchema format.
+
+    This is the format used internally for type inference.
+    """
+    return PLAYGROUND_SCHEMA

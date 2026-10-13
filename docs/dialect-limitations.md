@@ -10,9 +10,9 @@ This document tracks features that have inconsistent behavior or limited support
 
 **Tracking**: [Issue #80](https://github.com/davefowler/asql/issues/80) - Schema-aware fallback planned
 
-**Features**: 
+**Features**:
 - `except col1, col2` - exclude columns from result
-- `rename old as new` - rename columns  
+- `rename old as new` - rename columns
 - `replace col with expr` - replace column values
 - `select *, expr as col` - column override
 
@@ -52,7 +52,7 @@ spine by rollup(year(date), month(date)) (
 )
 ```
 
-**Problem**: 
+**Problem**:
 - ROLLUP/CUBE produce NULL values with special meaning (subtotals, grand totals)
 - Spine date range detection may not account for these NULL patterns
 - The cross-join of spine values with ROLLUP patterns can produce invalid combinations

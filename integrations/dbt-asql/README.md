@@ -19,7 +19,7 @@ Write dbt models in [ASQL](https://analyticsql.com) — a modern, readable query
 ```sql
 {{ config(materialized='incremental', unique_key='id') }}
 
-SELECT 
+SELECT
   region,
   DATE_TRUNC('month', created_at) AS month,
   SUM(amount) AS revenue,
@@ -71,9 +71,7 @@ pip install -e ./integrations/dbt-asql
 
 ## Usage
 
-### Option 1: CLI Preprocessor (Recommended)
-
-The CLI approach compiles `.asql` files to `.sql` before running dbt.
+The CLI compiles `.asql` files to `.sql` before running dbt.
 
 **1. Create `.asql` models**
 
@@ -122,24 +120,6 @@ dbt-asql clean
 dbt-asql --help
 ```
 
-### Option 2: Jinja Extension
-
-For inline ASQL in `.sql` files, use the `{% asql %}` tags:
-
-```sql
--- models/marts/revenue.sql
-
-{% asql %}
-SET materialized = table;
-
-from stg_orders
-  where status = 'completed'
-  group by region ( sum(amount) as revenue )
-{% endasql %}
-```
-
-This approach works automatically when dbt-asql is installed.
-
 ## Syntax Reference
 
 ### Model References
@@ -179,8 +159,6 @@ Jinja conditionals work unchanged:
 
 ## How It Works
 
-### CLI Preprocessor
-
 1. **File Discovery**: Scans `models/` for `.asql` files
 2. **ASQL Compilation**: Compiles each file to SQL using the ASQL compiler
 3. **Manifest Lookup**: Reads `target/manifest.json` to identify model refs
@@ -188,24 +166,11 @@ Jinja conditionals work unchanged:
 5. **Config Extraction**: `SET` statements → `{{ config(...) }}`
 6. **Output**: Creates `.sql` file alongside each `.asql` file
 
-### Jinja Extension
-
-1. **Environment Patch**: Adds `{% asql %}` tag to dbt's Jinja environment
-2. **Block Parsing**: Captures content between `{% asql %}` and `{% endasql %}`
-3. **Compilation**: Compiles ASQL → SQL inline
-4. **Passthrough**: Returns SQL for dbt to process
-
 ## Technical Notes
 
-### Why a CLI instead of native dbt plugin?
+### Why a CLI instead of a native dbt plugin?
 
-dbt's current plugin API (`dbtPlugin`) is designed for injecting nodes into the DAG, not for custom file extensions. The file extension handling is hardcoded in `dbt/parser/read_files.py` and only supports `.sql` and `.py` for models.
-
-We've explored three approaches:
-
-1. **CLI Preprocessor** ✅ — Works with any dbt version, no patches needed
-2. **Jinja Extension** ✅ — Requires `{% asql %}` wrappers, but works automatically
-3. **dbt Core PR** ⏳ — Feature request for plugin hooks for custom extensions
+dbt's current plugin API (`dbtPlugin`) is designed for injecting nodes into the DAG, not for custom file extensions. The file extension handling is hardcoded in `dbt/parser/read_files.py` and only supports `.sql` and `.py` for models. The CLI preprocessor works with any dbt version because it compiles `.asql` to `.sql` before dbt ever runs.
 
 See the [research document](../../ai_notes/2026-01-07-dbt-plugin-api-research.md) for details.
 
@@ -230,7 +195,6 @@ cd asql
 - [x] Variable syntax expansion (`{{ x }}` → `{{ var('x') }}`)
 - [x] `SET` → `config()` conversion
 - [x] CLI preprocessor (`dbt-asql compile`)
-- [x] Jinja extension (`{% asql %}...{% endasql %}`)
 - [ ] Publish to PyPI
 - [ ] VS Code extension support for `.asql` in dbt projects
 - [ ] Watch mode for auto-compilation

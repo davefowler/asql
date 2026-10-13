@@ -2,6 +2,7 @@
 
 from asql import compile
 
+
 # Example 1: GROUP BY with COUNT (#)
 def example_group_by_count():
     """GROUP BY with # (COUNT(*))."""
@@ -10,6 +11,7 @@ def example_group_by_count():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 2: GROUP BY with SUM
 def example_group_by_sum():
@@ -20,6 +22,7 @@ def example_group_by_sum():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 3: GROUP BY with AVG
 def example_group_by_avg():
     """GROUP BY with AVG aggregation."""
@@ -28,6 +31,7 @@ def example_group_by_avg():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 4: Multiple aggregations
 def example_multiple_aggregations():
@@ -38,6 +42,7 @@ def example_multiple_aggregations():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 5: Multiple grouping columns
 def example_multiple_grouping():
     """GROUP BY with multiple columns."""
@@ -47,14 +52,16 @@ def example_multiple_grouping():
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 6: GROUP BY with WHERE
 def example_group_by_where():
     """GROUP BY with WHERE filter."""
-    asql = 'from sales where year == 2024 group by region ( sum(amount) as revenue )'
+    asql = "from sales where year == 2024 group by region ( sum(amount) as revenue )"
     sql = compile(asql)
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 7: All aggregation functions
 def example_all_aggregations():
@@ -70,6 +77,7 @@ def example_all_aggregations():
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 if __name__ == "__main__":
     print("=== Aggregation Examples ===\n")

@@ -154,17 +154,17 @@ function initMiniPlaygrounds() {
 function initDialectTracking() {
     // Get or initialize dialects tracking object
     let dialects = JSON.parse(localStorage.getItem('asql_dialects') || '{}');
-    
+
     // Get user's preferred second tab (asql is always first)
     const preferredDialect = localStorage.getItem('asql_preferred_dialect');
-    
+
     return { dialects, preferredDialect };
 }
 
 // Save dialect preference
 function saveDialectPreference(dialect) {
     localStorage.setItem('asql_preferred_dialect', dialect);
-    
+
     // Update view count
     let dialects = JSON.parse(localStorage.getItem('asql_dialects') || '{}');
     dialects[dialect] = (dialects[dialect] || 0) + 1;
@@ -174,10 +174,10 @@ function saveDialectPreference(dialect) {
 // Get sorted dialects by view count (excluding asql)
 function getSortedDialects(compiled) {
     const { dialects } = initDialectTracking();
-    
+
     // Get all dialects except asql
     const allDialects = Object.keys(compiled).filter(d => d !== 'asql');
-    
+
     // Sort by view count (descending), then alphabetically
     return allDialects.sort((a, b) => {
         const countA = dialects[a] || 0;
@@ -193,7 +193,7 @@ function getSortedDialects(compiled) {
 function openInPlayground(blockId) {
     const block = document.querySelector(`[data-block-id="${blockId}"]`);
     if (!block) return;
-    
+
     // Get compiled SQL
     const compiledB64 = block.getAttribute('data-compiled');
     const compiled = JSON.parse(atob(compiledB64));
@@ -207,27 +207,27 @@ function openInPlayground(blockId) {
         window.open(url, '_blank');
         return;
     }
-    
+
     // Get current active dialect (or default to asql)
     const activeTab = block.querySelector('.tab-btn.active');
     const currentDialect = activeTab ? activeTab.getAttribute('data-dialect') : 'asql';
-    
+
     // Get the current code (either ASQL or SQL)
     const codeElement = document.getElementById(`code-${blockId}`);
     const currentCode = codeElement ? codeElement.textContent : compiled.get('asql', '');
-    
+
     // Determine from dialect
     const fromDialect = currentDialect === 'asql' ? 'ASQL' : currentDialect;
-    
+
     // Determine to dialect (default to bigquery if ASQL, otherwise keep current)
     const toDialect = currentDialect === 'asql' ? 'bigquery' : currentDialect;
-    
+
     // Encode the query
     const encodedQuery = encodeURIComponent(currentCode);
-    
+
     // Build URL
     const url = `${getPlaygroundBaseUrl()}?d_f=${fromDialect}&d_t=${toDialect}&sql_f=${encodedQuery}`;
-    
+
     // Open in new tab
     window.open(url, '_blank');
 }
@@ -236,21 +236,21 @@ function openInPlayground(blockId) {
 function showDialect(blockId, dialect) {
     const block = document.querySelector(`[data-block-id="${blockId}"]`);
     if (!block) return;
-    
+
     // Get compiled SQL
     const compiledB64 = block.getAttribute('data-compiled');
     const compiled = JSON.parse(atob(compiledB64));
-    
+
     // Update code content
     const codeElement = document.getElementById(`code-${blockId}`);
     if (codeElement && compiled[dialect]) {
         // Determine language based on dialect
         const language = dialect === 'asql' ? 'asql' : 'sql';
-        
+
         // Use the shared highlighting function which preserves existing highlighting
         highlightIntoCodeElement(codeElement, compiled[dialect], language);
     }
-    
+
     // Update active tab
     const tabs = block.querySelectorAll('.tab-btn');
     tabs.forEach(tab => {
@@ -260,12 +260,12 @@ function showDialect(blockId, dialect) {
             tab.classList.remove('active');
         }
     });
-    
+
     // Track view
     if (dialect !== 'asql') {
         saveDialectPreference(dialect);
     }
-    
+
     // Close more dialects menu if open
     const menu = block.querySelector('.more-dialects-menu');
     if (menu) {
@@ -277,19 +277,19 @@ function showDialect(blockId, dialect) {
 function showMoreDialects(blockId) {
     const block = document.querySelector(`[data-block-id="${blockId}"]`);
     if (!block) return;
-    
+
     // Get compiled SQL
     const compiledB64 = block.getAttribute('data-compiled');
     const compiled = JSON.parse(atob(compiledB64));
-    
+
     // Get top dialects
     const topDialects = ['postgres', 'snowflake', 'bigquery', 'databricks'];
     const otherDialects = Object.keys(compiled).filter(
         d => d !== 'asql' && !topDialects.includes(d)
     );
-    
+
     if (otherDialects.length === 0) return;
-    
+
     // Create or update menu
     let menu = block.querySelector('.more-dialects-menu');
     if (!menu) {
@@ -297,7 +297,7 @@ function showMoreDialects(blockId) {
         menu.className = 'more-dialects-menu';
         block.appendChild(menu);
     }
-    
+
     // Clear and populate menu
     menu.innerHTML = '';
     otherDialects.forEach(dialect => {
@@ -311,7 +311,7 @@ function showMoreDialects(blockId) {
         };
         menu.appendChild(btn);
     });
-    
+
     // Position menu relative to the more tab
     const moreTab = block.querySelector('.more-tab');
     if (moreTab) {
@@ -321,10 +321,10 @@ function showMoreDialects(blockId) {
         menu.style.top = `${rect.bottom - blockRect.top}px`;
         menu.style.left = `${rect.left - blockRect.left}px`;
     }
-    
+
     // Toggle menu
     menu.classList.toggle('show');
-    
+
     // Close menu when clicking outside
     if (menu.classList.contains('show')) {
         const closeMenu = (e) => {
@@ -372,16 +372,16 @@ function reorderTabs(blockId, activeDialect = null) {
 function addWIPBanner() {
     // Check if banner already exists
     if (document.querySelector('.wip-banner')) return;
-    
+
     // Create banner element
     const banner = document.createElement('div');
     banner.className = 'wip-banner';
     banner.innerHTML = `
         <span class="wip-icon">🚧</span>
-        <strong>Work in Progress:</strong> ASQL is under active development. Syntax and features may change. 
+        <strong>Work in Progress:</strong> ASQL is under active development. Syntax and features may change.
         <a href="https://github.com/davefowler/asql" target="_blank">Contribute on GitHub</a>
     `;
-    
+
     // Insert at the very top of the body
     document.body.insertBefore(banner, document.body.firstChild);
 }
@@ -405,11 +405,11 @@ function makeHeaderTitleClickable() {
     // Make the header title text clickable (not just the icon)
     const headerTitle = document.querySelector('.md-header__title');
     const headerTopic = document.querySelector('.md-header__topic');
-    
+
     // Function to make an element clickable
     const makeClickable = (element) => {
         if (!element) return;
-        
+
         // Add click handler that navigates to home
         // Only navigate if not clicking on an existing link
         element.addEventListener('click', (e) => {
@@ -421,7 +421,7 @@ function makeHeaderTitleClickable() {
             window.location.href = '/';
         });
     };
-    
+
     makeClickable(headerTitle);
     makeClickable(headerTopic);
 }
@@ -430,13 +430,13 @@ function makeHeaderTitleClickable() {
 function addPlaygroundButton() {
     // Check if button already exists
     if (document.querySelector('.playground-btn')) return;
-    
+
     // Find the header inner container and title
     const headerInner = document.querySelector('.md-header__inner');
     const headerTitle = document.querySelector('.md-header__title');
-    
+
     if (!headerInner || !headerTitle) return;
-    
+
     // Create playground button
     const btn = document.createElement('a');
     btn.href = getPlaygroundBaseUrl();
@@ -448,7 +448,7 @@ function addPlaygroundButton() {
         </svg>
         Playground
     `;
-    
+
     // Insert after the header title within the header inner container
     // This ensures it's in the correct flex container
     if (headerTitle.nextSibling) {
@@ -466,7 +466,7 @@ function highlightAllCodeBlocks() {
         setTimeout(highlightAllCodeBlocks, 100);
         return;
     }
-    
+
     // Ensure ASQL language is registered
     if (!window.hljs.getLanguage || !window.hljs.getLanguage('asql')) {
         // Try to register if function is available
@@ -477,20 +477,20 @@ function highlightAllCodeBlocks() {
         setTimeout(highlightAllCodeBlocks, 50);
         return;
     }
-    
+
     // Highlight code blocks (including those in mini-playgrounds)
     document.querySelectorAll('pre code[class*="language-"], pre code:not([class])').forEach((block) => {
         // Skip if already highlighted - preserve existing highlighting
         if (block.classList.contains('hljs')) {
             return;
         }
-        
+
         // Get plain text content (before any highlighting)
         const code = block.textContent || block.innerText || '';
         if (!code || !code.trim()) {
             return;
         }
-        
+
         try {
             // Determine language from class name
             let language = null;
@@ -507,19 +507,19 @@ function highlightAllCodeBlocks() {
                     }
                 }
             }
-            
+
             // Default to sql if no language detected
             if (!language) {
                 language = 'sql';
             }
-            
+
             // Use the shared highlighting function which handles all edge cases
             highlightIntoCodeElement(block, code, language);
         } catch (e) {
             console.warn('Highlight.js error on block:', e);
         }
     });
-    
+
     // Also handle ASQL blocks
     const blocks = document.querySelectorAll('.asql-code-block');
     blocks.forEach(block => {
@@ -587,14 +587,14 @@ function initDocsPage() {
         // Add a small delay to ensure Material's scripts have finished running
         setTimeout(() => {
             highlightAllCodeBlocks();
-            
+
             // Re-check after a short delay to catch any highlighting that got cleared
             setTimeout(() => {
                 // Only re-highlight blocks that lost their highlighting
                 document.querySelectorAll('pre code[class*="language-"]:not(.hljs)').forEach((block) => {
                     const code = block.textContent || block.innerText || '';
                     if (!code || !code.trim()) return;
-                    
+
                     let language = null;
                     const langMatch = block.className.match(/language-(\w+)/);
                     if (langMatch) {
@@ -608,9 +608,9 @@ function initDocsPage() {
                             }
                         }
                     }
-                    
+
                     if (!language) language = 'sql';
-                    
+
                     // Only re-highlight if highlight.js is ready and language is available
                     if (window.hljs && window.hljs.getLanguage && window.hljs.getLanguage(language)) {
                         highlightIntoCodeElement(block, code, language);
@@ -619,7 +619,7 @@ function initDocsPage() {
             }, 200);
         }, 150);
     };
-    
+
     initHighlighting();
 }
 
@@ -671,14 +671,14 @@ window.addEventListener('storage', (e) => {
 function reorderTabsOnLoad(blockId, forceActiveDialect = null) {
     const block = document.querySelector(`[data-block-id="${blockId}"]`);
     if (!block) return;
-    
+
     const compiledB64 = block.getAttribute('data-compiled');
     const compiled = JSON.parse(atob(compiledB64));
-    
+
     const { dialects } = initDialectTracking();
     const topDialects = ['postgres', 'snowflake', 'bigquery', 'databricks'];
     let topDialectsAvailable = topDialects.filter(d => d in compiled);
-    
+
     // Sort top dialects by view count
     topDialectsAvailable = topDialectsAvailable.sort((a, b) => {
         const countA = dialects[a] || 0;
@@ -688,15 +688,15 @@ function reorderTabsOnLoad(blockId, forceActiveDialect = null) {
         }
         return a.localeCompare(b);
     });
-    
+
     // Rebuild tabs container
     const tabsContainer = block.querySelector('.dialect-tabs');
     if (!tabsContainer) return;
-    
+
     // Get current active dialect before rebuilding
     const activeTab = tabsContainer.querySelector('.tab-btn.active');
     let activeDialect = forceActiveDialect || (activeTab ? activeTab.getAttribute('data-dialect') : 'asql');
-    
+
     // If active dialect is not in top dialects (and not asql), add it to the visible tabs
     const dialectsToShow = [...topDialectsAvailable];
     if (activeDialect !== 'asql' && !topDialects.includes(activeDialect) && activeDialect in compiled) {
@@ -707,10 +707,10 @@ function reorderTabsOnLoad(blockId, forceActiveDialect = null) {
             dialectsToShow.pop();
         }
     }
-    
+
     // Clear and rebuild
     tabsContainer.innerHTML = '';
-    
+
     // Add ASQL tab first (always)
     const asqlTab = document.createElement('button');
     asqlTab.className = 'tab-btn';
@@ -721,7 +721,7 @@ function reorderTabsOnLoad(blockId, forceActiveDialect = null) {
         asqlTab.classList.add('active');
     }
     tabsContainer.appendChild(asqlTab);
-    
+
     // Add visible dialects
     dialectsToShow.forEach(dialect => {
         const tab = document.createElement('button');
@@ -734,7 +734,7 @@ function reorderTabsOnLoad(blockId, forceActiveDialect = null) {
         }
         tabsContainer.appendChild(tab);
     });
-    
+
     // Add more tab if there are other dialects not shown
     const shownDialects = new Set(['asql', ...dialectsToShow]);
     const otherDialects = Object.keys(compiled).filter(d => !shownDialects.has(d));

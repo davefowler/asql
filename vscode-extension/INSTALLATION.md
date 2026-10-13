@@ -31,7 +31,7 @@
    ```bash
    # Create extension directory
    mkdir -p ~/.vscode/extensions/asql-vscode-0.1.0
-   
+
    # Copy all files from vscode-extension/ to the new directory
    cp -r vscode-extension/* ~/.vscode/extensions/asql-vscode-0.1.0/
    ```

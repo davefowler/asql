@@ -2,12 +2,13 @@
 
 from asql import compile
 
+
 # Example 1: Complex analytics query
 def example_complex_analytics():
     """Complex analytics query with filtering, grouping, and sorting."""
-    asql = """from sales 
+    asql = """from sales
 where status == "completed" and amount > 100
-group by region, month ( 
+group by region, month (
     sum(amount) as revenue,
     # as order_count,
     avg(amount) as avg_order
@@ -18,6 +19,7 @@ limit 20"""
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 2: User analytics
 def example_user_analytics():
@@ -34,12 +36,13 @@ order by -total_users"""
     print("SQL:", sql)
     return asql, sql
 
+
 # Example 3: Sales report
 def example_sales_report():
     """Sales report with complex filtering."""
     asql = """from sales
-where (status == "completed" or status == "pending") 
-    and amount >= 50 
+where (status == "completed" or status == "pending")
+    and amount >= 50
     and created_at is not null
 group by product_category (
     sum(amount) as total_revenue,
@@ -53,6 +56,7 @@ limit 10"""
     print("ASQL:", asql)
     print("SQL:", sql)
     return asql, sql
+
 
 # Example 4: Time-based analysis
 def example_time_analysis():
@@ -68,12 +72,13 @@ order by month"""
     print("SQL:", sql)
     return asql, sql
 
+
 if __name__ == "__main__":
     print("=== Complex Query Examples ===\n")
     example_complex_analytics()
-    print("\n" + "="*60 + "\n")
+    print("\n" + "=" * 60 + "\n")
     example_user_analytics()
-    print("\n" + "="*60 + "\n")
+    print("\n" + "=" * 60 + "\n")
     example_sales_report()
-    print("\n" + "="*60 + "\n")
+    print("\n" + "=" * 60 + "\n")
     example_time_analysis()

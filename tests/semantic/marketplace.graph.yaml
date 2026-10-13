@@ -1,0 +1,109 @@
+config:
+  dialect: duckdb
+entities:
+  user:
+    description: A person who buys or sells on the marketplace.
+    key:
+      id: INT
+  transaction:
+    key:
+      id: INT
+  line_item:
+    key:
+      id: INT
+  datetime:
+    key:
+      ts: TIMESTAMP
+models:
+  user_profiles:
+    grains:
+      - user
+    schema:
+      user_id: INT
+      email: TEXT
+      country: TEXT
+    relationships:
+      user:
+        key:
+          id: user_id
+        attributes:
+          email: email
+          country:
+            expression: country
+            description: ISO country code.
+          country_lower: lower(country)
+  user_settings:
+    grains:
+      - user
+    schema:
+      user_id: INT
+      theme: TEXT
+    relationships:
+      user:
+        key:
+          id: user_id
+        attributes:
+          theme: theme
+  user_addresses:
+    grains:
+      - user, as_of
+    schema:
+      user_id: INT
+      region: TEXT
+      valid_from: TIMESTAMP
+      valid_to: TIMESTAMP
+    relationships:
+      user:
+        key:
+          id: user_id
+        attributes:
+          region: region
+      as_of:
+        entity: datetime
+        key: as_of.ts >= valid_from AND as_of.ts < valid_to
+  transactions:
+    grains:
+      - transaction
+    schema:
+      transaction_id: INT
+      created_at: TIMESTAMP
+      buyer_id: INT
+      seller_id: INT
+      amount: INT
+      status: TEXT
+    relationships:
+      transaction:
+        key:
+          id: transaction_id
+      buyer:
+        entity: user
+        key:
+          id: buyer_id
+      seller:
+        entity: user
+        key:
+          id: seller_id
+    metrics:
+      volume: SUM(amount)
+      transaction_count:
+        expression: COUNT(*)
+        description: Number of transactions.
+      cn_volume: SUM(amount) FILTER (WHERE buyer.country = 'CN')
+      aov: volume / transaction_count
+      aov_x100: aov * 100
+  line_items:
+    grains:
+      - line_item
+    schema:
+      line_item_id: INT
+      transaction_id: INT
+      quantity: INT
+    relationships:
+      line_item:
+        key:
+          id: line_item_id
+      transaction:
+        key:
+          id: transaction_id
+    metrics:
+      item_count: COUNT(*)

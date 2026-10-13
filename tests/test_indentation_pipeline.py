@@ -19,5 +19,3 @@ class TestIndentationPipelines:
         assert "WHERE active" in sql
         assert "SELECT id, amount" in sql
         assert "LIMIT 10" in sql
-
-

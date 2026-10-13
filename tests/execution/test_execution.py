@@ -1,16 +1,80 @@
 """Execution tests that run compiled ASQL queries against real databases."""
 
-import pytest
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
-from tests.fixtures import transpile
-from asql.testing.executors import get_available_executors, EXECUTORS
+import pytest
 
+from asql.config import CompileSettings
+from asql.schema import Column, Relationship, Schema, Table
+from asql.testing.executors import EXECUTORS, get_available_executors
+
+from ..fixtures import transpile
 
 # Collect example files for parametrized testing
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples" / "pairs"
 EXAMPLE_FILES = sorted(EXAMPLES_DIR.glob("*.asql")) if EXAMPLES_DIR.exists() else []
+
+
+def _fanout_schema() -> Schema:
+    schema = Schema()
+
+    orders = Table(name="orders")
+    orders.add_column(Column(name="order_id", primary_key=True))
+    orders.add_column(Column(name="customer_id"))
+    orders.add_column(Column(name="shipping_cost"))
+    schema.add_table(orders)
+
+    order_items = Table(name="order_items")
+    order_items.add_column(Column(name="order_id"))
+    order_items.add_column(Column(name="item_id"))
+    order_items.add_column(Column(name="quantity"))
+    schema.add_table(order_items)
+
+    customers = Table(name="customers")
+    customers.add_column(Column(name="customer_id", primary_key=True))
+    customers.add_column(Column(name="state"))
+    schema.add_table(customers)
+
+    schema.add_relationship(
+        Relationship(
+            from_table="order_items",
+            from_column="order_id",
+            to_table="orders",
+            to_column="order_id",
+            source="explicit",
+        )
+    )
+    schema.add_relationship(
+        Relationship(
+            from_table="orders",
+            from_column="customer_id",
+            to_table="customers",
+            to_column="customer_id",
+            source="explicit",
+        )
+    )
+
+    return schema
+
+
+def _fanout_schema_with_returns() -> Schema:
+    schema = _fanout_schema()
+    returns = Table(name="returns")
+    returns.add_column(Column(name="order_id"))
+    returns.add_column(Column(name="return_id"))
+    schema.add_table(returns)
+    schema.add_relationship(
+        Relationship(
+            from_table="returns",
+            from_column="order_id",
+            to_table="orders",
+            to_column="order_id",
+            source="explicit",
+        )
+    )
+    return schema
 
 
 # Parametrize over all available executors
@@ -72,9 +136,7 @@ class TestBasicExecution:
             ],
         )
 
-        sql = transpile(
-            "from users where status == 'active'", dialect=executor.dialect
-        )
+        sql = transpile("from users where status == 'active'", dialect=executor.dialect)
         rows = executor.execute(sql)
 
         assert len(rows) == 2
@@ -195,6 +257,553 @@ class TestBasicExecution:
         assert 100 in alice_orders
         assert 50 in alice_orders
 
+    def test_fanout_protection_preaggregates_many_side(self, executor: Any) -> None:
+        """Fanout protection should preserve one-side sums after one-to-many joins."""
+        executor.create_table(
+            "orders",
+            columns={
+                "order_id": "INT",
+                "customer_id": "INT",
+                "shipping_cost": "INT",
+            },
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={
+                "order_id": "INT",
+                "item_id": "VARCHAR",
+                "quantity": "INT",
+            },
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+        executor.create_table(
+            "customers",
+            columns={"customer_id": "INT", "state": "VARCHAR"},
+            rows=[(11, "Alabama"), (12, "Alaska")],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              & customers on orders.customer_id = customers.customer_id
+              group by customers.state (
+                sum(orders.shipping_cost) as shipping_cost,
+                sum(order_items.quantity) as quantity
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+
+        results = {row[0]: (row[1], row[2]) for row in rows}
+        assert results["Alabama"] == (1, 1)
+        assert results["Alaska"] == (10, 3)
+
+    def test_fanout_protection_weighted_avg_many_side(self, executor: Any) -> None:
+        """Fanout protection should preserve many-side averages across grouped joins."""
+        executor.create_table(
+            "orders",
+            columns={
+                "order_id": "INT",
+                "customer_id": "INT",
+                "shipping_cost": "INT",
+            },
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={
+                "order_id": "INT",
+                "item_id": "VARCHAR",
+                "quantity": "INT",
+            },
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+        executor.create_table(
+            "customers",
+            columns={"customer_id": "INT", "state": "VARCHAR"},
+            rows=[(11, "Alabama"), (12, "Alaska")],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              & customers on orders.customer_id = customers.customer_id
+              group by customers.state (
+                avg(order_items.quantity) as avg_quantity
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+
+        results = {row[0]: row[1] for row in rows}
+        assert float(results["Alabama"]) == 1.0
+        assert float(results["Alaska"]) == 1.5
+
+    def test_fanout_protection_count_many_side(self, executor: Any) -> None:
+        """Many-side COUNT should be preserved after rewrite."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              group by orders.customer_id (
+                count(order_items.quantity) as item_rows
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: row[1] for row in rows}
+        assert results[11] == 1
+        assert results[12] == 2
+
+    def test_fanout_protection_min_many_side(self, executor: Any) -> None:
+        """Many-side MIN should be preserved after rewrite."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+        executor.create_table(
+            "customers",
+            columns={"customer_id": "INT", "state": "VARCHAR"},
+            rows=[(11, "Alabama"), (12, "Alaska")],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              & customers on orders.customer_id = customers.customer_id
+              group by customers.state (
+                min(order_items.quantity) as min_quantity
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: row[1] for row in rows}
+        assert results["Alabama"] == 1
+        assert results["Alaska"] == 1
+
+    def test_fanout_protection_max_many_side(self, executor: Any) -> None:
+        """Many-side MAX should be preserved after rewrite."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+        executor.create_table(
+            "customers",
+            columns={"customer_id": "INT", "state": "VARCHAR"},
+            rows=[(11, "Alabama"), (12, "Alaska")],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              & customers on orders.customer_id = customers.customer_id
+              group by customers.state (
+                max(order_items.quantity) as max_quantity
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: row[1] for row in rows}
+        assert results["Alabama"] == 1
+        assert results["Alaska"] == 2
+
+    def test_fanout_protection_conditional_sum_many_side(self, executor: Any) -> None:
+        """Conditional many-side SUM should be preserved after rewrite."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              group by orders.customer_id (
+                sum(case when order_items.item_id = 'apple' then order_items.quantity else 0 end) as apple_quantity
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: row[1] for row in rows}
+        assert results[11] == 1
+        assert results[12] == 2
+
+    def test_fanout_protection_conditional_count_many_side(self, executor: Any) -> None:
+        """Conditional many-side COUNT should be preserved after rewrite."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              group by orders.customer_id (
+                count(case when order_items.item_id = 'apple' then order_items.quantity end) as apple_item_rows
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: row[1] for row in rows}
+        assert results[11] == 1
+        assert results[12] == 1
+
+    def test_fanout_protection_conditional_avg_many_side(self, executor: Any) -> None:
+        """Conditional many-side AVG should be preserved after rewrite."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              group by orders.customer_id (
+                avg(case when order_items.item_id = 'apple' then order_items.quantity end) as apple_avg_quantity
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: float(row[1]) for row in rows}
+        assert results[11] == 1.0
+        assert results[12] == 2.0
+
+    def test_fanout_protection_left_join_preserves_orders_without_items(
+        self, executor: Any
+    ) -> None:
+        """Left-join rewrite should preserve one-side rows and zero-valued many-side counts."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10), (3, 13, 7)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              &? order_items on orders.order_id = order_items.order_id
+              group by orders.customer_id (
+                sum(orders.shipping_cost) as shipping_cost,
+                count(order_items.quantity) as item_rows
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: (row[1], row[2]) for row in rows}
+        assert results[11] == (1, 1)
+        assert results[12] == (10, 2)
+        assert results[13] == (7, 0)
+
+    def test_fanout_protection_multiple_many_side_tables(self, executor: Any) -> None:
+        """Independent many-side joins should both be pre-aggregated."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+        executor.create_table(
+            "returns",
+            columns={"order_id": "INT", "return_id": "INT"},
+            rows=[(2, 100), (2, 101)],
+        )
+
+        settings = CompileSettings(
+            schema=_fanout_schema_with_returns(), fanout_protection=True
+        )
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              & returns on orders.order_id = returns.order_id
+              group by orders.customer_id (
+                sum(order_items.quantity) as quantity,
+                count(returns.return_id) as return_count
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: (row[1], row[2]) for row in rows}
+        assert results[12] == (3, 2)
+
+    def test_fanout_protection_reverse_direction_one_side_aggregates(
+        self, executor: Any
+    ) -> None:
+        """FROM many JOIN one: one-side SUM/AVG must aggregate distinct entities."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10), (3, 12, 5)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1), (3, "pear", 3)],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from order_items
+              & orders on order_items.order_id = orders.order_id
+              group by orders.customer_id (
+                sum(orders.shipping_cost) as shipping_cost,
+                avg(orders.shipping_cost) as avg_shipping,
+                sum(order_items.quantity) as quantity
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: (row[1], row[2], row[3]) for row in rows}
+        assert results[11] == (1, 1, 1)
+        assert results[12][0] == 15
+        assert results[12][1] == 7.5
+        assert results[12][2] == 6
+
+    def test_fanout_protection_join_as_filter_one_side_sum(self, executor: Any) -> None:
+        """A join no aggregate references must not inflate one-side sums."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10), (4, 13, 7)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from orders
+              & order_items on orders.order_id = order_items.order_id
+              group by orders.customer_id (
+                sum(orders.shipping_cost) as shipping_cost
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: row[1] for row in rows}
+        assert results[12] == 10
+        assert 13 not in results
+
+    def test_fanout_protection_reverse_one_side_count_min_max(
+        self, executor: Any
+    ) -> None:
+        """One-side COUNT/MIN/MAX aggregate distinct entities through stage-2."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10), (3, 12, 5)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1), (3, "pear", 3)],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from order_items
+              & orders on order_items.order_id = orders.order_id
+              group by orders.customer_id (
+                count(orders.shipping_cost) as order_rows,
+                min(orders.shipping_cost) as min_shipping,
+                max(orders.shipping_cost) as max_shipping
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: (row[1], row[2], row[3]) for row in rows}
+        assert results[11] == (1, 1, 1)
+        assert results[12] == (2, 5, 10)
+
+    def test_fanout_uniqueness_skip_parity_on_one_to_one(self, executor: Any) -> None:
+        """Declared-unique FK skips protection; results match the protected plan."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "region": "VARCHAR", "shipping_cost": "INT"},
+            rows=[(1, "south", 1), (2, "north", 10), (3, "north", 5)],
+        )
+        executor.create_table(
+            "order_profiles",
+            columns={"order_id": "INT", "margin": "INT"},
+            rows=[(1, 2), (2, 3), (3, 4)],
+        )
+
+        def one_to_one_schema(declare_unique: bool) -> Schema:
+            schema = Schema()
+            orders = Table(name="orders")
+            orders.add_column(Column(name="order_id", primary_key=True))
+            orders.add_column(Column(name="region"))
+            orders.add_column(Column(name="shipping_cost"))
+            schema.add_table(orders)
+            profiles = Table(name="order_profiles")
+            profiles.add_column(Column(name="order_id", unique=declare_unique))
+            profiles.add_column(Column(name="margin"))
+            schema.add_table(profiles)
+            schema.add_relationship(
+                Relationship(
+                    from_table="order_profiles",
+                    from_column="order_id",
+                    to_table="orders",
+                    to_column="order_id",
+                    source="explicit",
+                )
+            )
+            return schema
+
+        query = """
+        from orders
+          & order_profiles on orders.order_id = order_profiles.order_id
+          group by orders.region (
+            sum(orders.shipping_cost) as shipping_cost,
+            sum(order_profiles.margin) as margin
+          )
+        """
+        results = {}
+        for declare_unique in (True, False):
+            settings = CompileSettings(
+                schema=one_to_one_schema(declare_unique), fanout_protection=True
+            )
+            sql = transpile(query, dialect=executor.dialect, settings=settings)
+            if declare_unique:
+                assert "__fanout" not in sql
+            else:
+                assert "__fanout" in sql
+            results[declare_unique] = sorted(executor.execute(sql))
+
+        assert results[True] == results[False]
+        totals = {row[0]: (row[1], row[2]) for row in results[True]}
+        assert totals["north"] == (15, 7)
+        assert totals["south"] == (1, 2)
+
+    def test_fanout_protection_reverse_count_star_keeps_row_count(
+        self, executor: Any
+    ) -> None:
+        """Bare COUNT(*) on an N:1 join keeps SQL joined-row semantics untouched."""
+        executor.create_table(
+            "orders",
+            columns={"order_id": "INT", "customer_id": "INT", "shipping_cost": "INT"},
+            rows=[(1, 11, 1), (2, 12, 10)],
+        )
+        executor.create_table(
+            "order_items",
+            columns={"order_id": "INT", "item_id": "VARCHAR", "quantity": "INT"},
+            rows=[(1, "apple", 1), (2, "apple", 2), (2, "orange", 1)],
+        )
+
+        settings = CompileSettings(schema=_fanout_schema(), fanout_protection=True)
+        sql = transpile(
+            """
+            from order_items
+              & orders on order_items.order_id = orders.order_id
+              group by orders.customer_id (
+                count(*) as n
+              )
+            """,
+            dialect=executor.dialect,
+            settings=settings,
+        )
+        rows = executor.execute(sql)
+        results = {row[0]: row[1] for row in rows}
+        assert results[11] == 1
+        assert results[12] == 2
+
 
 class TestAliasReuse:
     """Test alias reuse functionality - referencing earlier aliases in SELECT."""
@@ -210,7 +819,7 @@ class TestAliasReuse:
             },
             rows=[
                 (100.0, 0.1, 2),  # discount_price = 90, total_price = 180
-                (50.0, 0.2, 3),   # discount_price = 40, total_price = 120
+                (50.0, 0.2, 3),  # discount_price = 40, total_price = 120
             ],
         )
 
@@ -246,7 +855,7 @@ class TestAliasReuse:
             },
             rows=[
                 (100.0, 0.1, 2, 0.05),  # discount_price=90, total=180, taxed=189
-                (50.0, 0.2, 3, 0.1),   # discount_price=40, total=120, taxed=132
+                (50.0, 0.2, 3, 0.1),  # discount_price=40, total=120, taxed=132
             ],
         )
 
@@ -282,8 +891,8 @@ class TestAliasReuse:
             },
             rows=[
                 (100.0, 0.1, 2),  # total_price = 180
-                (50.0, 0.2, 1),   # total_price = 40
-                (200.0, 0.05, 1), # total_price = 190
+                (50.0, 0.2, 1),  # total_price = 40
+                (200.0, 0.05, 1),  # total_price = 190
             ],
         )
 
@@ -316,8 +925,8 @@ class TestAliasReuse:
             },
             rows=[
                 (100.0, 0.1, 1),  # total_price = 90
-                (50.0, 0.2, 3),   # total_price = 120
-                (200.0, 0.05, 1), # total_price = 190
+                (50.0, 0.2, 3),  # total_price = 120
+                (200.0, 0.05, 1),  # total_price = 190
             ],
         )
 
@@ -379,7 +988,7 @@ class TestAliasReuse:
 
     def test_alias_reuse_cte_names_unique(self, executor: Any) -> None:
         """Test that CTE names don't conflict when multiple queries use alias reuse.
-        
+
         This verifies that the CTE naming scheme uses unique prefixes to avoid
         conflicts when multiple parts of a query or multiple queries use alias reuse.
         """
@@ -391,7 +1000,7 @@ class TestAliasReuse:
             },
             rows=[
                 (100.0, 0.2),  # retail = 120, with_tax = 132
-                (50.0, 0.5),   # retail = 75, with_tax = 82.5
+                (50.0, 0.5),  # retail = 75, with_tax = 82.5
             ],
         )
 
@@ -409,21 +1018,21 @@ class TestAliasReuse:
             base_price * (1 + markup) as retail_price,
             retail_price * 0.9 as discounted
         """
-        
+
         sql1 = transpile(asql1, dialect=executor.dialect)
         sql2 = transpile(asql2, dialect=executor.dialect)
-        
+
         # Both should execute successfully
         rows1 = executor.execute(sql1)
         rows2 = executor.execute(sql2)
-        
+
         # Verify results for query 1
         assert len(rows1) == 2
         # First row: retail = 100 * 1.2 = 120, with_tax = 120 * 1.1 = 132
         results1 = sorted(rows1, key=lambda r: r[0])
         assert abs(results1[1][0] - 120.0) < 0.01
         assert abs(results1[1][1] - 132.0) < 0.01
-        
+
         # Verify results for query 2
         assert len(rows2) == 2
         # First row: retail = 100 * 1.2 = 120, discounted = 120 * 0.9 = 108
@@ -443,21 +1052,22 @@ class TestDialectSyntax:
             "from t group by region (sum(amount) as total)",
         ],
     )
-    def test_basic_syntax_is_valid(
-        self, executor: Any, asql_query: str
-    ) -> None:
+    def test_basic_syntax_is_valid(self, executor: Any, asql_query: str) -> None:
         """Test that basic queries generate valid SQL."""
         # Create minimal table for syntax validation
         executor.create_table(
             "t",
-            columns={"id": "INT", "name": "VARCHAR", "region": "VARCHAR", "amount": "INT"},
+            columns={
+                "id": "INT",
+                "name": "VARCHAR",
+                "region": "VARCHAR",
+                "amount": "INT",
+            },
             rows=[],
         )
 
         sql = transpile(asql_query, dialect=executor.dialect)
-        assert executor.validate_syntax(
-            sql
-        ), f"Invalid {executor.dialect} SQL: {sql}"
+        assert executor.validate_syntax(sql), f"Invalid {executor.dialect} SQL: {sql}"
 
     def test_slice_syntax_validation(self, executor: Any) -> None:
         """Test that slice syntax generates valid SQL (Issue #77 fixed)."""
@@ -492,9 +1102,9 @@ class TestDialectSyntax:
             discount_price * quantity as total_price
         """
         sql = transpile(asql, dialect=executor.dialect)
-        assert executor.validate_syntax(
-            sql
-        ), f"Invalid {executor.dialect} SQL for alias reuse: {sql}"
+        assert executor.validate_syntax(sql), (
+            f"Invalid {executor.dialect} SQL for alias reuse: {sql}"
+        )
 
 
 class TestListComprehensionExecution:
@@ -504,39 +1114,43 @@ class TestListComprehensionExecution:
         """Test basic list comprehension transforms array elements."""
         if executor.dialect != "duckdb":
             pytest.skip("List comprehensions currently only tested with DuckDB")
-        
+
         # Create table with array column using raw SQL (arrays need special syntax)
         # Access the connection directly for DDL statements
-        if hasattr(executor, 'conn'):
-            executor.conn.execute("""
+        if hasattr(executor, "conn"):
+            executor.conn.execute(
+                """
                 CREATE TABLE events (
                     event_id INT,
                     tags VARCHAR[]
                 )
-            """)
-            executor.conn.execute("""
+            """
+            )
+            executor.conn.execute(
+                """
                 INSERT INTO events VALUES
                 (1, ['tag1', 'tag2', 'tag3']),
                 (2, ['TAG4', 'tag5']),
                 (3, [])
-            """)
+            """
+            )
         else:
             pytest.skip("Executor doesn't support array columns")
 
         sql = transpile(
             "from events select [lower(tag) for tag in tags] as normalized_tags",
-            dialect=executor.dialect
+            dialect=executor.dialect,
         )
-        columns, rows = executor.execute_and_fetch_columns(sql)
+        _columns, rows = executor.execute_and_fetch_columns(sql)
 
         assert len(rows) == 3
         # Check that tags are normalized to lowercase
         normalized_tags = rows[0][0]  # First row, first column
-        assert normalized_tags == ['tag1', 'tag2', 'tag3']
-        
+        assert normalized_tags == ["tag1", "tag2", "tag3"]
+
         normalized_tags_2 = rows[1][0]
-        assert normalized_tags_2 == ['tag4', 'tag5']
-        
+        assert normalized_tags_2 == ["tag4", "tag5"]
+
         # Empty array should remain empty
         normalized_tags_3 = rows[2][0]
         assert normalized_tags_3 == []
@@ -545,28 +1159,32 @@ class TestListComprehensionExecution:
         """Test list comprehension with if condition filters elements."""
         if executor.dialect != "duckdb":
             pytest.skip("List comprehensions currently only tested with DuckDB")
-        
-        if hasattr(executor, 'conn'):
-            executor.conn.execute("""
+
+        if hasattr(executor, "conn"):
+            executor.conn.execute(
+                """
                 CREATE TABLE data (
                     id INT,
                     numbers INT[]
                 )
-            """)
-            executor.conn.execute("""
+            """
+            )
+            executor.conn.execute(
+                """
                 INSERT INTO data VALUES
                 (1, [1, 2, 3, 4, 5]),
                 (2, [-1, 0, 1, 2]),
                 (3, [10, 20, 30])
-            """)
+            """
+            )
         else:
             pytest.skip("Executor doesn't support array columns")
 
         sql = transpile(
             "from data select [x * 2 for x in numbers if x > 0] as doubled",
-            dialect=executor.dialect
+            dialect=executor.dialect,
         )
-        columns, rows = executor.execute_and_fetch_columns(sql)
+        _columns, rows = executor.execute_and_fetch_columns(sql)
 
         assert len(rows) == 3
         # First row: [1,2,3,4,5] -> [2,4,6,8,10] (all > 0)
@@ -580,57 +1198,65 @@ class TestListComprehensionExecution:
         """Test list comprehension with function calls."""
         if executor.dialect != "duckdb":
             pytest.skip("List comprehensions currently only tested with DuckDB")
-        
-        if hasattr(executor, 'conn'):
-            executor.conn.execute("""
+
+        if hasattr(executor, "conn"):
+            executor.conn.execute(
+                """
                 CREATE TABLE events (
                     event_id INT,
                     names VARCHAR[]
                 )
-            """)
-            executor.conn.execute("""
+            """
+            )
+            executor.conn.execute(
+                """
                 INSERT INTO events VALUES
                 (1, ['alice', 'bob']),
                 (2, ['charlie'])
-            """)
+            """
+            )
         else:
             pytest.skip("Executor doesn't support array columns")
 
         sql = transpile(
             "from events select [upper(name) for name in names] as upper_names",
-            dialect=executor.dialect
+            dialect=executor.dialect,
         )
-        columns, rows = executor.execute_and_fetch_columns(sql)
+        _columns, rows = executor.execute_and_fetch_columns(sql)
 
         assert len(rows) == 2
-        assert rows[0][0] == ['ALICE', 'BOB']
-        assert rows[1][0] == ['CHARLIE']
+        assert rows[0][0] == ["ALICE", "BOB"]
+        assert rows[1][0] == ["CHARLIE"]
 
     def test_list_comprehension_with_arithmetic(self, executor: Any) -> None:
         """Test list comprehension with arithmetic operations."""
         if executor.dialect != "duckdb":
             pytest.skip("List comprehensions currently only tested with DuckDB")
-        
-        if hasattr(executor, 'conn'):
-            executor.conn.execute("""
+
+        if hasattr(executor, "conn"):
+            executor.conn.execute(
+                """
                 CREATE TABLE data (
                     id INT,
                     values INT[]
                 )
-            """)
-            executor.conn.execute("""
+            """
+            )
+            executor.conn.execute(
+                """
                 INSERT INTO data VALUES
                 (1, [1, 2, 3]),
                 (2, [10, 20])
-            """)
+            """
+            )
         else:
             pytest.skip("Executor doesn't support array columns")
 
         sql = transpile(
             "from data select [value + 10 for value in values] as incremented",
-            dialect=executor.dialect
+            dialect=executor.dialect,
         )
-        columns, rows = executor.execute_and_fetch_columns(sql)
+        _columns, rows = executor.execute_and_fetch_columns(sql)
 
         assert len(rows) == 2
         assert rows[0][0] == [11, 12, 13]
@@ -640,20 +1266,24 @@ class TestListComprehensionExecution:
         """Test list comprehension alongside other SELECT expressions."""
         if executor.dialect != "duckdb":
             pytest.skip("List comprehensions currently only tested with DuckDB")
-        
-        if hasattr(executor, 'conn'):
-            executor.conn.execute("""
+
+        if hasattr(executor, "conn"):
+            executor.conn.execute(
+                """
                 CREATE TABLE events (
                     event_id INT,
                     event_name VARCHAR,
                     tags VARCHAR[]
                 )
-            """)
-            executor.conn.execute("""
+            """
+            )
+            executor.conn.execute(
+                """
                 INSERT INTO events VALUES
                 (1, 'Event1', ['tag1', 'tag2']),
                 (2, 'Event2', ['tag3'])
-            """)
+            """
+            )
         else:
             pytest.skip("Executor doesn't support array columns")
 
@@ -663,22 +1293,22 @@ class TestListComprehensionExecution:
     event_id,
     [lower(tag) for tag in tags] as normalized_tags,
     event_name""",
-            dialect=executor.dialect
+            dialect=executor.dialect,
         )
         columns, rows = executor.execute_and_fetch_columns(sql)
 
         assert len(rows) == 2
         assert len(columns) == 3
-        assert columns == ['event_id', 'normalized_tags', 'event_name']
+        assert columns == ["event_id", "normalized_tags", "event_name"]
         # Check first row
         assert rows[0][0] == 1  # event_id
-        assert rows[0][1] == ['tag1', 'tag2']  # normalized_tags
-        assert rows[0][2] == 'Event1'  # event_name
+        assert rows[0][1] == ["tag1", "tag2"]  # normalized_tags
+        assert rows[0][2] == "Event1"  # event_name
 
 
 class TestExampleFiles:
     """Test that all example .asql files compile to valid SQL.
-    
+
     These tests validate that the example files in examples/pairs/ compile
     successfully. Examples that use features not yet implemented are marked
     as xfail to track progress without blocking CI.
@@ -692,19 +1322,21 @@ class TestExampleFiles:
     def test_example_compiles(self, example_file: Path) -> None:
         """Test that example ASQL files compile without errors."""
         asql_content = example_file.read_text()
-        
+
         try:
             # Should compile without raising an exception
             sql = transpile(asql_content, dialect="duckdb")
-            
+
             # Basic sanity checks
             assert sql is not None
             assert len(sql) > 0
             assert "SELECT" in sql.upper() or "WITH" in sql.upper()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # Mark as xfail if compilation fails - these are examples that
             # may use features not yet fully implemented
-            pytest.xfail(f"Example compilation failed (may use unimplemented features): {e}")
+            pytest.xfail(
+                f"Example compilation failed (may use unimplemented features): {e}"
+            )
 
     @pytest.mark.parametrize(
         "example_file",
@@ -713,28 +1345,28 @@ class TestExampleFiles:
     )
     def test_example_syntax_valid(self, example_file: Path, executor: Any) -> None:
         """Test that compiled example SQL is syntactically valid.
-        
+
         Note: Some examples use double quotes for strings (e.g., "completed")
         which SQLGlot interprets as identifiers per SQL standard. These will
         fail syntax validation until the examples are updated to use single quotes.
         """
         asql_content = example_file.read_text()
-        
+
         try:
             sql = transpile(asql_content, dialect=executor.dialect)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             pytest.xfail(f"Example compilation failed: {e}")
             return
-        
+
         # For syntax validation, we need mock tables
         # Extract table names from FROM clauses (simple heuristic)
         import re
-        
+
         # Find all table references (simplified - won't catch all cases)
         # Look for: FROM table, JOIN table, & table
-        table_pattern = r'(?:FROM|JOIN|&)\s+([a-zA-Z_][a-zA-Z0-9_]*)'
+        table_pattern = r"(?:FROM|JOIN|&)\s+([a-zA-Z_][a-zA-Z0-9_]*)"
         tables = set(re.findall(table_pattern, asql_content, re.IGNORECASE))
-        
+
         # Create empty tables with generic schema
         generic_columns = {
             "id": "INT",
@@ -804,40 +1436,38 @@ class TestExampleFiles:
             "visit_date": "DATE",
             "level": "INT",
         }
-        
+
         for table in tables:
-            try:
+            with suppress(Exception):
                 executor.create_table(table.lower(), generic_columns, [])
-            except Exception:
-                # Table might already exist or name is invalid
-                pass
-        
+
         is_valid = executor.validate_syntax(sql)
-        
+
         # Mark expected failures for examples with double-quoted strings
         # These should be updated to use single quotes
         if not is_valid and '"' in asql_content:
             pytest.xfail(
                 f"Example uses double quotes for strings (should use single quotes): {example_file.name}"
             )
-        
+
         # Mark expected failures for nested WITH clauses (pre-existing CTE handling bug)
         # Some complex ASQL queries produce invalid nested WITH clauses
         if not is_valid and "AS (WITH" in sql:
             pytest.xfail(
                 f"Pre-existing bug: Nested WITH clauses generated. Example: {example_file.name}"
             )
-        
+
         # Mark expected failures for malformed GROUP BY (pre-existing bug)
         # Some queries have HAVING conditions incorrectly placed in GROUP BY
         if not is_valid and "GROUP BY" in sql and ") AND " in sql:
             # Check for patterns like "GROUP BY x, y AND condition"
             import re
-            if re.search(r'GROUP BY[^)]+AND\s+\w+\s*[><=]', sql):
+
+            if re.search(r"GROUP BY[^)]+AND\s+\w+\s*[><=]", sql):
                 pytest.xfail(
                     f"Pre-existing bug: HAVING clause incorrectly in GROUP BY. Example: {example_file.name}"
                 )
-        
+
         # Mark expected failures for SQLite tests using functions not supported by SQLite
         # SQLite doesn't have MONTH(), DATE_TRUNC(), GENERATE_SERIES(), etc.
         # These require dialect-specific translation which is a separate issue
@@ -856,20 +1486,20 @@ class TestExampleFiles:
                 unsupported_funcs.append("WEEK()")
             if "DAY(" in sql_upper and "STRFTIME" not in sql_upper:
                 unsupported_funcs.append("DAY()")
-            
+
             if unsupported_funcs:
                 pytest.xfail(
                     f"SQLite dialect translation not implemented for: {', '.join(unsupported_funcs)}. "
                     f"Example: {example_file.name}"
                 )
-            
+
             # INTERVAL syntax not supported in SQLite
             if "INTERVAL" in sql_upper:
                 pytest.xfail(
                     f"SQLite dialect translation not implemented for: INTERVAL syntax. "
                     f"Example: {example_file.name}"
                 )
-        
+
         # Mark expected failures for PostgreSQL tests using functions not properly translated
         # PostgreSQL doesn't have MONTH() - it uses EXTRACT(MONTH FROM ...)
         if not is_valid and executor.dialect == "postgres":
@@ -884,13 +1514,13 @@ class TestExampleFiles:
                 unsupported_funcs.append("WEEK()")
             if "DAY(" in sql_upper and "EXTRACT" not in sql_upper:
                 unsupported_funcs.append("DAY()")
-            
+
             if unsupported_funcs:
                 pytest.xfail(
                     f"PostgreSQL dialect translation not implemented for: {', '.join(unsupported_funcs)}. "
                     f"Example: {example_file.name}"
                 )
-        
+
         # Mark expected failures for DuckDB with unsupported features
         if not is_valid and executor.dialect == "duckdb":
             sql_upper = sql.upper()
@@ -899,12 +1529,12 @@ class TestExampleFiles:
                 pytest.xfail(
                     f"Pre-existing bug: Auto-spine incorrectly references col_1. Example: {example_file.name}"
                 )
-        
+
         # Mark expected failures for invalid column references (pre-existing alias bugs)
         # These are bugs where column names are incorrectly generated (e.g., SUM(orders) instead of SUM(total_orders))
         if not is_valid:
             # Check for references to columns that look like they should be aliases
-            # Common pattern: SUM(orders) when it should be SUM(total_orders) 
+            # Common pattern: SUM(orders) when it should be SUM(total_orders)
             if "SUM(orders)" in sql or "SUM(spent)" in sql:
                 pytest.xfail(
                     f"Pre-existing bug: Invalid column reference in aggregation. Example: {example_file.name}"
@@ -920,7 +1550,7 @@ class TestExampleFiles:
                 pytest.xfail(
                     f"Pre-existing bug: Window function alias used in WHERE (should use QUALIFY). Example: {example_file.name}"
                 )
-        
+
         assert is_valid, f"Invalid {executor.dialect} SQL: {sql}"
 
 
@@ -939,7 +1569,7 @@ class TestSpineExecution:
                 # No South data!
             ],
         )
-        
+
         # Create a reference table with all regions
         executor.create_table(
             "regions",
@@ -984,7 +1614,7 @@ class TestCTEExecution:
 
     def test_simple_cte(self, executor: Any) -> None:
         """Test basic CTE with stash as.
-        
+
         Note: Multi-query CTE syntax with 'from cte_name' on separate line
         is not yet fully implemented. This test documents the expected behavior.
         """
@@ -1004,7 +1634,7 @@ class TestCTEExecution:
                 from users
                 where status == 'active'
                 stash as active_users
-                
+
                 from active_users
                 select name
                 """,
@@ -1016,7 +1646,7 @@ class TestCTEExecution:
             assert "Alice" in names
             assert "Charlie" in names
             assert "Bob" not in names
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             pytest.xfail(f"Multi-query CTE syntax not yet implemented: {e}")
 
 
@@ -1197,7 +1827,7 @@ class TestUnionExecution:
 
     def test_simple_union(self, executor: Any) -> None:
         """Test UNION combines results from multiple queries.
-        
+
         Note: ASQL pipeline UNION syntax (from a union from b) is not yet
         fully implemented. This test documents expected behavior.
         """
@@ -1227,7 +1857,7 @@ class TestUnionExecution:
             assert len(names) == 4
             assert "Alice" in names
             assert "Charlie" in names
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             pytest.xfail(f"UNION pipe syntax not yet implemented: {e}")
 
 
@@ -1263,7 +1893,7 @@ class TestTernaryExecution:
 
     def test_nested_when_then(self, executor: Any) -> None:
         """Test nested when/then for multiple conditions.
-        
+
         Note: Nested when/then syntax has a bug - it produces malformed CASE.
         This test documents the expected behavior.
         """
@@ -1293,7 +1923,7 @@ class TestTernaryExecution:
             assert results["Teen"] == "minor"
             assert results["Adult1"] == "adult"
             assert results["Senior"] == "senior"
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             pytest.xfail(f"Nested when/then syntax has a bug: {e}")
 
     def test_when_in_aggregation(self, executor: Any) -> None:
@@ -1313,7 +1943,7 @@ class TestTernaryExecution:
         sql = transpile(
             """
             from orders
-            select 
+            select
                 sum(case when status == 'completed' then amount else 0 end) as completed_total,
                 sum(case when status == 'cancelled' then amount else 0 end) as cancelled_total
             """,
@@ -1322,7 +1952,7 @@ class TestTernaryExecution:
         rows = executor.execute(sql)
 
         assert rows[0][0] == 300  # completed: 100 + 200
-        assert rows[0][1] == 50   # cancelled: 50
+        assert rows[0][1] == 50  # cancelled: 50
 
 
 class TestCoalesceExecution:

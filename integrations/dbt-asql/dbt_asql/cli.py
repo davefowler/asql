@@ -4,7 +4,7 @@ Command-line interface for dbt-asql.
 Usage:
     dbt-asql compile [--models-dir=<dir>] [--dialect=<dialect>]
     dbt-asql clean [--models-dir=<dir>]
-    
+
 Commands:
     compile     Convert .asql files to .sql files
     clean       Remove generated .sql files
@@ -20,9 +20,9 @@ import argparse
 import sys
 
 from dbt_asql.plugin import (
+    VALID_DIALECTS,
     AsqlCompilationError,
     InvalidDialectError,
-    VALID_DIALECTS,
 )
 
 
@@ -32,9 +32,9 @@ def main() -> int:
         prog="dbt-asql",
         description="ASQL compiler for dbt projects",
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", help="Commands")
-    
+
     # compile command
     compile_parser = subparsers.add_parser(
         "compile",
@@ -57,11 +57,12 @@ def main() -> int:
         help="SQL dialect to compile to (default: postgres)",
     )
     compile_parser.add_argument(
-        "-q", "--quiet",
+        "-q",
+        "--quiet",
         action="store_true",
         help="Suppress output",
     )
-    
+
     # clean command
     clean_parser = subparsers.add_parser(
         "clean",
@@ -73,18 +74,19 @@ def main() -> int:
         help="Path to models directory (default: models)",
     )
     clean_parser.add_argument(
-        "-q", "--quiet",
+        "-q",
+        "--quiet",
         action="store_true",
         help="Suppress output",
     )
-    
+
     # Parse arguments
     args = parser.parse_args()
-    
+
     if args.command is None:
         parser.print_help()
         return 1
-    
+
     if args.command == "compile":
         return cmd_compile(args)
     elif args.command == "clean":
@@ -97,7 +99,7 @@ def main() -> int:
 def cmd_compile(args: argparse.Namespace) -> int:
     """Handle compile command."""
     from dbt_asql.plugin import compile_project
-    
+
     try:
         compiled = compile_project(
             models_dir=args.models_dir,
@@ -105,12 +107,12 @@ def cmd_compile(args: argparse.Namespace) -> int:
             dialect=args.dialect,
             verbose=not args.quiet,
         )
-        
+
         if not args.quiet:
             print(f"\n✓ Compiled {len(compiled)} file(s)")
-        
+
         return 0
-        
+
     except InvalidDialectError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
@@ -119,7 +121,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
         return 1
     except (KeyboardInterrupt, SystemExit):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Unexpected error: {e}", file=sys.stderr)
         return 1
 
@@ -127,21 +129,21 @@ def cmd_compile(args: argparse.Namespace) -> int:
 def cmd_clean(args: argparse.Namespace) -> int:
     """Handle clean command."""
     from dbt_asql.plugin import clean_project
-    
+
     try:
         removed = clean_project(
             models_dir=args.models_dir,
             verbose=not args.quiet,
         )
-        
+
         if not args.quiet:
             print(f"\n✓ Removed {len(removed)} file(s)")
-        
+
         return 0
-        
+
     except (KeyboardInterrupt, SystemExit):
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Unexpected error: {e}", file=sys.stderr)
         return 1
 

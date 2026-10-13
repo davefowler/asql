@@ -1,12 +1,13 @@
 """Tests for window function utilities in ASQL."""
 
 import pytest
-from tests.fixtures import transpile
+
+from .fixtures import transpile
 
 
 class TestQualifyClause:
     """Tests for QUALIFY clause support."""
-    
+
     def test_qualify_simple_condition(self) -> None:
         """Test QUALIFY with simple condition."""
         asql = """
@@ -21,7 +22,7 @@ class TestQualifyClause:
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
         assert "ORDER BY" in sql_upper
-    
+
     def test_qualify_with_row_number(self) -> None:
         """Test QUALIFY with ROW_NUMBER for deduplication."""
         asql = """
@@ -37,7 +38,7 @@ class TestQualifyClause:
 
 class TestPerCommand:
     """Tests for the new PER command syntax (per <partition> <op> by <order>)."""
-    
+
     def test_per_first_by(self) -> None:
         """Test per customer_id first by -order_date (new syntax)."""
         asql = """
@@ -52,7 +53,7 @@ class TestPerCommand:
         assert "ORDER BY" in sql_upper
         assert "DESC" in sql_upper
         assert "QUALIFY" in sql_upper or "WHERE" in sql_upper
-    
+
     def test_per_last_by(self) -> None:
         """Test per customer_id last by order_date."""
         asql = """
@@ -65,7 +66,7 @@ class TestPerCommand:
         assert "PARTITION BY" in sql_upper
         # last by order_date becomes ORDER BY order_date DESC
         assert "DESC" in sql_upper
-    
+
     def test_per_number_by(self) -> None:
         """Test per customer_id number by -order_date."""
         asql = """
@@ -77,7 +78,7 @@ class TestPerCommand:
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
         assert "ROW_NUM" in sql_upper  # Default alias
-    
+
     def test_per_rank_by(self) -> None:
         """Test per department rank by -salary."""
         asql = """
@@ -89,7 +90,7 @@ class TestPerCommand:
         assert "RANK()" in sql_upper
         assert "PARTITION BY" in sql_upper
         # Should have 'rank' as default alias (may be quoted)
-    
+
     def test_per_dense_rank_by(self) -> None:
         """Test per department dense rank by -salary (with space)."""
         asql = """
@@ -100,7 +101,7 @@ class TestPerCommand:
         sql_upper = sql.upper()
         assert "DENSE_RANK()" in sql_upper
         assert "PARTITION BY" in sql_upper
-    
+
     def test_per_with_custom_alias(self) -> None:
         """Test per with custom alias."""
         asql = """
@@ -111,7 +112,7 @@ class TestPerCommand:
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "ORDER_NUM" in sql_upper
-    
+
     def test_per_multiple_partition_columns(self) -> None:
         """Test per with multiple partition columns."""
         asql = """
@@ -127,7 +128,7 @@ class TestPerCommand:
 
 class TestStandaloneWindowOps:
     """Tests for standalone window operations (without per partition)."""
-    
+
     def test_number_by_without_partition(self) -> None:
         """Test number by -timestamp (whole table)."""
         asql = """
@@ -140,7 +141,7 @@ class TestStandaloneWindowOps:
         assert "ORDER BY" in sql_upper
         # No PARTITION BY
         assert "PARTITION BY" not in sql_upper
-    
+
     def test_rank_by_without_partition(self) -> None:
         """Test rank by -score (whole table)."""
         asql = """
@@ -151,7 +152,7 @@ class TestStandaloneWindowOps:
         sql_upper = sql.upper()
         assert "RANK()" in sql_upper
         assert "ORDER BY" in sql_upper
-    
+
     def test_dense_rank_by_without_partition(self) -> None:
         """Test dense rank by -score (whole table)."""
         asql = """
@@ -166,7 +167,7 @@ class TestStandaloneWindowOps:
 
 class TestDistinctOn:
     """Tests for DISTINCT ON support (legacy, prefer first by/last by)."""
-    
+
     def test_distinct_on_single_column(self) -> None:
         """Test DISTINCT ON with single column."""
         asql = """
@@ -177,7 +178,7 @@ class TestDistinctOn:
         sql = transpile(asql)
         sql_upper = sql.upper()
         assert "DISTINCT" in sql_upper
-    
+
     def test_distinct_on_multiple_columns(self) -> None:
         """Test DISTINCT ON with multiple columns."""
         asql = """
@@ -192,7 +193,7 @@ class TestDistinctOn:
 
 class TestPriorNextFunctions:
     """Tests for prior() and next() simplified LAG/LEAD functions."""
-    
+
     def test_prior_simple(self) -> None:
         """Test prior() function (LAG with default offset 1)."""
         asql = """
@@ -203,7 +204,7 @@ class TestPriorNextFunctions:
         sql = transpile(asql)
         sql_upper = sql.upper()
         assert "LAG" in sql_upper
-    
+
     def test_prior_with_offset(self) -> None:
         """Test prior() function with custom offset."""
         asql = """
@@ -215,7 +216,7 @@ class TestPriorNextFunctions:
         sql_upper = sql.upper()
         assert "LAG" in sql_upper
         assert "3" in sql
-    
+
     def test_next_simple(self) -> None:
         """Test next() function (LEAD with default offset 1)."""
         asql = """
@@ -226,7 +227,7 @@ class TestPriorNextFunctions:
         sql = transpile(asql)
         sql_upper = sql.upper()
         assert "LEAD" in sql_upper
-    
+
     def test_next_with_offset(self) -> None:
         """Test next() function with custom offset."""
         asql = """
@@ -242,9 +243,9 @@ class TestPriorNextFunctions:
 
 class TestRunningAggregates:
     """Tests for running aggregate functions."""
-    
+
     def test_running_sum(self) -> None:
-        """Test running_sum() function."""
+        """running_sum() inherits the query ORDER BY into its OVER frame."""
         asql = """
         from transactions
             order by date
@@ -253,11 +254,12 @@ class TestRunningAggregates:
         sql = transpile(asql)
         sql_upper = sql.upper()
         assert "SUM" in sql_upper
-        # Should have OVER clause with ROWS UNBOUNDED PRECEDING
-        assert "OVER" in sql_upper
-    
+        # Frame must carry the ordering, else the running total is over arbitrary order.
+        assert "OVER (ORDER BY DATE" in sql_upper
+        assert "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW" in sql_upper
+
     def test_running_avg(self) -> None:
-        """Test running_avg() function."""
+        """running_avg() inherits the query ORDER BY into its OVER frame."""
         asql = """
         from transactions
             order by date
@@ -266,10 +268,10 @@ class TestRunningAggregates:
         sql = transpile(asql)
         sql_upper = sql.upper()
         assert "AVG" in sql_upper
-        assert "OVER" in sql_upper
-    
+        assert "OVER (ORDER BY DATE" in sql_upper
+
     def test_running_count(self) -> None:
-        """Test running_count() function."""
+        """running_count() inherits the query ORDER BY into its OVER frame."""
         asql = """
         from transactions
             order by date
@@ -278,14 +280,21 @@ class TestRunningAggregates:
         sql = transpile(asql)
         sql_upper = sql.upper()
         assert "COUNT" in sql_upper
-        assert "OVER" in sql_upper
+        assert "OVER (ORDER BY DATE" in sql_upper
+
+    def test_running_agg_without_order_by_raises(self) -> None:
+        """A running total over undefined order is an error, not a silent guess."""
+        from asql.errors import ASQLCompilationError
+
+        with pytest.raises(ASQLCompilationError):
+            transpile("from transactions select date, running_sum(amount) as rs")
 
 
 class TestRollingAggregates:
     """Tests for rolling aggregate functions with window size."""
-    
+
     def test_rolling_avg(self) -> None:
-        """Test rolling_avg() function with window size."""
+        """rolling_avg() inherits the query ORDER BY and keeps its N-row frame."""
         asql = """
         from daily_sales
             order by date
@@ -294,10 +303,11 @@ class TestRollingAggregates:
         sql = transpile(asql)
         sql_upper = sql.upper()
         assert "AVG" in sql_upper
-        assert "OVER" in sql_upper
-    
+        assert "OVER (ORDER BY DATE" in sql_upper
+        assert "ROWS BETWEEN 6 PRECEDING AND CURRENT ROW" in sql_upper
+
     def test_rolling_sum(self) -> None:
-        """Test rolling_sum() function with window size."""
+        """rolling_sum() inherits the query ORDER BY and keeps its N-row frame."""
         asql = """
         from daily_sales
             order by date
@@ -306,12 +316,25 @@ class TestRollingAggregates:
         sql = transpile(asql)
         sql_upper = sql.upper()
         assert "SUM" in sql_upper
-        assert "OVER" in sql_upper
+        assert "OVER (ORDER BY DATE" in sql_upper
+        assert "ROWS BETWEEN 29 PRECEDING AND CURRENT ROW" in sql_upper
+
+    def test_explicit_over_replaces_frame_no_nested_over(self) -> None:
+        """running_* with an explicit over() emits one window, not nested OVERs."""
+        asql = (
+            "from orders select cohort, period, "
+            "running_sum(revenue) over (partition by cohort order by period) as cum"
+        )
+        sql = transpile(asql)
+        sql_upper = sql.upper()
+        assert sql_upper.count("OVER") == 1
+        assert "PARTITION BY COHORT" in sql_upper
+        assert "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW" in sql_upper
 
 
 class TestWindowFunctionsWithOver:
     """Tests for window functions with OVER clause."""
-    
+
     def test_row_number_over(self) -> None:
         """Test row_number() over (partition by ... order by ...)."""
         asql = """
@@ -324,7 +347,7 @@ class TestWindowFunctionsWithOver:
         assert "OVER" in sql_upper
         assert "PARTITION BY" in sql_upper
         assert "ORDER BY" in sql_upper
-    
+
     def test_rank_over(self) -> None:
         """Test rank() over (partition by ... order by ...)."""
         asql = """
@@ -335,7 +358,7 @@ class TestWindowFunctionsWithOver:
         sql_upper = sql.upper()
         assert "RANK" in sql_upper
         assert "OVER" in sql_upper
-    
+
     def test_sum_over_partition(self) -> None:
         """Test SUM() over partition."""
         asql = """
@@ -351,7 +374,7 @@ class TestWindowFunctionsWithOver:
 
 class TestFirstLastFunctions:
     """Tests for first() and last() aggregate functions with ordering."""
-    
+
     def test_first_with_order(self) -> None:
         """Test first() function with ORDER BY."""
         asql = """
@@ -362,7 +385,7 @@ class TestFirstLastFunctions:
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
-    
+
     def test_first_with_ascending_order(self) -> None:
         """Test first() function with ascending ORDER BY."""
         asql = """
@@ -372,7 +395,7 @@ class TestFirstLastFunctions:
         sql = transpile(asql)
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
-    
+
     def test_last_with_order(self) -> None:
         """Test last() function with ORDER BY (gets last value)."""
         asql = """
@@ -381,13 +404,15 @@ class TestFirstLastFunctions:
         """
         sql = transpile(asql)
         sql_upper = sql.upper()
-        assert "FIRST_VALUE" in sql_upper  # Implemented as FIRST_VALUE with reversed order
+        assert (
+            "FIRST_VALUE" in sql_upper
+        )  # Implemented as FIRST_VALUE with reversed order
         assert "ORDER BY" in sql_upper
 
 
 class TestArgMaxMinFunctions:
     """Tests for arg_max() and arg_min() ClickHouse-style functions."""
-    
+
     def test_arg_max(self) -> None:
         """Test arg_max() function - get value where the ordering column is maximum."""
         asql = """
@@ -398,7 +423,7 @@ class TestArgMaxMinFunctions:
         sql_upper = sql.upper()
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
-    
+
     def test_arg_min(self) -> None:
         """Test arg_min() function - get value where the ordering column is minimum."""
         asql = """
@@ -413,7 +438,7 @@ class TestArgMaxMinFunctions:
 
 class TestFirstLastInGroupBy:
     """Tests for first() and last() inside GROUP BY aggregation blocks."""
-    
+
     def test_first_in_group_by(self) -> None:
         """Test first() inside GROUP BY aggregation block."""
         asql = """
@@ -427,7 +452,7 @@ class TestFirstLastInGroupBy:
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
         assert "GROUP BY" in sql_upper
-    
+
     def test_last_in_group_by(self) -> None:
         """Test last() inside GROUP BY aggregation block."""
         asql = """
@@ -438,10 +463,12 @@ class TestFirstLastInGroupBy:
         """
         sql = transpile(asql)
         sql_upper = sql.upper()
-        assert "FIRST_VALUE" in sql_upper  # Implemented as FIRST_VALUE with reversed order
+        assert (
+            "FIRST_VALUE" in sql_upper
+        )  # Implemented as FIRST_VALUE with reversed order
         assert "ORDER BY" in sql_upper
         assert "GROUP BY" in sql_upper
-    
+
     def test_arg_max_in_group_by(self) -> None:
         """Test arg_max() inside GROUP BY aggregation block."""
         asql = """
@@ -455,7 +482,7 @@ class TestFirstLastInGroupBy:
         assert "FIRST_VALUE" in sql_upper
         assert "ORDER BY" in sql_upper
         assert "GROUP BY" in sql_upper
-    
+
     def test_first_with_other_aggregates(self) -> None:
         """Test first() combined with other aggregates in GROUP BY."""
         asql = """
@@ -476,7 +503,7 @@ class TestFirstLastInGroupBy:
 
 class TestDeduplicateBy:
     """Tests for the deduplicate by operator (syntax sugar for per ... first by)."""
-    
+
     def test_deduplicate_by_single_column(self) -> None:
         """Test deduplicate by with single partition column."""
         asql = """
@@ -493,7 +520,7 @@ class TestDeduplicateBy:
         assert "CREATED_AT" in sql_upper
         assert "DESC" in sql_upper
         assert "QUALIFY" in sql_upper or "WHERE" in sql_upper
-    
+
     def test_deduplicate_by_multiple_columns(self) -> None:
         """Test deduplicate by with multiple partition columns."""
         asql = """
@@ -509,7 +536,7 @@ class TestDeduplicateBy:
         assert "EVENT_TYPE" in sql_upper
         assert "ORDER BY" in sql_upper
         assert "CREATED_AT" in sql_upper
-    
+
     def test_deduplicate_by_with_order_by_inline(self) -> None:
         """Test deduplicate by with order by on same line."""
         asql = """
@@ -525,7 +552,7 @@ class TestDeduplicateBy:
         assert "ORDER BY" in sql_upper
         assert "CREATED_AT" in sql_upper
         assert "DESC" in sql_upper
-    
+
     def test_deduplicate_by_ascending_order(self) -> None:
         """Test deduplicate by with ascending order (no minus prefix)."""
         asql = """
@@ -538,11 +565,11 @@ class TestDeduplicateBy:
         assert "PARTITION BY" in sql_upper
         assert "ORDER BY" in sql_upper
         assert "CREATED_AT" in sql_upper
-    
+
     def test_deduplicate_by_missing_order_by_error(self) -> None:
         """Test that deduplicate by without order by raises error."""
         from asql.errors import ASQLSyntaxError
-        
+
         asql = """
         from events
             deduplicate by user_id
@@ -550,7 +577,7 @@ class TestDeduplicateBy:
         with pytest.raises(ASQLSyntaxError) as exc_info:
             transpile(asql)
         assert "order by" in str(exc_info.value).lower()
-    
+
     def test_deduplicate_by_equivalent_to_per_first_by(self) -> None:
         """Test that deduplicate by produces same result as per ... first by."""
         asql1 = """
@@ -578,7 +605,7 @@ class TestDeduplicateBy:
 
 class TestIntegrationScenarios:
     """Integration tests for common window function patterns."""
-    
+
     def test_dedup_most_recent_order_per_customer(self) -> None:
         """Test deduplication pattern: get most recent order per customer."""
         asql = """
@@ -590,7 +617,7 @@ class TestIntegrationScenarios:
         sql_upper = sql.upper()
         assert "ROW_NUMBER" in sql_upper
         assert "PARTITION BY" in sql_upper
-    
+
     def test_running_total_with_order(self) -> None:
         """Test running total with explicit ordering."""
         asql = """
@@ -602,13 +629,13 @@ class TestIntegrationScenarios:
         sql_upper = sql.upper()
         assert "SUM" in sql_upper
         assert "OVER" in sql_upper
-    
+
     def test_prior_next_for_comparison(self) -> None:
         """Test using prior and next for comparison calculations."""
         asql = """
         from monthly_metrics
             order by month
-            select 
+            select
                 month,
                 revenue,
                 prior(revenue) as prev_month,

@@ -2,7 +2,7 @@
 from products
   & order_items on products.product_id = order_items.product_id
   & orders on order_items.order_id = orders.order_id
-  where orders.status = "completed" 
+  where orders.status = "completed"
     and orders.order_date >= current_date - interval "90 days"
   group by products.category, products.product_name (
     count(distinct orders.order_id) as order_count,
@@ -13,4 +13,3 @@ from products
   )
   where order_count >= 5
   order by products.category, -total_revenue
-

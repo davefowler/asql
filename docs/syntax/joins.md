@@ -105,7 +105,7 @@ If your columns follow the `{name}_id` pattern, ASQL can automatically infer joi
 ```asql
 -- orders has user_id column → auto-joins to users
 from orders
-  select 
+  select
     orders.amount,
     orders.user.name,      -- Auto LEFT JOIN via user_id
     orders.user.email
@@ -133,7 +133,7 @@ Navigate through multiple relationships:
 
 ```asql
 from order_items
-  select 
+  select
     order_items.quantity,
     order_items.order.total,           -- → orders
     order_items.order.customer.name    -- → orders → customers
@@ -146,7 +146,7 @@ When a table has multiple FKs to the same table, use the naming convention `<ali
 ```asql
 -- accounts has owner_user_id and manager_user_id
 from accounts
-  select 
+  select
     accounts.name,
     accounts.owner.name as owner_name,      -- via owner_user_id → users
     accounts.manager.name as manager_name   -- via manager_user_id → users
@@ -163,8 +163,8 @@ from employees &? employees as manager on employees.manager_id = manager.id
 
 -- Or with dot notation (if manager_id exists)
 from employees
-  select 
-    employees.name, 
+  select
+    employees.name,
     employees.manager.name as manager_name,
     employees.manager.manager.name as skip_level_manager
 ```
@@ -184,8 +184,8 @@ Most joins use equality:
 Use `and` for multiple join conditions:
 
 ```asql
-& products on 
-    order_items.product_id = products.id 
+& products on
+    order_items.product_id = products.id
     and order_items.variant_id = products.variant_id
 ```
 
@@ -194,7 +194,7 @@ Use `and` for multiple join conditions:
 Less common, but supported:
 
 ```asql
-& price_history on 
+& price_history on
     orders.product_id = price_history.product_id
     and orders.created_at >= price_history.valid_from
     and orders.created_at < price_history.valid_until
@@ -220,8 +220,18 @@ When resolving joins, ASQL uses this priority:
 
 1. **Explicit `on` clause** — Always wins
 2. **Model metadata** — If relationships are defined in schema files
-3. **Naming convention** — `{name}_id` enables `.{name}.` traversal
-4. **Error with suggestions** — If ambiguous or no match found
+3. **Naming convention** — `{name}_id` enables `.{name}.` traversal; for a join without `on`, only when `infer_join_keys` is enabled
+4. **Error with suggestions** — If no match is found, a join without `on` is an error naming both tables (use `* table` for a cartesian product)
+
+A join can follow a `where` step; the filter applies to the left side before the join:
+
+```asql
+from orders
+  where status = "completed"
+  & customers on orders.customer_id = customers.id
+```
+
+A column-only `on user_id` is expanded only with a schema or `infer_join_keys`; the table whose singular name matches the column prefix is the target. A `?&`/`?&?` join after a `where` that follows earlier joins is an error — name the filtered result with `stash as` first.
 
 ## Joins with Aggregations
 

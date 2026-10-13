@@ -44,7 +44,7 @@ These settings are controlled by `StyleConfig` in `asql/config.py` and affect ou
 
 ### Equality Operator
 
-**Preferred**: `=` (single equals)  
+**Preferred**: `=` (single equals)
 **Alternative**: `==` (double equals, also accepted)
 
 ```asql
@@ -61,7 +61,7 @@ where status == "active"
 
 ### Count Notation
 
-**Preferred**: `#` (hash shorthand)  
+**Preferred**: `#` (hash shorthand)
 **Alternative**: `count(*)` (function form)
 
 ```asql
@@ -90,7 +90,7 @@ group by status (
 
 ### Null Coalescing
 
-**Preferred**: `??` (operator)  
+**Preferred**: `??` (operator)
 **Alternative**: `coalesce()` (function form)
 
 ```asql
@@ -108,7 +108,7 @@ select coalesce(name, "Unknown") as display_name
 
 ### Descending Order
 
-**Preferred**: `-col` (prefix minus)  
+**Preferred**: `-col` (prefix minus)
 **Alternative**: `col DESC` (suffix, SQL style)
 
 ```asql
@@ -137,7 +137,7 @@ row_number() over (partition by customer_id order by order_date DESC)
 
 ### Type Casting
 
-**Preferred**: `::` (double colon, PostgreSQL style)  
+**Preferred**: `::` (double colon, PostgreSQL style)
 **Alternative**: `CAST(... AS ...)` (SQL standard)
 
 ```asql
@@ -153,7 +153,7 @@ select CAST(created_at AS DATE) as date_day
 
 ### String Quotes
 
-**Preferred**: `"` (double quotes)  
+**Preferred**: `"` (double quotes)
 **Alternative**: `'` (single quotes)
 
 ```asql
@@ -176,8 +176,8 @@ These are syntax choices that aren't configurable settings, but represent prefer
 
 ### Conditional Expressions: Ternary vs `when` vs `CASE WHEN`
 
-**Preferred for simple binary conditions**: Ternary `? :` operator  
-**Preferred for multi-branch conditions**: `when` expressions  
+**Preferred for simple binary conditions**: Ternary `? :` operator
+**Preferred for multi-branch conditions**: `when` expressions
 **Avoid**: `CASE WHEN ... THEN ... ELSE ... END` (SQL style)
 
 ```asql
@@ -196,14 +196,14 @@ select
 
 -- Avoid (SQL style)
 select
-  CASE 
+  CASE
     WHEN status = 'active' THEN 'Active User'
     WHEN status = 'pending' THEN 'Pending'
     ELSE 'Unknown'
   END as status_label
 ```
 
-**Rationale**: 
+**Rationale**:
 - Ternary (`? :`) is the most concise for simple binary conditions (condition ? true : false)
 - `when` is better for multi-branch conditions and reads more naturally
 - Both compile to SQL `CASE WHEN`, but ASQL syntax is preferred
@@ -212,7 +212,7 @@ select
 
 ### Equality in `when`: `is` over `=`
 
-**Preferred**: `is` for equality in `when` expressions  
+**Preferred**: `is` for equality in `when` expressions
 **Alternative**: `=` (also works)
 
 ```asql
@@ -235,7 +235,7 @@ when status
 
 ### Default Clause: `otherwise` over `else`
 
-**Preferred**: `otherwise`  
+**Preferred**: `otherwise`
 **Alternative**: `else` (also accepted)
 
 ```asql
@@ -253,7 +253,7 @@ when status is "active" then 1, else 0
 
 ### CTEs: `stash as` over `WITH ... AS`
 
-**Preferred**: `stash as` (inline CTEs)  
+**Preferred**: `stash as` (inline CTEs)
 **Alternative**: `WITH ... AS` (SQL style, also accepted)
 
 ```asql
@@ -280,7 +280,7 @@ GROUP BY country
 
 ### Pipeline Style: Indentation over Pipe Operator
 
-**Preferred**: Indentation-based pipelines  
+**Preferred**: Indentation-based pipelines
 **Alternative**: Pipe operator `|` (also supported)
 
 ```asql
@@ -303,7 +303,7 @@ from users
 
 ### String Matching: Natural operators over `LIKE`
 
-**Preferred**: `contains`, `starts with`, `ends with`  
+**Preferred**: `contains`, `starts with`, `ends with`
 **Alternative**: `LIKE` with wildcards (SQL style, also accepted)
 
 ```asql
@@ -324,7 +324,7 @@ where domain LIKE '%.com'
 
 ### Window Functions: `per` syntax over SQL `OVER()`
 
-**Preferred**: `per` command syntax  
+**Preferred**: `per` command syntax
 **Alternative**: SQL `OVER()` window functions (also accepted)
 
 ```asql
@@ -349,7 +349,7 @@ from orders
 
 ### Aggregations: Natural language over function calls (when appropriate)
 
-**Preferred**: Natural language aggregates  
+**Preferred**: Natural language aggregates
 **Alternative**: Function calls (also work)
 
 ```asql
@@ -366,8 +366,8 @@ group by region ( sum(revenue) as total_revenue )
 
 ### Function Shorthand: Underscore (`sum_amount`) vs space (`sum amount`) vs parens (`sum(amount)`)
 
-**Preferred**: Underscore shorthand `sum_amount` for declarative continuity (when NOT using `as` alias AND single column argument)  
-**Also preferred**: Space shorthand `sum amount` for natural language feel (when NOT using `as` alias AND single column argument)  
+**Preferred**: Underscore shorthand `sum_amount` for declarative continuity (when NOT using `as` alias AND single column argument)
+**Also preferred**: Space shorthand `sum amount` for natural language feel (when NOT using `as` alias AND single column argument)
 **Required**: Parens form `sum(amount)` for multiple arguments, complex expressions, aliases, and documentation
 
 ```asql
@@ -411,7 +411,7 @@ from sales
   -- sum_amount * quantity would be ambiguous: sum(amount * quantity) or sum(amount) * quantity?
 ```
 
-**Rationale**: 
+**Rationale**:
 - **Underscore shorthand (`sum_amount`)** is preferred when NOT using `as` alias AND single column argument because:
   - **Declarative continuity** - What you write (`sum_amount`) is exactly what the output column will be named, enabling consistent reference throughout the query
   - **Self-documenting** - Makes it immediately clear what column name will be created
@@ -457,7 +457,7 @@ from sales
 ```asql
 -- Preferred: Multiple columns, each on own line with documentation
 from sales
-  group by 
+  group by
     region,                    -- Geographic region
     year(order_date),          -- Order year
     month(order_date) (        -- Order month
@@ -508,7 +508,7 @@ from orders
 
 ### Count Shorthand: `#`, `##`, `uniq`
 
-**Count forms**: 
+**Count forms**:
 - `#` → `COUNT(*)` (row count)
 - `#col` or `# col` → `COUNT(col)` (count non-null values)
 - `#(col)` → `COUNT(col)` (explicit parens)
@@ -539,7 +539,7 @@ from sales
   -- COUNT(DISTINCT customer_id)
 ```
 
-**Rationale**: 
+**Rationale**:
 - `#` is the shortest notation for counting rows
 - `#col` naturally reads as "count col"
 - `##` (double hash) is a visual indicator for "distinct" - easy to remember
@@ -549,7 +549,7 @@ from sales
 
 ### Joins: Symbolic operators over SQL `JOIN`
 
-**Preferred**: `&`, `&?`, `?&`, `*` operators  
+**Preferred**: `&`, `&?`, `?&`, `*` operators
 **Alternative**: SQL `JOIN` syntax (also accepted)
 
 ```asql
@@ -568,7 +568,7 @@ from orders INNER JOIN customers ON orders.customer_id = customers.id
 
 ### Foreign Key Traversal: Dot notation over explicit joins
 
-**Preferred**: Dot notation (`.owner.name`)  
+**Preferred**: Dot notation (`.owner.name`)
 **Alternative**: Explicit joins (also work)
 
 ```asql
@@ -587,7 +587,7 @@ from opportunities &? owners on opportunities.owner_id = owners.id
 
 ### Date Literals: `@` prefix over string dates
 
-**Preferred**: `@2025-01-10`  
+**Preferred**: `@2025-01-10`
 **Alternative**: String dates `"2025-01-10"` (also work)
 
 ```asql
@@ -605,7 +605,7 @@ where created_at >= "2025-01-10"
 
 ### Window Functions: Simplified functions over SQL equivalents
 
-**Preferred**: `prior()`, `next()`, `running_sum()`, `running_avg()`, `arg_max()`, `arg_min()`  
+**Preferred**: `prior()`, `next()`, `running_sum()`, `running_avg()`, `arg_max()`, `arg_min()`
 **Alternative**: SQL `LAG()`, `LEAD()`, `SUM() OVER()`, etc. (also accepted)
 
 ```asql
@@ -625,7 +625,7 @@ select sum(amount) over (order by date rows unbounded preceding) as cumulative
 
 ### Max/Min: `max()`/`min()` over `greatest()`/`least()`
 
-**Preferred**: `max()`, `min()` for multiple values  
+**Preferred**: `max()`, `min()` for multiple values
 **Alternative**: `greatest()`, `least()` (SQL style, also accepted)
 
 ```asql
@@ -644,7 +644,7 @@ select least(start_date, end_date) as earliest_date
 
 ### Column Operators: `except`, `rename`, `replace` over explicit SELECT
 
-**Preferred**: Column operators  
+**Preferred**: Column operators
 **Alternative**: Explicit SELECT lists (also work)
 
 ```asql
@@ -667,7 +667,7 @@ from users
 
 ### Date Arithmetic: Natural syntax over functions
 
-**Preferred**: `date + 7 days`, `date - 1 month`  
+**Preferred**: `date + 7 days`, `date - 1 month`
 **Alternative**: `DATEADD()`, `INTERVAL` (SQL style, also accepted)
 
 ```asql

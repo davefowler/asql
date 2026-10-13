@@ -44,7 +44,7 @@ A standalone CodeMirror mode for ASQL syntax highlighting.
 </head>
 <body>
     <div id="editor"></div>
-    
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="syntax/codemirror/asql-mode.js"></script>
     <script>
@@ -132,4 +132,3 @@ When adding new syntax highlighters:
 - [ASQL Language Specification](../docs/spec.md)
 - [CodeMirror Mode Development Guide](https://codemirror.net/doc/manual.html#modeapi)
 - [TextMate Grammar Documentation](https://macromates.com/manual/en/language_grammars)
-

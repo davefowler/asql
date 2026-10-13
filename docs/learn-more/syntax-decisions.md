@@ -326,7 +326,7 @@ The syntax reads naturally: "per customer_id, first by order_date descending."
 ```asql
 from events
 join users
-group by 
+group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (count(distinct user_id) as active)
@@ -525,4 +525,3 @@ These are syntax decisions still under consideration:
 | 2024 | Cohort pattern | Alias reuse enables simple cohort queries |
 | 2025-01 | `extend` implemented | In branch, pending merge |
 | 2026-01 | Documentation | This page created |
-

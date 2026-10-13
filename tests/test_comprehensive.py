@@ -1,18 +1,20 @@
 """Comprehensive tests for ASQL compiler using fixtures and edge cases."""
 
 import pytest
-from tests.fixtures import transpile
+
 from asql.errors import ASQLSyntaxError
-from tests.fixtures import (
-    VALID_ASQL_QUERIES,
-    INVALID_ASQL_QUERIES,
+
+from .fixtures import (
     EDGE_CASES,
+    INVALID_ASQL_QUERIES,
+    VALID_ASQL_QUERIES,
+    transpile,
 )
 
 
 class TestValidQueries:
     """Test all valid ASQL queries compile successfully."""
-    
+
     @pytest.mark.parametrize("asql_query", VALID_ASQL_QUERIES)
     def test_valid_query_compiles(self, asql_query: str) -> None:
         """Test that valid ASQL query compiles without errors."""
@@ -25,9 +27,11 @@ class TestValidQueries:
 
 class TestInvalidQueries:
     """Test that invalid queries raise appropriate errors."""
-    
-    @pytest.mark.parametrize("asql_query,description", INVALID_ASQL_QUERIES)
-    def test_invalid_query_raises_error(self, asql_query: str, description: str) -> None:
+
+    @pytest.mark.parametrize(("asql_query", "description"), INVALID_ASQL_QUERIES)
+    def test_invalid_query_raises_error(
+        self, asql_query: str, description: str
+    ) -> None:
         """Test that invalid ASQL query raises ASQLSyntaxError."""
         with pytest.raises(ASQLSyntaxError):
             transpile(asql_query)
@@ -35,7 +39,7 @@ class TestInvalidQueries:
 
 class TestEdgeCases:
     """Test edge cases and complex queries."""
-    
+
     @pytest.mark.parametrize("asql_query", EDGE_CASES)
     def test_edge_case_compiles(self, asql_query: str) -> None:
         """Test that edge case queries compile successfully."""
@@ -46,7 +50,7 @@ class TestEdgeCases:
 
 class TestDialectSupport:
     """Test SQL dialect support."""
-    
+
     def test_postgres_dialect(self) -> None:
         """Test PostgreSQL dialect generation."""
         asql = 'from users where status == "active"'
@@ -55,21 +59,21 @@ class TestDialectSupport:
         assert "FROM" in sql.upper()
         # PostgreSQL uses single quotes
         assert "'active'" in sql or '"active"' in sql
-    
+
     def test_mysql_dialect(self) -> None:
         """Test MySQL dialect generation."""
         asql = 'from users where status == "active"'
         sql = transpile(asql, dialect="mysql")
         assert "SELECT" in sql.upper()
         assert "FROM" in sql.upper()
-    
+
     def test_bigquery_dialect(self) -> None:
         """Test BigQuery dialect generation."""
         asql = 'from users where status == "active"'
         sql = transpile(asql, dialect="bigquery")
         assert "SELECT" in sql.upper()
         assert "FROM" in sql.upper()
-    
+
     def test_snowflake_dialect(self) -> None:
         """Test Snowflake dialect generation."""
         asql = 'from users where status == "active"'
@@ -80,7 +84,7 @@ class TestDialectSupport:
 
 class TestComplexPipelines:
     """Test complex multi-step pipelines."""
-    
+
     def test_full_pipeline(self) -> None:
         """Test complete pipeline: WHERE, GROUP BY, SORT, TAKE."""
         asql = """
@@ -97,7 +101,7 @@ limit 10
         assert "ORDER BY" in sql.upper()
         assert "LIMIT" in sql.upper()
         assert "10" in sql
-    
+
     def test_multiple_where_conditions(self) -> None:
         """Test multiple WHERE conditions."""
         asql = 'from users where status == "active" and age >= 18 and email is not null'
@@ -105,7 +109,7 @@ limit 10
         assert "WHERE" in sql.upper()
         assert "AND" in sql.upper()
         assert sql.count("AND") >= 2
-    
+
     def test_complex_group_by(self) -> None:
         """Test GROUP BY with multiple columns and aggregations."""
         asql = "from sales group by region, month ( sum(amount) as revenue, # as orders, avg(amount) as avg_order )"
@@ -120,19 +124,21 @@ limit 10
 
 class TestExpressionPrecedence:
     """Test operator precedence in expressions."""
-    
+
     def test_and_before_or(self) -> None:
         """Test that AND has higher precedence than OR."""
-        asql = 'from users where status == "active" or status == "pending" and age >= 18'
+        asql = (
+            'from users where status == "active" or status == "pending" and age >= 18'
+        )
         sql = transpile(asql)
         assert "WHERE" in sql.upper()
         # Should have parentheses around AND expression
         assert "OR" in sql.upper()
         assert "AND" in sql.upper()
-    
+
     def test_not_precedence(self) -> None:
         """Test that NOT has highest precedence.
-        
+
         Note: The optimizer simplifies `NOT status = 'inactive'` to `status <> 'inactive'`.
         This is semantically correct.
         """
@@ -144,19 +150,19 @@ class TestExpressionPrecedence:
 
 class TestStringLiterals:
     """Test string literal handling."""
-    
+
     def test_double_quoted_strings(self) -> None:
         """Test double-quoted string literals."""
         asql = 'from users where status == "active"'
         sql = transpile(asql)
         assert "active" in sql.lower()
-    
+
     def test_single_quoted_strings(self) -> None:
         """Test single-quoted string literals."""
         asql = "from users where status == 'active'"
         sql = transpile(asql)
         assert "active" in sql.lower()
-    
+
     def test_string_with_spaces(self) -> None:
         """Test string literals with spaces."""
         asql = 'from users where status == "active user"'
@@ -167,19 +173,19 @@ class TestStringLiterals:
 
 class TestNumericLiterals:
     """Test numeric literal handling."""
-    
+
     def test_integer_literals(self) -> None:
         """Test integer literals."""
         asql = "from users where age == 18"
         sql = transpile(asql)
         assert "18" in sql
-    
+
     def test_negative_numbers(self) -> None:
         """Test negative number literals."""
         asql = "from users where balance == -100"
         sql = transpile(asql)
         assert "-100" in sql or "100" in sql
-    
+
     def test_comparison_with_numbers(self) -> None:
         """Test comparisons with numeric values."""
         asql = "from users where age >= 18 and age <= 65"
@@ -192,7 +198,7 @@ class TestNumericLiterals:
 
 class TestAggregations:
     """Test aggregation functions."""
-    
+
     def test_all_aggregation_functions(self) -> None:
         """Test all aggregation functions."""
         asql = """
@@ -210,7 +216,7 @@ from sales group by region (
         assert "COUNT" in sql.upper()
         assert "MIN" in sql.upper()
         assert "MAX" in sql.upper()
-    
+
     def test_count_shorthand(self) -> None:
         """Test # shorthand for COUNT(*)."""
         asql = "from users group by country ( # as total_users )"
@@ -228,21 +234,21 @@ class TestOrderBy:
         sql = transpile(asql)
         assert "ORDER BY" in sql.upper()
         assert "name" in sql.lower()
-    
+
     def test_order_by_descending(self) -> None:
         """Test descending ORDER BY with - prefix."""
         asql = "from users order by -total_users"
         sql = transpile(asql)
         assert "ORDER BY" in sql.upper()
         assert "DESC" in sql.upper()
-    
+
     def test_order_by_function_call(self) -> None:
         """Test ORDER BY with function call."""
         asql = "from users order by month(created_at)"
         sql = transpile(asql)
         assert "ORDER BY" in sql.upper()
         assert "MONTH" in sql.upper() or "month" in sql.lower()
-    
+
     def test_order_by_multiple_columns(self) -> None:
         """Test ORDER BY with multiple columns."""
         asql = "from users order by -total_users, name"
@@ -255,60 +261,63 @@ class TestOrderBy:
 
 class TestErrorMessages:
     """Test error message quality."""
-    
+
     def test_empty_query_error(self) -> None:
         """Test empty query gives clear error."""
         with pytest.raises(ASQLSyntaxError) as exc_info:
             transpile("")
         assert "empty" in str(exc_info.value).lower() or "Empty" in str(exc_info.value)
-    
+
     def test_standard_sql_select_accepted(self) -> None:
         """Test that standard SQL SELECT is accepted.
-        
+
         Note: The new SQLGlot-based parser is more permissive and accepts
         standard SQL syntax even if it doesn't follow ASQL conventions.
         """
         sql = transpile("select * from users")
         assert "SELECT" in sql.upper()
         assert "FROM" in sql.upper()
-    
+
     def test_incomplete_where_error(self) -> None:
         """Test incomplete WHERE gives clear error."""
         with pytest.raises(ASQLSyntaxError) as exc_info:
             transpile("from users where")
         error_msg = str(exc_info.value).lower()
-        assert "where" in error_msg or "expected" in error_msg or "expression" in error_msg
+        assert (
+            "where" in error_msg or "expected" in error_msg or "expression" in error_msg
+        )
 
 
 class TestSQLGeneration:
     """Test SQL generation quality."""
-    
+
     def test_sql_is_valid_syntax(self) -> None:
         """Test that generated SQL is syntactically valid (can be parsed by SQLGlot)."""
         import sqlglot
-        
-        asql = 'from users where status == "active" group by country ( # as total_users )'
+
+        asql = (
+            'from users where status == "active" group by country ( # as total_users )'
+        )
         sql = transpile(asql)
-        
+
         # Try to parse the generated SQL
         try:
             parsed = sqlglot.parse_one(sql)
             assert parsed is not None
-        except Exception:
-            # Some dialects might generate SQL that SQLGlot can't parse back
-            # That's okay - the important thing is it's valid for the target database
+        # SQLGlot parse-back failures are acceptable here — generated SQL may not parse in all dialects.
+        except Exception:  # noqa: BLE001, S110
             pass
-    
+
     def test_no_duplicate_keywords(self) -> None:
         """Test that SQL doesn't have duplicate keywords in wrong places."""
         asql = "from users"
         sql = transpile(asql)
         sql_upper = sql.upper()
-        
+
         # Should have SELECT and FROM (in CTE-based structure)
         assert sql_upper.count("SELECT") >= 1
         assert sql_upper.count("FROM") >= 1
-        
+
         # With CTE-based pipeline, structure is different - just verify both exist
         assert sql_upper.find("SELECT") >= 0
         assert sql_upper.find("FROM") >= 0
@@ -316,7 +325,7 @@ class TestSQLGeneration:
 
 class TestRealWorldQueries:
     """Test real-world query patterns."""
-    
+
     def test_user_analytics_query(self) -> None:
         """Test typical user analytics query."""
         asql = """
@@ -332,7 +341,7 @@ limit 20
         assert "GROUP BY" in sql.upper()
         assert "ORDER BY" in sql.upper()
         assert "LIMIT" in sql.upper()
-    
+
     def test_sales_report_query(self) -> None:
         """Test typical sales report query."""
         asql = """
@@ -350,7 +359,7 @@ limit 10
         assert "COUNT" in sql.upper()
         assert "ORDER BY" in sql.upper()
         assert "LIMIT" in sql.upper()
-    
+
     def test_filtering_by_status_list(self) -> None:
         """Test filtering by list of statuses."""
         asql = 'from users where status in ("active", "pending", "verified")'

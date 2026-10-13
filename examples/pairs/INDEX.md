@@ -106,4 +106,3 @@ Examples can be included in documentation:
 [content from 01_multi_table_join.asql]
 ```
 ```
-

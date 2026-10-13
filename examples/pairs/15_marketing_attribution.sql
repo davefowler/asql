@@ -3,7 +3,7 @@
 --   - https://github.com/fivetran/dbt_stripe
 --   - https://github.com/fivetran/dbt_salesforce
 WITH first_touch AS (
-    SELECT 
+    SELECT
         customer_id,
         campaign_id,
         touchpoint_date,
@@ -11,14 +11,14 @@ WITH first_touch AS (
     FROM marketing_touchpoints
 ),
 last_touch AS (
-    SELECT 
+    SELECT
         customer_id,
         campaign_id,
         touchpoint_date,
         ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY touchpoint_date DESC) AS rn
     FROM marketing_touchpoints
 )
-SELECT 
+SELECT
     c.campaign_name,
     COUNT(DISTINCT ft.customer_id) AS first_touch_customers,
     COUNT(DISTINCT lt.customer_id) AS last_touch_customers,
@@ -30,4 +30,3 @@ LEFT JOIN orders o ON (o.customer_id = ft.customer_id OR o.customer_id = lt.cust
     AND o.status = 'completed'
 GROUP BY c.campaign_id, c.campaign_name
 ORDER BY attributed_revenue DESC;
-

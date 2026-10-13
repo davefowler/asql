@@ -148,10 +148,10 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```python
     # Keep first occurrence
     df.drop_duplicates(subset=['user_id', 'event_type'])
-    
+
     # Keep last (most recent)
     df.sort_values('date').drop_duplicates(
-        subset=['user_id'], 
+        subset=['user_id'],
         keep='last'
     )
     ```
@@ -187,7 +187,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
         rolling_avg(value, 7) as rolling_avg,
         running_sum(value) as cumsum,
         prior(value) as prev_value
-    
+
     -- With partition
     from daily_metrics
     select *,
@@ -218,10 +218,10 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
     ```python
     # Inner join
     pd.merge(orders, customers, on='customer_id')
-    
+
     # Left join
     pd.merge(orders, customers, on='customer_id', how='left')
-    
+
     # Multiple keys
     pd.merge(df1, df2, on=['key1', 'key2'])
     ```
@@ -288,7 +288,7 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
 === "Pandas"
     ```python
     df['tier'] = np.where(df['amount'] > 1000, 'high', 'low')
-    
+
     # Multiple conditions
     df['tier'] = np.select(
         [df['amount'] > 1000, df['amount'] > 100],
@@ -333,4 +333,3 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
         day of week date as day_of_week,
         days_since_date as days_ago
     ```
-
