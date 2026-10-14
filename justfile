@@ -8,9 +8,9 @@ default:
 install:
     uv sync --all-extras --locked
 
-# Run the test suite (excludes slow, e2e, and network-marked tests)
+# Run the test suite (excludes slow and e2e tests)
 test *ARGS:
-    uv run --all-extras --locked pytest -q --tb=short tests -m "not slow and not e2e and not network" {{ARGS}}
+    uv run --all-extras --locked pytest -q --tb=short tests -m "not slow and not e2e" {{ARGS}}
 
 # Build the wheel, install it into a clean venv, and transpile a query with it
 smoke:
