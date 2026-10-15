@@ -1,0 +1,56 @@
+name: Docs
+
+# Builds the mkdocs site on every PR; publishes it to GitHub Pages on main.
+# The compiler is a docs input (docs/macros.py runs asql at build time to
+# render compiled-SQL examples), so any push to main republishes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5  # v2.87.19
+        with:
+          tool: just
+      - run: just docs-build
+      - name: Refuse a near-empty site
+        run: |
+          count=$(find site -type f | wc -l)
+          test "$count" -ge 5 || { echo "docs build produced only $count files"; exit 1; }
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        if: github.event_name != 'pull_request'
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1

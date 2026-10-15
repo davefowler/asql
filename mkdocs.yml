@@ -4,11 +4,8 @@ site_author: Analytic SQL Contributors
 site_url: https://analyticsql.com
 
 # Emit one real file per page (syntax/pipe.html) instead of directory URLs
-# (syntax/pipe/index.html). The site is served from a GCS bucket behind our
-# external Application Load Balancer, and a backend bucket does not resolve
-# subdirectory index files — `/syntax/pipe/` would look up an object literally
-# named `syntax/pipe/` and 404. Only `/` is covered, by the bucket's
-# main_page_suffix. Turning this back on 404s every page but the homepage.
+# (syntax/pipe/index.html). Every published link to analyticsql.com uses the
+# .html form, so turning this on would 404 them all.
 use_directory_urls: false
 
 # Exclude internal/notes pages from build (often contain WIP syntax).
@@ -16,9 +13,7 @@ use_directory_urls: false
 # macros.py and __pycache__/ are not notes — they are the macros plugin's own
 # source, and they live under docs_dir only because mkdocs' `module_name` wants
 # them there. mkdocs copies anything it doesn't recognize as a page verbatim into
-# the site output, and that output is served to allUsers from a public bucket, so
-# leaving them in publishes non-doc source files. They were live at
-# https://analyticsql.com/macros.py until this exclusion landed.
+# the site output, so leaving them in publishes non-doc source files.
 exclude_docs: |
   github_issues_to_create.md
   unimplemented_features.md

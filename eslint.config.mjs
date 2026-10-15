@@ -37,7 +37,7 @@ const sharedRules = {
 
 export default [
   {
-    ignores: ["**/node_modules/**", "**/*.min.js", "vscode-extension/**"],
+    ignores: ["**/node_modules/**", "**/*.min.js", "vscode-extension/**", ".venv/**", ".smoke-venv/**", "site/**", "dist/**"],
   },
   js.configs.recommended,
   {
