@@ -53,3 +53,8 @@ Thumbs.db
 site/
 
 .playwright-mcp/
+
+# Local tooling
+.venv/
+.smoke-venv/
+node_modules/

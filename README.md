@@ -42,12 +42,12 @@ cargo install just
 ### Installation
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/davefowler/asql.git
 cd asql
 just install
 ```
 
-That's it! This creates a Python virtual environment and installs all dependencies.
+That's it! This creates a Python virtual environment (via [uv](https://docs.astral.sh/uv/)) and installs the Python and JS lint dependencies.
 
 ### Start Developing
 
@@ -56,8 +56,8 @@ just serve
 ```
 
 This launches:
-- **Documentation**: http://localhost:8000
-- **Playground**: http://localhost:5001
+- **Playground**: http://localhost:8011
+- **Documentation**: http://localhost:8012
 
 ## Common Commands
 
@@ -68,9 +68,10 @@ This launches:
 | `just test` | Run all tests |
 | `just test tests/test_compiler.py` | Run a specific test file |
 | `just test -k "pattern"` | Run tests matching a pattern |
-| `just lint` | Run the linter |
-| `just lint --fix` | Run linter and auto-fix issues |
-| `just kill` | Stop any running dev servers |
+| `just lint` | Ruff, mypy, and ESLint |
+| `just fix` | Apply ruff fixes and formatting |
+| `just docs-build` | Build the docs site into `site/` |
+| `just smoke` | Build the wheel, install it in a clean venv, transpile a query |
 | `just --list` | Show all available commands |
 
 ## Quick Example
@@ -209,9 +210,9 @@ ASQL compiles to multiple SQL dialects via [SQLGlot](https://github.com/tobymao/
 - [Quick Start Guide](docs/quick_start.md) - Get started in minutes
 - [Examples](docs/examples.md) - Comprehensive examples with SQL output
 - [Language Specification](docs/spec.md) - Complete ASQL syntax reference
-- [Architecture](ARCHITECTURE.md) - System design and implementation details
+- [Architecture](docs/architecture.md) - System design and implementation details
 
-Or run `just serve` and browse the interactive docs at http://localhost:8000.
+The published docs live at https://analyticsql.com. Or run `just serve` and browse them locally at http://localhost:8012.
 
 ## VS Code Extension
 
@@ -224,6 +225,7 @@ ASQL has a VS Code extension for syntax highlighting and snippets. See [`vscode-
 3. Ensure linting passes (`just lint`)
 4. Submit a pull request
 
-## Status
+## Deployment
 
-See [STATUS.md](STATUS.md) for current implementation status and roadmap.
+CI, the docs site (GitHub Pages), and the hosted playground (Cloud Run) are all
+GitHub Actions workflows in this repo. See [DEPLOY.md](DEPLOY.md).
