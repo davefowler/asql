@@ -619,6 +619,60 @@ for row in results:
 pipeline.close()
 ```
 
+## Visual ASQL (JSON)
+
+Visual query builders render from the `visual_asql` dialect and write back
+through `asql.json_schema.json_to_asql`:
+
+```python
+import json
+import sqlglot
+import asql
+from asql.json_schema import json_to_asql
+
+pipelines = json.loads(
+    sqlglot.transpile("from main.orders where `Last Name` like 'A%'", read="asql", write="visual_asql")[0]
+)
+asql_text = json_to_asql(pipelines)
+```
+
+The round trip is lossless: for any ASQL query `q` and target dialect `d`,
+`asql.transpile(q, write=d)` and `asql.transpile(json_to_asql(visual(q)), write=d)`
+produce the same SQL (up to parentheses and comments). `tests/test_visual_roundtrip.py`
+checks this over a corpus for DuckDB, PostgreSQL and Snowflake.
+
+**Names and expressions.** Fields that hold a *name* (`from.table`, `join.table`,
+`column` nodes, aliases, dimension strings, order-by columns, aggregate
+columns, `except`/`rename` columns) are raw identifiers; `json_to_asql`
+backtick-quotes any that is not a plain identifier (`Last Name` → `` `Last Name` ``,
+each dotted part of a table name separately). Fields that hold an *expression*
+(`expression` keys, `raw` nodes) are ASQL text pasted verbatim.
+
+**Structured nodes.** Conditions use `column`, `literal`, `binary` (comparisons,
+`AND`/`OR`, arithmetic, `||`), `paren`, `unary_op`, `null_check` (`is null` /
+`is not null`), `in` / `not_in`, `between`, `like` / `ilike` (with `negate`),
+`matches`, the string operators (`contains`, `starts_with`, `ends_with` and their
+`i` variants), `function` (with `distinct` for `count(distinct x)`) and `star`.
+Transforms cover `where`, `having`, `qualify`, `join`, `select`, `extend`,
+`except`, `rename`, `replace`, `group_by` (dimensions as names or
+`{"expression", "alias"}`; aggregates as `{"function", "column", "alias"}` or
+`{"expression", "alias"}`), `order_by` (`column` or `expression`, `direction`,
+optional `nulls`), `limit`, `offset`, `distinct`, `sample` (`size`, optional
+`per`), `explode`, `pivot` and `unpivot`.
+
+**Unsupported constructs stay explicit.** Anything the visual form cannot model
+is carried verbatim rather than dropped:
+
+- `{"type": "raw", "asql": "..."}` for an expression, an order-by key or a join
+  (window functions, `CASE`, intervals, subquery joins, ...)
+- `{"from": {"table": "", "raw": "..."}}` for a FROM source that is not a table
+- `{"raw": "..."}` on a pipeline for a whole body with no pipeline form
+  (`WITH RECURSIVE`, a CTE that is a set operation, `DISTINCT ON`, ...)
+
+A named pipeline becomes `stash as name`; a later pipeline that does not
+continue it starts with its own `from`, which ASQL reads as a new pipeline over
+the stashed CTEs.
+
 ## Next Steps
 
 - Check out the [Language Specification](spec.md) for complete syntax reference

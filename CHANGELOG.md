@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Visual ASQL round trips are lossless: `tests/test_visual_roundtrip.py` checks `asql.transpile(q)` against `asql.transpile(json_to_asql(visual(q)))` for DuckDB, PostgreSQL and Snowflake over the playground examples and the operator corpus
+- Visual ASQL JSON keeps schema-qualified tables and table aliases, `distinct`, `extend`, `except`/`rename`/`replace`, `qualify`, `explode`, `sample` (`size`, `per`), `pivot`/`unpivot`, `like`/`ilike` (with `negate`), `matches`, `contains`/`starts with`/`ends with` as their own node types, `not_in`, `is not null`, `paren`, arithmetic and `||` binaries, `count(distinct x)`, computed dimensions and aggregates as `{"expression", "alias"}`, order-by expressions and `nulls`; anything else is an explicit `raw` node (expression, join, FROM source or whole pipeline) holding ASQL text that `json_to_asql` reproduces verbatim
+- `json_to_asql` backtick-quotes identifiers that are not plain (`` `Last Name` ``, `` `my schema`.`my table` ``) in every name slot, parenthesizes binary children by precedence, and emits `like` as LIKE instead of a regex `matches`
+- `stash as x` followed by a fresh `from` (the form documented in the spec) now parses: the new pipeline reads the stashed CTEs (`from a where x stash as a1` / `from b & a1 on ...`)
 - Count inference: `# <table>` counts distinct entities (`from orders ( # users )` → `COUNT(DISTINCT user_id)`), with a schema, resolved from relationships or the `<singular>_id` convention (no inference without a schema)
 - Versioning infrastructure with single source of truth in `pyproject.toml`
 - CHANGELOG.md for tracking changes
@@ -18,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- Backticked names in `group by` keys and aggregate blocks (`` group by `my col` ( sum(`the amt`) as `Total Amt` ) ``) parse; quoted aliases keep their quotes (`AS "Total Amt"`), and the join star expansion quotes table names (`"other t".*`)
+- `extend ... stash as foo` names the stage's own CTE instead of chaining `foo AS (SELECT * FROM __tmp1)`, and an auto CTE never reuses a name a `stash as __tmpN` already took
+- `week(x)` as a group-by key no longer crashes PostgreSQL/Snowflake output (the key and its projection were one shared node, so the week start was resolved in only one of them)
+- `from a where x = 1 union all from b` parses: `union`/`intersect` end a transform's payload
+- `json_to_asql` string literals holding `"` are single-quoted (backslash escapes are not ASQL), `explode` keeps its alias, and `replace` uses `col with expr`
 - `group by spine(month(x)), region (...)` now compiles like `spine by` (the `SPINE(...)` call no longer leaks into the SELECT list)
 - Spine queries now actually fill gaps: the spine drives the query (`FROM spine LEFT JOIN source ON ... AND <where>`), spine keys are selected from the spine, `count(*)` counts source rows only, and a series starting mid-period no longer skips a period
 - Underscore shorthands keep working with an explicit alias: `sum_amount as revenue` expands to `SUM(amount) AS revenue`

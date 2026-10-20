@@ -80,7 +80,7 @@ function getTransformLabel(transform) {
             }
             return '*';
         case 'group_by':
-            const dims = (transform.dimensions || []).slice(0, 2).join(', ');
+            const dims = (transform.dimensions || []).slice(0, 2).map(dimensionText).join(', ');
             const aggCount = (transform.aggregates || []).length;
             return dims + (aggCount > 0 ? ` + ${aggCount} aggs` : '');
         case 'order_by':

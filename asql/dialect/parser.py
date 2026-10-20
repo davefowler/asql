@@ -23,6 +23,7 @@ Settings are passed via the ASQL dialect constructor:
 
 from __future__ import annotations
 
+import re
 import typing as t
 
 import sqlglot
@@ -38,6 +39,8 @@ from asql.functions import (
     ASQL_FUNCTION_REGISTRY,
     NATURAL_DATE_DIRECTIONS,
     NATURAL_DATE_UNITS,
+    SAMPLE_META,
+    STRING_OP_META,
     build_bucket,
     get_natural_agg,
     get_natural_date_function,
@@ -77,6 +80,12 @@ def _select_all(table: exp.Expr) -> exp.Select:
 # query.meta key: "block" once an aggregate block fixed the grouped projection, "bare"
 # for a `group by k` still awaiting its select, "selected" after that select.
 _GROUP_STAGE = "asql_group_stage"
+
+# query.meta key set on the pass-through `SELECT * FROM name` that `stash as name`
+# leaves behind, so a following top-level `from` can start a new pipeline over it.
+_STASHED = "asql_stashed"
+
+_AUTO_CTE_RE = re.compile(r"__tmp\d+")
 
 
 class ASQLParser(Parser):
@@ -1910,6 +1919,27 @@ class ASQLParser(Parser):
                 return None
             query = result
 
+        # `stash as x` followed by a fresh `from` (spec §11.2) starts a new
+        # pipeline that can read x: carry the CTEs over to that pipeline.
+        if (
+            query.meta.get(_STASHED)
+            and self._curr
+            and self._curr.token_type == TokenType.FROM
+            and self._passthrough_cte_name(query) is not None
+        ):
+            ctes = list(query.args["with_"].expressions)
+            next_query = self._parse_query(
+                nested=nested, parse_set_operation=parse_set_operation
+            )
+            if next_query is None:
+                self.raise_error("Expected a pipeline after `stash as`")
+                return None
+            next_with = next_query.args.get("with_")
+            if next_with:
+                ctes.extend(next_with.expressions)
+            next_query.set("with_", exp.With(expressions=ctes))
+            return next_query
+
         # Handle set operations (UNION, INTERSECT, EXCEPT)
         if parse_set_operation:
             query = t.cast(exp.Query, self._parse_set_operations(query))
@@ -2007,6 +2037,8 @@ class ASQLParser(Parser):
         if token_type == TokenType.FROM:
             return True
         if token_type in (TokenType.GROUP_BY, TokenType.ORDER_BY):
+            return True
+        if token_type in (TokenType.UNION, TokenType.INTERSECT):
             return True
         return text.upper() in self.TRANSFORM_PARSERS
 
@@ -2205,8 +2237,11 @@ class ASQLParser(Parser):
 
             # Replace SELECT * with grouping cols + aggregates. spine(x) marks the
             # GROUP BY key only; the projection selects x itself.
+            # Copies: a key shared by GROUP BY and the projection would only be
+            # resolved (week start, ...) in one of them by node.replace().
             select_exprs = [
-                e.this if isinstance(e, Spine) else e for e in expressions
+                t.cast(exp.Expr, e.this if isinstance(e, Spine) else e).copy()
+                for e in expressions
             ] + list(aggregates)
             query.select(*select_exprs, append=False, copy=False)
 
@@ -2231,8 +2266,10 @@ class ASQLParser(Parser):
 
         expr: exp.Expr | None = None
 
-        if self._curr.token_type == TokenType.VAR:
+        if self._curr.token_type in (TokenType.VAR, TokenType.IDENTIFIER):
             name = self._curr.text
+            name_ident = self._identifier_from_token(self._curr)
+            is_quoted = self._curr.token_type == TokenType.IDENTIFIER
             next_tok = self._next
 
             # Check for qualified column: table.column
@@ -2241,15 +2278,22 @@ class ASQLParser(Parser):
                 self._advance()  # consume table name
                 self._advance()  # consume .
 
-                if self._curr and self._curr.token_type == TokenType.VAR:
-                    col_name = self._curr.text
+                if self._curr and self._curr.token_type in (
+                    TokenType.VAR,
+                    TokenType.IDENTIFIER,
+                ):
+                    col_ident = self._identifier_from_token(self._curr)
                     self._advance()  # consume column name
-                    expr = exp.Column(
-                        this=exp.to_identifier(col_name), table=exp.to_identifier(name)
-                    )
+                    expr = exp.Column(this=col_ident, table=name_ident)
                 else:
                     # Malformed, just return the table as column
-                    expr = exp.Column(this=exp.to_identifier(name))
+                    expr = exp.Column(this=name_ident)
+
+            elif next_tok and next_tok.token_type == TokenType.L_PAREN and is_quoted:
+                # A backticked name is never a function call, so the ( after
+                # `my col` can only open the aggregate block.
+                self._advance()  # consume identifier
+                expr = exp.Column(this=name_ident)
 
             elif next_tok and next_tok.token_type == TokenType.L_PAREN:
                 # Check if this looks like an aggregate block. Unaliased block
@@ -2293,7 +2337,7 @@ class ASQLParser(Parser):
             else:
                 # Simple column
                 self._advance()
-                expr = exp.Column(this=exp.to_identifier(name))
+                expr = exp.Column(this=name_ident)
         else:
             # For other cases (literals, etc.), use standard parsing
             expr = self._parse_primary()
@@ -2303,12 +2347,22 @@ class ASQLParser(Parser):
         if expr and self._curr:
             if self._match(TokenType.ALIAS):
                 # Explicit AS keyword
-                if self._curr and self._curr.token_type == TokenType.VAR:
-                    alias_name = self._curr.text
+                if self._curr and self._curr.token_type in (
+                    TokenType.VAR,
+                    TokenType.IDENTIFIER,
+                ):
+                    alias_ident = self._identifier_from_token(self._curr)
                     self._advance()
-                    expr = exp.Alias(this=expr, alias=exp.to_identifier(alias_name))
+                    expr = exp.Alias(this=expr, alias=alias_ident)
 
         return expr
+
+    @staticmethod
+    def _identifier_from_token(token: Token) -> exp.Identifier:
+        """Identifier for a name token; backticked (IDENTIFIER) tokens stay quoted."""
+        if token.token_type == TokenType.IDENTIFIER:
+            return exp.Identifier(this=token.text, quoted=True)
+        return exp.to_identifier(token.text)
 
     # True aggregate names for unaliased aggregate-block detection. Subset of
     # NATURAL_AGG_FUNCS: date parts like MONTH are group keys, not aggregates.
@@ -2546,7 +2600,62 @@ class ASQLParser(Parser):
         # creates a proper Table node in FROM (not TableAlias). This is needed for
         # eliminate_ctes to correctly handle the CTE reference.
         alias_name = alias.name
-        return self._build_pipe_cte(query, [exp.Star()], alias_name)  # type: ignore[arg-type]
+        passthrough = self._passthrough_cte_name(query)
+        if passthrough is not None and _AUTO_CTE_RE.fullmatch(passthrough):
+            # `extend x as y stash as foo`: the extend already closed its stage
+            # into __tmpN, so name that CTE instead of chaining `foo AS (SELECT *
+            # FROM __tmpN)` behind it.
+            with_ = query.args["with_"]
+            with_.expressions[-1].set(
+                "alias", exp.TableAlias(this=exp.to_identifier(alias_name))
+            )
+            query.args["from_"].this.set("this", exp.to_identifier(alias_name))
+            stashed: exp.Query = query
+        else:
+            stashed = self._build_pipe_cte(query, [exp.Star()], alias_name)  # type: ignore[arg-type]
+        stashed.meta[_STASHED] = True
+        return stashed
+
+    @staticmethod
+    def _passthrough_cte_name(query: exp.Query) -> str | None:
+        """Name of the CTE that `query` merely re-selects (`SELECT * FROM cte`), else None."""
+        if not isinstance(query, exp.Select):
+            return None
+        if [type(e) for e in query.expressions] != [exp.Star]:
+            return None
+        clause_keys = (
+            "joins",
+            "where",
+            "group",
+            "having",
+            "qualify",
+            "order",
+            "limit",
+            "offset",
+            "distinct",
+            "laterals",
+            "windows",
+            "sample",
+        )
+        if any(query.args.get(key) for key in clause_keys):
+            return None
+        from_ = query.args.get("from_")
+        with_ = query.args.get("with_")
+        table = from_.this if from_ else None
+        if (
+            not isinstance(table, exp.Table)
+            or table.alias
+            or table.db
+            or table.args.get("pivots")
+            or table.args.get("sample")
+            or not with_
+            or not with_.expressions
+        ):
+            return None
+        last_cte = with_.expressions[-1]
+        if not isinstance(last_cte, exp.CTE) or last_cte.alias != table.name:
+            return None
+        return table.name
 
     def _parse_asql_join(self, query: exp.Select, kind: str = "INNER") -> exp.Select:
         """Parse JOIN clause with ASQL join operators.
@@ -3259,6 +3368,7 @@ class ASQLParser(Parser):
             partition_col = self._parse_column()
             if not partition_col:
                 self.raise_error("Expected column after SAMPLE <n> PER")
+                return query
 
             rand = exp.Rand()
             window = exp.Window(
@@ -3267,16 +3377,34 @@ class ASQLParser(Parser):
                 order=exp.Order(expressions=[exp.Ordered(this=rand)]),
             )
             condition = exp.LTE(this=window, expression=n)
-            return self._build_pipe_cte(
-                query=query.qualify(condition, copy=False), expressions=[exp.Star()]
-            )
+            sampled_query = query.qualify(condition, copy=False)
+            sampled_query.meta[SAMPLE_META] = {
+                "size": n.this,
+                "per": partition_col.copy(),
+            }
+            return self._build_pipe_cte(query=sampled_query, expressions=[exp.Star()])
 
         # sample N
         rand = exp.Rand()
         sampled_query = query.order_by(
             exp.Order(expressions=[exp.Ordered(this=rand)]), copy=False
         ).limit(n, copy=False)
+        sampled_query.meta[SAMPLE_META] = {"size": n.this, "per": None}
         return self._build_pipe_cte(query=sampled_query, expressions=[exp.Star()])
+
+    def _build_pipe_cte(
+        self,
+        query: exp.Query,
+        expressions: list[exp.Expr],
+        alias_cte: exp.TableAlias | None = None,
+    ) -> exp.Select:
+        """Never reuse an auto CTE name a `stash as __tmpN` already took."""
+        if alias_cte is None:
+            with_ = query.args.get("with_")
+            taken = {cte.alias for cte in with_.expressions} if with_ else set()
+            while f"__tmp{self._pipe_cte_counter + 1}" in taken:
+                self._pipe_cte_counter += 1
+        return super()._build_pipe_cte(query, expressions, alias_cte)
 
     def _parse_equality(self) -> exp.Expr | None:
         """Parse equality with NULL handling.
@@ -3316,6 +3444,7 @@ class ASQLParser(Parser):
                 wrap_left: str,
                 wrap_right: str,
                 case_insensitive: bool,
+                written: str,
             ) -> exp.Expr:
                 pattern: exp.Expr
                 if isinstance(right, exp.Literal) and right.is_string:
@@ -3330,7 +3459,9 @@ class ASQLParser(Parser):
                     pattern = exp.Concat(expressions=parts) if len(parts) > 1 else right
 
                 like_cls: type[exp.Expr] = exp.ILike if case_insensitive else exp.Like
-                return like_cls(this=left, expression=pattern)
+                like = like_cls(this=left, expression=pattern)
+                like.meta[STRING_OP_META] = written
+                return like
 
             # String operators: tokens to match -> (wrap_left, wrap_right, case_insensitive)
             string_ops = {
@@ -3344,9 +3475,11 @@ class ASQLParser(Parser):
             }
 
             matched = None
+            written = ""
             for tokens, config in string_ops.items():
                 if self._match_text_seq(*tokens):
                     matched = config
+                    written = " ".join(tokens).lower()
                     break
 
             if not matched:
@@ -3374,6 +3507,7 @@ class ASQLParser(Parser):
                 wrap_left=wrap_left,
                 wrap_right=wrap_right,
                 case_insensitive=case_insensitive,
+                written=written,
             )
 
         self._retreat(index)

@@ -369,7 +369,7 @@ class TestJsonToAsql:
         }
         result = json_to_asql(query_json)
         assert "replace" in result
-        assert "UPPER(name) as name" in result
+        assert "name with UPPER(name)" in result
 
     def test_explode_transform(self):
         """Test EXPLODE transform."""
@@ -664,14 +664,102 @@ class TestExpressionToAsql:
         assert "age between 18 and 65" in result
 
     def test_like_operator(self):
-        """Test LIKE operator (converts to matches)."""
+        """Test LIKE operator (stays a LIKE pattern, never a regex)."""
         expr = {
             "type": "like",
             "operand": {"type": "column", "name": "name"},
             "pattern": {"type": "literal", "value": "%Smith%", "data_type": "string"},
         }
         result = _expression_to_asql(expr)
-        assert "name matches" in result
+        assert result == 'name like "%Smith%"'
+
+    def test_not_like_operator(self):
+        expr = {
+            "type": "like",
+            "negate": True,
+            "operand": {"type": "column", "name": "name"},
+            "pattern": {"type": "literal", "value": "A%", "data_type": "string"},
+        }
+        assert _expression_to_asql(expr) == 'name not like "A%"'
+
+    def test_matches_operator(self):
+        """Test MATCHES operator (regex)."""
+        expr = {
+            "type": "matches",
+            "operand": {"type": "column", "name": "name"},
+            "pattern": {"type": "literal", "value": "^J.*", "data_type": "string"},
+        }
+        assert _expression_to_asql(expr) == 'name matches "^J.*"'
+
+    def test_paren_keeps_precedence(self):
+        expr = {
+            "type": "binary",
+            "op": "AND",
+            "left": {
+                "type": "paren",
+                "expression": {
+                    "type": "binary",
+                    "op": "OR",
+                    "left": {"type": "column", "name": "a"},
+                    "right": {"type": "column", "name": "b"},
+                },
+            },
+            "right": {"type": "column", "name": "c"},
+        }
+        assert _expression_to_asql(expr) == "(a OR b) AND c"
+
+    def test_lower_precedence_child_is_parenthesized(self):
+        """A hand-built tree keeps its shape even without paren nodes."""
+        expr = {
+            "type": "binary",
+            "op": "AND",
+            "left": {
+                "type": "binary",
+                "op": "OR",
+                "left": {"type": "column", "name": "a"},
+                "right": {"type": "column", "name": "b"},
+            },
+            "right": {"type": "column", "name": "c"},
+        }
+        assert _expression_to_asql(expr) == "(a OR b) AND c"
+
+    def test_quoted_identifiers(self):
+        """Names that are not plain identifiers are backtick-quoted."""
+        query_json = {
+            "from": {"table": "my schema.my table", "alias": "mt"},
+            "transforms": [
+                {
+                    "type": "where",
+                    "condition": {
+                        "type": "binary",
+                        "op": "=",
+                        "left": {"type": "column", "name": "Last Name", "table": "mt"},
+                        "right": {
+                            "type": "literal",
+                            "value": "x",
+                            "data_type": "string",
+                        },
+                    },
+                },
+                {
+                    "type": "group_by",
+                    "dimensions": ["my col"],
+                    "aggregates": [
+                        {"function": "sum", "column": "the amt", "alias": "Total Amt"}
+                    ],
+                },
+                {
+                    "type": "order_by",
+                    "expressions": [{"column": "Total Amt", "direction": "desc"}],
+                },
+            ],
+        }
+        result = json_to_asql(query_json)
+        assert "from `my schema`.`my table` as mt" in result
+        assert 'where mt.`Last Name` == "x"' in result
+        assert "group by `my col` (" in result
+        assert "sum(`the amt`) as `Total Amt`" in result
+        assert "order by -`Total Amt`" in result
 
     def test_contains_operator(self):
         """Test CONTAINS operator."""
@@ -755,36 +843,41 @@ class TestExpressionToAsql:
 class TestStringEscaping:
     """Tests for string escaping to prevent injection."""
 
-    def test_escapes_double_quotes(self):
-        """Test that double quotes are escaped."""
+    def test_double_quotes_switch_to_single_quoted_literal(self):
+        """ASQL has no backslash escapes: a value holding " is single-quoted."""
         expr = {"type": "literal", "value": 'hello "world"', "data_type": "string"}
         result = _expression_to_asql(expr)
 
-        assert result == '"hello \\"world\\""'
+        assert result == "'hello \"world\"'"
+        assert (
+            sqlglot.parse_one(f"from t where a = {result}", read="asql").sql("duckdb")
+            == "SELECT * FROM t WHERE a = 'hello \"world\"'"
+        )
 
-    def test_escapes_backslashes(self):
-        """Test that backslashes are escaped."""
+    def test_single_quotes_are_doubled(self):
+        expr = {"type": "literal", "value": 'it\'s "x"', "data_type": "string"}
+        result = _expression_to_asql(expr)
+
+        assert result == "'it''s \"x\"'"
+        assert (
+            sqlglot.parse_one(f"from t where a = {result}", read="asql").sql("duckdb")
+            == "SELECT * FROM t WHERE a = 'it''s \"x\"'"
+        )
+
+    def test_backslashes_are_verbatim(self):
+        """Backslashes are ordinary characters in ASQL string literals."""
         expr = {"type": "literal", "value": "path\\to\\file", "data_type": "string"}
         result = _expression_to_asql(expr)
 
-        assert result == '"path\\\\to\\\\file"'
-
-    def test_escapes_combined(self):
-        """Test escaping quotes and backslashes together."""
-        expr = {"type": "literal", "value": 'say \\"hi\\"', "data_type": "string"}
-        result = _expression_to_asql(expr)
-
-        # Should double-escape backslashes and escape quotes
-        assert '\\"' in result or "\\\\" in result
+        assert result == '"path\\to\\file"'
 
     def test_fallback_escaping(self):
-        """Test that fallback case also escapes properly."""
+        """Test that fallback case also quotes properly."""
         # Test with an unknown data_type to trigger fallback
         expr = {"type": "literal", "value": 'test "value"', "data_type": "unknown_type"}
         result = _expression_to_asql(expr)
 
-        # Should still be wrapped in quotes and escaped
-        assert '\\"' in result
+        assert result == "'test \"value\"'"
 
 
 class TestRoundTrip:

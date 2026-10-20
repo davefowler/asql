@@ -873,15 +873,8 @@ class TestVisualAsqlSemanticRoundTrip:
         ]
         self._assert_semantic_match(query, "complex pipeline")
 
-    @pytest.mark.xfail(
-        reason="ASQL transpiler creates extra __tmp CTEs for multi-CTE queries"
-    )
     def test_multi_cte_roundtrip(self):
-        """Test multiple CTEs round-trip.
-
-        Known issue: ASQL creates extra intermediate CTEs (__tmp1, etc.) when
-        transpiling multi-CTE queries, which breaks the round-trip.
-        """
+        """Test multiple CTEs round-trip."""
         query = [
             {
                 "name": "filtered",

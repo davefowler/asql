@@ -66,6 +66,14 @@ def _build_date_diff(unit: str, from_col: bool = True) -> t.Callable[..., t.Any]
 # its `date_trunc_x` alias.
 ALIAS_FUNC_META = "asql_alias_func"
 
+# Like/ILike nodes built from `contains`, `starts with`, ... keep the written
+# operator here so SQL -> ASQL paths can spell it back instead of a LIKE pattern.
+STRING_OP_META = "asql_string_op"
+
+# The SELECT a `sample N` / `sample N per col` stage desugared into keeps the
+# written form here: {"size": "100", "per": <column expression> | None}.
+SAMPLE_META = "asql_sample"
+
 _TRUNC_UNITS = ("year", "quarter", "month", "day", "hour", "minute", "second")
 _TIMESTAMP_ONLY_UNITS = frozenset({"hour", "minute", "second"})
 
