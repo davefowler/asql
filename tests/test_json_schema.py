@@ -723,6 +723,31 @@ class TestExpressionToAsql:
         }
         assert _expression_to_asql(expr) == "(a OR b) AND c"
 
+    def test_equal_precedence_right_child_keeps_grouping(self):
+        expr = {
+            "type": "binary",
+            "op": "*",
+            "left": {"type": "column", "name": "a"},
+            "right": {
+                "type": "binary",
+                "op": "/",
+                "left": {"type": "column", "name": "b"},
+                "right": {"type": "column", "name": "c"},
+            },
+        }
+        assert _expression_to_asql(expr) == "a * (b / c)"
+        expr["right"]["op"] = "*"
+        assert _expression_to_asql(expr) == "a * b * c"
+
+    def test_qualified_select_column(self):
+        query_json = {
+            "from": {"table": "a"},
+            "transforms": [
+                {"type": "select", "columns": [{"name": "my col", "source": "a"}]}
+            ],
+        }
+        assert "select a.`my col`" in json_to_asql(query_json)
+
     def test_quoted_identifiers(self):
         """Names that are not plain identifiers are backtick-quoted."""
         query_json = {

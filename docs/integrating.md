@@ -663,11 +663,12 @@ optional `nulls`), `limit`, `offset`, `distinct`, `sample` (`size`, optional
 **Unsupported constructs stay explicit.** Anything the visual form cannot model
 is carried verbatim rather than dropped:
 
-- `{"type": "raw", "asql": "..."}` for an expression, an order-by key or a join
-  (window functions, `CASE`, intervals, subquery joins, ...)
+- `{"type": "raw", "asql": "..."}` for an expression or an order-by key
+  (window functions, `CASE`, intervals, subqueries, ...)
 - `{"from": {"table": "", "raw": "..."}}` for a FROM source that is not a table
 - `{"raw": "..."}` on a pipeline for a whole body with no pipeline form
-  (`WITH RECURSIVE`, a CTE that is a set operation, `DISTINCT ON`, ...)
+  (joins other than table joins, `WITH RECURSIVE`, a CTE that is a set
+  operation, `DISTINCT ON`, ...)
 
 A named pipeline becomes `stash as name`; a later pipeline that does not
 continue it starts with its own `from`, which ASQL reads as a new pipeline over

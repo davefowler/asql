@@ -85,7 +85,8 @@ _GROUP_STAGE = "asql_group_stage"
 # leaves behind, so a following top-level `from` can start a new pipeline over it.
 _STASHED = "asql_stashed"
 
-_AUTO_CTE_RE = re.compile(r"__tmp\d+")
+# Names the pipe parser gives the stages it closes itself.
+AUTO_CTE_RE = re.compile(r"__tmp\d+")
 
 
 class ASQLParser(Parser):
@@ -2601,7 +2602,7 @@ class ASQLParser(Parser):
         # eliminate_ctes to correctly handle the CTE reference.
         alias_name = alias.name
         passthrough = self._passthrough_cte_name(query)
-        if passthrough is not None and _AUTO_CTE_RE.fullmatch(passthrough):
+        if passthrough is not None and AUTO_CTE_RE.fullmatch(passthrough):
             # `extend x as y stash as foo`: the extend already closed its stage
             # into __tmpN, so name that CTE instead of chaining `foo AS (SELECT *
             # FROM __tmpN)` behind it.

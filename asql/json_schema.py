@@ -29,6 +29,7 @@ import re
 from typing import Any
 
 _PLAIN_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_NUMBER = re.compile(r"-?\d+(\.\d+)?")
 
 # A string in a name slot that contains one of these can only be expression
 # text (hand-written JSON such as {"dimensions": ["month(created_at)"]}) and is
@@ -55,9 +56,8 @@ _PRECEDENCE: dict[str, int] = {
     "/": 7,
     "%": 7,
 }
-_NON_ASSOCIATIVE = frozenset(
-    {"-", "/", "%", "=", "==", "!=", "<>", "<", ">", "<=", ">="}
-)
+# `a + (b + c)` may drop its parentheses; `a * (b / c)` and `a - (b - c)` may not.
+_ASSOCIATIVE = frozenset({"AND", "OR", "+", "*", "||"})
 # Structured comparison-like nodes bind like comparisons.
 _COMPARISON_NODES = frozenset(
     {
@@ -92,7 +92,7 @@ def _name_sql(name: Any) -> str:
         return text
     if "`" in text:
         return text  # already quoted by the writer
-    if text[0].isdigit() or any(c in _EXPRESSION_CHARS for c in text):
+    if _NUMBER.fullmatch(text) or any(c in _EXPRESSION_CHARS for c in text):
         return text  # expression text, pasted verbatim
     parts = text.split(".")
     if parts[-1] == "*":
@@ -125,8 +125,6 @@ def json_to_asql(query_json: dict[str, Any] | list[dict[str, Any]]) -> str:
     if not pipelines:
         return "from # Enter table name"
 
-    # Track CTE names we've created so we can chain them properly
-    cte_names: set[str] = set()
     result_lines: list[str] = []
 
     for i, pipeline in enumerate(pipelines):
@@ -173,7 +171,6 @@ def json_to_asql(query_json: dict[str, Any] | list[dict[str, Any]]) -> str:
         # Add stash for named pipelines (CTEs)
         if name:
             result_lines.append(f"  stash as {quote_identifier(str(name))}")
-            cte_names.add(name)
 
     return "\n".join(result_lines)
 
@@ -425,15 +422,19 @@ def _column_entry_name(col: Any) -> str:
 def _columns_to_asql(columns: list[Any]) -> list[str]:
     """Convert column list (select/extend) to ASQL strings.
 
-    {"name": n}: a column name. {"expression": e, "name": n}: `e as n`, except
-    when the expression is the column itself (`t.n`, `t.*`, or equal to n).
+    {"name": n}: a column name, `t.n` with {"source": t}. {"expression": e,
+    "name": n}: `e as n`, except when the expression is the column itself
+    (`t.n`, `t.*`, or equal to n).
     """
     column_strs = []
     for col in columns:
         if isinstance(col, dict):
             expression = col.get("expression")
             name = col.get("name")
-            if expression:
+            source = col.get("source")
+            if not expression and source and name and name != "*":
+                column_strs.append(f"{_name_sql(source)}.{_name_sql(name)}")
+            elif expression:
                 expression = str(expression).strip()
                 if (
                     not name
@@ -531,10 +532,11 @@ def _binary_operand(parent_op: str, operand: dict[str, Any] | str, right: bool) 
     if child_type in ("binary", "binary_op"):
         child_op = str(operand.get("op") or operand.get("operator", "=")).upper()
         child_prec = _PRECEDENCE.get(child_op, 4)
+        same_associative_op = child_op == parent_op.upper() and child_op in _ASSOCIATIVE
         if child_prec < parent_prec or (
             child_prec == parent_prec
             and (right or parent_prec == 4)
-            and (parent_op.upper() in _NON_ASSOCIATIVE or parent_prec == 4)
+            and not same_associative_op
         ):
             return f"({text})"
     elif child_type in _COMPARISON_NODES and parent_prec >= 4:

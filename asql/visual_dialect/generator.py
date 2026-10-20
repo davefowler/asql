@@ -18,7 +18,7 @@ exactly. Everything the visual form can model is emitted as structured
 transforms and expression nodes; anything it cannot is emitted as an explicit
 ``raw`` node holding ASQL text that ``json_to_asql`` reproduces verbatim:
 
-- ``{"type": "raw", "asql": "..."}``: an expression, an order-by key, a join.
+- ``{"type": "raw", "asql": "..."}``: an expression or an order-by key.
 - ``{"from": {"table": "", "raw": "..."}}``: a FROM source that is not a table.
 - ``{"raw": "...", ...}`` on a pipeline: the whole pipeline body.
 
@@ -29,7 +29,6 @@ pasted verbatim.
 """
 
 import json
-import re
 import typing as t
 from typing import TypeGuard
 
@@ -41,6 +40,7 @@ from sqlglot.schema import MappingSchema
 
 from asql.dialect import ASQL
 from asql.dialect.generator import ASQLGenerator
+from asql.dialect.parser import AUTO_CTE_RE
 from asql.expressions import Spine
 from asql.functions import (
     ALIAS_FUNC_META,
@@ -48,6 +48,7 @@ from asql.functions import (
     STRING_OP_META,
     unit_function_arg,
 )
+from asql.json_schema import quote_identifier
 
 # Spellings for the ASQL text carried in the JSON. Function style keeps every
 # spelling a call the ASQL parser reads back to the same node (`COALESCE(a, b)`
@@ -86,7 +87,16 @@ _SUPPORTED_SELECT_ARGS = frozenset(
     }
 )
 
-_AUTO_CTE_RE = re.compile(r"__tmp\d+")
+
+def _name_part(name: str) -> str:
+    """A name for a name slot: raw, unless json_to_asql would misread it.
+
+    json_to_asql splits name slots on dots and quotes each part, so a part that
+    itself contains a dot (or a backtick) is pre-quoted here.
+    """
+    if "." in name or "`" in name:
+        return quote_identifier(name)
+    return name
 
 
 class _TextGenerator(ASQLGenerator):
@@ -201,7 +211,8 @@ class VisualASQLGenerator(Generator):
     @staticmethod
     def _column_name(column: exp.Column) -> str:
         """Raw (unquoted) dotted name of a plain column: `col` or `t.col`."""
-        return f"{column.table}.{column.name}" if column.table else column.name
+        name = _name_part(column.name)
+        return f"{_name_part(column.table)}.{name}" if column.table else name
 
     def _name_or_text(self, expr: exp.Expr) -> str:
         """Raw name for a plain column, ASQL text for anything else."""
@@ -408,7 +419,10 @@ class VisualASQLGenerator(Generator):
 
         # JOINs - accumulate columns
         for join in expression.args.get("joins") or []:
-            transform = self._join_transform(join, inferred_columns_by_table)
+            join_transform = self._join_transform(join, inferred_columns_by_table)
+            if join_transform is None:
+                return self._raw_pipeline(expression)
+            transform = join_transform
             if transform["type"] == "join":
                 current_columns.extend(transform.pop("_columns"))
             transform["output_columns"] = current_columns.copy()
@@ -695,15 +709,7 @@ class VisualASQLGenerator(Generator):
                 )
                 if part is not None
             ]
-            if any("." in part or "`" in part for part in parts):
-                # Dots inside a part would be read as separators: pre-quote.
-                return ".".join(
-                    part
-                    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", part)
-                    else "`" + part.replace("`", "``") + "`"
-                    for part in parts
-                )
-            return ".".join(parts)
+            return ".".join(_name_part(part) for part in parts)
         if hasattr(table_expr, "name"):
             return str(table_expr.name)
         return str(table_expr)
@@ -736,7 +742,8 @@ class VisualASQLGenerator(Generator):
         self,
         join: exp.Join,
         inferred_columns_by_table: dict[str, list[dict[str, t.Any]]],
-    ) -> dict[str, t.Any]:
+    ) -> dict[str, t.Any] | None:
+        """join / explode transform, or None when the join has no pipeline form."""
         join_table_expr = join.this
         comments = self._get_comments(join)
 
@@ -796,8 +803,9 @@ class VisualASQLGenerator(Generator):
                 "_columns": join_cols,
             }
         else:
-            # Subquery joins, USING, lateral, semi/anti joins, ...
-            transform = {"type": "raw", "asql": self._text(join)}
+            # Subquery joins, USING, lateral, semi/anti joins, ...: the pipeline
+            # parser has no spelling for them, so the whole SELECT goes raw.
+            return None
         if comments:
             transform["comments"] = comments
         return transform
@@ -1215,7 +1223,7 @@ class VisualASQLGenerator(Generator):
             if not except_cols:
                 if not aliases:
                     return []  # plain SELECT *
-                if cte_name and _AUTO_CTE_RE.fullmatch(cte_name):
+                if cte_name and AUTO_CTE_RE.fullmatch(cte_name):
                     return [self._extend_transform(aliases)]  # `extend` stage
                 # `select *, expr as alias` in place
                 star_columns: list[dict[str, t.Any]] = [{"name": "*"}] + [
@@ -1246,7 +1254,7 @@ class VisualASQLGenerator(Generator):
                 {
                     key: value
                     for key, value in c.items()
-                    if key in ("name", "expression")
+                    if key in ("name", "expression", "source")
                 }
                 for c in columns
             ],
@@ -1328,10 +1336,9 @@ class VisualASQLGenerator(Generator):
                 # orders.* keeps its table; json_to_asql pastes the expression.
                 columns.append({"name": "*", "expression": self._text(expr)})
             elif self._is_plain_column(expr):
-                col_info = {"name": expr.name}
+                col_info = {"name": _name_part(expr.name)}
                 if expr.table:
-                    col_info["source"] = expr.table
-                    col_info["expression"] = self._column_name(expr)
+                    col_info["source"] = expr.table  # json_to_asql writes t.col
                 if hasattr(expr, "type") and expr.type:
                     col_info["type"] = str(expr.type)
                 columns.append(col_info)
@@ -1429,7 +1436,7 @@ class VisualASQLGenerator(Generator):
                     {
                         key: value
                         for key, value in c.items()
-                        if key in ("name", "expression")
+                        if key in ("name", "expression", "source")
                     }
                     for c in columns
                 ],

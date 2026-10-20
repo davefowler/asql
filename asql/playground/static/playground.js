@@ -2747,7 +2747,7 @@ function formatConditionStyled(cond) {
         if (typeof v === 'boolean') return op(v ? 'true' : 'false');
         return escapeHtml(JSON.stringify(v));
     }
-    if (cond.type === 'binary' || cond.type === 'binary_op' || cond.operator) {
+    if (cond.type === 'binary' || cond.type === 'binary_op' || (cond.operator && cond.left)) {
         const left = formatConditionStyled(cond.left);
         const right = formatConditionStyled(cond.right);
         return `${left} ${op(cond.op || cond.operator)} ${right}`;
