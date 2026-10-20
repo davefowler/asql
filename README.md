@@ -70,9 +70,13 @@ This launches:
 | `just test -k "pattern"` | Run tests matching a pattern |
 | `just lint` | Ruff, mypy, and ESLint |
 | `just fix` | Apply ruff fixes and formatting |
+| `just check` | Lint then test: what a PR must pass |
+| `just review` | `check`, then the diff summary against `main` for a reviewer |
 | `just docs-build` | Build the docs site into `site/` |
 | `just smoke` | Build the wheel, install it in a clean venv, transpile a query |
 | `just --list` | Show all available commands |
+
+Conventions for contributors and coding agents live in [AGENTS.md](AGENTS.md).
 
 ## Quick Example
 

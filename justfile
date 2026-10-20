@@ -22,6 +22,17 @@ lint:
     uv run --all-extras --locked mypy asql
     npm run lint
 
+# Everything a PR must pass locally: lint, then the test suite
+check: lint test
+
+# Pre-review pass: the local gates, then the diff summary against BASE for a reviewer
+review base="main": check
+    @echo
+    @echo "Changes vs {{base}}:"
+    @git --no-pager diff --stat {{base}}...HEAD
+    @echo
+    @echo "Next: /review in Claude Code (runs /code-review and fixes confirmed findings)"
+
 # Apply ruff fixes and formatting
 fix:
     uv run --all-extras --locked ruff check --fix .
