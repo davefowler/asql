@@ -491,11 +491,15 @@ class VisualEditorV2 {
         return '';
 
       case 'group_by':
-        const dims = (transform.dimensions || []).map(d => `<span class="value-column">${escape(d)}</span>`);
+        const dims = (transform.dimensions || []).map(d => `<span class="value-column">${escape(dimensionText(d))}</span>`);
         const aggs = (transform.aggregates || []).map(a => {
           const col = a.column || '*';
           const alias = a.alias ? ` <span class="value-operator">as</span> ${escape(a.alias)}` : '';
-          return `<span class="value-function">${escape(a.function)}</span>(<span class="value-column">${escape(col)}</span>)${alias}`;
+          if (a.expression) {
+            return `<span class="value-column">${escape(a.expression)}</span>${alias}`;
+          }
+          const distinct = a.distinct ? 'distinct ' : '';
+          return `<span class="value-function">${escape(a.function)}</span>(${distinct}<span class="value-column">${escape(col)}</span>)${alias}`;
         });
         return [...dims, ...aggs].join(', ');
 

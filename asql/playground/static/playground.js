@@ -2534,7 +2534,7 @@ function renderPipeStepContent(transform) {
         case 'group_by':
             let groupContent = '';
             if (transform.dimensions && transform.dimensions.length > 0) {
-                const dims = transform.dimensions.map(d => `<span class="value-column">${escape(d)}</span>`).join(', ');
+                const dims = transform.dimensions.map(d => `<span class="value-column">${escape(dimensionText(d))}</span>`).join(', ');
                 groupContent += dims;
             }
             if (transform.aggregates && transform.aggregates.length > 0) {
@@ -2542,7 +2542,11 @@ function renderPipeStepContent(transform) {
                     const fn = a.function || 'count';
                     const col = a.column || '*';
                     const alias = a.alias ? ` <span class="value-operator">as</span> <span class="value-column">${escape(a.alias)}</span>` : '';
-                    return `<span class="value-function">${escape(fn)}</span>(<span class="value-column">${escape(col)}</span>)${alias}`;
+                    if (a.expression) {
+                        return `<span class="value-column">${escape(a.expression)}</span>${alias}`;
+                    }
+                    const distinct = a.distinct ? 'distinct ' : '';
+                    return `<span class="value-function">${escape(fn)}</span>(${distinct}<span class="value-column">${escape(col)}</span>)${alias}`;
                 }).join(', ');
                 if (groupContent) groupContent += '<br>';
                 groupContent += aggs;
@@ -2672,9 +2676,9 @@ function renderOutputBlockBody(transform) {
             return `${keyword('select')} ${cols || '*'}`;
         }
         case 'group_by': {
-            const dims = (transform.dimensions || []).map(d => column(d)).join(', ');
+            const dims = (transform.dimensions || []).map(d => column(dimensionText(d))).join(', ');
             const aggs = (transform.aggregates || []).map(a =>
-                `${keyword(a.function)}(${column(a.column)})`
+                a.expression ? column(a.expression) : `${keyword(a.function)}(${column(a.column)})`
             ).join(', ');
             let result = `${keyword('group by')} ${dims}`;
             if (aggs) result += ` (${aggs})`;
@@ -2682,7 +2686,7 @@ function renderOutputBlockBody(transform) {
         }
         case 'order_by': {
             const orders = (transform.expressions || []).map(e =>
-                `${column(e.column)} ${keyword(e.direction || 'asc')}`
+                `${column(e.column || e.expression || '')} ${keyword(e.direction || 'asc')}`
             ).join(', ');
             return `${keyword('order by')} ${orders}`;
         }
@@ -2743,15 +2747,40 @@ function formatConditionStyled(cond) {
         if (typeof v === 'boolean') return op(v ? 'true' : 'false');
         return escapeHtml(JSON.stringify(v));
     }
-    if (cond.type === 'binary_op' || cond.operator) {
+    if (cond.type === 'binary' || cond.type === 'binary_op' || (cond.operator && cond.left)) {
         const left = formatConditionStyled(cond.left);
         const right = formatConditionStyled(cond.right);
-        return `${left} ${op(cond.operator)} ${right}`;
+        return `${left} ${op(cond.op || cond.operator)} ${right}`;
     }
-    if (cond.type === 'like') {
+    if (cond.type === 'paren') {
+        return `(${formatConditionStyled(cond.expression)})`;
+    }
+    if (cond.type === 'like' || cond.type === 'ilike') {
         const operand = formatConditionStyled(cond.operand);
         const pattern = formatConditionStyled(cond.pattern);
-        return `${operand} ${op('like')} ${pattern}`;
+        return `${operand} ${op(`${cond.negate ? 'not ' : ''}${cond.type}`)} ${pattern}`;
+    }
+    if (cond.type === 'matches') {
+        return `${formatConditionStyled(cond.operand)} ${op('matches')} ${formatConditionStyled(cond.pattern)}`;
+    }
+    if (['contains', 'icontains', 'starts_with', 'istarts_with', 'ends_with', 'iends_with'].includes(cond.type)) {
+        return `${formatConditionStyled(cond.operand)} ${op(cond.type.replace('_', ' '))} ${formatConditionStyled(cond.value)}`;
+    }
+    if (cond.type === 'null_check') {
+        return `${formatConditionStyled(cond.operand)} ${op(cond.operator || 'is null')}`;
+    }
+    if (cond.type === 'unary_op') {
+        return `${op(cond.operator)} ${formatConditionStyled(cond.operand)}`;
+    }
+    if (cond.type === 'not_in') {
+        const values = (cond.values || []).map(v => formatConditionStyled(v)).join(', ');
+        return `${formatConditionStyled(cond.operand)} ${op('not in')} (${values})`;
+    }
+    if (cond.type === 'star') {
+        return column('*');
+    }
+    if (cond.type === 'raw') {
+        return escapeHtml(cond.asql || '');
     }
     if (cond.type === 'and' || cond.type === 'or') {
         const conditions = (cond.conditions || []).map(c => formatConditionStyled(c));
@@ -2778,12 +2807,21 @@ function formatConditionStyled(cond) {
         return `${operand} ${op('between')} ${low} ${op('and')} ${high}`;
     }
     if (cond.type === 'function') {
-        const args = (cond.arguments || []).map(a => formatConditionStyled(a)).join(', ');
-        return `${op(cond.name)}(${args})`;
+        const args = (cond.args || cond.arguments || []).map(a => formatConditionStyled(a)).join(', ');
+        return `${op(cond.name)}(${cond.distinct ? 'DISTINCT ' : ''}${args})`;
     }
 
     // Fallback
     return escapeHtml(JSON.stringify(cond));
+}
+
+
+// A GROUP BY dimension is a column name or {expression, alias} for a computed key.
+function dimensionText(d) {
+    if (d === null || d === undefined) return '';
+    if (typeof d !== 'object') return String(d);
+    const text = d.expression || d.name || '';
+    return d.alias ? `${text} as ${d.alias}` : text;
 }
 
 // Format a condition object to plain string (for input editor)

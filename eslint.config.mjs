@@ -17,6 +17,7 @@ const asqlGlobals = {
   createAccordionDataContainer: "readonly",
   createAccordionDataRow: "readonly",
   createAccordionStepHeader: "readonly",
+  dimensionText: "readonly",
   generateFakeData: "readonly",
   getTransformLabel: "readonly",
   module: "readonly",

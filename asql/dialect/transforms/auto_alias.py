@@ -393,7 +393,9 @@ def apply_auto_aliasing(
                     # Already has explicit alias - don't change it
                     # But recursively process nested expressions for any nested functions
                     new_this = visit(expr.this)
-                    new_expressions.append(exp.Alias(this=new_this, alias=expr.alias))
+                    new_expressions.append(
+                        exp.Alias(this=new_this, alias=expr.args["alias"])
+                    )
                 else:
                     # Recursively process nested expressions
                     new_expressions.append(visit(expr))
@@ -430,7 +432,9 @@ def apply_auto_aliasing(
                             # Already has explicit alias - don't change it
                             # But recursively process nested expressions
                             new_this = visit(item.this)
-                            new_list.append(exp.Alias(this=new_this, alias=item.alias))
+                            new_list.append(
+                                exp.Alias(this=new_this, alias=item.args["alias"])
+                            )
                         else:
                             new_list.append(visit(item))
                     else:

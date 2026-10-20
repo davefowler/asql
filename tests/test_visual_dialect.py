@@ -603,11 +603,10 @@ class TestNullConditions:
         )[0]
         result = get_first_pipeline(json_out)
 
-        # IS NOT NULL is represented as NOT(IS NULL)
         condition = result["transforms"][0]["condition"]
-        assert condition["type"] == "unary_op"
-        assert condition["operator"] == "not"
-        assert condition["operand"]["type"] == "null_check"
+        assert condition["type"] == "null_check"
+        assert condition["operator"] == "is not null"
+        assert condition["operand"]["name"] == "email"
 
 
 class TestBetweenConditions:
@@ -693,8 +692,9 @@ class TestNestedConditions:
         condition = result["transforms"][0]["condition"]
         assert condition["type"] == "binary"
         assert condition["op"] == "AND"
-        # Right side should be the OR condition
-        assert condition["right"]["op"] == "OR"
+        # Right side is the parenthesized OR condition
+        assert condition["right"]["type"] == "paren"
+        assert condition["right"]["expression"]["op"] == "OR"
 
     def test_deeply_nested(self):
         """Test deeply nested conditions."""
@@ -708,8 +708,9 @@ class TestNestedConditions:
         condition = result["transforms"][0]["condition"]
         assert condition["type"] == "binary"
         assert condition["op"] == "OR"
-        assert condition["left"]["op"] == "AND"
-        assert condition["right"]["op"] == "AND"
+        assert condition["left"]["type"] == "paren"
+        assert condition["left"]["expression"]["op"] == "AND"
+        assert condition["right"]["expression"]["op"] == "AND"
 
     def test_not_condition(self):
         """Test NOT operator."""

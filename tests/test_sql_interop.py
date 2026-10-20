@@ -4,8 +4,6 @@ These tests document the current state of mixing standard SQL syntax with ASQL.
 Some tests are marked as expected failures (xfail) to document known limitations.
 """
 
-import pytest
-
 from .fixtures import transpile
 
 
@@ -169,9 +167,8 @@ class TestKnownLimitations:
         result = transpile(asql)
         assert "WITH revenue AS" in result
 
-    @pytest.mark.xfail(reason="FROM-first only transforms first query in UNION")
     def test_union_with_asql(self) -> None:
-        """UNION with ASQL queries - KNOWN LIMITATION."""
+        """UNION between FROM-first pipelines."""
         asql = """
         from customers select id, name
         UNION
@@ -181,9 +178,8 @@ class TestKnownLimitations:
         # Both should have SELECT
         assert result.count("SELECT") >= 2
 
-    @pytest.mark.xfail(reason="Stash chaining not fully supported")
     def test_multiple_stash_as(self) -> None:
-        """Multiple stash as in sequence - KNOWN LIMITATION."""
+        """`stash as x` followed by a fresh `from x` pipeline."""
         asql = """
         from users where active stash as active_users
         from active_users group by country (count(*) as cnt)

@@ -140,9 +140,10 @@ class Expression {
         if (expr.dataType === 'string' || expr.data_type === 'string') return `'${expr.value}'`;
         if (expr.dataType === 'null' || expr.data_type === 'null' || expr.value === null) return 'NULL';
         return String(expr.value ?? '');
-      case 'function':
+      case 'function': {
         const args = (expr.args || []).map(a => this.toString(a)).join(', ');
-        return `${expr.name}(${args})`;
+        return `${expr.name}(${expr.distinct ? 'DISTINCT ' : ''}${args})`;
+      }
       case 'binary':
         return `${this.toString(expr.left)} ${expr.op} ${this.toString(expr.right)}`;
       case 'unary':
@@ -150,14 +151,36 @@ class Expression {
       case 'unary_op':
         return `${expr.operator.toUpperCase()} ${this.toString(expr.operand)}`;
       case 'in':
+      case 'not_in': {
         const values = (expr.values || []).map(v => this.toString(v)).join(', ');
-        return `${this.toString(expr.operand)} IN (${values})`;
+        const inOp = expr.type === 'not_in' ? 'NOT IN' : 'IN';
+        return `${this.toString(expr.operand)} ${inOp} (${values})`;
+      }
       case 'like':
-        return `${this.toString(expr.operand)} LIKE ${this.toString(expr.pattern)}`;
+      case 'ilike': {
+        const likeOp = `${expr.negate ? 'NOT ' : ''}${expr.type.toUpperCase()}`;
+        return `${this.toString(expr.operand)} ${likeOp} ${this.toString(expr.pattern)}`;
+      }
+      case 'matches':
+        return `${this.toString(expr.operand)} MATCHES ${this.toString(expr.pattern)}`;
+      case 'contains':
+      case 'icontains':
+      case 'starts_with':
+      case 'istarts_with':
+      case 'ends_with':
+      case 'iends_with':
+        return `${this.toString(expr.operand)} ${expr.type.replace('_', ' ').toUpperCase()} ${this.toString(expr.value)}`;
       case 'between':
         return `${this.toString(expr.operand)} BETWEEN ${this.toString(expr.low)} AND ${this.toString(expr.high)}`;
       case 'null_check':
         return `${this.toString(expr.operand)} ${expr.operator.toUpperCase()}`;
+      case 'paren':
+        return `(${this.toString(expr.expression)})`;
+      case 'star':
+        return '*';
+      case 'raw':
+        // ASQL text the visual form cannot model; shown and written back verbatim
+        return expr.asql || '';
       case 'unknown':
         return expr.value || '';
       default:
