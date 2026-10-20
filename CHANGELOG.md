@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Contributor setup: `AGENTS.md` (conventions, pointed to by `CLAUDE.md`), `just check` and `just review` recipes, a `/review` project command and a pull request template
 - Visual ASQL round trips are lossless: `tests/test_visual_roundtrip.py` checks `asql.transpile(q)` against `asql.transpile(json_to_asql(visual(q)))` for DuckDB, PostgreSQL and Snowflake over the playground examples and the operator corpus
 - Visual ASQL JSON keeps schema-qualified tables and table aliases, `distinct`, `extend`, `except`/`rename`/`replace`, `qualify`, `explode`, `sample` (`size`, `per`), `pivot`/`unpivot`, `like`/`ilike` (with `negate`), `matches`, `contains`/`starts with`/`ends with` as their own node types, `not_in`, `is not null`, `paren`, arithmetic and `||` binaries, `count(distinct x)`, computed dimensions and aggregates as `{"expression", "alias"}`, order-by expressions and `nulls`; anything else is an explicit `raw` node (expression, FROM source or whole pipeline) holding ASQL text that `json_to_asql` reproduces verbatim
 - `json_to_asql` backtick-quotes identifiers that are not plain (`` `Last Name` ``, `` `my schema`.`my table` ``) in every name slot, parenthesizes binary children by precedence, and emits `like` as LIKE instead of a regex `matches`
