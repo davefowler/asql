@@ -4,8 +4,6 @@ These tests document the current state of mixing standard SQL syntax with ASQL.
 Some tests are marked as expected failures (xfail) to document known limitations.
 """
 
-import pytest
-
 from .fixtures import transpile
 
 
