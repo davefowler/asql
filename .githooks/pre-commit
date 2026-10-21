@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Pre-commit: format and lint only the staged Python and JS files.
+# Installed by `just install` (git config core.hooksPath .githooks).
+set -euo pipefail
+
+py=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' || true)
+js=$(git diff --cached --name-only --diff-filter=ACMR -- 'asql/playground/static/*.js' 'asql/playground/static/**/*.js' || true)
+
+if [ -n "$py" ]; then
+    # shellcheck disable=SC2086
+    uv run --all-extras --locked ruff check --fix --quiet $py
+    # shellcheck disable=SC2086
+    uv run --all-extras --locked ruff format --quiet $py
+    # shellcheck disable=SC2086
+    git add $py
+fi
+
+if [ -n "$js" ] && [ -d node_modules ]; then
+    # shellcheck disable=SC2086
+    npx eslint $js
+fi

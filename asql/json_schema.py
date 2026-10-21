@@ -28,7 +28,22 @@ Names versus expressions:
 import re
 from typing import Any
 
+from sqlglot.parser import Parser
+from sqlglot.tokens import TokenType
+
+from asql.dialect.tokenizer import ASQLTokenizer
+
 _PLAIN_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# Words the ASQL tokenizer reads as keywords (`order`, `select`, `limit`); a
+# column or table with such a name must be quoted. Type names (`date`, `int`)
+# and plain words the tokenizer marks VAR stay unquoted, as users write them.
+_RESERVED = frozenset(
+    word.split()[0]  # `ORDER BY` is one token, but bare `order` is still unsafe
+    for word, token in ASQLTokenizer.KEYWORDS.items()
+    if _PLAIN_IDENTIFIER.fullmatch(word.split()[0])
+    and token is not TokenType.VAR
+    and token not in Parser.TYPE_TOKENS
+)
 _NUMBER = re.compile(r"-?\d+(\.\d+)?")
 
 # A string in a name slot that contains one of these can only be expression
@@ -79,8 +94,8 @@ _COMPARISON_NODES = frozenset(
 
 
 def quote_identifier(name: str) -> str:
-    """Backtick-quote a single identifier unless it is plain."""
-    if _PLAIN_IDENTIFIER.fullmatch(name):
+    """Backtick-quote a single identifier unless it is plain and not reserved."""
+    if _PLAIN_IDENTIFIER.fullmatch(name) and name.upper() not in _RESERVED:
         return name
     return "`" + name.replace("`", "``") + "`"
 

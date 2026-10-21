@@ -39,11 +39,12 @@ from sqlglot.optimizer.qualify_columns import qualify_columns
 from sqlglot.schema import MappingSchema
 
 from asql.dialect import ASQL
-from asql.dialect.generator import ASQLGenerator
+from asql.dialect.generator import ASQLGenerator, _trunc_sql
 from asql.dialect.parser import AUTO_CTE_RE
 from asql.expressions import Spine
 from asql.functions import (
     ALIAS_FUNC_META,
+    CALL_META,
     SAMPLE_META,
     STRING_OP_META,
     unit_function_arg,
@@ -124,11 +125,36 @@ class _TextGenerator(ASQLGenerator):
             expression.args.get("false"),
         )
 
+    def sql(
+        self,
+        expression: str | exp.Expr | None,
+        key: str | None = None,
+        comment: bool = True,
+    ) -> str:
+        # An ASQL-only function (`days_since(x)`, `slugify(x)`) is spelled as
+        # written, not as the SQL it expanded to.
+        if key is None and isinstance(expression, exp.Expr):
+            call = expression.meta.get(CALL_META)
+            if call:
+                name, args = call
+                return f"{name}({', '.join(self.sql(arg) for arg in args)})"
+        return super().sql(expression, key, comment)
+
     # Spine is not a sqlglot class, so it is dispatched through TRANSFORMS.
     TRANSFORMS: t.ClassVar[dict[type[exp.Expr], t.Callable[..., str]]] = {
         **ASQLGenerator.TRANSFORMS,
         Spine: lambda self, e: f"spine({self.sql(e, 'this')})",
+        exp.DateTrunc: lambda self, e: _visual_trunc_sql(self, e),
     }
+
+
+def _visual_trunc_sql(generator: Generator, expression: exp.DateTrunc) -> str:
+    """`month(x)` only when that is what was written; SQL DATE_TRUNC stays
+    DATE_TRUNC so its auto alias (`date_trunc_x`) survives the round trip."""
+    unit = expression.args.get("unit")
+    if expression.meta.get(ALIAS_FUNC_META) or isinstance(unit, exp.WeekStart):
+        return _trunc_sql(generator, expression)
+    return generator.func("DATE_TRUNC", unit, expression.this)
 
 
 class VisualASQLGenerator(Generator):
@@ -239,20 +265,26 @@ class VisualASQLGenerator(Generator):
         if with_clause and with_clause.args.get("recursive"):
             # `recurse` / WITH RECURSIVE has no pipeline form.
             return [self._raw_pipeline(expression)]
+        known_ctes: set[str] = set()
         if with_clause:
             for cte in with_clause.expressions:
                 cte_name = cte.alias
                 cte_query = cte.this
                 if isinstance(cte_query, exp.Select):
-                    pipeline = self._build_single_pipeline(cte_query, cte_name)
+                    pipeline = self._build_single_pipeline(
+                        cte_query, cte_name, frozenset(known_ctes)
+                    )
                 else:
                     pipeline = self._raw_pipeline(cte_query)
                 pipeline["name"] = cte_name
                 pipelines.append(pipeline)
+                known_ctes.add(cte_name)
 
         # Handle set operations (UNION, INTERSECT, EXCEPT)
         if isinstance(expression, exp.SetOperation):
-            self._build_set_operation_pipelines(expression, pipelines)
+            self._build_set_operation_pipelines(
+                expression, pipelines, frozenset(known_ctes)
+            )
         elif isinstance(expression, exp.Select):
             # Pre-qualify columns if schema provided
             if self._schema:
@@ -266,7 +298,9 @@ class VisualASQLGenerator(Generator):
                 except Exception:  # noqa: BLE001, S110 - sqlglot errors non-fatal
                     pass
 
-            pipeline = self._build_single_pipeline(expression)
+            pipeline = self._build_single_pipeline(
+                expression, None, frozenset(known_ctes)
+            )
             pipeline["name"] = None  # Final output pipeline
             pipelines.append(pipeline)
         else:
@@ -292,17 +326,20 @@ class VisualASQLGenerator(Generator):
         }
 
     def _build_set_operation_pipelines(
-        self, expression: exp.Expr, pipelines: list[dict[str, t.Any]]
+        self,
+        expression: exp.Expr,
+        pipelines: list[dict[str, t.Any]],
+        known_ctes: frozenset[str] = frozenset(),
     ) -> None:
         """Recursively build pipelines for set operations."""
         if isinstance(expression, exp.SetOperation):
             # Process left side
             left = expression.this
             if isinstance(left, exp.SetOperation):
-                self._build_set_operation_pipelines(left, pipelines)
+                self._build_set_operation_pipelines(left, pipelines, known_ctes)
             else:
                 pipeline = (
-                    self._build_single_pipeline(left)
+                    self._build_single_pipeline(left, None, known_ctes)
                     if isinstance(left, exp.Select)
                     else self._raw_pipeline(left)
                 )
@@ -318,10 +355,10 @@ class VisualASQLGenerator(Generator):
             # Process right side
             right = expression.expression
             if isinstance(right, exp.SetOperation):
-                self._build_set_operation_pipelines(right, pipelines)
+                self._build_set_operation_pipelines(right, pipelines, known_ctes)
             else:
                 pipeline = (
-                    self._build_single_pipeline(right)
+                    self._build_single_pipeline(right, None, known_ctes)
                     if isinstance(right, exp.Select)
                     else self._raw_pipeline(right)
                 )
@@ -329,12 +366,16 @@ class VisualASQLGenerator(Generator):
                 pipelines.append(pipeline)
 
     def _build_single_pipeline(
-        self, expression: exp.Select, cte_name: str | None = None
+        self,
+        expression: exp.Select,
+        cte_name: str | None = None,
+        known_ctes: frozenset[str] = frozenset(),
     ) -> dict[str, t.Any]:
         """Build JSON representation of a single SELECT query.
 
         ``cte_name`` is the CTE this SELECT is the body of, if any; a parser
         generated name (`__tmpN`) marks a stage the pipeline closed itself.
+        ``known_ctes`` are the CTEs defined before it in the statement.
         """
         unsupported_args = [
             key
@@ -452,7 +493,9 @@ class VisualASQLGenerator(Generator):
 
         # SELECT - explicit columns (only if not SELECT *)
         else:
-            select_transforms = self._select_transforms(expression, cte_name)
+            select_transforms = self._select_transforms(
+                expression, cte_name, known_ctes
+            )
             if select_transforms is None:
                 return self._raw_pipeline(expression)
             for transform in select_transforms:
@@ -947,6 +990,14 @@ class VisualASQLGenerator(Generator):
                 "name": written,
                 "args": [self._expression_to_json(unit_function_arg(expr))],
             }
+        call = expr.meta.get(CALL_META)
+        if call:
+            name, args = call
+            return {
+                "type": "function",
+                "name": name,
+                "args": [self._expression_to_json(arg) for arg in args],
+            }
         if isinstance(expr, exp.Column):
             if not self._is_plain_column(expr):
                 return self._raw(expr)
@@ -1200,7 +1251,7 @@ class VisualASQLGenerator(Generator):
     # ------------------------------------------------------------------
 
     def _select_transforms(
-        self, select: exp.Select, cte_name: str | None
+        self, select: exp.Select, cte_name: str | None, known_ctes: frozenset[str]
     ) -> list[dict[str, t.Any]] | None:
         """Transforms for the projection of a SELECT without GROUP BY.
 
@@ -1225,6 +1276,17 @@ class VisualASQLGenerator(Generator):
                     return []  # plain SELECT *
                 if cte_name and AUTO_CTE_RE.fullmatch(cte_name):
                     return [self._extend_transform(aliases)]  # `extend` stage
+                from_ = select.args.get("from_")
+                source = from_.this if from_ else None
+                if not (
+                    isinstance(source, exp.Table)
+                    and not source.db
+                    and source.name in known_ctes
+                ):
+                    # Over a base table the parser would turn `select *, x as y`
+                    # into `* EXCLUDE (y), x AS y`; only a stage whose columns
+                    # it knows keeps the plain star. Keep the SELECT verbatim.
+                    return None
                 # `select *, expr as alias` in place
                 star_columns: list[dict[str, t.Any]] = [{"name": "*"}] + [
                     {"name": alias.alias, "expression": self._text(alias.this)}

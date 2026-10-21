@@ -95,10 +95,9 @@ def _expand_select_star_with_qualification(select: exp.Select) -> None:
             for table_name, alias in tables:
                 table_ref = alias if alias else table_name
                 new_expressions.append(
-                    exp.Column(
-                        this=exp.Identifier(this="*", quoted=False),
-                        table=exp.to_identifier(table_ref),
-                    )
+                    # The same node a written `t.*` parses to; a Column whose
+                    # name is the identifier "*" gets aliased as a column later.
+                    exp.Column(this=exp.Star(), table=exp.to_identifier(table_ref))
                 )
             star_replaced = True
         elif not is_star:

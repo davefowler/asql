@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `tests/test_visual_roundtrip.py` also runs every ` ```asql-play ` block in the docs (217 queries) through the round trip, with the docs build's schema and settings
 - Contributor setup: `AGENTS.md` (conventions, pointed to by `CLAUDE.md`), `just check` and `just review` recipes, a `/review` project command and a pull request template
 - Visual ASQL round trips are lossless: `tests/test_visual_roundtrip.py` checks `asql.transpile(q)` against `asql.transpile(json_to_asql(visual(q)))` for DuckDB, PostgreSQL and Snowflake over the playground examples and the operator corpus
 - Visual ASQL JSON keeps schema-qualified tables and table aliases, `distinct`, `extend`, `except`/`rename`/`replace`, `qualify`, `explode`, `sample` (`size`, `per`), `pivot`/`unpivot`, `like`/`ilike` (with `negate`), `matches`, `contains`/`starts with`/`ends with` as their own node types, `not_in`, `is not null`, `paren`, arithmetic and `||` binaries, `count(distinct x)`, computed dimensions and aggregates as `{"expression", "alias"}`, order-by expressions and `nulls`; anything else is an explicit `raw` node (expression, FROM source or whole pipeline) holding ASQL text that `json_to_asql` reproduces verbatim
@@ -23,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- Visual ASQL: ASQL-only functions (`days_since(x)`, `slugify(x)`, `running_sum(x)`, `bucket(...)`) keep their written call in the JSON and on the way back instead of their SQL expansion; SQL `date_trunc('month', x)` is no longer re-read as `month(x)` (which renamed its auto alias); reserved words used as names (`` `order` ``, `` `select` ``, `` `limit` ``) stay quoted; `select *, expr as alias` over a base table is kept verbatim instead of being re-read with an `EXCLUDE`
+- A backticked name that spells a keyword (`` select `limit` ``) no longer ends the select list
+- Join star expansion with a schema no longer emits `t.* AS "*"` on PostgreSQL
+- The docs' reserved-word example used double quotes, which are string literals in ASQL; it now uses backticks
 - Backticked names in `group by` keys and aggregate blocks (`` group by `my col` ( sum(`the amt`) as `Total Amt` ) ``) parse; quoted aliases keep their quotes (`AS "Total Amt"`), and the join star expansion quotes table names (`"other t".*`)
 - `extend ... stash as foo` names the stage's own CTE instead of chaining `foo AS (SELECT * FROM __tmp1)`, and an auto CTE never reuses a name a `stash as __tmpN` already took
 - `week(x)` as a group-by key no longer crashes PostgreSQL/Snowflake output (the key and its projection were one shared node, so the week start was resolved in only one of them)

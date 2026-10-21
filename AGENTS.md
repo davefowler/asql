@@ -7,7 +7,7 @@ points here; keep this file the single source of truth.
 
 | Command | What it does |
 |---|---|
-| `just install` | `uv sync --all-extras --locked` + `npm ci` |
+| `just install` | `uv sync --all-extras --locked` + `npm ci` + the pre-commit hook (`.githooks/`) |
 | `just test [args]` | pytest, excluding `slow` and `e2e` (`just test tests/test_x.py -k name`) |
 | `just lint` | ruff check, ruff format check, mypy (strict), ESLint |
 | `just fix` | ruff autofix + format |
