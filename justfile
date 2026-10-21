@@ -10,6 +10,7 @@ default:
 install:
     uv sync --all-extras --locked
     npm ci
+    git config core.hooksPath .githooks
 
 # Run the test suite (excludes slow and e2e tests)
 test *ARGS:

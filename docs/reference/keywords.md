@@ -453,9 +453,12 @@ These words have special meaning and cannot be used as unquoted identifiers:
 To use a reserved word as an identifier, quote it:
 
 ```asql-play
-from "order"        -- Table named 'order'
-select "select"     -- Column named 'select'
+from `order`        -- Table named 'order'
+select `select`     -- Column named 'select'
 ```
+
+Double quotes are string literals in ASQL (`"select"` is the text `select`),
+so identifiers are quoted with backticks.
 
 ---
 

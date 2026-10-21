@@ -44,6 +44,7 @@ from asql.functions import (
     build_bucket,
     get_natural_agg,
     get_natural_date_function,
+    remember_call,
 )
 
 if t.TYPE_CHECKING:
@@ -1049,8 +1050,12 @@ class ASQLParser(Parser):
             expression=exp.Literal.string("[^a-z0-9]+"),
             replacement=exp.Literal.string("-"),
         )
-        return exp.Trim(
-            this=replaced, expression=exp.Literal.string("-"), position="BOTH"
+        return remember_call(
+            "slugify",
+            args,
+            exp.Trim(
+                this=replaced, expression=exp.Literal.string("-"), position="BOTH"
+            ),
         )
 
     def _parse_field(
@@ -1809,7 +1814,11 @@ class ASQLParser(Parser):
                     # sensible reading is the pipeline post-aggregation filter.
                     return i
 
-            if depth == 0 and tok.text.upper() in trailing_keywords:
+            if (
+                depth == 0
+                and tok.token_type != TokenType.IDENTIFIER
+                and tok.text.upper() in trailing_keywords
+            ):
                 # Avoid treating set-operation EXCEPT as a trailing transform:
                 #   SELECT ... EXCEPT SELECT ...
                 if tok.token_type == TokenType.EXCEPT:
@@ -2029,6 +2038,8 @@ class ASQLParser(Parser):
 
     def _is_transform_boundary_token(self, token_type: TokenType, text: str) -> bool:
         """Return True if a token can start a new pipeline transform."""
+        if token_type == TokenType.IDENTIFIER:
+            return False  # a backticked name is never a keyword (`limit`)
         if token_type == TokenType.PIPE_GT:
             return True
         if token_type == TokenType.SEMICOLON:

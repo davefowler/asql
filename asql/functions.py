@@ -74,6 +74,31 @@ STRING_OP_META = "asql_string_op"
 # written form here: {"size": "100", "per": <column expression> | None}.
 SAMPLE_META = "asql_sample"
 
+# Nodes built by an ASQL-only function (`days_since(x)`, `slugify(x)`,
+# `running_sum(x)`) keep the written call here as (name, [arg nodes]) so SQL -> ASQL
+# paths spell the call instead of its expansion.
+CALL_META = "asql_call"
+
+
+def remember_call(name: str, args: list[t.Any], node: exp.Expr) -> exp.Expr:
+    """Tag `node` as the expansion of `name(*args)` (plain-expression args only)."""
+    if all(isinstance(a, exp.Expr) for a in args):
+        node.meta.setdefault(CALL_META, (name.lower(), [a.copy() for a in args]))
+    return node
+
+
+def _remember_calls(
+    registry: dict[str, t.Callable[..., t.Any]],
+) -> dict[str, t.Callable[..., t.Any]]:
+    def wrap(name: str, build: t.Callable[..., t.Any]) -> t.Callable[..., t.Any]:
+        def builder(args: list[t.Any], *rest: t.Any, **kwargs: t.Any) -> t.Any:
+            return remember_call(name, args, build(args, *rest, **kwargs))
+
+        return builder
+
+    return {name: wrap(name, build) for name, build in registry.items()}
+
+
 _TRUNC_UNITS = ("year", "quarter", "month", "day", "hour", "minute", "second")
 _TIMESTAMP_ONLY_UNITS = frozenset({"hour", "minute", "second"})
 
@@ -376,6 +401,9 @@ ASQL_FUNCTION_REGISTRY: dict[str, t.Callable[..., t.Any]] = {
 #
 # Natural syntax = paren-free function calls where func precedes its argument.
 # =============================================================================
+
+
+ASQL_FUNCTION_REGISTRY = _remember_calls(ASQL_FUNCTION_REGISTRY)
 
 
 def _build_count_distinct(args: list[t.Any]) -> exp.Count:

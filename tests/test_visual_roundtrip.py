@@ -17,15 +17,20 @@ fails.
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 
 import pytest
 import sqlglot
 from sqlglot import exp
 
 import asql
-from asql.errors import ASQLDialectError
+from asql.dialect import ASQL
+from asql.errors import ASQLDialectError, ASQLResolutionError
 from asql.json_schema import json_to_asql
 from asql.playground.examples import get_all_examples_flat
+from asql.playground.schema import PLAYGROUND_SCHEMA
+from asql.schema import Schema
 
 DIALECTS = ["duckdb", "postgres", "snowflake"]
 
@@ -55,6 +60,27 @@ CASES: list[tuple[str, str]] = [
     ("dotted_name_select", "from `s.t` select `a.b`, `x.y` as `p.q`"),
     ("digit_name", "from t group by `1st` ( count(*) as n ) order by -`1st`"),
     ("sql_join_using", "SELECT * FROM a JOIN b USING (id)"),
+    ("reserved_word_names", "from `order` select `select`, `limit` order by -`limit`"),
+    ("sql_date_trunc", 'from events group by date_trunc("month", date) ( # as n )'),
+    (
+        "select_star_alias_base_table",
+        "from orders select *, price * quantity as total, year(date) as year",
+    ),
+    ("sql_select_star_alias", "SELECT *, x AS y FROM t"),
+    ("per_number", "from orders per customer_id number by -order_date"),
+    ("per_rank_alias", "from orders per customer_id rank by -amount as r"),
+    ("slugify", "from products select name, slugify(name) as slug"),
+    (
+        "days_since",
+        "from t select days_since(created_at) as age, days since created_at as age2",
+    ),
+    ("running_sum", "from t select a, running_sum(b) as rb order by a"),
+    ("rolling_avg", "from t select a, rolling_avg(b, 7) as r7 order by a"),
+    (
+        "bucket",
+        "from t select bucket(amount, [10, 100], ['low', 'mid', 'high']) as tier",
+    ),
+    ("fill_forward", "from t select fill_forward(x) as fx order by d"),
     (
         "sql_subquery_join",
         "SELECT * FROM a JOIN (SELECT id FROM b) AS s ON a.id = s.id",
@@ -199,10 +225,29 @@ CASES += [
     for category, title, query in get_all_examples_flat()
 ]
 
+# Every runnable example in the docs (` ```asql-play ` blocks).
+_DOCS_DIR = Path(__file__).resolve().parent.parent / "docs"
+CASES += [
+    (f"docs:{path.relative_to(_DOCS_DIR)}#{index}", block.strip())
+    for path in sorted(_DOCS_DIR.rglob("*.md"))
+    for index, block in enumerate(
+        re.findall(r"```asql-play\n(.*?)```", path.read_text(), re.S), start=1
+    )
+]
+
+# Docs examples that rely on the playground schema (join inference, column
+# operators) are parsed with it on both sides of the round trip.
+_SCHEMA = Schema.from_dict(
+    {"tables": {t: {"columns": cols} for t, cols in PLAYGROUND_SCHEMA.items()}}
+)
+
 
 def _cosmetic(node: exp.Expr) -> exp.Expr:
     if isinstance(node, exp.Paren):
         return node.this
+    if isinstance(node, exp.Star) and node.args.get("except_"):
+        # EXCLUDE (a, b) is a set
+        node.set("except_", sorted(node.args["except_"], key=lambda c: c.sql()))
     if (
         isinstance(node, exp.Not)
         and isinstance(node.this, exp.Is)
@@ -229,27 +274,53 @@ def _normalize(sql: str, dialect: str) -> exp.Expr:
     return tree
 
 
-def _visual(query: str) -> list[list[dict]]:
+def _needs_schema(query: str) -> bool:
+    try:
+        sqlglot.parse(query, read="asql")
+    except ASQLResolutionError:
+        return True
+    return False
+
+
+def _settings(schema: Schema | None) -> dict:
+    # What the docs build compiles examples with (docs/macros.py).
+    return {"schema": schema, "infer_join_keys": True} if schema else {}
+
+
+def _visual(query: str, schema: Schema | None = None) -> list[list[dict]]:
+    read = ASQL(**_settings(schema)) if schema else "asql"
     return [
         json.loads(js)
-        for js in sqlglot.transpile(query, read="asql", write="visual_asql")
+        for js in sqlglot.transpile(query, read=read, write="visual_asql")
     ]
+
+
+# Docs examples whose *original* compilation is already wrong, so there is no
+# correct output to round-trip to. Each is a parser bug tracked separately.
+_KNOWN_BROKEN = {
+    "over cohort": "named window `over <name>` is not parsed; the projection "
+    "after it is silently dropped and `over` becomes an alias",
+}
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)
 @pytest.mark.parametrize(("name", "query"), CASES, ids=[c[0] for c in CASES])
 def test_round_trip_preserves_meaning(name: str, query: str, dialect: str) -> None:
-    pipelines_per_statement = _visual(query)
+    for marker, reason in _KNOWN_BROKEN.items():
+        if marker in query:
+            pytest.xfail(reason)
+    schema = _SCHEMA if _needs_schema(query) else None
+    pipelines_per_statement = _visual(query, schema)
 
     try:
-        expected = asql.transpile(query, write=dialect)
+        expected = asql.transpile(query, write=dialect, **_settings(schema))
     except ASQLDialectError:
         # e.g. column operators without a schema on dialects lacking EXCLUDE:
         # the round trip must fail the same way, not silently succeed.
         assert len(pipelines_per_statement) == 1
         back = json_to_asql(pipelines_per_statement[0])
         with pytest.raises(ASQLDialectError):
-            asql.transpile(back, write=dialect)
+            asql.transpile(back, write=dialect, **_settings(schema))
         return
 
     assert len(pipelines_per_statement) == len(expected)
@@ -259,7 +330,7 @@ def test_round_trip_preserves_meaning(name: str, query: str, dialect: str) -> No
             assert sqlglot.parse(expected_sql, read=dialect) in ([], [None])
             continue
         back = json_to_asql(pipelines)
-        actual_sql = asql.transpile(back, write=dialect)[0]
+        actual_sql = asql.transpile(back, write=dialect, **_settings(schema))[0]
         want = _normalize(expected_sql, dialect)
         got = _normalize(actual_sql, dialect)
         assert got == want, (
@@ -285,7 +356,7 @@ def test_unsupported_nodes_are_explicit(name: str, query: str) -> None:
             for item in node:
                 walk(item)
 
-    for pipelines in _visual(query):
+    for pipelines in _visual(query, _SCHEMA if _needs_schema(query) else None):
         walk(pipelines)
         for pipeline in pipelines:
             assert pipeline["from"].get("table") or pipeline["from"].get("raw"), (
