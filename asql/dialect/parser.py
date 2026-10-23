@@ -3495,12 +3495,12 @@ class ASQLParser(Parser):
                 self._pipe_cte_counter += 1
         return super()._build_pipe_cte(query, expressions, alias_cte)
 
-    def _parse_equality(self) -> exp.Expr | None:
+    def _parse_equality(self, parse_is: bool = True) -> exp.Expr | None:
         """Parse equality with NULL handling.
 
         Like PRQL: `== null` becomes `IS NULL`
         """
-        eq = super()._parse_equality()
+        eq = super()._parse_equality(parse_is=parse_is)
         if not isinstance(eq, (exp.EQ, exp.NEQ)):
             return eq
 
@@ -3513,7 +3513,7 @@ class ASQLParser(Parser):
             return eq
         return exp.Is(this=this, expression=null, negate=isinstance(eq, exp.NEQ))
 
-    def _parse_comparison(self) -> exp.Expr | None:
+    def _parse_comparison(self, this: exp.Expr | None = None) -> exp.Expr | None:
         """Parse comparison expressions with ASQL string-matching operators.
 
         Supports:
@@ -3523,7 +3523,7 @@ class ASQLParser(Parser):
         - matches
         """
         index = self._index
-        left = self._parse_range()
+        left = this or self._parse_range()
 
         if left and self._curr and self._curr.token_type == TokenType.VAR:
 
@@ -3573,7 +3573,7 @@ class ASQLParser(Parser):
 
             if not matched:
                 self._retreat(index)
-                return super()._parse_comparison()
+                return super()._parse_comparison(this)
 
             wrap_left, wrap_right, case_insensitive = matched
 
@@ -3590,7 +3590,7 @@ class ASQLParser(Parser):
                 self.raise_error(
                     "Expected string literal or expression after string operator"
                 )
-                return super()._parse_comparison()
+                return super()._parse_comparison(this)
             return build_like(
                 right,
                 wrap_left=wrap_left,
@@ -3600,7 +3600,7 @@ class ASQLParser(Parser):
             )
 
         self._retreat(index)
-        return super()._parse_comparison()
+        return super()._parse_comparison(this)
 
     def _parse_assignment(self) -> exp.Expr | None:
         """Parse assignment expressions with ternary operator support.
