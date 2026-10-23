@@ -6,7 +6,6 @@ This module is loaded by mkdocs-macros-plugin and provides:
 """
 
 import base64
-import functools
 import hashlib
 import html
 import json
@@ -188,24 +187,6 @@ def format_asql_for_docs(asql_query: str) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
-@functools.lru_cache(maxsize=1)
-def _docs_schema():
-    """Schema for docs examples — reuses the playground's table/column set.
-
-    Column operators (`except`/`rename`/`replace`) need a schema to expand into an
-    explicit column list on dialects without native EXCLUDE support (Postgres, MySQL,
-    …); without one those examples error on most dialect tabs. Docs examples compile
-    *with* this schema by design so every dialect tab renders. Reuses PLAYGROUND_SCHEMA
-    (rather than a bespoke fixture) so the docs' tables match the playground's.
-    """
-    from asql.playground.schema import PLAYGROUND_SCHEMA
-    from asql.schema import Schema
-
-    return Schema.from_dict(
-        {"tables": {t: {"columns": cols} for t, cols in PLAYGROUND_SCHEMA.items()}}
-    )
-
-
 def precompile_asql_query(
     asql_query: str, skip_compilation: bool = False
 ) -> dict[str, str]:
@@ -222,6 +203,7 @@ def precompile_asql_query(
     import sys
 
     import asql
+    from asql.playground.schema import playground_schema
 
     formatted_asql = format_asql_for_docs(asql_query)
     results = {"asql": formatted_asql}
@@ -240,14 +222,13 @@ def precompile_asql_query(
                 old_stdout, old_stderr = sys.stdout, sys.stderr
                 sys.stdout = sys.stderr = io.StringIO()
                 try:
-                    # Use asql.transpile() with infer_join_keys for docs examples.
-                    # Pass the playground schema so column operators expand on
-                    # dialects without native EXCLUDE support (see _docs_schema).
+                    # Docs examples compile against the playground's tables, the
+                    # same schema the playground compiles with.
                     sql_list = asql.transpile(
                         formatted_asql,
                         write=dialect,
                         infer_join_keys=True,
-                        schema=_docs_schema(),
+                        schema=playground_schema(),
                     )
                     sql = sql_list[0] if sql_list else ""
                 finally:
