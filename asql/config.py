@@ -57,8 +57,8 @@ class CompileSettings:
     week_start: Literal["monday", "sunday"] = "monday"
 
     # Relative date type: what "7 days ago" compiles to
-    # "timestamp" -> CURRENT_TIMESTAMP - INTERVAL '7 days'
-    # "date" -> CURRENT_DATE - INTERVAL '7 days'
+    # "timestamp" -> CURRENT_TIMESTAMP - INTERVAL '7' DAY
+    # "date" -> CURRENT_DATE - INTERVAL '7' DAY
     relative_date_type: Literal["timestamp", "date"] = "timestamp"
 
     # Auto-aliasing configuration (Phase 1: Prefixes)

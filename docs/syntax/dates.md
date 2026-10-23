@@ -114,14 +114,11 @@ order_date + 7 days   -- plural
 This compiles to dialect-appropriate SQL:
 
 ```sql
--- PostgreSQL
-order_date + INTERVAL '7 days'
+-- PostgreSQL, Snowflake, Redshift
+order_date + INTERVAL '7 DAY'
 
--- MySQL
-DATE_ADD(order_date, INTERVAL 7 DAY)
-
--- SQL Server
-DATEADD(day, 7, order_date)
+-- BigQuery, MySQL, DuckDB, Databricks, Trino
+order_date + INTERVAL '7' DAY
 ```
 
 ## Date Difference
@@ -272,6 +269,27 @@ created_at::"Europe/London"
 -- Chained with other operations
 month(created_at::PST)
 created_at::UTC + 7 days
+```
+
+A short code names its region's zone, daylight saving included: `PT`/`PST`/`PDT`
+→ `America/Los_Angeles`, `MT`/`MST`/`MDT` → `America/Denver`, `CT`/`CST`/`CDT` →
+`America/Chicago`, `ET`/`EST`/`EDT` → `America/New_York`, `UTC`/`GMT` → `UTC`.
+Any other zone needs its quoted IANA name.
+
+This compiles to each warehouse's conversion:
+
+```sql
+-- PostgreSQL, DuckDB
+created_at AT TIME ZONE 'America/Los_Angeles'
+
+-- BigQuery
+TIMESTAMP(DATETIME(created_at, 'America/Los_Angeles'))
+
+-- Snowflake, Redshift, Databricks
+CONVERT_TIMEZONE('America/Los_Angeles', created_at)
+
+-- MySQL (DATETIME values carry no zone, so they are read as UTC)
+CONVERT_TZ(created_at, 'UTC', 'America/Los_Angeles')
 ```
 
 ## Quick Reference
