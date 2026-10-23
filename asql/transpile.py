@@ -343,11 +343,14 @@ def _transform_date_parts(
 ) -> exp.Expr:
     from asql.compiler.date_parts import (
         transform_bigquery_calendar_intervals,
+        transform_bigquery_relative_date_comparisons,
         transform_day_of_year,
         transform_timezone_source,
     )
 
     ast = transform_timezone_source(transform_day_of_year(ast, dialect), dialect)
+    # Relative dates move to CURRENT_DATE first, so their intervals type as DATE.
+    ast = transform_bigquery_relative_date_comparisons(ast, dialect, schema)
     return transform_bigquery_calendar_intervals(ast, dialect, schema)
 
 
