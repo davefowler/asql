@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Semantic graph support: `asql.semantic.load_graph()` reads a dbt-metrics `graph.yaml`; `Schema.from_graph()` feeds its grains and relationships into join inference and fanout protection, and queries can use bare metric names and `relationship.attribute` references
 
 ### Changed
+- Requires sqlglot 30.24.0 or newer (was 30.0.0), the version CI tests against
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed

@@ -1,5 +1,6 @@
 """Tests for string matching operators (contains, icontains, starts with, etc.)."""
 
+import pytest
 import sqlglot
 from sqlglot import exp
 
@@ -201,3 +202,19 @@ def test_starts_with_in_select() -> None:
     sql_upper = sql.upper()
     assert "LIKE" in sql_upper
     assert "WHERE" in sql_upper
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ("from t where x is null = false", "SELECT * FROM t WHERE (x IS NULL) = FALSE"),
+        ("from t where x == null", "SELECT * FROM t WHERE x IS NULL"),
+        ("from t where a = b is null", "SELECT * FROM t WHERE a = (b IS NULL)"),
+        (
+            "from t where (x is null) = (name contains 'a')",
+            "SELECT * FROM t WHERE (x IS NULL) = (name LIKE '%a%')",
+        ),
+    ],
+)
+def test_postfix_predicate_as_comparison_operand(query: str, expected: str) -> None:
+    assert transpile(query) == expected

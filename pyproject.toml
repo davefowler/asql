@@ -14,7 +14,7 @@ requires-python = ">=3.11"
 dependencies = [
     # asql subclasses sqlglot's private Parser/Generator surface; a new major
     # is a migration, not a re-lock.
-    "sqlglot>=30.0.0,<31.0.0",
+    "sqlglot>=30.24.0,<31.0.0",
     "jinja2>=3.0.0",
     "inflect>=7.0.0",
     "pyyaml>=6.0.0",
