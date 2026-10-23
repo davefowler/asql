@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - The playground compiles against its own tables and column types, so BigQuery month/year arithmetic on its timestamp columns and `except`/`rename`/`replace` on dialects without `EXCLUDE` compile instead of erroring
+- On BigQuery, a relative date compared with a DATE or DATETIME column counts from `CURRENT_DATE` / `CURRENT_DATETIME()` (`d >= 7 days ago`, `d between 30 days ago and now()`), instead of failing with "DATE >= TIMESTAMP"
 - BigQuery month/year arithmetic on a TIMESTAMP runs instead of failing at run time (`12 months ago`, `ts - 1 month`): it goes through DATETIME. DATE and DATETIME operands are unchanged, and a BigQuery operand of unknown type raises `ASQLDialectError` asking for its schema type or a cast
 - A parenthesized pipeline whose `select` is not its first step now parses in every position (`a in (from u where b select a)`, `exists (...)`, scalar subqueries, derived tables, joined subqueries). SQL → ASQL output, which always writes nested queries in that order, round trips again
 - Dates compile to working SQL on every dialect: `7 days ago`, `x + 1 month` and friends emit each warehouse's interval spelling (BigQuery, MySQL and Trino rejected the old `INTERVAL '7 days'`); `now()` is `CURRENT_TIMESTAMP` (BigQuery has no `NOW`); `x::"America/Los_Angeles"` and `x::PST` convert timezones per dialect instead of failing to parse or casting to a type named `PST`; `relative_date_type="date"` is honored instead of ignored
