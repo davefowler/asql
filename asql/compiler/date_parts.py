@@ -1,4 +1,4 @@
-"""Dialect-specific spellings of date extraction, and spine week alignment."""
+"""Dialect-specific spellings of date extraction and timezones, and spine week alignment."""
 
 from __future__ import annotations
 
@@ -26,6 +26,16 @@ def transform_day_of_year(stmt: exp.Expr, dialect: str) -> exp.Expr:
         return node
 
     return stmt.transform(_rewrite)
+
+
+def transform_timezone_source(stmt: exp.Expr, dialect: str) -> exp.Expr:
+    """MySQL's CONVERT_TZ needs the source zone; DATETIME values carry none, so UTC."""
+    if dialect.lower() != "mysql":
+        return stmt
+    for node in stmt.find_all(exp.ConvertTimezone):
+        if node.args.get("source_tz") is None:
+            node.set("source_tz", exp.Literal.string("UTC"))
+    return stmt
 
 
 def retarget_spine_weeks(spine: exp.Expr, start: str) -> exp.Expr:

@@ -48,8 +48,8 @@ class ASQL(Dialect):
     - Descending order shorthand: `-column` → `column DESC`
     - NULL equality: `== null` → `IS NULL`
     - Ternary operator: `x ? y : z` → `CASE WHEN x THEN y ELSE z END`
-    - Relative dates: `7 days ago` → `CURRENT_TIMESTAMP - INTERVAL '7 days'`
-    - Date arithmetic: `col + 7 days` → `col + INTERVAL '7 days'`
+    - Relative dates: `7 days ago` → `CURRENT_TIMESTAMP - INTERVAL '7' DAY`
+    - Date arithmetic: `col + 7 days` → `col + INTERVAL '7' DAY`
     """
 
     # All supported ASQL settings - can be passed to constructor or set via SET statements

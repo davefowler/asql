@@ -1407,11 +1407,11 @@ order_date + 7 days          -- plural
 
 **Compiles to** (dialect-specific):
 ```sql
--- PostgreSQL
-order_date + INTERVAL '7 days'
+-- PostgreSQL, Snowflake, Redshift
+order_date + INTERVAL '7 DAY'
 
--- SQL Server
-DATEADD(day, 7, order_date)
+-- BigQuery, MySQL, DuckDB, Databricks, Trino
+order_date + INTERVAL '7' DAY
 
 -- MySQL
 DATE_ADD(order_date, INTERVAL 7 DAY)
@@ -1468,8 +1468,8 @@ from reminders
 **Compiles to:**
 ```sql
 -- PostgreSQL
-WHERE last_login >= CURRENT_DATE - INTERVAL '7 days'
-WHERE estimated_delivery <= CURRENT_TIMESTAMP + INTERVAL '3 days'
+WHERE last_login >= CURRENT_TIMESTAMP - INTERVAL '7 DAY'
+WHERE estimated_delivery <= CURRENT_TIMESTAMP + INTERVAL '3 DAY'
 ```
 
 ### 8.7 Time Since/Until Patterns
@@ -1559,9 +1559,12 @@ month(created_at::PST)
 created_at::UTC + 7 days
 ```
 
+Short codes name their region's zone (`PST` → `America/Los_Angeles`, daylight
+saving included); any other zone needs its quoted IANA name. See
+[Dates & Time](syntax/dates.md#timezone-handling) for every dialect's output.
+
 **Compiles to** (PostgreSQL):
 ```sql
-created_at AT TIME ZONE 'PST'
 created_at AT TIME ZONE 'America/Los_Angeles'
 ```
 

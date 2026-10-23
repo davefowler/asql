@@ -90,6 +90,38 @@ _STASHED = "asql_stashed"
 AUTO_CTE_RE = re.compile(r"__tmp\d+")
 
 
+# Each dialect spells intervals differently; a structured unit lets sqlglot
+# emit INTERVAL '7' DAY (BigQuery, MySQL, Trino) or INTERVAL '7 DAY' (Postgres).
+def _interval(number: str, unit: str) -> exp.Interval:
+    return exp.Interval(
+        this=exp.Literal.string(number), unit=exp.var(unit.upper().removesuffix("S"))
+    )
+
+
+# `col::PST` names a region, not a fixed offset: warehouses other than Postgres
+# accept only IANA names, so each abbreviation means its region's zone.
+TIMEZONE_ABBREVIATIONS: dict[str, str] = {
+    "UTC": "UTC",
+    "GMT": "UTC",
+    **dict.fromkeys(("PT", "PST", "PDT"), "America/Los_Angeles"),
+    **dict.fromkeys(("MT", "MST", "MDT"), "America/Denver"),
+    **dict.fromkeys(("CT", "CST", "CDT"), "America/Chicago"),
+    **dict.fromkeys(("ET", "EST", "EDT"), "America/New_York"),
+}
+
+
+def _build_now(args: list[exp.Expr]) -> exp.Expr:
+    if args:
+        raise ValueError("now() takes no arguments")
+    return exp.CurrentTimestamp()
+
+
+def _dcolon(parser: Parser, this: exp.Expr, to: exp.Expr) -> exp.Expr:
+    if isinstance(to, exp.Literal) and to.is_string:
+        return exp.ConvertTimezone(target_tz=to, timestamp=this)
+    return parser.build_cast(strict=parser.STRICT_CAST, this=this, to=to)
+
+
 class ASQLParser(Parser):
     """ASQL Parser that reads settings from dialect.settings.
 
@@ -690,6 +722,17 @@ class ASQLParser(Parser):
     # (Following ClickHouse's canonical copy-and-pop pattern)
     COLUMN_OPERATORS = Parser.COLUMN_OPERATORS.copy()
     COLUMN_OPERATORS.pop(TokenType.PLACEHOLDER)
+    COLUMN_OPERATORS[TokenType.DCOLON] = _dcolon
+
+    def _parse_dcolon(self) -> exp.Expr | None:
+        """`col::"Europe/London"` and `col::PST` are timezones; anything else is a type."""
+        if self._match(TokenType.STRING):
+            return exp.Literal.string(self._prev.text)
+        zone = self._curr and TIMEZONE_ABBREVIATIONS.get(self._curr.text.upper())
+        if zone and not (self._next and self._next.token_type == TokenType.L_PAREN):
+            self._advance()
+            return exp.Literal.string(zone)
+        return super()._parse_dcolon()
 
     # Handle @ as date literal prefix (following DuckDB's PLACEHOLDER_PARSERS pattern)
     # @2024-01-15 → DATE '2024-01-15'
@@ -877,6 +920,7 @@ class ASQLParser(Parser):
         **ASQL_FUNCTION_REGISTRY,
         # Additional aliases
         "TOTAL": exp.Sum.from_arg_list,
+        "NOW": _build_now,
         "AVERAGE": exp.Avg.from_arg_list,
         "PRIOR": lambda args: exp.Lag(
             this=seq_get(args, 0), offset=seq_get(args, 1) or exp.Literal.number(1)
@@ -3585,8 +3629,8 @@ class ASQLParser(Parser):
         Extensions:
         - COUNT shorthand: `#` → `COUNT(*)`
         - COUNT shorthand: `#(col)` → `COUNT(col)`
-        - Relative dates: `7 days ago` → `CURRENT_TIMESTAMP - INTERVAL '7 days'`
-        - Relative dates: `3 months from now` → `CURRENT_TIMESTAMP + INTERVAL '3 months'`
+        - Relative dates: `7 days ago` → `CURRENT_TIMESTAMP - INTERVAL '7' DAY`
+        - Relative dates: `3 months from now` → `CURRENT_TIMESTAMP + INTERVAL '3' MONTH`
         - Space notation: `days since col` → `days_since(col)`
         - Space notation: `months until col` → `months_until(col)`
 
@@ -3663,17 +3707,16 @@ class ASQLParser(Parser):
         unit_text = self._curr.text.lower()
         self._advance()
 
+        now: exp.Expr = (
+            exp.CurrentDate()
+            if self._get_setting("relative_date_type", "timestamp") == "date"
+            else exp.CurrentTimestamp()
+        )
         if self._match_text_seq("AGO"):
-            interval = exp.Interval(
-                this=exp.Literal.string(f"{number_text} {unit_text}")
-            )
-            return exp.Sub(this=exp.CurrentTimestamp(), expression=interval)
+            return exp.Sub(this=now, expression=_interval(number_text, unit_text))
 
         if self._match_text_seq("FROM", "NOW"):
-            interval = exp.Interval(
-                this=exp.Literal.string(f"{number_text} {unit_text}")
-            )
-            return exp.Add(this=exp.CurrentTimestamp(), expression=interval)
+            return exp.Add(this=now, expression=_interval(number_text, unit_text))
 
         self._retreat(start_index)
         return None
@@ -3778,8 +3821,8 @@ class ASQLParser(Parser):
         """Parse factor expressions with ASQL date arithmetic.
 
         Extensions:
-        - Date arithmetic: `created_at + 7 days` → `created_at + INTERVAL '7 days'`
-        - Date arithmetic: `due_date - 1 month` → `due_date - INTERVAL '1 month'`
+        - Date arithmetic: `created_at + 7 days` → `created_at + INTERVAL '7' DAY`
+        - Date arithmetic: `due_date - 1 month` → `due_date - INTERVAL '1' MONTH`
 
         Uses idiomatic SQLGlot save/retreat pattern for lookahead.
         """
@@ -3814,8 +3857,7 @@ class ASQLParser(Parser):
                         self._retreat(index - 1)
                         break
 
-                    # Build: left +/- INTERVAL 'N unit'
-                    interval = exp.Interval(this=exp.Literal.string(f"{number} {unit}"))
+                    interval = _interval(number, unit)
                     assert op_class is not None
                     this = op_class(this=this, expression=interval)
                     continue

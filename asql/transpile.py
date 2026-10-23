@@ -339,9 +339,12 @@ def _transform_spine(
 
 
 def _transform_date_parts(ast: exp.Expr, dialect: str) -> exp.Expr:
-    from asql.compiler.date_parts import transform_day_of_year
+    from asql.compiler.date_parts import (
+        transform_day_of_year,
+        transform_timezone_source,
+    )
 
-    return transform_day_of_year(ast, dialect)
+    return transform_timezone_source(transform_day_of_year(ast, dialect), dialect)
 
 
 def _transform_fanout(
