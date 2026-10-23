@@ -201,7 +201,7 @@ def _apply_dialect_transforms(
     ast = _transform_spine(ast, dialect, settings)
 
     # 2.5. Dialect spellings of date extraction
-    ast = _transform_date_parts(ast, dialect)
+    ast = _transform_date_parts(ast, dialect, schema)
 
     # 3. Alias reuse (DuckDB supports native, others need CTEs)
     ast = _transform_alias_reuse(ast, dialect)
@@ -338,13 +338,17 @@ def _transform_spine(
     return transform_spine_expressions(ast, dialect, settings)
 
 
-def _transform_date_parts(ast: exp.Expr, dialect: str) -> exp.Expr:
+def _transform_date_parts(
+    ast: exp.Expr, dialect: str, schema: Schema | None
+) -> exp.Expr:
     from asql.compiler.date_parts import (
+        transform_bigquery_calendar_intervals,
         transform_day_of_year,
         transform_timezone_source,
     )
 
-    return transform_timezone_source(transform_day_of_year(ast, dialect), dialect)
+    ast = transform_timezone_source(transform_day_of_year(ast, dialect), dialect)
+    return transform_bigquery_calendar_intervals(ast, dialect, schema)
 
 
 def _transform_fanout(
