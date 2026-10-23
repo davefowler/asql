@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `spike/rust-sqlglot/` and `ai_notes/rust-sqlglot-spike-2026-10-23.md`: estimate and strategy for a Rust sqlglot, measured against polyglot-sql (an existing Rust port) on asql's emitted SQL
 - `tests/test_visual_roundtrip.py` also runs every ` ```asql-play ` block in the docs (217 queries) through the round trip, with the docs build's schema and settings
 - Contributor setup: `AGENTS.md` (conventions, pointed to by `CLAUDE.md`), `just check` and `just review` recipes, a `/review` project command and a pull request template
 - Visual ASQL round trips are lossless: `tests/test_visual_roundtrip.py` checks `asql.transpile(q)` against `asql.transpile(json_to_asql(visual(q)))` for DuckDB, PostgreSQL and Snowflake over the playground examples and the operator corpus

@@ -1,0 +1,18 @@
+# Spike: measure polyglot-sql (a Rust port of sqlglot) against Python sqlglot on
+# the SQL that asql emits. Not part of `just check`; see README.md here.
+[package]
+name = "asql-rust-sqlglot-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "probe"
+path = "src/main.rs"
+
+[dependencies]
+polyglot-sql = { version = "0.13", features = ["all-dialects"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[workspace]
