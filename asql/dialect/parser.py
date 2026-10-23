@@ -1880,6 +1880,36 @@ class ASQLParser(Parser):
             query = self._build_pipe_cte(query, [exp.Star()])
         return self.TRANSFORM_PARSERS[transform_name](self, query)
 
+    def _parse_wrapped_select(self, table: bool = False) -> exp.Expr | None:
+        if self._curr and self._curr.token_type == TokenType.FROM:
+            return self._parse_query(nested=True)
+        return super()._parse_wrapped_select(table=table)
+
+    def _parse_select_query(
+        self,
+        nested: bool = False,
+        table: bool = False,
+        parse_subquery_alias: bool = True,
+        parse_set_operation: bool = True,
+    ) -> exp.Expr | None:
+        # sqlglot reads a parenthesized `FROM` as DuckDB's `FROM x SELECT ...`,
+        # which rejects ASQL steps (`where`, `order by`, ...) before `select`.
+        if (
+            self._prev
+            and self._prev.token_type == TokenType.L_PAREN
+            and self._curr
+            and self._curr.token_type == TokenType.FROM
+        ):
+            return self._parse_query(
+                nested=True, parse_set_operation=parse_set_operation
+            )
+        return super()._parse_select_query(
+            nested=nested,
+            table=table,
+            parse_subquery_alias=parse_subquery_alias,
+            parse_set_operation=parse_set_operation,
+        )
+
     def _parse_query(
         self,
         nested: bool = False,
@@ -2116,7 +2146,10 @@ class ASQLParser(Parser):
                 TokenType.R_BRACKET,
                 TokenType.R_BRACE,
             ):
-                depth = max(depth - 1, 0)
+                if depth == 0:
+                    # Closes the parenthesized pipeline this payload sits in.
+                    return i
+                depth -= 1
 
             if (
                 depth == 0

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- A parenthesized pipeline whose `select` is not its first step now parses in every position (`a in (from u where b select a)`, `exists (...)`, scalar subqueries, derived tables, joined subqueries). SQL → ASQL output, which always writes nested queries in that order, round trips again
 - The playground highlights ASQL again: the CodeMirror mode moved into the package (`asql/playground/static/asql-mode.js`) so the installed wheel and the Docker image serve it, and a missing static directory now fails at startup instead of silently 404ing
 - Visual ASQL: ASQL-only functions (`days_since(x)`, `slugify(x)`, `running_sum(x)`, `bucket(...)`) keep their written call in the JSON and on the way back instead of their SQL expansion; SQL `date_trunc('month', x)` is no longer re-read as `month(x)` (which renamed its auto alias); reserved words used as names (`` `order` ``, `` `select` ``, `` `limit` ``) stay quoted; `select *, expr as alias` over a base table is kept verbatim instead of being re-read with an `EXCLUDE`
 - A backticked name that spells a keyword (`` select `limit` ``) no longer ends the select list
