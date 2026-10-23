@@ -72,7 +72,11 @@ def test_relative_dates(
     interval = _interval(dialect, number, unit)
     if dialect == "trino" and unit == "WEEK":  # Trino has no WEEK interval
         interval = f"({number} * INTERVAL '7' DAY)"
-    expected = f"SELECT * FROM t WHERE c >= {NOW[dialect]} {op} {interval}"
+    shifted = f"{NOW[dialect]} {op} {interval}"
+    if dialect == "bigquery" and unit == "MONTH":
+        # BigQuery rejects TIMESTAMP ± MONTH at run time; see test_bigquery_month_intervals.
+        shifted = f"TIMESTAMP(DATETIME({NOW[dialect]}) {op} {interval})"
+    expected = f"SELECT * FROM t WHERE c >= {shifted}"
     assert transpile(f"from t where c >= {phrase}", dialect) == expected
 
 
@@ -89,8 +93,15 @@ def test_relative_dates(
 def test_date_arithmetic(
     dialect: str, arith: str, op: str, number: str, unit: str
 ) -> None:
+    # BigQuery needs `c`'s type for MONTH/YEAR: a DATE here, TIMESTAMP in
+    # test_bigquery_month_intervals.
+    kwargs = (
+        {"schema": {"tables": {"t": {"columns": {"c": "DATE"}}}}}
+        if dialect == "bigquery"
+        else {}
+    )
     expected = f"SELECT c {op} {_interval(dialect, number, unit)} AS x FROM t"
-    assert transpile(f"from t select {arith} as x", dialect) == expected
+    assert transpile(f"from t select {arith} as x", dialect, **kwargs) == expected
 
 
 TZ = {
