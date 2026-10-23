@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- With a semantic graph loaded, `information_schema.columns` also lists each model's metrics (`data_type = 'METRIC'`) and reachable `relationship.attribute` columns, so schema exploration finds them beside physical columns
 - `tests/test_visual_roundtrip.py` also runs every ` ```asql-play ` block in the docs (217 queries) through the round trip, with the docs build's schema and settings
 - Contributor setup: `AGENTS.md` (conventions, pointed to by `CLAUDE.md`), `just check` and `just review` recipes, a `/review` project command and a pull request template
 - Visual ASQL round trips are lossless: `tests/test_visual_roundtrip.py` checks `asql.transpile(q)` against `asql.transpile(json_to_asql(visual(q)))` for DuckDB, PostgreSQL and Snowflake over the playground examples and the operator corpus
