@@ -12,7 +12,7 @@
  *
  * Example:
  *   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
- *   <script src="syntax/codemirror/asql-mode.js"></script>
+ *   <script src="asql-mode.js"></script>
  *   <script>
  *     const editor = CodeMirror(document.getElementById('editor'), {
  *       mode: 'text/x-asql',

@@ -65,7 +65,7 @@ export default [
     },
   },
   {
-    files: ["syntax/codemirror/**/*.js"],
+    files: ["asql/playground/static/asql-mode.js"],
     languageOptions: {
       globals: {
         CodeMirror: "readonly",

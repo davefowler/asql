@@ -129,8 +129,6 @@ def generate_dialect_options_html(
 
 app = FastAPI(title="ASQL Playground", version="1.0.0")
 
-# Mount static files
-SYNTAX_DIR = Path(__file__).parent.parent.parent / "syntax"
 STATIC_DIR = Path(__file__).parent / "static"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -147,16 +145,11 @@ async def add_no_cache_headers(request: Request, call_next: t.Any) -> t.Any:
     return response
 
 
-# Mount static files
-if STATIC_DIR.exists():
-    app.mount(
-        "/static/playground",
-        StaticFiles(directory=str(STATIC_DIR)),
-        name="playground_static",
-    )
-
-if SYNTAX_DIR.exists():
-    app.mount("/static/syntax", StaticFiles(directory=str(SYNTAX_DIR)), name="syntax")
+app.mount(
+    "/static/playground",
+    StaticFiles(directory=str(STATIC_DIR)),
+    name="playground_static",
+)
 
 
 # --- Pydantic Models ---
