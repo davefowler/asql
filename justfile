@@ -16,6 +16,13 @@ install:
 test *ARGS:
     uv run --all-extras --locked pytest -q --tb=short tests -m "not slow and not e2e" {{ARGS}}
 
+# Rust cutover crate (rust/asql-core on polyglot-sql): fmt check, clippy, parity test.
+# Not part of `check`: the first build compiles polyglot-sql (~15 min).
+rust-test *ARGS:
+    cargo fmt --all --manifest-path rust/Cargo.toml --check
+    cargo clippy --release --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+    cargo test --release --manifest-path rust/Cargo.toml {{ARGS}}
+
 # Ruff lint + format check, mypy, and ESLint
 lint:
     uv run --all-extras --locked ruff check .

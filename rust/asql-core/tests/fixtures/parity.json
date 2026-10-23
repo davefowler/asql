@@ -1,0 +1,74 @@
+[
+ {
+  "asql": "from users",
+  "sql": {
+   "postgres": "SELECT * FROM users",
+   "duckdb": "SELECT * FROM users",
+   "bigquery": "SELECT * FROM users",
+   "snowflake": "SELECT * FROM users"
+  }
+ },
+ {
+  "asql": "from users where status == 'active'",
+  "sql": {
+   "postgres": "SELECT * FROM users WHERE status = 'active'",
+   "duckdb": "SELECT * FROM users WHERE status = 'active'",
+   "bigquery": "SELECT * FROM users WHERE status = 'active'",
+   "snowflake": "SELECT * FROM users WHERE status = 'active'"
+  }
+ },
+ {
+  "asql": "from orders where amount > 100 and status == 'completed' select id, amount",
+  "sql": {
+   "postgres": "SELECT id, amount FROM orders WHERE amount > 100 AND status = 'completed'",
+   "duckdb": "SELECT id, amount FROM orders WHERE amount > 100 AND status = 'completed'",
+   "bigquery": "SELECT id, amount FROM orders WHERE amount > 100 AND status = 'completed'",
+   "snowflake": "SELECT id, amount FROM orders WHERE amount > 100 AND status = 'completed'"
+  }
+ },
+ {
+  "asql": "from orders group by region (sum(amount) as revenue, # as orders)",
+  "sql": {
+   "postgres": "SELECT region, SUM(amount) AS revenue, COUNT(*) AS orders FROM orders GROUP BY region",
+   "duckdb": "SELECT region, SUM(amount) AS revenue, COUNT(*) AS orders FROM orders GROUP BY region",
+   "bigquery": "SELECT region, SUM(amount) AS revenue, COUNT(*) AS orders FROM orders GROUP BY region",
+   "snowflake": "SELECT region, SUM(amount) AS revenue, COUNT(*) AS orders FROM orders GROUP BY region"
+  }
+ },
+ {
+  "asql": "from orders group by region, status (sum(amount), avg(amount), #)",
+  "sql": {
+   "postgres": "SELECT region, status, SUM(amount) AS sum_amount, AVG(amount) AS avg_amount, COUNT(*) AS num FROM orders GROUP BY region, status",
+   "duckdb": "SELECT region, status, SUM(amount) AS sum_amount, AVG(amount) AS avg_amount, COUNT(*) AS num FROM orders GROUP BY region, status",
+   "bigquery": "SELECT region, status, SUM(amount) AS sum_amount, AVG(amount) AS avg_amount, COUNT(*) AS num FROM orders GROUP BY region, status",
+   "snowflake": "SELECT region, status, SUM(amount) AS sum_amount, AVG(amount) AS avg_amount, COUNT(*) AS num FROM orders GROUP BY region, status"
+  }
+ },
+ {
+  "asql": "from orders where status == 'completed' group by region (sum(amount) as revenue) order by -revenue limit 10",
+  "sql": {
+   "postgres": "SELECT region, SUM(amount) AS revenue FROM orders WHERE status = 'completed' GROUP BY region ORDER BY revenue DESC NULLS LAST LIMIT 10",
+   "duckdb": "SELECT region, SUM(amount) AS revenue FROM orders WHERE status = 'completed' GROUP BY region ORDER BY revenue DESC LIMIT 10",
+   "bigquery": "SELECT region, SUM(amount) AS revenue FROM orders WHERE status = 'completed' GROUP BY region ORDER BY revenue DESC LIMIT 10",
+   "snowflake": "SELECT region, SUM(amount) AS revenue FROM orders WHERE status = 'completed' GROUP BY region ORDER BY revenue DESC NULLS LAST LIMIT 10"
+  }
+ },
+ {
+  "asql": "from users select name, email order by name limit 5",
+  "sql": {
+   "postgres": "SELECT name, email FROM users ORDER BY name NULLS FIRST LIMIT 5",
+   "duckdb": "SELECT name, email FROM users ORDER BY name NULLS FIRST LIMIT 5",
+   "bigquery": "SELECT name, email FROM users ORDER BY name LIMIT 5",
+   "snowflake": "SELECT name, email FROM users ORDER BY name NULLS FIRST LIMIT 5"
+  }
+ },
+ {
+  "asql": "from events where user_id = 7 order by -created_at, id",
+  "sql": {
+   "postgres": "SELECT * FROM events WHERE user_id = 7 ORDER BY created_at DESC NULLS LAST, id NULLS FIRST",
+   "duckdb": "SELECT * FROM events WHERE user_id = 7 ORDER BY created_at DESC, id NULLS FIRST",
+   "bigquery": "SELECT * FROM events WHERE user_id = 7 ORDER BY created_at DESC, id",
+   "snowflake": "SELECT * FROM events WHERE user_id = 7 ORDER BY created_at DESC NULLS LAST, id NULLS FIRST"
+  }
+ }
+]

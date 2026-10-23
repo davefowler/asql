@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+members = ["asql-core"]
+
+[workspace.dependencies]
+# Rust port of sqlglot (MIT). The one SQL engine for every layer; see
+# asql-core/src/lib.rs for which layer uses what.
+polyglot-sql = { version = "=0.13.3", features = ["all-dialects"] }
+
+[profile.release]
+# polyglot-sql is a single 325k-line crate; thin LTO buys little and costs minutes.
+lto = false
