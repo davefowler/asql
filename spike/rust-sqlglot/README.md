@@ -8,7 +8,7 @@ strategy are in `ai_notes/rust-sqlglot-spike-2026-10-23.md`. Not wired into
 ```sh
 # 1. corpus: every playground example x six target dialects, plus sqlglot's
 #    identity and cross-dialect transpile of each (the "answer key")
-uv run --all-extras --locked python spike/rust-sqlglot/build_corpus.py spike/rust-sqlglot/corpus.json
+uv run --all-extras --locked python spike/rust-sqlglot/build_corpus.py spike/rust-sqlglot/corpus.json   # add --comments to keep asql's comment passthrough
 
 # 2. same transpiles through polyglot-sql
 cargo run --release --manifest-path spike/rust-sqlglot/Cargo.toml -- spike/rust-sqlglot/corpus.json spike/rust-sqlglot/results.json

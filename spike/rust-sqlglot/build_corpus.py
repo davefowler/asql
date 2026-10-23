@@ -8,13 +8,14 @@ import sqlglot
 import asql
 from asql.playground.examples import get_all_examples_flat
 
+COMMENTS = "--comments" in sys.argv
 TARGETS = ["postgres", "bigquery", "snowflake", "duckdb", "redshift", "mysql"]
 rows = []
 fails = 0
 for cat, title, query in get_all_examples_flat():
     for d in TARGETS:
         try:
-            sql = asql.transpile(query, write=d)[0]
+            sql = asql.transpile(query, write=d, passthrough_comments=COMMENTS)[0]
         except Exception as e:  # noqa: BLE001
             fails += 1
             continue

@@ -32,7 +32,47 @@ Python sqlglot and polyglot-sql: identity (read d → write d) and every
 cross-dialect pair (30 pairs). Outputs are compared as strings, then as ASTs
 (both parsed by Python sqlglot in the write dialect).
 
-_Measurement pending: the polyglot-sql release build was still running when this note was first committed; numbers land in the next commit._
+Numbers (comments stripped from asql's output; with comments kept the
+exact-match share drops and the AST-equal share rises by the same amount, the
+mismatch count is identical):
+
+| | cases | share |
+|---|---|---|
+| exact string match | 951 | 66.0% |
+| AST-equal (same tree, different spelling) | 134 | 9.3% |
+| mismatch (different tree) | 335 | 23.3% |
+| polyglot output Python sqlglot cannot parse | 20 | 1.4% |
+| polyglot error or panic | 0 | 0 |
+
+Identity (parse and regenerate in the same dialect), which is what asql's own
+compile path needs:
+
+| dialect | agree | note |
+|---|---|---|
+| postgres | 38/38 | |
+| duckdb | 42/42 | |
+| bigquery | 42/42 | |
+| snowflake | 38/42 | `MONTHS_BETWEEN` (sqlglot 30.24) vs `DATEDIFF(MONTH, ...)` (polyglot); both valid |
+| redshift | 34/38 | same `MONTHS_BETWEEN` difference |
+| mysql | 36/38 | `UNNEST(tags)` rewritten to `JSON_TABLE(tags)` by polyglot |
+
+Cross-dialect pairs range from 45% (snowflake→mysql) to 92%
+(redshift→postgres). The 335 mismatches cluster into a dozen patterns, and
+they are not all polyglot's fault:
+
+- **Version drift, both valid**: `MONTHS_BETWEEN` vs `DATEDIFF`; `CAST(x AS DATE)` vs `DATE(x)`/`TO_DATE(x)`; `CASE WHEN` vs `IF()` on DuckDB; `DATE_DIFF` with or without `CAST(... AS DATE)` on DuckDB.
+- **polyglot more faithful than sqlglot 30.24**: Python sqlglot silently drops `PIVOT`/`UNPIVOT` and `TABLESAMPLE` when writing MySQL and expands snowflake `RANDOM()` into a `9.22e18` arithmetic expression; polyglot keeps the clause or emits `RANDOM()`.
+- **polyglot bugs**: `QUALIFY` left in MySQL output (sqlglot rewrites it to a subquery); snowflake `FLATTEN` gets two aliases (`AS _t0(...) AS tag`); snowflake date literal to BigQuery becomes one-argument `PARSE_DATE('2024-01-01')`, which is the whole "unparseable" bucket; `UNNEST` → `JSON_TABLE` on MySQL.
+
+Speed: polyglot does the 1,440 transpiles in 0.21 s wall including process
+start and JSON I/O (≈0.15 ms each); Python sqlglot 30.24 takes 1.16 ms each
+on the same machine, so roughly 8×. The release build of the crate takes
+13m45s on 4 cores.
+
+Reading: for the identity path polyglot is at parity on the dialects that
+matter most to asql, and the cross-dialect differences are mostly the kind
+sqlglot itself changes between minor versions. It is good enough to build on,
+with a parity harness that pins what "right" means per dialect.
 
 ## Does asql need all of sqlglot?
 
