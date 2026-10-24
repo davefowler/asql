@@ -1,27 +1,25 @@
 # Deploying asql
 
-Three GitHub Actions workflows own everything:
+The docs site is on Netlify; the playground is on Cloud Run via GitHub Actions.
 
-| Workflow | Runs on | Does |
+| What | Runs on | Does |
 |---|---|---|
+| Netlify (`netlify.toml`) | pushes to `main`, PR deploy previews | Builds the mkdocs site and publishes it to `analyticsql.com` |
 | `ci.yml` | PRs, pushes to `main` | `just test`, `just smoke`, `just lint` (ruff, mypy, ESLint), and a build-only `docker build` |
-| `docs.yml` | PRs (build only), pushes to `main` (build + publish) | Builds the mkdocs site and publishes it to GitHub Pages |
+| `docs.yml` | PRs, pushes to `main` | Build-only check of the mkdocs site |
 | `deploy-playground.yml` | pushes to `main`, manual | Builds the playground image, pushes it to Artifact Registry, deploys it to Cloud Run. Skipped until `GCP_PROJECT_ID` is set |
 
-## Docs site (GitHub Pages)
+## Docs site (Netlify)
 
-One-time setup:
+The Netlify site `asql` is linked to this repo and builds with the command in
+`netlify.toml` (uv provisions Python 3.13). Every PR gets a deploy preview.
 
-1. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-2. Push to `main` (or run `docs.yml` manually). The site appears at
-   `https://davefowler.github.io/asql/`.
-3. Custom domain: **Settings → Pages → Custom domain → `analyticsql.com`**,
-   then point DNS at GitHub Pages:
-   - apex `analyticsql.com`: `A` records `185.199.108.153`, `185.199.109.153`,
-     `185.199.110.153`, `185.199.111.153` (and `AAAA` `2606:50c0:8000::153`,
-     `2606:50c0:8001::153`, `2606:50c0:8002::153`, `2606:50c0:8003::153`)
-   - `www.analyticsql.com`: `CNAME davefowler.github.io`
-4. Once the certificate is issued, tick **Enforce HTTPS**.
+Custom domain `analyticsql.com` is set on the Netlify site. DNS (GoDaddy):
+
+- apex `analyticsql.com`: `A 75.2.60.5` (Netlify's load balancer)
+- `www.analyticsql.com`: `CNAME asql.netlify.app`
+
+Netlify issues the Let's Encrypt certificate once DNS resolves to it.
 
 `mkdocs.yml` keeps `use_directory_urls: false`, so page URLs stay in the
 `/syntax/pipe.html` form every existing link uses.

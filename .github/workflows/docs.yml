@@ -1,8 +1,9 @@
 name: Docs
 
-# Builds the mkdocs site on every PR; publishes it to GitHub Pages on main.
+# Builds the mkdocs site on every PR and push to main so a broken docs build
+# fails CI. Netlify publishes the site (netlify.toml); this job only checks it.
 # The compiler is a docs input (docs/macros.py runs asql at build time to
-# render compiled-SQL examples), so any push to main republishes.
+# render compiled-SQL examples), so compiler changes can break it.
 
 on:
   push:
@@ -36,21 +37,3 @@ jobs:
         run: |
           count=$(find site -type f | wc -l)
           test "$count" -ge 5 || { echo "docs build produced only $count files"; exit 1; }
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
-        if: github.event_name != 'pull_request'
-        with:
-          path: site
-
-  deploy:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
