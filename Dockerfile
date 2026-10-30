@@ -1,9 +1,8 @@
-# syntax=mirror.gcr.io/docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
-
 # The asql playground (FastAPI). Listens on $PORT (Railway sets it; 8080 otherwise).
 #
-# No `--mount=type=cache`: Railway's builder rejects cache mounts without its
-# own service-id prefix, and the builder stage is discarded anyway.
+# Plain Dockerfile syntax only: Railway's builder rejects a custom
+# `# syntax=` frontend and `RUN --mount` cache mounts without its own
+# service-id prefix, so dependencies are COPYed in rather than bind-mounted.
 
 FROM mirror.gcr.io/library/python:3.13-slim-trixie@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 /uv /bin/
@@ -15,11 +14,10 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=never
 
 # Dependencies first so source edits don't bust this layer.
-RUN --mount=type=bind,source=uv.lock,target=uv.lock \
-    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-dev --extra playground --no-install-project
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --extra playground --no-install-project
 
-COPY pyproject.toml uv.lock README.md ./
+COPY README.md ./
 COPY asql/ ./asql/
 RUN uv sync --frozen --no-dev --extra playground --no-editable
 
