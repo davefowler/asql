@@ -50,8 +50,7 @@ jobs:
       - run: npm ci
       - run: just lint
 
-  # Build-only: proves the playground image still builds. Deploys happen in
-  # deploy-playground.yml.
+  # Build-only: proves the playground image still builds. Railway deploys it.
   docker:
     runs-on: ubuntu-latest
     steps:

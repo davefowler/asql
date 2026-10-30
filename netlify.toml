@@ -1,0 +1,13 @@
+# Docs site (analyticsql.com). Netlify builds every push to main and a deploy
+# preview for every PR. The playground is a FastAPI server and is hosted
+# separately (see DEPLOY.md); the docs link to it via PLAYGROUND_URL.
+#
+# uv provisions Python itself, so the Netlify image's Python version doesn't
+# matter. `just docs-build` runs the same command locally and in CI.
+
+[build]
+  command = "pip install uv && uv run --python 3.13 --all-extras --locked mkdocs build -d site"
+  publish = "site"
+
+[build.environment]
+  PLAYGROUND_URL = "https://play.analyticsql.com"
