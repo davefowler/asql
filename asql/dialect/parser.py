@@ -2206,7 +2206,10 @@ class ASQLParser(Parser):
                 depth == 0
                 and i != self._index
                 and (
-                    self._is_transform_boundary_token(tok.token_type, tok.text)
+                    (
+                        self._is_transform_boundary_token(tok.token_type, tok.text)
+                        and self._ranking_keyword_starts_step(i)
+                    )
                     or (stop_at_join and self._starts_join_step(i))
                 )
             ):
@@ -2215,6 +2218,20 @@ class ASQLParser(Parser):
             i += 1
 
         return len(self._tokens)
+
+    def _ranking_keyword_starts_step(self, i: int) -> bool:
+        """`rank by x` / `number by x` / `dense rank by x` start a step; `rank()`
+        or `number` as a column inside a projection do not."""
+        tokens = self._tokens
+        word = tokens[i].text.upper()
+        if word not in ("RANK", "NUMBER", "DENSE"):
+            return True
+        after = i + 2 if word == "DENSE" else i + 1
+        if word == "DENSE" and not (
+            i + 1 < len(tokens) and tokens[i + 1].text.upper() == "RANK"
+        ):
+            return False
+        return after < len(tokens) and tokens[after].text.upper() == "BY"
 
     def _consume_tokens_until_index(self, end_index: int) -> None:
         """Advance tokens until self._index == end_index."""
@@ -2268,6 +2285,8 @@ class ASQLParser(Parser):
 
             if not self._match(TokenType.COMMA):
                 break
+            if not self._curr or self._index >= end_index:
+                self.raise_error("Trailing comma: expected another expression")
 
         self._reject_leftover_tokens(end_index)
         return expressions

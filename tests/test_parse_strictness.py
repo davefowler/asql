@@ -11,7 +11,7 @@ import pytest
 import sqlglot
 from sqlglot import exp
 
-from asql.errors import ASQLSyntaxError
+from asql.errors import ASQLCompilationError, ASQLSyntaxError
 
 from .fixtures import transpile
 
@@ -24,6 +24,7 @@ from .fixtures import transpile
         "from t select a, b bogus tokens here order by a",
         "from t where x = 1 and",
         "from t select a +",
+        "from t select a, order by a",
     ],
 )
 def test_leftover_tokens_raise(query: str) -> None:
@@ -63,6 +64,18 @@ def test_over_column_partitions_the_window() -> None:
         assert [c.name for c in window.args["partition_by"]] == ["g"]
         assert window.args.get("alias") is None
     assert "AS f" in sql and "AS h" in sql
+
+
+def test_first_with_explicit_over_merges_into_its_window() -> None:
+    sql = transpile("from t select first(x order by y) over (partition by a) as f")
+    assert sql == (
+        "SELECT FIRST_VALUE(x) OVER (PARTITION BY a ORDER BY y NULLS FIRST) AS f FROM t"
+    )
+
+
+def test_over_column_on_a_partitioned_window_is_an_error() -> None:
+    with pytest.raises(ASQLCompilationError, match="already has one"):
+        transpile("from t select sum(x) over (partition by a) over b as s")
 
 
 def test_sql_named_window_is_left_alone() -> None:
