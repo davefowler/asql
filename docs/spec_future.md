@@ -238,7 +238,7 @@ from date_spine(start = @2024-01-01, end = @2024-12-31, grain = day)
 
 ASQL may add a convenience table source for unioning a list of relations:
 
-```asql-play
+```asql
 from union(users_2022, users_2023, users_2024)
 ```
 

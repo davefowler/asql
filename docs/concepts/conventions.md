@@ -26,12 +26,13 @@ Foreign keys follow the pattern: `{entity}_id` or `{alias}_{entity}_id`
 
 ### How It Works
 
-```asql-play
+```asql
+-- planned: dot traversal is not implemented yet
 from orders
   select orders.user.name
 ```
 
-ASQL:
+ASQL will:
 1. Sees `.user.` traversal on `orders`
 2. Looks for `user_id` column in `orders`
 3. Infers target: `users` table (pluralized)
