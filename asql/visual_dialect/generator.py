@@ -45,6 +45,7 @@ from asql.expressions import Spine
 from asql.functions import (
     ALIAS_FUNC_META,
     CALL_META,
+    OVER_META,
     SAMPLE_META,
     STRING_OP_META,
     unit_function_arg,
@@ -137,7 +138,11 @@ class _TextGenerator(ASQLGenerator):
             call = expression.meta.get(CALL_META)
             if call:
                 name, args = call
-                return f"{name}({', '.join(self.sql(arg) for arg in args)})"
+                text = f"{name}({', '.join(self.sql(arg) for arg in args)})"
+                over = expression.meta.get(OVER_META)
+                if over:
+                    text += f" over {self.sql(exp.column(over))}"
+                return text
         return super().sql(expression, key, comment)
 
     # Spine is not a sqlglot class, so it is dispatched through TRANSFORMS.
@@ -993,11 +998,14 @@ class VisualASQLGenerator(Generator):
         call = expr.meta.get(CALL_META)
         if call:
             name, args = call
-            return {
+            node: dict[str, t.Any] = {
                 "type": "function",
                 "name": name,
                 "args": [self._expression_to_json(arg) for arg in args],
             }
+            if expr.meta.get(OVER_META):
+                node["over"] = {"type": "column", "name": expr.meta[OVER_META]}
+            return node
         if isinstance(expr, exp.Column):
             if not self._is_plain_column(expr):
                 return self._raw(expr)

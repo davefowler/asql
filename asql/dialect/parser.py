@@ -388,6 +388,7 @@ class ASQLParser(Parser):
             reject_numeric_comparisons,
         )
         from asql.dialect.transforms.join_fk_shorthand import transform_fk_shorthand
+        from asql.dialect.transforms.over_shorthand import apply_over_shorthand
         from asql.dialect.transforms.pivot_group_by import apply_pivot_group_by
         from asql.dialect.transforms.underscore_shorthands import (
             apply_implicit_function_aliases,
@@ -396,6 +397,7 @@ class ASQLParser(Parser):
 
         # === Phase 1: Basic transforms (no dialect/schema required) ===
         stmt = apply_pivot_group_by(stmt)
+        stmt = apply_over_shorthand(stmt)
         stmt = reject_numeric_comparisons(stmt)
         stmt = fill_default_week_start(stmt, week_start)
         stmt = apply_since_until_underscore_shorthands(stmt, settings)
@@ -519,7 +521,7 @@ class ASQLParser(Parser):
             not explicit
             and this is not None
             and self._curr
-            and self._curr.token_type == TokenType.VAR
+            and self._curr.token_type != TokenType.IDENTIFIER
             and self._curr.text.upper() in self.TRANSFORM_PARSERS
         ):
             return this
@@ -1131,7 +1133,7 @@ class ASQLParser(Parser):
             index = self._index
             self._advance()  # consume FIRST
             if self._match(TokenType.L_PAREN):
-                return self._parse_first_ordered()
+                return self._parse_window(self._parse_first_ordered())
             self._retreat(index)
 
         # Fall back to default field parsing
@@ -1409,8 +1411,9 @@ class ASQLParser(Parser):
 
     def _parse_when_result(self) -> exp.Expr | None:
         """Parse the result part of a when branch, stopping at comma/else/otherwise."""
-        # Parse expression but stop at COMMA or ELSE (otherwise is tokenized as ELSE)
-        return self._parse_unary()
+        # A full expression (`y + 1`, `a ?? b`): commas and `otherwise` (ELSE)
+        # are not operators, so parsing stops where the branch ends.
+        return self._parse_assignment()
 
     def _parse_when_branch(self, base_expr: exp.Expr | None) -> exp.If | None:
         """Parse a single when branch: <condition> then <result>."""
@@ -1445,9 +1448,13 @@ class ASQLParser(Parser):
                 value = self._parse_unary()
                 condition = self._build_comparison(base_expr.copy(), op_token, value)
             else:
-                # Implied equality: just a value
-                value = self._parse_unary()
-                if value:
+                # Implied equality (`"pending" then …`), or a condition of its
+                # own (`when n < 10 then a, n < 100 then b`): a predicate
+                # stands alone, anything else compares against the base.
+                value = self._parse_conjunction()
+                if isinstance(value, (exp.Predicate, exp.Connector, exp.Not)):
+                    condition = value
+                elif value:
                     condition = exp.EQ(this=base_expr.copy(), expression=value)
         else:
             # Searched case: full condition
@@ -2240,7 +2247,7 @@ class ASQLParser(Parser):
                 join_token.token_type = original_type
         else:
             condition = self._parse_assignment()
-        self._consume_tokens_until_index(end_index)
+        self._reject_leftover_tokens(end_index)
         return condition
 
     def _parse_asql_select_expressions_until_transform_boundary(
@@ -2262,8 +2269,21 @@ class ASQLParser(Parser):
             if not self._match(TokenType.COMMA):
                 break
 
-        self._consume_tokens_until_index(end_index)
+        self._reject_leftover_tokens(end_index)
         return expressions
+
+    def _reject_leftover_tokens(self, end_index: int) -> None:
+        """Raise if a payload parse stopped before the next pipeline step.
+
+        Skipping the rest used to turn `where x = 1 foo bar` into `where x = 1`
+        and `select a, , b` into `select a`: typos and unsupported syntax
+        silently changed the query.
+        """
+        if self._curr and self._index < end_index:
+            self.raise_error(
+                f"Unexpected {self._curr.text!r}: expected a comma, an operator "
+                "or the next pipeline step"
+            )
 
     def _parse_asql_group_by(self, query: exp.Select) -> exp.Select:
         """Parse GROUP BY with optional aggregate block: group by X (agg1, agg2).

@@ -168,8 +168,8 @@ If you can write:
     from orders
     select id,
         when amount
-            > 1000 then 'high'
-            > 100 then 'medium'
+            > 1000 then 'high',
+            > 100 then 'medium',
             otherwise 'low'
         as tier
     ```

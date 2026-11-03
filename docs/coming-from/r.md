@@ -161,8 +161,8 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     from orders
     select *,
         when amount
-            > 1000 then 'high'
-            > 100 then 'medium'
+            > 1000 then 'high',
+            > 100 then 'medium',
             otherwise 'low'
         as tier
     ```
