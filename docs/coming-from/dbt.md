@@ -68,7 +68,7 @@ Below are the equivalents you can reach for directly in ASQL, without wrapping y
 
 ```asql-play
 from users
-except password_hash, ssn
+except password_hash, internal_notes
 ```
 
 ### `generate_surrogate_key()` → `key(...)`
@@ -186,7 +186,7 @@ first_name ?? nickname ?? 'Unknown'
 === "ASQL"
     ```asql-play
     from users
-    except password_hash, ssn
+    except password_hash, internal_notes
     ```
 
 ---

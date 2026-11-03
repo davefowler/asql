@@ -18,7 +18,7 @@ This document tracks features that have inconsistent behavior or limited support
 
 ```asql-play
 from users
-  except password
+  except password_hash
   rename id as user_id
   replace name with upper(name)
 ```

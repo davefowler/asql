@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `just test <path>` runs only that path (the recipe used to run the whole suite as well); CI runs the execution tests against PostgreSQL 16 (`PostgresExecutor`, enabled by `ASQL_TEST_POSTGRES_URL`), executes every docs ` ```asql-play ` block on DuckDB (`tests/test_docs_execute.py`), and checks a corpus of malformed queries all raise (`tests/test_parse_strictness.py`)
 - `tests/test_visual_roundtrip.py` also runs every ` ```asql-play ` block in the docs (217 queries) through the round trip, with the docs build's schema and settings
 - Contributor setup: `AGENTS.md` (conventions, pointed to by `CLAUDE.md`), `just check` and `just review` recipes, a `/review` project command and a pull request template
 - Visual ASQL round trips are lossless: `tests/test_visual_roundtrip.py` checks `asql.transpile(q)` against `asql.transpile(json_to_asql(visual(q)))` for DuckDB, PostgreSQL and Snowflake over the playground examples and the operator corpus
@@ -25,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- A `where` written before the first join qualifies its bare columns with the FROM table, so `from orders where status = "paid" & customers …` no longer fails as ambiguous when the joined table has the column too
+- `select`, `group by` and `except` with nothing after them, `a ??` with no right side, `when … then` with no result and `… as` with no name raise instead of silently compiling to something else
+- Docs examples that named columns the playground schema lacks (`ssn`, `salary`, `password`, `orders.date`, `orders.name`) and the cohort examples' ambiguous `count(distinct user_id)` after a join
 - DuckDB list comprehensions are restored from the AST instead of a regex over the generated SQL, which corrupted `[x * 2 for x in numbers if abs(x) > 1]` (`IF ABS(x] > 1)`) and missed `[x for x in data.numbers]`
 - A date spine without explicit WHERE bounds no longer degrades to the dates that already exist on BigQuery, Snowflake, MySQL, Spark, Trino and SQLite; the MIN/MAX bounds are scalar subqueries over the data and the series is built the same way as with explicit bounds
 - Fanout protection no longer pre-aggregates a many-side table whose column a later join's ON clause needs (`orders → order_items → products` grouped by product failed with a binder error)

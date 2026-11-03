@@ -16,8 +16,17 @@ points here; keep this file the single source of truth.
 | `just smoke` | build the wheel, install it in a clean venv, transpile a query |
 | `just serve` | playground on :8011 and docs on :8012 with reload |
 
-CI (`.github/workflows/ci.yml`) runs `just test`, `just smoke`, `just lint`
-and a Docker build on every PR. A PR is mergeable when all four are green.
+CI (`.github/workflows/ci.yml`) runs `just test`, `just smoke`, `just lint`,
+the execution tests against PostgreSQL 16 (`postgres` job) and a Docker build
+on every PR. A PR is mergeable when all five are green.
+
+`tests/execution/` runs compiled SQL on every database it can reach: DuckDB
+always, PostgreSQL when `ASQL_TEST_POSTGRES_URL` points at a server
+(`postgresql://postgres:postgres@localhost:5432/postgres`); each executor
+instance works in a schema of its own. `tests/test_docs_execute.py` runs every
+docs ` ```asql-play ` block on DuckDB against empty playground tables; an
+example that names a table or column the playground schema lacks is reported
+as xfail (schema drift to clean up), anything else fails.
 
 Don't call `pytest`, `ruff` or `mypy` directly in instructions or docs; the
 recipes pin the locked environment (`uv run --all-extras --locked`).

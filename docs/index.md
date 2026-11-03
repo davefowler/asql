@@ -225,7 +225,7 @@ from users
 
 ```asql-play
 from users
-  replace name with upper(name), salary with round(salary, 2)
+  replace name with upper(name), age with round(age / 10) * 10
 ```
 
 ---
