@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- `spine by status (count(*))` compiled to an invalid alias-reuse chain on every dialect but DuckDB; the count now reads the source-qualified key
+- `spine by month(x) as m` and `group by spine(month(x)) as m` lost the spine (the key alias was stripped before the spine transform ran); GROUP BY aliases are now stripped after it
+- `running_sum(x) as rs … order by dbl` where `dbl` is a projection alias copied the alias into the window's ORDER BY (invalid); aliases are resolved to their expressions, and ordering by the running window itself is an error
+- Inline `SET` statements (`SET include_transpilation_comments = false;`) were ignored by the compile stage when `transpile()` was called without keyword settings; `transpile()` now always runs with a dialect instance, and never mutates one a caller passes in (schema and `SET` no longer leak between calls)
 - Underscore shorthand no longer re-aggregates a column an earlier stage produced (`group by country ( # as total_users ) select country, total_users` used to become `SUM(users)`); the spec's `stash as` example now compiles as written
 - `select *, 1 as flag` over a table with unknown columns no longer emits `EXCLUDE (flag)` (an error on every engine, and unusable on Postgres without a schema); only an alias that overrides a column it reads (`upper(name) as name`) is excluded
 - Steps after `limit`/`offset` read the limited rows (`limit 10 where x = 1` filtered the whole table before), and a step after a fixed projection reads that projection (`select a + 1 as c select c, 2 as d`, `select a, b extend a + b as c`, `select a + 1 as c where c > 1`)

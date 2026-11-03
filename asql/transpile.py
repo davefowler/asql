@@ -76,17 +76,19 @@ def transpile(
 
     # Build ASQL dialect with settings
 
-    asql_dialect: Dialect | str
+    # Always a fresh instance: inline SET statements mutate the dialect the
+    # parser runs with, and the compile stage reads its settings back. A
+    # caller's instance is copied so neither SET nor `schema` leaks into it.
+    asql_dialect: Dialect
     if isinstance(read, str) or read is None:
         if schema:
             kwargs["schema"] = schema
-        asql_dialect = ASQL(**kwargs) if kwargs else "asql"
+        asql_dialect = ASQL(**kwargs)
     else:
-        asql_dialect = read
-        # If schema passed separately, copy settings to avoid mutating the passed dialect
-        if schema and asql_dialect.settings:
-            # Create a copy of settings to avoid mutation
-            asql_dialect.settings = {**asql_dialect.settings, "schema": schema}
+        settings = dict(read.settings)
+        if schema:
+            settings["schema"] = schema
+        asql_dialect = type(read)(**settings)
 
     # Parse with ASQL (runs parser-stage transforms)
     asts = sqlglot.parse(sql, dialect=asql_dialect)
@@ -98,7 +100,7 @@ def transpile(
     passthrough_comments = True
     if "passthrough_comments" in kwargs:
         passthrough_comments = kwargs.get("passthrough_comments", True)
-    elif isinstance(asql_dialect, Dialect) and asql_dialect.settings:
+    elif asql_dialect.settings:
         passthrough_comments = asql_dialect.settings.get("passthrough_comments", True)
 
     for ast in asts:
@@ -155,13 +157,19 @@ def _apply_dialect_transforms(
     These transforms run AFTER parsing but BEFORE SQL generation.
     They need to know the target dialect to emit correct SQL patterns.
 
-    Transform order:
-    0. Strip GROUP BY aliases (ASQL syntax cleanup → valid SQL)
-    0.5. Concrete ORDER BY for running/rolling window helpers
-    0.75. Semantic references (metric names, relationship.attribute → joins)
+    Transform order, and why each edge holds:
+    0.5. Concrete ORDER BY for running/rolling window helpers (reads the
+         query's own ORDER BY and projection aliases, before any CTE chain
+         renames them)
+    0.75. Semantic references (metric names, relationship.attribute → joins);
+          before fanout so the joins it adds are visible to that pass
     1. Fanout protection (optional many-side pre-aggregation rewrite)
-    2. Spine transform (exp.Spine → gap-filling CTEs)
-    3. Alias reuse (same-row refs → CTE chain for non-DuckDB)
+    2. Spine transform (exp.Spine → gap-filling CTEs); needs the GROUP BY
+       keys as written, aliases included, so it runs before the alias strip
+    2.25. Strip GROUP BY aliases (ASQL syntax cleanup → valid SQL)
+    2.5. Dialect spellings of date extraction
+    3. Alias reuse (same-row refs → CTE chain for non-DuckDB); after spine,
+       whose COUNT rewrite must not look like an alias reference
     4. Column operators (* EXCEPT → explicit columns for unsupported dialects)
     5. List comprehension ([x FOR x] → ARRAY(SELECT) for non-DuckDB)
     """
@@ -183,9 +191,6 @@ def _apply_dialect_transforms(
         passthrough_comments=_get_setting(asql_dialect, "passthrough_comments", True),
     )
 
-    # 0. Strip aliases from GROUP BY (ASQL allows, SQL doesn't)
-    ast = _strip_group_by_aliases(ast)
-
     # 0.5. Give running/rolling window helpers a concrete ORDER BY
     ast = _resolve_running_window_order(ast)
 
@@ -199,6 +204,9 @@ def _apply_dialect_transforms(
 
     # 2. Spine transform (process exp.Spine nodes)
     ast = _transform_spine(ast, dialect, settings)
+
+    # 2.25. Strip aliases from GROUP BY (ASQL allows, SQL doesn't)
+    ast = _strip_group_by_aliases(ast)
 
     # 2.5. Dialect spellings of date extraction
     ast = _transform_date_parts(ast, dialect, schema)
@@ -316,14 +324,38 @@ def _resolve_running_window_order(ast: exp.Expr) -> exp.Expr:
             continue
         select = win.find_ancestor(exp.Select)
         order = select.args.get("order") if select else None
-        if order is None:
+        if order is None or select is None:
             raise ASQLCompilationError(
                 "a framed window (e.g. running_avg / rolling_avg) needs an ordering — "
                 "add `order by` to the query, or write an explicit `over (order by ...)`"
             )
-        win.set("order", order.copy())
+        win.set("order", _order_without_aliases(order, select, win))
 
     return ast
+
+
+def _order_without_aliases(
+    order: exp.Order, select: exp.Select, window: exp.Window
+) -> exp.Order:
+    """A copy of the query ORDER BY with projection aliases replaced by their
+    expressions: inside OVER (...) an output alias is not yet defined."""
+    from asql.errors import ASQLCompilationError
+
+    aliases = {e.alias: e.this for e in select.expressions if isinstance(e, exp.Alias)}
+    own = window.find_ancestor(exp.Alias)
+    own_name = own.alias if own is not None and own.parent is select else None
+    copied = order.copy()
+    for column in list(copied.find_all(exp.Column)):
+        if column.table or column.name not in aliases:
+            continue
+        if column.name == own_name:
+            raise ASQLCompilationError(
+                f"`order by {column.name}` orders the query by the running window "
+                f"`{column.name}` itself; order by the column it accumulates over, "
+                "or write an explicit `over (order by ...)`"
+            )
+        column.replace(aliases[column.name].copy())
+    return copied
 
 
 def _transform_spine(

@@ -67,7 +67,7 @@ def transform_spine_expressions(
     # Spine can sit in a nested SELECT rather than the root.
     for select in list(stmt.find_all(exp.Select)):
         group = select.args.get("group")
-        if group is None or not any(isinstance(g, Spine) for g in group.expressions):
+        if group is None or not any(_spine_of(g) for g in group.expressions):
             continue
         has_rollup, has_cube, _ = detect_rollup_cube(select)
         if has_rollup or has_cube:
@@ -76,6 +76,15 @@ def transform_spine_expressions(
             continue
         _apply_spine_transform(select, _find_spine_columns(select), dialect, settings)
     return stmt
+
+
+def _spine_of(group_expr: exp.Expr) -> Spine | None:
+    """The Spine node of a GROUP BY key, written bare or as `spine(...) as m`."""
+    if isinstance(group_expr, Spine):
+        return group_expr
+    if isinstance(group_expr, exp.Alias) and isinstance(group_expr.this, Spine):
+        return group_expr.this
+    return None
 
 
 def _find_spine_columns(
@@ -109,6 +118,11 @@ def _find_spine_columns(
 
         # Extract the inner expression from Spine
         inner_expr = spine_node.this
+        if isinstance(inner_expr, exp.Alias):
+            # `spine by month(x) as m`: the key is the expression, m its name
+            alias = inner_expr.alias
+            inner_expr = inner_expr.this
+            spine_node.set("this", inner_expr)
 
         # Determine if this is a date truncation
         trunc_unit = _get_trunc_unit(inner_expr)
@@ -406,13 +420,15 @@ def _rewire_to_spines(
     ref_by_sql = {sql: ref for sql, ref, _ in refs}
 
     group = stmt.args["group"]
-    group.set(
-        "expressions",
-        [
-            ref_by_sql[g.this.sql()].copy() if isinstance(g, Spine) else g
-            for g in group.expressions
-        ],
-    )
+
+    def _key(g: exp.Expr) -> exp.Expr:
+        spine = _spine_of(g)
+        if spine is None:
+            return g
+        ref = ref_by_sql[spine.this.sql()].copy()
+        return exp.alias_(ref, g.alias) if isinstance(g, exp.Alias) else ref
+
+    group.set("expressions", [_key(g) for g in group.expressions])
 
     projections = list(stmt.expressions)
     for position, projection in enumerate(projections):
@@ -425,16 +441,24 @@ def _rewire_to_spines(
             )
             continue
         for node in list(projection.find_all(exp.Expr)):
-            ref = ref_by_sql.get(node.sql())
+            # `spine(x) as m` keeps its Spine wrapper in the projection
+            key_sql = node.this.sql() if isinstance(node, Spine) else node.sql()
+            ref = ref_by_sql.get(key_sql)
             if ref is not None and node.find_ancestor(exp.AggFunc) is None:
                 node.replace(ref.copy())
     stmt.set("expressions", projections)
-    first_key = refs[0][2]
+    source = stmt.args["from_"].this
+    first_key = refs[0][2].copy()
+    if isinstance(source, exp.Table) and not stmt.args.get("joins"):
+        # Qualified: the projection may alias the same name (`... AS status`),
+        # and a bare `status` inside COUNT would read as that alias downstream.
+        qualifier = source.alias or source.name
+        for column in first_key.find_all(exp.Column):
+            if not column.table:
+                column.set("table", exp.to_identifier(qualifier))
     for count in stmt.find_all(exp.Count):
         if isinstance(count.this, exp.Star) and count.find_ancestor(exp.Select) is stmt:
             count.set("this", first_key.copy())
-
-    source = stmt.args["from_"].this
     joins = stmt.args.get("joins") or []
     if joins:
         source.set("joins", joins)
