@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- Underscore shorthand no longer re-aggregates a column an earlier stage produced (`group by country ( # as total_users ) select country, total_users` used to become `SUM(users)`); the spec's `stash as` example now compiles as written
+- `select *, 1 as flag` over a table with unknown columns no longer emits `EXCLUDE (flag)` (an error on every engine, and unusable on Postgres without a schema); only an alias that overrides a column it reads (`upper(name) as name`) is excluded
+- Steps after `limit`/`offset` read the limited rows (`limit 10 where x = 1` filtered the whole table before), and a step after a fixed projection reads that projection (`select a + 1 as c select c, 2 as d`, `select a, b extend a + b as c`, `select a + 1 as c where c > 1`)
 - `spine by week(x)` with `week_start = sunday` joined the Sunday spine on Monday weeks, so every period came back empty; the join key now uses the same week start as the spine
 - Same-row alias reuse on non-DuckDB dialects (`select row_number() over (...) as rn, rn * 2 as d`) applied the query's WHERE after the window instead of before it, and built a `SELECT * … GROUP BY` base for grouped queries; the base CTE now keeps WHERE, GROUP BY and HAVING
 - A GROUP BY key alias that shadows a column it reads (`group by coalesce(region, 'unknown') as region`) grouped by the raw column; such keys now group by their expression

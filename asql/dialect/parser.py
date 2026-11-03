@@ -560,7 +560,19 @@ class ASQLParser(Parser):
         except_names: list[str] = []
         for select_expression in select_expressions:
             alias = select_expression.alias
-            if alias and (source_columns is None or alias in source_columns):
+            if not alias:
+                continue
+            if source_columns is not None:
+                overrides = alias in source_columns
+            else:
+                # Columns unknown: `upper(name) as name` reads the column it
+                # replaces; `1 as flag` adds one (excluding a column that does
+                # not exist is an error on every engine).
+                overrides = any(
+                    column.name == alias and not column.table
+                    for column in select_expression.find_all(exp.Column)
+                )
+            if overrides:
                 except_names.append(alias)
 
         if not except_names:
@@ -887,6 +899,12 @@ class ASQLParser(Parser):
             "GROUP BY",
             "SPINE",
         }
+    )
+
+    # Steps that may follow `limit`/`offset` on the same SELECT: paging itself,
+    # and projections, which change the columns but not which rows are kept.
+    _STEPS_ON_SAME_LIMITED_STAGE = frozenset(
+        {"LIMIT", "OFFSET", "STASH", "SELECT", "EXCEPT", "RENAME", "REPLACE"}
     )
 
     # Single-word transforms for efficient _match_texts lookup
@@ -1924,10 +1942,15 @@ class ASQLParser(Parser):
                 )
             else:
                 query = self._build_pipe_cte(query, [exp.Star()])
-        elif transform_name == "GROUP BY" and [type(e) for e in query.expressions] != [
+        elif (
+            query.args.get("limit") or query.args.get("offset")
+        ) and transform_name not in self._STEPS_ON_SAME_LIMITED_STAGE:
+            # `limit 10 where x = 1` filters the ten rows, not the table.
+            query = self._build_pipe_cte(query, [exp.Star()])
+        elif [type(e) for e in query.expressions] != [
             exp.Star
-        ]:
-            # An earlier select is its own stage; group over its output.
+        ] and transform_name in self._STEPS_ON_GROUPED_OUTPUT:
+            # An earlier select fixed the projection; this step reads it.
             query = self._build_pipe_cte(query, [exp.Star()])
         return self.TRANSFORM_PARSERS[transform_name](self, query)
 

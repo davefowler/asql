@@ -192,7 +192,47 @@ def apply_implicit_function_aliases(
         if not isinstance(node, exp.Select):
             return node
 
-        node.set("expressions", [_rewrite_projection(e) for e in node.expressions])
+        # `group by country ( # as total_users ) select country, total_users`:
+        # total_users is the previous stage's output, not `total(users)`.
+        known = _source_output_columns(node)
+        node.set(
+            "expressions",
+            [
+                e
+                if isinstance(e, exp.Column) and not e.table and e.name in known
+                else _rewrite_projection(e)
+                for e in node.expressions
+            ],
+        )
         return node
 
     return stmt.transform(_rewrite_select, copy=False)
+
+
+def _source_output_columns(select: exp.Select) -> set[str]:
+    """Names a SELECT reading a CTE of this statement is guaranteed to see.
+
+    Only the CTE's aliased or plainly named projections count; a `*` or an
+    unaliased expression makes the set empty (unknown), never partial.
+    """
+    from_ = select.args.get("from_")
+    if from_ is None or not isinstance(from_.this, exp.Table) or from_.this.db:
+        return set()
+    name = from_.this.name
+    scope: exp.Expr | None = select
+    while scope is not None:
+        with_ = scope.args.get("with_")
+        for cte in with_.expressions if with_ else []:
+            if cte.alias != name or not isinstance(cte.this, exp.Select):
+                continue
+            names: set[str] = set()
+            for projection in cte.this.expressions:
+                plain = isinstance(projection, exp.Column) and not isinstance(
+                    projection.this, exp.Star
+                )
+                if not (isinstance(projection, exp.Alias) or plain):
+                    return set()
+                names.add(projection.alias_or_name)
+            return names
+        scope = scope.parent
+    return set()
