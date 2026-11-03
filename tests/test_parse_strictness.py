@@ -152,3 +152,9 @@ def test_malformed_queries_raise(query: str) -> None:
     """A query the parser cannot finish must raise, never produce SQL."""
     with pytest.raises((ASQLSyntaxError, ASQLCompilationError)):
         transpile(query)
+
+
+def test_single_argument_coalesce_function_still_parses() -> None:
+    assert (
+        transpile("from t select coalesce(a) as x") == "SELECT COALESCE(a) AS x FROM t"
+    )

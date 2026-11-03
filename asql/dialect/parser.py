@@ -541,7 +541,14 @@ class ASQLParser(Parser):
     def _parse_bitwise(self) -> exp.Expr | None:
         """`a ??` with nothing after the operator is an error, not COALESCE(a)."""
         this = super()._parse_bitwise()
-        if isinstance(this, exp.Coalesce) and not this.expressions:
+        # The function form `coalesce(a)` is fine; only a dangling operator
+        # (the last token consumed) has nothing on its right.
+        if (
+            isinstance(this, exp.Coalesce)
+            and not this.expressions
+            and self._prev is not None
+            and self._prev.token_type == TokenType.DQMARK
+        ):
             self.raise_error("Expected an expression after `??`")
         return this
 

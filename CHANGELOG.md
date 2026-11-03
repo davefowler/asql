@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- CI runs the execution tests against PostgreSQL 16 (`PostgresExecutor`, enabled by `ASQL_TEST_POSTGRES_URL`), executes every docs ` ```asql-play ` block on DuckDB (`tests/test_docs_execute.py`), and checks a corpus of malformed queries all raise (`tests/test_parse_strictness.py`)
+- `just test <path>` runs only that path (the recipe used to run the whole suite as well); CI runs the execution tests against PostgreSQL 16 (`PostgresExecutor`, enabled by `ASQL_TEST_POSTGRES_URL`), executes every docs ` ```asql-play ` block on DuckDB (`tests/test_docs_execute.py`), and checks a corpus of malformed queries all raise (`tests/test_parse_strictness.py`)
 - `tests/test_visual_roundtrip.py` also runs every ` ```asql-play ` block in the docs (217 queries) through the round trip, with the docs build's schema and settings
 - Contributor setup: `AGENTS.md` (conventions, pointed to by `CLAUDE.md`), `just check` and `just review` recipes, a `/review` project command and a pull request template
 - Visual ASQL round trips are lossless: `tests/test_visual_roundtrip.py` checks `asql.transpile(q)` against `asql.transpile(json_to_asql(visual(q)))` for DuckDB, PostgreSQL and Snowflake over the playground examples and the operator corpus

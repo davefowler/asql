@@ -12,9 +12,9 @@ install:
     npm ci
     git config core.hooksPath .githooks
 
-# Run the test suite (excludes slow and e2e tests)
-test *ARGS:
-    uv run --all-extras --locked pytest -q --tb=short tests -m "not slow and not e2e" {{ARGS}}
+# Run the test suite (excludes slow and e2e tests); pass paths or pytest flags to narrow it
+test *ARGS="tests":
+    uv run --all-extras --locked pytest -q --tb=short -m "not slow and not e2e" {{ARGS}}
 
 # Ruff lint + format check, mypy, and ESLint
 lint:
