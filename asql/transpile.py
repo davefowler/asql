@@ -229,12 +229,23 @@ def _strip_group_by_aliases(ast: exp.Expr) -> exp.Expr:
         if not group:
             continue
 
+        # `coalesce(region, 'unknown') as region`: GROUP BY region would bind
+        # to the input column on most engines, so such keys keep their
+        # expression. Any other column name mentioned in the SELECT counts.
+        referenced = {
+            column.name
+            for expression in select.expressions
+            for column in expression.find_all(exp.Column)
+        }
         new_exprs = []
         for group_expr in group.expressions:
             if isinstance(group_expr, exp.Alias):
-                # Convert to alias reference: GROUP BY cohort
                 alias_name = group_expr.alias
-                new_exprs.append(exp.Column(this=exp.to_identifier(alias_name)))
+                if alias_name in referenced:
+                    new_exprs.append(group_expr.this.copy())
+                else:
+                    # Convert to alias reference: GROUP BY cohort
+                    new_exprs.append(exp.Column(this=exp.to_identifier(alias_name)))
             else:
                 new_exprs.append(group_expr)
 

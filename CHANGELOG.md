@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- `spine by week(x)` with `week_start = sunday` joined the Sunday spine on Monday weeks, so every period came back empty; the join key now uses the same week start as the spine
+- Same-row alias reuse on non-DuckDB dialects (`select row_number() over (...) as rn, rn * 2 as d`) applied the query's WHERE after the window instead of before it, and built a `SELECT * … GROUP BY` base for grouped queries; the base CTE now keeps WHERE, GROUP BY and HAVING
+- A GROUP BY key alias that shadows a column it reads (`group by coalesce(region, 'unknown') as region`) grouped by the raw column; such keys now group by their expression
 - The parser now raises on tokens it cannot place instead of dropping them (`from t where x = 1 foo bar` and `select a, , b` used to compile to a different query); `when … then y + 1, otherwise 0` keeps the full result expression and the `otherwise` branch; `when n < 10 then a, n < 100 then b` branches each carry their own condition; `rename`/`replace` directly after a `select` list parse
 - `<window> over <col>` is read as `over (partition by <col>)` (`first(x order by y) over cohort`, `running_sum(v) over cohort`), as the cohort docs use it; a `WINDOW w AS (...)` clause still binds `over w`
 - The playground image builds on Railway: the `Dockerfile` drops its custom `# syntax=` frontend and `RUN --mount` bind mounts, which Railway's builder rejects
