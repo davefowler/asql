@@ -380,6 +380,17 @@ def _depends_on_many_side_shape(query: exp.Select, right_alias: str) -> bool:
         if _references_table(core, right_alias):
             return True
 
+    # Another join's ON clause reads this table (orders → order_items →
+    # products): pre-aggregating it would drop the column that join needs.
+    for join in query.args.get("joins") or []:
+        if not isinstance(join, exp.Join) or not isinstance(join.this, exp.Table):
+            continue
+        if join.this.alias_or_name.lower() == right_alias:
+            continue
+        on = join.args.get("on")
+        if on is not None and _references_table(on, right_alias):
+            return True
+
     return False
 
 

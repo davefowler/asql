@@ -115,12 +115,7 @@ def transpile(
             ast = _strip_comments(ast)
 
         # Generate output
-        sql_out = ast.sql(dialect=write, pretty=pretty)
-
-        # Apply text-based post-processing for dialect-specific features
-        sql_out = _apply_text_transforms(sql_out, write_name)
-
-        results.append(sql_out)
+        results.append(ast.sql(dialect=write, pretty=pretty))
 
     return results
 
@@ -444,18 +439,18 @@ def _transform_list_comprehension(
 ) -> exp.Expr:
     """Transform list comprehensions for the target dialect.
 
-    DuckDB: Keep native [x FOR x IN arr] syntax
-    Others: Convert to ARRAY(SELECT x FROM UNNEST(arr))
-
-    Note: This is currently handled during SQL generation via text replacement.
-    The AST-level exp.Comprehension is preserved through generation.
+    The parser expands `[x FOR x IN arr IF c]` to the portable
+    ARRAY(SELECT x FROM UNNEST(arr) AS x WHERE c) and keeps the written
+    comprehension in meta; DuckDB, which has the native form, gets it back.
     """
-    # List comprehension handling is currently text-based in list_comprehension.py
-    # The exp.Comprehension nodes are converted to ARRAY(SELECT...) in the parser
-    # and then the list_comprehension module converts back to native syntax for DuckDB
-    #
-    # For now, we don't need to do anything here - the parser already converts
-    # to the universal ARRAY(SELECT...) form, and post-generation fixup handles DuckDB.
+    from asql.functions import COMPREHENSION_META
+
+    if dialect.lower() != "duckdb":
+        return ast
+    for node in list(ast.find_all(exp.Array)):
+        comprehension = node.meta.get(COMPREHENSION_META)
+        if comprehension is not None:
+            node.set("expressions", [comprehension.copy()])
     return ast
 
 
@@ -468,19 +463,6 @@ def _strip_comments(ast: exp.Expr) -> exp.Expr:
         if hasattr(node, "comments") and node.comments:
             node.comments = []
     return ast
-
-
-def _apply_text_transforms(sql: str, dialect: str) -> str:
-    """Apply text-based post-processing for dialect-specific features.
-
-    Some transformations are easier to do at the text level after SQL generation.
-    """
-    from asql.compiler.list_comprehension import fix_duckdb_list_comprehensions
-
-    # Convert ARRAY(SELECT...) back to DuckDB native list comprehension syntax
-    sql = fix_duckdb_list_comprehensions(sql, dialect)
-
-    return sql
 
 
 def _get_dialect_name(dialect: str | Dialect | None) -> str:

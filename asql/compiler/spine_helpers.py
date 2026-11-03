@@ -311,10 +311,15 @@ def build_date_spine_from_data_sql(
             f"FROM bounds, generate_series(DATE_TRUNC('{trunc_unit}', min_d::date)::date, max_d::date, INTERVAL '{interval}') AS t(d)"
         ) + null_union
 
-    # Fallback: just get distinct values
-    return (
-        f"SELECT DISTINCT DATE_TRUNC('{trunc_unit}', {col_expr}) AS {alias} FROM {source_table} {where_sql}"
-    ) + null_union
+    # Every other dialect: the bounds are scalar subqueries over the data, and
+    # the explicit-bounds builder spells the series for that dialect.
+    bounds_from = f"FROM {source_table} {where_sql}".strip()
+    cast = "DATE({0})" if dialect_lower == "bigquery" else "{0}"
+    lo = cast.format(f"(SELECT MIN({col_expr}) {bounds_from})")
+    hi = cast.format(f"(SELECT MAX({col_expr}) {bounds_from})")
+    return build_date_spine_sql(
+        alias, trunc_unit, lo, hi, interval, dialect, include_null=include_null
+    )
 
 
 def _build_explicit_values_spine_ast(

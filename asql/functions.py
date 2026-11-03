@@ -83,6 +83,10 @@ CALL_META = "asql_call"
 # call (the partition itself lives on the window the call expanded to).
 OVER_META = "asql_over"
 
+# The ARRAY(SELECT ...) a list comprehension was expanded to keeps the original
+# exp.Comprehension here, so DuckDB gets its native `[x FOR x IN arr]` back.
+COMPREHENSION_META = "asql_comprehension"
+
 
 def remember_call(name: str, args: list[t.Any], node: exp.Expr) -> exp.Expr:
     """Tag `node` as the expansion of `name(*args)` (plain-expression args only)."""

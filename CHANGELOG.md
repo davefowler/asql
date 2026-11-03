@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- DuckDB list comprehensions are restored from the AST instead of a regex over the generated SQL, which corrupted `[x * 2 for x in numbers if abs(x) > 1]` (`IF ABS(x] > 1)`) and missed `[x for x in data.numbers]`
+- A date spine without explicit WHERE bounds no longer degrades to the dates that already exist on BigQuery, Snowflake, MySQL, Spark, Trino and SQLite; the MIN/MAX bounds are scalar subqueries over the data and the series is built the same way as with explicit bounds
+- Fanout protection no longer pre-aggregates a many-side table whose column a later join's ON clause needs (`orders → order_items → products` grouped by product failed with a binder error)
 - Auto-aliasing no longer injects `AS` inside function arguments, IN lists or UNNEST (`concat(upper(first), " ", last)` compiled to `UPPER(first) AS upper_first || …`); only projections and pivot aggregates are named
 - `first(x order by k)`, `last(...)` and `arg_max`/`arg_min` inside an aggregate block are aggregates (`ARG_MAX`/`ARG_MIN`, `MAX_BY` on Snowflake/BigQuery, an ordered `ARRAY_AGG` on Postgres/Redshift) instead of window functions in a GROUP BY query; dialects with none of these raise `ASQLDialectError`, which the docs render as a per-dialect note
 - `except users.password_hash` / `rename users.id as user_id` after a join keep their qualifier on the matching `users.*` (the exclusions were silently dropped); an unqualified column with a join is an error naming the tables
