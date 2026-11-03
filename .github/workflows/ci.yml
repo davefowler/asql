@@ -30,6 +30,36 @@ jobs:
       - run: just test
       - run: just smoke
 
+  # The execution tests against a real PostgreSQL: DuckDB alone would let a
+  # Postgres-only spelling (ARRAY_AGG ... [1], DATE_TRUNC units) regress.
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ASQL_TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5  # v2.87.19
+        with:
+          tool: just
+      - run: just test tests/execution
+
   lint:
     runs-on: ubuntu-latest
     steps:

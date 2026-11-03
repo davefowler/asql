@@ -234,7 +234,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
 === "ASQL"
     ```asql-play
     from orders
-    per customer_id first by -date
+    per customer_id first by -order_date
     ```
 
 ---
@@ -255,7 +255,7 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
     from orders
     select *,
         amount ?? 0 as amount,
-        name ?? 'Unknown' as name
+        region ?? 'Unknown' as region
     ```
 
 ---

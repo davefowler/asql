@@ -640,7 +640,7 @@ group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
-  count(distinct user_id) as active
+  count(distinct events.user_id) as active
 )
 order by cohort, period
 ```
@@ -658,7 +658,7 @@ group by
   months_between(orders.order_date, customers.first_order_date) as period
 (
   sum(total) as revenue,
-  count(distinct customer_id) as customers
+  count(distinct orders.customer_id) as customers
 )
 select *,
   first(customers order by period) over cohort as cohort_size,
@@ -676,7 +676,7 @@ group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
-  count(distinct user_id) as active
+  count(distinct events.user_id) as active
 )
 select *,
   first(active order by period) over cohort as cohort_size,
@@ -695,7 +695,7 @@ group by
   month(users.signup_date) as cohort,
   months_between(events.event_date, users.signup_date) as period
 (
-  count(distinct user_id) as active
+  count(distinct events.user_id) as active
 )
 order by channel, cohort, period
 ```

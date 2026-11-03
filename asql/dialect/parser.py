@@ -532,7 +532,18 @@ class ASQLParser(Parser):
             and self._curr.text.upper() in self.TRANSFORM_PARSERS
         ):
             return this
-        return super()._parse_alias(this, explicit=explicit)
+        explicit_as = bool(self._curr and self._curr.token_type == TokenType.ALIAS)
+        aliased = super()._parse_alias(this, explicit=explicit)
+        if explicit_as and aliased is this:
+            self.raise_error("Expected a name after `as`")
+        return aliased
+
+    def _parse_bitwise(self) -> exp.Expr | None:
+        """`a ??` with nothing after the operator is an error, not COALESCE(a)."""
+        this = super()._parse_bitwise()
+        if isinstance(this, exp.Coalesce) and not this.expressions:
+            self.raise_error("Expected an expression after `??`")
+        return this
 
     @staticmethod
     def _apply_star_column_override(
@@ -1466,6 +1477,9 @@ class ASQLParser(Parser):
         if default is None and self._match(TokenType.ELSE):
             default = self._parse_when_result()
 
+        for branch in ifs:
+            if branch.args.get("true") is None:
+                self.raise_error("Expected a result after `then`")
         return exp.Case(ifs=ifs, default=default)
 
     def _when_is_condition(self, base_expr: exp.Expr, negate: bool) -> exp.Expr:
@@ -2155,7 +2169,7 @@ class ASQLParser(Parser):
             query = self._parse_asql_distinct(query)
         expressions = self._parse_asql_select_expressions_until_transform_boundary()
         if not expressions:
-            return query
+            self.raise_error("Expected at least one expression after `select`")
 
         self._apply_star_column_override(
             expressions, self._pipe_cte_output_columns(query)
@@ -2422,7 +2436,7 @@ class ASQLParser(Parser):
                 break
 
         if not expressions:
-            return query
+            self.raise_error("Expected a column or expression after `group by`")
 
         query.group_by(*expressions, copy=False)
         query.meta[_GROUP_STAGE] = "bare"
@@ -2899,10 +2913,31 @@ class ASQLParser(Parser):
                 ),
             )
 
+        elif query.args.get("where") and not query.args.get("joins"):
+            # Before the first join a bare column can only mean the FROM
+            # source; pin it there so a joined table with the same column
+            # name does not make the filter ambiguous.
+            self._qualify_with_source(query.args["where"], query.args["from_"].this)
+
         # Build the join
         join = exp.Join(this=this, on=on_condition, kind=kind)
         query.join(join, copy=False)
         return query
+
+    @staticmethod
+    def _qualify_with_source(where: exp.Where, source: exp.Expr) -> None:
+        """Qualify the unqualified columns of ``where`` with ``source``'s name."""
+        if not isinstance(source, (exp.Table, exp.Subquery)):
+            return
+        name = source.alias_or_name
+        if not name:
+            return
+        for column in where.find_all(exp.Column):
+            if column.table or isinstance(column.this, exp.Star):
+                continue
+            if column.find_ancestor(exp.Select, exp.Where) is not where:
+                continue  # belongs to a nested subquery
+            column.set("table", exp.to_identifier(name))
 
     def _parse_on_condition_until_join_op(self) -> exp.Expr | None:
         """Parse ON condition, stopping at ASQL join operators.
@@ -3408,7 +3443,7 @@ class ASQLParser(Parser):
         # EXCEPT col1, col2 - exclude columns
         columns = self._parse_csv(self._parse_column)
         if not columns:
-            return query
+            self.raise_error("Expected one or more column names after `except`")
 
         # In maintainer-style dialects, prefer mutating the query projection in-place
         # rather than wrapping in synthetic CTEs unless semantics require it.

@@ -87,3 +87,68 @@ def test_sql_named_window_is_left_alone() -> None:
 def test_rename_directly_after_select_parses() -> None:
     sql = transpile("from t select a, b rename b as c")
     assert "b AS c" in sql
+
+
+def test_where_before_inner_join_is_qualified_with_the_from_table() -> None:
+    """A `where` written before a join can only see the FROM table, so its
+    unqualified columns are pinned to it: otherwise an engine rejects
+    `status` once a joined table has the same column."""
+    sql = transpile(
+        'from orders where status = "paid" '
+        "& customers on orders.customer_id = customers.id "
+        "select customers.name"
+    )
+    assert sql == (
+        "SELECT customers.name FROM orders "
+        "INNER JOIN customers ON orders.customer_id = customers.id "
+        "WHERE orders.status = 'paid'"
+    )
+
+
+def test_where_before_left_join_follows_the_closed_stage() -> None:
+    """When the `where` reads a select alias the stage closed before the join;
+    the filter then belongs to the stage's CTE, not the original table."""
+    sql = transpile(
+        "from orders o select *, amount * 2 as doubled where doubled > 10 "
+        "&? customers on o.customer_id = customers.id"
+    )
+    where = sqlglot.parse_one(sql).find(exp.Where)
+    assert where is not None
+    assert {c.table for c in where.find_all(exp.Column)} <= {"", "__tmp1"}
+    assert "o.doubled" not in sql
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        # Unbalanced delimiters
+        "from t select (a + b",
+        "from t group by a ( count(*) as n",
+        "from t select [a, b",
+        # Steps missing their payload
+        "from t select",
+        "from t where",
+        "from t group by",
+        "from t order by",
+        "from t limit",
+        "from t rename",
+        "from t except",
+        "from t replace name with",
+        # Half-written expressions and operators
+        "from t select a ?? ",
+        "from t where a in (",
+        "from t where a between 1",
+        "from t select when a then",
+        "from t select a as",
+        # Joins without a table
+        "from t & on t.id = u.id",
+        "from t &",
+        # Misplaced keywords
+        "select a from t where",
+        "from t select a from u",
+    ],
+)
+def test_malformed_queries_raise(query: str) -> None:
+    """A query the parser cannot finish must raise, never produce SQL."""
+    with pytest.raises((ASQLSyntaxError, ASQLCompilationError)):
+        transpile(query)
