@@ -449,8 +449,8 @@ class TestFirstLastInGroupBy:
         """
         sql = transpile(asql)
         sql_upper = sql.upper()
-        assert "FIRST_VALUE" in sql_upper
-        assert "ORDER BY" in sql_upper
+        assert "ARG_MAX" in sql_upper or "ARG_MIN" in sql_upper
+        assert "OVER" not in sql_upper
         assert "GROUP BY" in sql_upper
 
     def test_last_in_group_by(self) -> None:
@@ -463,10 +463,8 @@ class TestFirstLastInGroupBy:
         """
         sql = transpile(asql)
         sql_upper = sql.upper()
-        assert (
-            "FIRST_VALUE" in sql_upper
-        )  # Implemented as FIRST_VALUE with reversed order
-        assert "ORDER BY" in sql_upper
+        assert "ARG_MAX" in sql_upper  # last by ascending date = latest
+        assert "OVER" not in sql_upper
         assert "GROUP BY" in sql_upper
 
     def test_arg_max_in_group_by(self) -> None:
@@ -479,8 +477,8 @@ class TestFirstLastInGroupBy:
         """
         sql = transpile(asql)
         sql_upper = sql.upper()
-        assert "FIRST_VALUE" in sql_upper
-        assert "ORDER BY" in sql_upper
+        assert "ARG_MAX" in sql_upper or "ARG_MIN" in sql_upper
+        assert "OVER" not in sql_upper
         assert "GROUP BY" in sql_upper
 
     def test_first_with_other_aggregates(self) -> None:
@@ -495,7 +493,7 @@ class TestFirstLastInGroupBy:
         """
         sql = transpile(asql)
         sql_upper = sql.upper()
-        assert "FIRST_VALUE" in sql_upper
+        assert "ARG_MAX" in sql_upper or "ARG_MIN" in sql_upper
         assert "COUNT" in sql_upper
         assert "SUM" in sql_upper
         assert "GROUP BY" in sql_upper

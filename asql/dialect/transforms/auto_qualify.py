@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from sqlglot import exp
 
+from asql.errors import ASQLCompilationError
+
 
 def _collect_joined_tables(expression: exp.Expr) -> list[tuple[str, str | None]]:
     """
@@ -91,13 +93,27 @@ def _expand_select_star_with_qualification(select: exp.Select) -> None:
         )
 
         if is_star and not star_replaced:
+            # `except users.password_hash` lives on the Star; each entry moves
+            # to the table.* it names. An unqualified name has no home here.
+            excluded = (
+                (expr.args.get("except_") or []) if isinstance(expr, exp.Star) else []
+            )
+            refs = [alias if alias else table_name for table_name, alias in tables]
+            for column in excluded:
+                if not column.table or column.table not in refs:
+                    raise ASQLCompilationError(
+                        f"`{column.sql()}` in except/rename/replace: with a join, "
+                        "say which table the column belongs to "
+                        f"(one of {', '.join(refs)}), e.g. `{refs[0]}.{column.name}`"
+                    )
             # Replace first * with table.* for each table
-            for table_name, alias in tables:
-                table_ref = alias if alias else table_name
+            for table_ref in refs:
+                own = [exp.column(c.name) for c in excluded if c.table == table_ref]
+                star = exp.Star(except_=own) if own else exp.Star()
                 new_expressions.append(
                     # The same node a written `t.*` parses to; a Column whose
                     # name is the identifier "*" gets aliased as a column later.
-                    exp.Column(this=exp.Star(), table=exp.to_identifier(table_ref))
+                    exp.Column(this=star, table=exp.to_identifier(table_ref))
                 )
             star_replaced = True
         elif not is_star:
