@@ -221,7 +221,7 @@ def _source_output_columns(select: exp.Select) -> set[str]:
     name = from_.this.name
     scope: exp.Expr | None = select
     while scope is not None:
-        with_ = scope.args.get("with_") if isinstance(scope, exp.Expr) else None
+        with_ = scope.args.get("with_")
         for cte in with_.expressions if with_ else []:
             if cte.alias != name or not isinstance(cte.this, exp.Select):
                 continue
