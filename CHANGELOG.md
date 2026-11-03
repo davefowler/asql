@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- Auto-aliasing no longer injects `AS` inside function arguments, IN lists or UNNEST (`concat(upper(first), " ", last)` compiled to `UPPER(first) AS upper_first || …`); only projections and pivot aggregates are named
+- `first(x order by k)`, `last(...)` and `arg_max`/`arg_min` inside an aggregate block are aggregates (`ARG_MAX`/`ARG_MIN`, `MAX_BY` on Snowflake/BigQuery, an ordered `ARRAY_AGG` on Postgres/Redshift) instead of window functions in a GROUP BY query; dialects with none of these raise `ASQLDialectError`, which the docs render as a per-dialect note
+- `except users.password_hash` / `rename users.id as user_id` after a join keep their qualifier on the matching `users.*` (the exclusions were silently dropped); an unqualified column with a join is an error naming the tables
+- `when status is null then …` compiles to `IS NULL` (it was `= NULL`, always false), and the `when` base can be any expression (`when upper(status) is "A"`, `when a.b is "x"`)
 - `spine by status (count(*))` compiled to an invalid alias-reuse chain on every dialect but DuckDB; the count now reads the source-qualified key
 - `spine by month(x) as m` and `group by spine(month(x)) as m` lost the spine (the key alias was stripped before the spine transform ran); GROUP BY aliases are now stripped after it
 - `running_sum(x) as rs … order by dbl` where `dbl` is a projection alias copied the alias into the window's ORDER BY (invalid); aliases are resolved to their expressions, and ordering by the running window itself is an error

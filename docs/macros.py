@@ -203,6 +203,7 @@ def precompile_asql_query(
     import sys
 
     import asql
+    from asql.errors import ASQLDialectError
     from asql.playground.schema import playground_schema
 
     formatted_asql = format_asql_for_docs(asql_query)
@@ -242,6 +243,10 @@ def precompile_asql_query(
             except Exception:  # noqa: BLE001
                 # If pretty formatting fails for any reason, fall back to raw SQL
                 results[dialect] = sql
+        except ASQLDialectError as e:
+            # A documented limitation of this dialect: the tab says so, the
+            # example still compiles everywhere else.
+            results[dialect] = f"-- Not available on {dialect}: {e}"
         except Exception as e:  # noqa: BLE001
             compilation_errors.append(f"{dialect}: {e}")
 

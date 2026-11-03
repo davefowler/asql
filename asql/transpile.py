@@ -173,6 +173,7 @@ def _apply_dialect_transforms(
     4. Column operators (* EXCEPT → explicit columns for unsupported dialects)
     5. List comprehension ([x FOR x] → ARRAY(SELECT) for non-DuckDB)
     """
+    from asql.compiler.arg_max import transform_arg_max_min
     from asql.compiler.metrics import (
         check_metric_fanout,
         resolve_semantic_references,
@@ -208,8 +209,9 @@ def _apply_dialect_transforms(
     # 2.25. Strip aliases from GROUP BY (ASQL allows, SQL doesn't)
     ast = _strip_group_by_aliases(ast)
 
-    # 2.5. Dialect spellings of date extraction
+    # 2.5. Dialect spellings of date extraction, and of ARG_MAX/ARG_MIN
     ast = _transform_date_parts(ast, dialect, schema)
+    ast = transform_arg_max_min(ast, dialect)
 
     # 3. Alias reuse (DuckDB supports native, others need CTEs)
     ast = _transform_alias_reuse(ast, dialect)
