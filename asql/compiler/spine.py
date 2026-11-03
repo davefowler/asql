@@ -36,6 +36,7 @@ from asql.compiler.spine_helpers import (
 from asql.config import CompileSettings
 from asql.errors import ASQLCompilationError
 from asql.expressions import Spine
+from asql.functions import week_trunc
 
 logger = logging.getLogger(__name__)
 
@@ -232,9 +233,15 @@ def _apply_spine_transform(
             if source_col is not None:
                 # Explicit truncation, so the join key matches the spine's DATE_TRUNC
                 # whatever month()/week() themselves compile to.
-                key_expr = exp.func(
-                    "DATE_TRUNC", exp.Literal.string(trunc_unit), source_col.copy()
-                )
+                key_week_start = week_start_of(inner_expr)
+                if key_week_start:
+                    # Sunday weeks shift the truncation; the spine side is
+                    # retargeted below, so the join key must be too.
+                    key_expr = week_trunc(source_col.copy(), key_week_start)
+                else:
+                    key_expr = exp.func(
+                        "DATE_TRUNC", exp.Literal.string(trunc_unit), source_col.copy()
+                    )
             source_col_name = (
                 source_col.name if isinstance(source_col, exp.Column) else None
             )
