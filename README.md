@@ -231,5 +231,5 @@ ASQL has a VS Code extension for syntax highlighting and snippets. See [`vscode-
 
 ## Deployment
 
-CI, the docs site (GitHub Pages), and the hosted playground (Cloud Run) are all
-GitHub Actions workflows in this repo. See [DEPLOY.md](DEPLOY.md).
+CI runs on GitHub Actions; the docs site is on Netlify and the hosted
+playground is on Railway. See [DEPLOY.md](DEPLOY.md).

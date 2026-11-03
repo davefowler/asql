@@ -76,17 +76,19 @@ def transpile(
 
     # Build ASQL dialect with settings
 
-    asql_dialect: Dialect | str
+    # Always a fresh instance: inline SET statements mutate the dialect the
+    # parser runs with, and the compile stage reads its settings back. A
+    # caller's instance is copied so neither SET nor `schema` leaks into it.
+    asql_dialect: Dialect
     if isinstance(read, str) or read is None:
         if schema:
             kwargs["schema"] = schema
-        asql_dialect = ASQL(**kwargs) if kwargs else "asql"
+        asql_dialect = ASQL(**kwargs)
     else:
-        asql_dialect = read
-        # If schema passed separately, copy settings to avoid mutating the passed dialect
-        if schema and asql_dialect.settings:
-            # Create a copy of settings to avoid mutation
-            asql_dialect.settings = {**asql_dialect.settings, "schema": schema}
+        settings = dict(read.settings)
+        if schema:
+            settings["schema"] = schema
+        asql_dialect = type(read)(**settings)
 
     # Parse with ASQL (runs parser-stage transforms)
     asts = sqlglot.parse(sql, dialect=asql_dialect)
@@ -98,7 +100,7 @@ def transpile(
     passthrough_comments = True
     if "passthrough_comments" in kwargs:
         passthrough_comments = kwargs.get("passthrough_comments", True)
-    elif isinstance(asql_dialect, Dialect) and asql_dialect.settings:
+    elif asql_dialect.settings:
         passthrough_comments = asql_dialect.settings.get("passthrough_comments", True)
 
     for ast in asts:
@@ -113,12 +115,7 @@ def transpile(
             ast = _strip_comments(ast)
 
         # Generate output
-        sql_out = ast.sql(dialect=write, pretty=pretty)
-
-        # Apply text-based post-processing for dialect-specific features
-        sql_out = _apply_text_transforms(sql_out, write_name)
-
-        results.append(sql_out)
+        results.append(ast.sql(dialect=write, pretty=pretty))
 
     return results
 
@@ -155,17 +152,24 @@ def _apply_dialect_transforms(
     These transforms run AFTER parsing but BEFORE SQL generation.
     They need to know the target dialect to emit correct SQL patterns.
 
-    Transform order:
-    0. Strip GROUP BY aliases (ASQL syntax cleanup → valid SQL)
-    0.5. Concrete ORDER BY for running/rolling window helpers
-    0.75. Semantic references (metric names, relationship.attribute → joins)
+    Transform order, and why each edge holds:
+    0.5. Concrete ORDER BY for running/rolling window helpers (reads the
+         query's own ORDER BY and projection aliases, before any CTE chain
+         renames them)
+    0.75. Semantic references (metric names, relationship.attribute → joins);
+          before fanout so the joins it adds are visible to that pass
     1. Fanout protection (optional many-side pre-aggregation rewrite)
-    2. Spine transform (exp.Spine → gap-filling CTEs)
-    3. Alias reuse (same-row refs → CTE chain for non-DuckDB)
+    2. Spine transform (exp.Spine → gap-filling CTEs); needs the GROUP BY
+       keys as written, aliases included, so it runs before the alias strip
+    2.25. Strip GROUP BY aliases (ASQL syntax cleanup → valid SQL)
+    2.5. Dialect spellings of date extraction
+    3. Alias reuse (same-row refs → CTE chain for non-DuckDB); after spine,
+       whose COUNT rewrite must not look like an alias reference
     4. Column operators (* EXCEPT → explicit columns for unsupported dialects)
     5. List comprehension ([x FOR x] → ARRAY(SELECT) for non-DuckDB)
     6. information_schema.columns gains the semantic graph's metrics and attributes
     """
+    from asql.compiler.arg_max import transform_arg_max_min
     from asql.compiler.catalog import expand_information_schema
     from asql.compiler.metrics import (
         check_metric_fanout,
@@ -185,9 +189,6 @@ def _apply_dialect_transforms(
         passthrough_comments=_get_setting(asql_dialect, "passthrough_comments", True),
     )
 
-    # 0. Strip aliases from GROUP BY (ASQL allows, SQL doesn't)
-    ast = _strip_group_by_aliases(ast)
-
     # 0.5. Give running/rolling window helpers a concrete ORDER BY
     ast = _resolve_running_window_order(ast)
 
@@ -202,8 +203,12 @@ def _apply_dialect_transforms(
     # 2. Spine transform (process exp.Spine nodes)
     ast = _transform_spine(ast, dialect, settings)
 
-    # 2.5. Dialect spellings of date extraction
-    ast = _transform_date_parts(ast, dialect)
+    # 2.25. Strip aliases from GROUP BY (ASQL allows, SQL doesn't)
+    ast = _strip_group_by_aliases(ast)
+
+    # 2.5. Dialect spellings of date extraction, and of ARG_MAX/ARG_MIN
+    ast = _transform_date_parts(ast, dialect, schema)
+    ast = transform_arg_max_min(ast, dialect)
 
     # 3. Alias reuse (DuckDB supports native, others need CTEs)
     ast = _transform_alias_reuse(ast, dialect)
@@ -235,12 +240,23 @@ def _strip_group_by_aliases(ast: exp.Expr) -> exp.Expr:
         if not group:
             continue
 
+        # `coalesce(region, 'unknown') as region`: GROUP BY region would bind
+        # to the input column on most engines, so such keys keep their
+        # expression. Any other column name mentioned in the SELECT counts.
+        referenced = {
+            column.name
+            for expression in select.expressions
+            for column in expression.find_all(exp.Column)
+        }
         new_exprs = []
         for group_expr in group.expressions:
             if isinstance(group_expr, exp.Alias):
-                # Convert to alias reference: GROUP BY cohort
                 alias_name = group_expr.alias
-                new_exprs.append(exp.Column(this=exp.to_identifier(alias_name)))
+                if alias_name in referenced:
+                    new_exprs.append(group_expr.this.copy())
+                else:
+                    # Convert to alias reference: GROUP BY cohort
+                    new_exprs.append(exp.Column(this=exp.to_identifier(alias_name)))
             else:
                 new_exprs.append(group_expr)
 
@@ -311,14 +327,38 @@ def _resolve_running_window_order(ast: exp.Expr) -> exp.Expr:
             continue
         select = win.find_ancestor(exp.Select)
         order = select.args.get("order") if select else None
-        if order is None:
+        if order is None or select is None:
             raise ASQLCompilationError(
                 "a framed window (e.g. running_avg / rolling_avg) needs an ordering — "
                 "add `order by` to the query, or write an explicit `over (order by ...)`"
             )
-        win.set("order", order.copy())
+        win.set("order", _order_without_aliases(order, select, win))
 
     return ast
+
+
+def _order_without_aliases(
+    order: exp.Order, select: exp.Select, window: exp.Window
+) -> exp.Order:
+    """A copy of the query ORDER BY with projection aliases replaced by their
+    expressions: inside OVER (...) an output alias is not yet defined."""
+    from asql.errors import ASQLCompilationError
+
+    aliases = {e.alias: e.this for e in select.expressions if isinstance(e, exp.Alias)}
+    own = window.find_ancestor(exp.Alias)
+    own_name = own.alias if own is not None and own.parent is select else None
+    copied = order.copy()
+    for column in list(copied.find_all(exp.Column)):
+        if column.table or column.name not in aliases:
+            continue
+        if column.name == own_name:
+            raise ASQLCompilationError(
+                f"`order by {column.name}` orders the query by the running window "
+                f"`{column.name}` itself; order by the column it accumulates over, "
+                "or write an explicit `over (order by ...)`"
+            )
+        column.replace(aliases[column.name].copy())
+    return copied
 
 
 def _transform_spine(
@@ -344,13 +384,20 @@ def _transform_spine(
     return transform_spine_expressions(ast, dialect, settings)
 
 
-def _transform_date_parts(ast: exp.Expr, dialect: str) -> exp.Expr:
+def _transform_date_parts(
+    ast: exp.Expr, dialect: str, schema: Schema | None
+) -> exp.Expr:
     from asql.compiler.date_parts import (
+        transform_bigquery_calendar_intervals,
+        transform_bigquery_relative_date_comparisons,
         transform_day_of_year,
         transform_timezone_source,
     )
 
-    return transform_timezone_source(transform_day_of_year(ast, dialect), dialect)
+    ast = transform_timezone_source(transform_day_of_year(ast, dialect), dialect)
+    # Relative dates move to CURRENT_DATE first, so their intervals type as DATE.
+    ast = transform_bigquery_relative_date_comparisons(ast, dialect, schema)
+    return transform_bigquery_calendar_intervals(ast, dialect, schema)
 
 
 def _transform_fanout(
@@ -398,18 +445,18 @@ def _transform_list_comprehension(
 ) -> exp.Expr:
     """Transform list comprehensions for the target dialect.
 
-    DuckDB: Keep native [x FOR x IN arr] syntax
-    Others: Convert to ARRAY(SELECT x FROM UNNEST(arr))
-
-    Note: This is currently handled during SQL generation via text replacement.
-    The AST-level exp.Comprehension is preserved through generation.
+    The parser expands `[x FOR x IN arr IF c]` to the portable
+    ARRAY(SELECT x FROM UNNEST(arr) AS x WHERE c) and keeps the written
+    comprehension in meta; DuckDB, which has the native form, gets it back.
     """
-    # List comprehension handling is currently text-based in list_comprehension.py
-    # The exp.Comprehension nodes are converted to ARRAY(SELECT...) in the parser
-    # and then the list_comprehension module converts back to native syntax for DuckDB
-    #
-    # For now, we don't need to do anything here - the parser already converts
-    # to the universal ARRAY(SELECT...) form, and post-generation fixup handles DuckDB.
+    from asql.functions import COMPREHENSION_META
+
+    if dialect.lower() != "duckdb":
+        return ast
+    for node in list(ast.find_all(exp.Array)):
+        comprehension = node.meta.get(COMPREHENSION_META)
+        if comprehension is not None:
+            node.set("expressions", [comprehension.copy()])
     return ast
 
 
@@ -422,19 +469,6 @@ def _strip_comments(ast: exp.Expr) -> exp.Expr:
         if hasattr(node, "comments") and node.comments:
             node.comments = []
     return ast
-
-
-def _apply_text_transforms(sql: str, dialect: str) -> str:
-    """Apply text-based post-processing for dialect-specific features.
-
-    Some transformations are easier to do at the text level after SQL generation.
-    """
-    from asql.compiler.list_comprehension import fix_duckdb_list_comprehensions
-
-    # Convert ARRAY(SELECT...) back to DuckDB native list comprehension syntax
-    sql = fix_duckdb_list_comprehensions(sql, dialect)
-
-    return sql
 
 
 def _get_dialect_name(dialect: str | Dialect | None) -> str:

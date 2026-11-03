@@ -418,8 +418,10 @@ def apply_auto_aliasing(
                 new_list = []
                 for item in value:
                     if isinstance(item, exp.Expr):
-                        # Don't add aliases in GROUP BY, ORDER BY, etc.
-                        if in_no_alias_context:
+                        # Only a projection, or a pivot's aggregate, is named:
+                        # inside function arguments, IN lists, UNNEST, ...
+                        # an alias is a syntax error.
+                        if in_no_alias_context or not isinstance(node, exp.Pivot):
                             new_list.append(visit(item))
                         elif _should_add_alias(item):
                             func_name = _written_function_name(item)

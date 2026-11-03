@@ -37,6 +37,7 @@ from asql.errors import ASQLCompilationError
 from asql.expressions import Spine
 from asql.functions import (
     ASQL_FUNCTION_REGISTRY,
+    COMPREHENSION_META,
     NATURAL_DATE_DIRECTIONS,
     NATURAL_DATE_UNITS,
     SAMPLE_META,
@@ -68,6 +69,11 @@ def _build_spine_expression(args: list[t.Any]) -> Spine:
 # =============================================================================
 # Module-level helpers following SQLGlot/PRQL patterns.
 # =============================================================================
+
+
+def _except_columns(names: set[tuple[str, str]]) -> list[exp.Column]:
+    """EXCEPT list entries, qualified as written and in a stable order."""
+    return [exp.column(name, table=table or None) for table, name in sorted(names)]
 
 
 def _select_all(table: exp.Expr) -> exp.Select:
@@ -388,6 +394,7 @@ class ASQLParser(Parser):
             reject_numeric_comparisons,
         )
         from asql.dialect.transforms.join_fk_shorthand import transform_fk_shorthand
+        from asql.dialect.transforms.over_shorthand import apply_over_shorthand
         from asql.dialect.transforms.pivot_group_by import apply_pivot_group_by
         from asql.dialect.transforms.underscore_shorthands import (
             apply_implicit_function_aliases,
@@ -396,6 +403,7 @@ class ASQLParser(Parser):
 
         # === Phase 1: Basic transforms (no dialect/schema required) ===
         stmt = apply_pivot_group_by(stmt)
+        stmt = apply_over_shorthand(stmt)
         stmt = reject_numeric_comparisons(stmt)
         stmt = fill_default_week_start(stmt, week_start)
         stmt = apply_since_until_underscore_shorthands(stmt, settings)
@@ -433,6 +441,7 @@ class ASQLParser(Parser):
                 exprs = node.expressions
                 if exprs and isinstance(exprs[0], exp.Comprehension):
                     comp = exprs[0]
+                    node.meta[COMPREHENSION_META] = comp.copy()
                     converted = self._comprehension_to_array_select(comp)
                     node.set("expressions", converted.expressions)
         return stmt
@@ -519,7 +528,7 @@ class ASQLParser(Parser):
             not explicit
             and this is not None
             and self._curr
-            and self._curr.token_type == TokenType.VAR
+            and self._curr.token_type != TokenType.IDENTIFIER
             and self._curr.text.upper() in self.TRANSFORM_PARSERS
         ):
             return this
@@ -558,7 +567,19 @@ class ASQLParser(Parser):
         except_names: list[str] = []
         for select_expression in select_expressions:
             alias = select_expression.alias
-            if alias and (source_columns is None or alias in source_columns):
+            if not alias:
+                continue
+            if source_columns is not None:
+                overrides = alias in source_columns
+            else:
+                # Columns unknown: `upper(name) as name` reads the column it
+                # replaces; `1 as flag` adds one (excluding a column that does
+                # not exist is an error on every engine).
+                overrides = any(
+                    column.name == alias and not column.table
+                    for column in select_expression.find_all(exp.Column)
+                )
+            if overrides:
                 except_names.append(alias)
 
         if not except_names:
@@ -887,6 +908,12 @@ class ASQLParser(Parser):
         }
     )
 
+    # Steps that may follow `limit`/`offset` on the same SELECT: paging itself,
+    # and projections, which change the columns but not which rows are kept.
+    _STEPS_ON_SAME_LIMITED_STAGE = frozenset(
+        {"LIMIT", "OFFSET", "STASH", "SELECT", "EXCEPT", "RENAME", "REPLACE"}
+    )
+
     # Single-word transforms for efficient _match_texts lookup
     # (Multi-word transforms like "GROUP BY" are tokenized as single tokens)
     _SINGLE_WORD_TRANSFORMS = frozenset(k for k in TRANSFORM_PARSERS if " " not in k)
@@ -1131,7 +1158,7 @@ class ASQLParser(Parser):
             index = self._index
             self._advance()  # consume FIRST
             if self._match(TokenType.L_PAREN):
-                return self._parse_first_ordered()
+                return self._parse_window(self._parse_first_ordered())
             self._retreat(index)
 
         # Fall back to default field parsing
@@ -1139,8 +1166,36 @@ class ASQLParser(Parser):
             any_token=any_token, tokens=tokens, anonymous_func=anonymous_func
         )
 
+    # True while the items of `group by k ( ... )` / `spine by k ( ... )` are
+    # parsed: there `first(x order by k)` is an aggregate, not a window.
+    _in_aggregate_block = False
+
+    def _parse_aggregate_block_items(self) -> list[exp.Expr]:
+        self._in_aggregate_block = True
+        try:
+            return self._parse_csv(self._parse_expression)
+        finally:
+            self._in_aggregate_block = False
+
+    def _ordered_pick(
+        self,
+        value: exp.Expr | None,
+        order_expressions: t.Sequence[exp.Expr],
+        last: bool,
+    ) -> exp.Expr | None:
+        """ARG_MIN/ARG_MAX for a single-key ordering inside an aggregate block."""
+        if value is None or not self._in_aggregate_block or len(order_expressions) != 1:
+            return None
+        ordered = order_expressions[0]
+        if not isinstance(ordered, exp.Ordered):
+            return None
+        descending = bool(ordered.args.get("desc")) != last
+        picker = exp.ArgMax if descending else exp.ArgMin
+        return picker(this=value, expression=ordered.this)
+
     def _parse_first_ordered(self) -> exp.Expr:
-        """Parse FIRST(<value> ORDER BY <order>) into FIRST_VALUE(<value>) OVER (ORDER BY ...)."""
+        """Parse FIRST(<value> ORDER BY <order>) into FIRST_VALUE(<value>) OVER (ORDER BY ...),
+        or ARG_MIN/ARG_MAX inside an aggregate block."""
         value = self._parse_expression()
         if not value:
             self.raise_error("Expected expression after FIRST(")
@@ -1152,6 +1207,9 @@ class ASQLParser(Parser):
         if not self._match(TokenType.R_PAREN):
             self.raise_error("Expected ) to close FIRST(...)")
 
+        picked = self._ordered_pick(value, order_expressions, last=False)
+        if picked is not None:
+            return picked
         order = exp.Order(expressions=order_expressions)
         return exp.Window(this=exp.FirstValue(this=value), order=order)
 
@@ -1253,6 +1311,11 @@ class ASQLParser(Parser):
         if not self._curr or self._curr.token_type != TokenType.R_PAREN:
             self.raise_error("Expected ) to close last(...)")
 
+        picked = self._ordered_pick(value, order_expressions, last=True)
+        if picked is not None:
+            self._match(TokenType.R_PAREN)
+            return picked
+
         flipped: list[exp.Expr] = []
         for ordered in order_expressions:
             # Flip the sort direction: ASC <-> DESC
@@ -1272,6 +1335,9 @@ class ASQLParser(Parser):
                 this="arg_max" if is_max else "arg_min", expressions=args
             )
 
+        if self._in_aggregate_block:
+            picker = exp.ArgMax if is_max else exp.ArgMin
+            return picker(this=value, expression=key)
         ordered = exp.Ordered(this=key, desc=is_max)
         order = exp.Order(expressions=[ordered])
         return exp.Window(this=exp.FirstValue(this=value), order=order)
@@ -1307,20 +1373,15 @@ class ASQLParser(Parser):
 
         # Strategy: Parse a column/id, then check what follows
         condition: exp.Expr | None = None
-        if self._match_set(self.ID_VAR_TOKENS):
-            # Got a potential base expression (identifier)
-            assert self._prev is not None  # _match_set advanced past the matched token
-            maybe_base = exp.column(self._prev.text)
-
+        start = self._index
+        maybe_base = self._parse_unary()
+        if maybe_base is not None:
             if self._match(TokenType.IS):
                 # `is` or `is not` pattern - definitely simple case
                 base_expr = maybe_base
-                if self._match(TokenType.NOT):
-                    value = self._parse_unary()
-                    condition = exp.NEQ(this=base_expr.copy(), expression=value)
-                else:
-                    value = self._parse_unary()
-                    condition = exp.EQ(this=base_expr.copy(), expression=value)
+                condition = self._when_is_condition(
+                    base_expr, negate=self._match(TokenType.NOT)
+                )
                 self._match(TokenType.THEN)
                 result = self._parse_when_result()
                 ifs.append(exp.If(this=condition, true=result))
@@ -1375,7 +1436,7 @@ class ASQLParser(Parser):
                 base_expr = None  # Searched case
             else:
                 # More complex: retreat and parse full condition
-                self._retreat(self._index - 1)
+                self._retreat(start)
                 condition = self._parse_conjunction()
                 self._match(TokenType.THEN)
                 result = self._parse_when_result()
@@ -1407,10 +1468,21 @@ class ASQLParser(Parser):
 
         return exp.Case(ifs=ifs, default=default)
 
+    def _when_is_condition(self, base_expr: exp.Expr, negate: bool) -> exp.Expr:
+        """`is <value>` in a when branch: IS for NULL and booleans, = otherwise."""
+        value = self._parse_unary()
+        if isinstance(value, (exp.Null, exp.Boolean)):
+            condition: exp.Expr = exp.Is(this=base_expr.copy(), expression=value)
+            return exp.Not(this=condition) if negate else condition
+        if negate:
+            return exp.NEQ(this=base_expr.copy(), expression=value)
+        return exp.EQ(this=base_expr.copy(), expression=value)
+
     def _parse_when_result(self) -> exp.Expr | None:
         """Parse the result part of a when branch, stopping at comma/else/otherwise."""
-        # Parse expression but stop at COMMA or ELSE (otherwise is tokenized as ELSE)
-        return self._parse_unary()
+        # A full expression (`y + 1`, `a ?? b`): commas and `otherwise` (ELSE)
+        # are not operators, so parsing stops where the branch ends.
+        return self._parse_assignment()
 
     def _parse_when_branch(self, base_expr: exp.Expr | None) -> exp.If | None:
         """Parse a single when branch: <condition> then <result>."""
@@ -1419,12 +1491,9 @@ class ASQLParser(Parser):
         if base_expr is not None:
             # Simple case: branch starts with operator or value
             if self._match(TokenType.IS):
-                if self._match(TokenType.NOT):
-                    value = self._parse_unary()
-                    condition = exp.NEQ(this=base_expr.copy(), expression=value)
-                else:
-                    value = self._parse_unary()
-                    condition = exp.EQ(this=base_expr.copy(), expression=value)
+                condition = self._when_is_condition(
+                    base_expr, negate=self._match(TokenType.NOT)
+                )
             elif self._match(TokenType.IN):
                 values = self._parse_wrapped_csv(self._parse_unary)
                 condition = exp.In(this=base_expr.copy(), expressions=values)
@@ -1445,9 +1514,13 @@ class ASQLParser(Parser):
                 value = self._parse_unary()
                 condition = self._build_comparison(base_expr.copy(), op_token, value)
             else:
-                # Implied equality: just a value
-                value = self._parse_unary()
-                if value:
+                # Implied equality (`"pending" then …`), or a condition of its
+                # own (`when n < 10 then a, n < 100 then b`): a predicate
+                # stands alone, anything else compares against the base.
+                value = self._parse_conjunction()
+                if isinstance(value, (exp.Predicate, exp.Connector, exp.Not)):
+                    condition = value
+                elif value:
                     condition = exp.EQ(this=base_expr.copy(), expression=value)
         else:
             # Searched case: full condition
@@ -1917,10 +1990,15 @@ class ASQLParser(Parser):
                 )
             else:
                 query = self._build_pipe_cte(query, [exp.Star()])
-        elif transform_name == "GROUP BY" and [type(e) for e in query.expressions] != [
+        elif (
+            query.args.get("limit") or query.args.get("offset")
+        ) and transform_name not in self._STEPS_ON_SAME_LIMITED_STAGE:
+            # `limit 10 where x = 1` filters the ten rows, not the table.
+            query = self._build_pipe_cte(query, [exp.Star()])
+        elif [type(e) for e in query.expressions] != [
             exp.Star
-        ]:
-            # An earlier select is its own stage; group over its output.
+        ] and transform_name in self._STEPS_ON_GROUPED_OUTPUT:
+            # An earlier select fixed the projection; this step reads it.
             query = self._build_pipe_cte(query, [exp.Star()])
         return self.TRANSFORM_PARSERS[transform_name](self, query)
 
@@ -2199,7 +2277,10 @@ class ASQLParser(Parser):
                 depth == 0
                 and i != self._index
                 and (
-                    self._is_transform_boundary_token(tok.token_type, tok.text)
+                    (
+                        self._is_transform_boundary_token(tok.token_type, tok.text)
+                        and self._ranking_keyword_starts_step(i)
+                    )
                     or (stop_at_join and self._starts_join_step(i))
                 )
             ):
@@ -2208,6 +2289,20 @@ class ASQLParser(Parser):
             i += 1
 
         return len(self._tokens)
+
+    def _ranking_keyword_starts_step(self, i: int) -> bool:
+        """`rank by x` / `number by x` / `dense rank by x` start a step; `rank()`
+        or `number` as a column inside a projection do not."""
+        tokens = self._tokens
+        word = tokens[i].text.upper()
+        if word not in ("RANK", "NUMBER", "DENSE"):
+            return True
+        after = i + 2 if word == "DENSE" else i + 1
+        if word == "DENSE" and not (
+            i + 1 < len(tokens) and tokens[i + 1].text.upper() == "RANK"
+        ):
+            return False
+        return after < len(tokens) and tokens[after].text.upper() == "BY"
 
     def _consume_tokens_until_index(self, end_index: int) -> None:
         """Advance tokens until self._index == end_index."""
@@ -2240,7 +2335,7 @@ class ASQLParser(Parser):
                 join_token.token_type = original_type
         else:
             condition = self._parse_assignment()
-        self._consume_tokens_until_index(end_index)
+        self._reject_leftover_tokens(end_index)
         return condition
 
     def _parse_asql_select_expressions_until_transform_boundary(
@@ -2261,9 +2356,24 @@ class ASQLParser(Parser):
 
             if not self._match(TokenType.COMMA):
                 break
+            if not self._curr or self._index >= end_index:
+                self.raise_error("Trailing comma: expected another expression")
 
-        self._consume_tokens_until_index(end_index)
+        self._reject_leftover_tokens(end_index)
         return expressions
+
+    def _reject_leftover_tokens(self, end_index: int) -> None:
+        """Raise if a payload parse stopped before the next pipeline step.
+
+        Skipping the rest used to turn `where x = 1 foo bar` into `where x = 1`
+        and `select a, , b` into `select a`: typos and unsupported syntax
+        silently changed the query.
+        """
+        if self._curr and self._index < end_index:
+            self.raise_error(
+                f"Unexpected {self._curr.text!r}: expected a comma, an operator "
+                "or the next pipeline step"
+            )
 
     def _parse_asql_group_by(self, query: exp.Select) -> exp.Select:
         """Parse GROUP BY with optional aggregate block: group by X (agg1, agg2).
@@ -2320,7 +2430,7 @@ class ASQLParser(Parser):
         # Check for aggregate block: group by X (agg1, agg2)
         if self._match(TokenType.L_PAREN):
             query.meta[_GROUP_STAGE] = "block"
-            aggregates = self._parse_csv(self._parse_expression)
+            aggregates = self._parse_aggregate_block_items()
             if not self._match(TokenType.R_PAREN):
                 self.raise_error("Expected ) to close aggregate block")
 
@@ -3266,7 +3376,7 @@ class ASQLParser(Parser):
         # Parse optional aggregations in parens: (sum(amount), count(*))
         if self._match(TokenType.L_PAREN):
             query.meta[_GROUP_STAGE] = "block"
-            aggs = self._parse_csv(self._parse_expression)
+            aggs = self._parse_aggregate_block_items()
             if not self._match(TokenType.R_PAREN):
                 self.raise_error("Expected ) to close aggregate block")
 
@@ -3310,13 +3420,12 @@ class ASQLParser(Parser):
 
         existing = star.args.get("except_") or star.args.get("except") or []
         existing_names = {
-            c.name for c in existing if isinstance(c, exp.Column) and c.name
+            (c.table, c.name) for c in existing if isinstance(c, exp.Column) and c.name
         }
-        new_names = {c.name for c in columns if isinstance(c, exp.Column) and c.name}
-        merged_names = sorted(existing_names.union(new_names))
-        star.set(
-            "except_", [exp.Column(this=exp.to_identifier(n)) for n in merged_names]
-        )
+        new_names = {
+            (c.table, c.name) for c in columns if isinstance(c, exp.Column) and c.name
+        }
+        star.set("except_", _except_columns(existing_names | new_names))
 
         query.set("expressions", expressions)
         return query
@@ -3356,19 +3465,15 @@ class ASQLParser(Parser):
 
         existing = star.args.get("except_") or star.args.get("except") or []
         existing_names = {
-            c.name for c in existing if isinstance(c, exp.Column) and c.name
+            (c.table, c.name) for c in existing if isinstance(c, exp.Column) and c.name
         }
 
         # Renames must exclude the original columns to avoid duplicates
-        rename_old_names = {old.name for old, _ in rename_pairs}
-        merged_names = sorted(existing_names.union(rename_old_names))
-        star.set(
-            "except_", [exp.Column(this=exp.to_identifier(n)) for n in merged_names]
-        )
+        rename_old_names = {(old.table, old.name) for old, _ in rename_pairs}
+        star.set("except_", _except_columns(existing_names | rename_old_names))
 
         expressions.extend(
-            exp.Alias(this=exp.Column(this=old.this), alias=new)
-            for old, new in rename_pairs
+            exp.Alias(this=old.copy(), alias=new) for old, new in rename_pairs
         )
         query.set("expressions", expressions)
         return query
@@ -3378,7 +3483,7 @@ class ASQLParser(Parser):
         # Syntax:
         #   replace col with expr
         #   replace col with expr, col2 with expr2
-        replace_pairs: list[tuple[str, exp.Expr]] = []
+        replace_pairs: list[tuple[exp.Column, exp.Expr]] = []
 
         while True:
             col = self._parse_column()
@@ -3395,7 +3500,7 @@ class ASQLParser(Parser):
                 self.raise_error("Expected expression after WITH in REPLACE clause")
                 return query
 
-            replace_pairs.append((col.name, expr))
+            replace_pairs.append((col, expr))
 
             if not self._match(TokenType.COMMA):
                 break
@@ -3408,17 +3513,14 @@ class ASQLParser(Parser):
 
         existing = star.args.get("except_") or star.args.get("except") or []
         existing_names = {
-            c.name for c in existing if isinstance(c, exp.Column) and c.name
+            (c.table, c.name) for c in existing if isinstance(c, exp.Column) and c.name
         }
 
-        exclude_names = {col for col, _ in replace_pairs}
-        merged_names = sorted(existing_names.union(exclude_names))
-        star.set(
-            "except_", [exp.Column(this=exp.to_identifier(n)) for n in merged_names]
-        )
+        exclude_names = {(col.table, col.name) for col, _ in replace_pairs}
+        star.set("except_", _except_columns(existing_names | exclude_names))
 
         expressions.extend(
-            exp.Alias(this=expr, alias=exp.to_identifier(col))
+            exp.Alias(this=expr, alias=exp.to_identifier(col.name))
             for col, expr in replace_pairs
         )
         query.set("expressions", expressions)

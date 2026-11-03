@@ -10,7 +10,10 @@ The schema is intentionally comprehensive - it includes all columns used in exam
 plus realistic additional columns that such tables would typically have.
 """
 
+import functools
 from typing import Any
+
+from asql.schema import Schema
 
 # SQLGlot MappingSchema format: {table: {column: type}}
 # Types are SQLGlot type strings: VARCHAR, INT, BIGINT, FLOAT, DOUBLE, BOOLEAN,
@@ -352,6 +355,18 @@ PLAYGROUND_SCHEMA: dict[str, dict[str, str]] = {
         "updated_at": "TIMESTAMP",
     },
 }
+
+
+@functools.lru_cache(maxsize=1)
+def playground_schema() -> Schema:
+    """PLAYGROUND_SCHEMA as an ASQL Schema, for compiling playground and docs queries.
+
+    Column types drive BigQuery month/year arithmetic, and the column lists let
+    column operators expand on dialects without EXCLUDE.
+    """
+    return Schema.from_dict(
+        {"tables": {t: {"columns": cols} for t, cols in PLAYGROUND_SCHEMA.items()}}
+    )
 
 
 def get_playground_schema() -> dict[str, dict[str, str]]:

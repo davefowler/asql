@@ -35,6 +35,7 @@ from .schema import (
     get_columns_for_table,
     get_schema_with_metadata,
     get_table_names,
+    playground_schema,
 )
 
 
@@ -272,6 +273,7 @@ async def api_compile(request: CompileRequest) -> dict[str, t.Any]:
             request.asql,
             write=request.dialect,
             pretty=True,
+            schema=playground_schema(),
             **compile_settings,
         )
         sql = results[0] if results else ""

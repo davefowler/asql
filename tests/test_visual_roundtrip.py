@@ -242,9 +242,15 @@ _SCHEMA = Schema.from_dict(
 )
 
 
+_ALIAS_CTE = re.compile(r"_alias\d+_(\d+)")
+
+
 def _cosmetic(node: exp.Expr) -> exp.Expr:
     if isinstance(node, exp.Paren):
         return node.this
+    if isinstance(node, exp.Identifier) and _ALIAS_CTE.fullmatch(node.this):
+        # alias_reuse numbers its CTEs from a process-global counter
+        return exp.Identifier(this=_ALIAS_CTE.sub(r"_alias_\1", node.this))
     if isinstance(node, exp.Star) and node.args.get("except_"):
         # EXCLUDE (a, b) is a set
         node.set("except_", sorted(node.args["except_"], key=lambda c: c.sql()))
@@ -297,10 +303,7 @@ def _visual(query: str, schema: Schema | None = None) -> list[list[dict]]:
 
 # Docs examples whose *original* compilation is already wrong, so there is no
 # correct output to round-trip to. Each is a parser bug tracked separately.
-_KNOWN_BROKEN = {
-    "over cohort": "named window `over <name>` is not parsed; the projection "
-    "after it is silently dropped and `over` becomes an alias",
-}
+_KNOWN_BROKEN: dict[str, str] = {}
 
 
 @pytest.mark.parametrize("dialect", DIALECTS)

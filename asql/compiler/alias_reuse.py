@@ -239,13 +239,27 @@ def _generate_cte_chain_with_prefix(
     # Bare column references are already included in SELECT * and should not be duplicated
     computed_exprs_0 = [e for e in expression_groups[0] if not _is_bare_column(e)]
     base_select = select.copy()
-    base_select.set("expressions", [exp.Star(), *computed_exprs_0])
+    grouped = select.args.get("group") is not None
+    if grouped:
+        # A grouped SELECT cannot project *: its base is the keys and the
+        # first-step aggregates, exactly as written.
+        base_select.set("expressions", [e.copy() for e in expression_groups[0]])
+    else:
+        base_select.set("expressions", [exp.Star(), *computed_exprs_0])
 
-    # Remove WHERE/ORDER BY/etc. from base - they'll go in final CTE
-    base_select.set("where", None)
+    # WHERE filters rows before any window or aggregate is computed, so it
+    # stays on the base unless it refers to an alias the chain computes.
+    # HAVING belongs with the GROUP BY. ORDER BY/LIMIT/QUALIFY apply at the end.
+    alias_names = {name for name in expr_to_alias.values() if name}
+    where_on_base = select.args.get("where") is not None and not (
+        set(_find_column_references(select.args["where"])) & alias_names
+    )
+    if not where_on_base:
+        base_select.set("where", None)
     base_select.set("order", None)
     base_select.set("limit", None)
-    base_select.set("having", None)
+    if not grouped:
+        base_select.set("having", None)
     base_select.set("qualify", None)
 
     # Get FROM clause from original (use from_ which is the correct sqlglot key)
@@ -313,14 +327,14 @@ def _generate_cte_chain_with_prefix(
         exp.From(this=exp.Table(this=exp.Identifier(this=prev_cte_name, quoted=False))),
     )
 
-    # Copy clauses from original SELECT
-    if select.args.get("where"):
+    # Copy the clauses the base did not keep
+    if select.args.get("where") and not where_on_base:
         final_select.set("where", select.args["where"].copy())
     if select.args.get("order"):
         final_select.set("order", select.args["order"].copy())
     if select.args.get("limit"):
         final_select.set("limit", select.args["limit"].copy())
-    if select.args.get("having"):
+    if select.args.get("having") and not grouped:
         final_select.set("having", select.args["having"].copy())
     if select.args.get("qualify"):
         final_select.set("qualify", select.args["qualify"].copy())
