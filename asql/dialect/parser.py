@@ -546,7 +546,6 @@ class ASQLParser(Parser):
         if (
             isinstance(this, exp.Coalesce)
             and not this.expressions
-            and self._prev is not None
             and self._prev.token_type == TokenType.DQMARK
         ):
             self.raise_error("Expected an expression after `??`")
