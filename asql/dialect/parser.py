@@ -37,6 +37,7 @@ from asql.errors import ASQLCompilationError
 from asql.expressions import Spine
 from asql.functions import (
     ASQL_FUNCTION_REGISTRY,
+    COMPREHENSION_META,
     NATURAL_DATE_DIRECTIONS,
     NATURAL_DATE_UNITS,
     SAMPLE_META,
@@ -440,6 +441,7 @@ class ASQLParser(Parser):
                 exprs = node.expressions
                 if exprs and isinstance(exprs[0], exp.Comprehension):
                     comp = exprs[0]
+                    node.meta[COMPREHENSION_META] = comp.copy()
                     converted = self._comprehension_to_array_select(comp)
                     node.set("expressions", converted.expressions)
         return stmt
