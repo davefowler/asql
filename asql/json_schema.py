@@ -713,7 +713,11 @@ def _expression_to_asql(expr: dict[str, Any] | str) -> str:
         args = expr.get("args", [])
         arg_strs = [_expression_to_asql(a) for a in args]
         distinct = "distinct " if expr.get("distinct") else ""
-        return f"{name}({distinct}{', '.join(arg_strs)})"
+        text = f"{name}({distinct}{', '.join(arg_strs)})"
+        if expr.get("over"):
+            # `running_sum(x) over cohort`: partition shorthand
+            text += f" over {_expression_to_asql(expr['over'])}"
+        return text
 
     # Verbatim ASQL text for anything the visual form cannot model
     elif expr_type == "raw":

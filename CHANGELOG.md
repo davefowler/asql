@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- The parser now raises on tokens it cannot place instead of dropping them (`from t where x = 1 foo bar` and `select a, , b` used to compile to a different query); `when … then y + 1, otherwise 0` keeps the full result expression and the `otherwise` branch; `when n < 10 then a, n < 100 then b` branches each carry their own condition; `rename`/`replace` directly after a `select` list parse
+- `<window> over <col>` is read as `over (partition by <col>)` (`first(x order by y) over cohort`, `running_sum(v) over cohort`), as the cohort docs use it; a `WINDOW w AS (...)` clause still binds `over w`
 - The playground image builds on Railway: the `Dockerfile` drops its custom `# syntax=` frontend and `RUN --mount` bind mounts, which Railway's builder rejects
 - The playground compiles against its own tables and column types, so BigQuery month/year arithmetic on its timestamp columns and `except`/`rename`/`replace` on dialects without `EXCLUDE` compile instead of erroring
 - On BigQuery, a relative date compared with a DATE or DATETIME column counts from `CURRENT_DATE` / `CURRENT_DATETIME()` (`d >= 7 days ago`, `d between 30 days ago and now()`), instead of failing with "DATE >= TIMESTAMP"
