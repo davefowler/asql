@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- `except email` followed by `select *, …` keeps the exclusion (the select replaced the projection and the `except` was silently dropped); like `rename`, it now closes the stage
+- The alias-reuse CTE chain for non-DuckDB dialects no longer projects `SELECT *, *` nor re-selects every computed alias after `*` (duplicate output columns on PostgreSQL), and carries the star override (`select *, upper(name) as name`) on its base
+- A strict `>` bound on a DATE-typed column starts the spine the next day; spine bounds read only the query's own `where`, never a subquery's
 - `spine by year(d), month(d)` builds one spine at the finer grain and reads the year off it instead of cross-joining two spines (2 years × 5 months → 5 rows); units that do not nest (`week` with `month`) raise
 - `spine by hour(ts)` is a timestamp series (it fell back to the distinct values, filling no gaps); a timestamp `<` bound ends the spine in the period before it
 - A categorical spine counts the NULL group: `count(*)` counts a never-null row marker instead of the key column

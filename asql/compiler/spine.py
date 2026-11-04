@@ -144,6 +144,13 @@ def transform_spine_expressions(
     return stmt
 
 
+def _column_is_date(settings: CompileSettings, table: str, column: str) -> bool:
+    """True when the schema types ``table.column`` as a DATE (not a timestamp)."""
+    schema_table = settings.schema.get_table(table) if settings.schema else None
+    schema_column = schema_table.get_column(column) if schema_table else None
+    return bool(schema_column and (schema_column.type or "").upper() == "DATE")
+
+
 def _spine_of(group_expr: exp.Expr) -> Spine | None:
     """The Spine node of a GROUP BY key, written bare or as `spine(...) as m`."""
     if isinstance(group_expr, Spine):
@@ -343,7 +350,11 @@ def _apply_spine_transform(
                 # Convert string column name to exp.Column for comparison
                 source_col_expr = exp.Column(this=exp.to_identifier(source_col_name))
                 min_date, max_date, max_exclusive = date_bounds_from_where(
-                    stmt, source_col_expr
+                    stmt,
+                    source_col_expr,
+                    column_is_date=_column_is_date(
+                        settings, source_table, source_col_name
+                    ),
                 )
 
             # Build date spine SQL

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import duckdb
+import sqlglot
 
 import asql
 from asql.schema import Column, Relationship, Schema, Table
@@ -117,3 +118,96 @@ def test_timestamp_literal_is_a_cast_on_postgres() -> None:
     """PostgreSQL has no TIMESTAMP(...) function; the literal must be a cast."""
     sql = asql.transpile("from t where ts < @2024-01-03T06:00:00", write="postgres")[0]
     assert sql == "SELECT * FROM t WHERE ts < CAST('2024-01-03 06:00:00' AS TIMESTAMP)"
+
+
+def test_alias_chain_keeps_one_star_and_no_duplicate_outputs() -> None:
+    """The CTE chain for non-DuckDB dialects projected the user's `*` next to
+    its own (`SELECT *, *`) and re-selected every alias after a `*` that
+    already carried it."""
+    sql = asql.transpile(
+        "from users select *, upper(name) as n, n || 'x' as nx", write="postgres"
+    )[0]
+    assert "*, *" not in sql
+    con = duckdb.connect()
+    con.sql("create table users as select 1 as id, 'a' as name, 'e' as email")
+    rel = con.sql(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
+    assert rel.columns == ["id", "name", "email", "n", "nx"]
+    assert rel.fetchall() == [(1, "a", "e", "A", "Ax")]
+
+
+def test_alias_chain_keeps_the_star_override_on_the_base() -> None:
+    """`select *, upper(name) as name` excludes the source `name`; the chain's
+    base must carry that exclusion or the CTE has two `name` columns."""
+    sql = asql.transpile(
+        "from users select *, upper(name) as name, name || '!' as shout",
+        write="postgres",
+        schema=_users_schema(),
+    )[0]
+    con = duckdb.connect()
+    con.sql("create table users as select 1 as id, 'a' as name, 'e' as email")
+    rel = con.sql(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
+    assert rel.columns == ["id", "email", "name", "shout"]
+    assert rel.fetchall() == [(1, "e", "A", "A!")]
+
+
+def test_except_then_alias_chain_expands_on_postgres() -> None:
+    """With a schema, nothing `EXCEPT`-shaped may survive to PostgreSQL."""
+    sql = asql.transpile(
+        "from users select *, upper(name) as n, n || 'x' as nx except email",
+        write="postgres",
+        schema=_users_schema(),
+    )[0]
+    assert "EXCEPT" not in sql.upper()
+    con = duckdb.connect()
+    con.sql("create table users as select 1 as id, 'a' as name, 'e' as email")
+    rel = con.sql(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
+    assert rel.columns == ["id", "name", "n", "nx"]
+
+
+def _users_schema() -> Schema:
+    return Schema.from_dict(
+        {
+            "tables": {
+                "users": {
+                    "columns": {"id": "INT", "name": "VARCHAR", "email": "VARCHAR"}
+                }
+            }
+        }
+    )
+
+
+def test_strict_lower_bound_on_a_date_column_starts_the_spine_next_day() -> None:
+    schema = Schema.from_dict(
+        {
+            "tables": {
+                "orders": {"columns": {"d": "DATE", "ts": "TIMESTAMP", "amount": "INT"}}
+            }
+        }
+    )
+    con = duckdb.connect()
+    con.sql(
+        "create table orders as select date '2024-01-03' as d, timestamp '2024-01-01 09:00' as ts, 1 as amount"
+    )
+    sql = asql.transpile(
+        "from orders where d > @2024-01-01 and d < @2024-01-05 spine by day(d) (sum(amount) as rev)",
+        write="duckdb",
+        schema=schema,
+    )[0]
+    assert len(con.sql(sql).fetchall()) == 3  # Jan 2, 3, 4
+    # A timestamp column has rows later on the bound's day, so it keeps the day.
+    sql = asql.transpile(
+        "from orders where ts > @2024-01-01 and ts < @2024-01-05 spine by day(ts) (sum(amount) as rev)",
+        write="duckdb",
+        schema=schema,
+    )[0]
+    assert len(con.sql(sql).fetchall()) == 4
+
+
+def test_spine_bounds_ignore_a_subquery_where() -> None:
+    sql = asql.transpile(
+        "from orders where exists (from x where d >= @2020-01-01) "
+        "spine by month(d) (sum(amount) as rev)",
+        write="duckdb",
+    )[0]
+    # Bounds come from the data, not from the subquery's own filter
+    assert "GENERATE_SERIES(CAST(DATE_TRUNC('MONTH', CAST(min_d" in sql
