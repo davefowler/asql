@@ -101,6 +101,9 @@ class TestPipesStyleToggle:
         # First need to switch to visual-asql mode to see style toggles
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(500)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Show the output visual toggle
         visual_toggle = playground_page.locator("#output-visual-style-toggle")
@@ -118,6 +121,9 @@ class TestPipesStyleToggle:
         # Switch to visual-asql to enable style toggles
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(500)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Click pipes style
         playground_page.locator("#output-pipes-style-btn").click()
@@ -138,6 +144,9 @@ class TestPipesVisualization:
         # Set up: enter a simple query and switch to visual output with pipes mode
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(300)
 
         # Enter a simple query in input
@@ -163,6 +172,9 @@ class TestPipesVisualization:
         """Test that pipe nodes are rendered for queries."""
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(300)
 
         # Enter query
@@ -191,6 +203,9 @@ class TestPipesVisualization:
         """Test that transform steps are displayed within nodes."""
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(300)
 
         # Enter query with multiple transforms
@@ -233,6 +248,9 @@ class TestPipesWithCTEs:
         playground_page.select_option("#from-dialect", example["dialect"])
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Enter CTE query
         input_editor = playground_page.locator("#input-editor .CodeMirror")
@@ -263,6 +281,9 @@ class TestPipesWithCTEs:
         playground_page.select_option("#from-dialect", example["dialect"])
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         input_editor = playground_page.locator("#input-editor .CodeMirror")
         input_editor.click()
@@ -292,6 +313,9 @@ class TestPipesWithCTEs:
         playground_page.select_option("#from-dialect", example["dialect"])
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         input_editor = playground_page.locator("#input-editor .CodeMirror")
         input_editor.click()
@@ -316,6 +340,9 @@ class TestPipesStyleModes:
     def test_switch_between_all_styles(self, playground_page: Page):
         """Test switching between text, blocky, and pipes styles."""
         playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(300)
 
         # Get all style buttons
@@ -348,6 +375,9 @@ class TestPipesStyleModes:
         """Test that pipes style applies the correct CSS class."""
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Switch to pipes
         playground_page.locator("#output-pipes-style-btn").click()
@@ -361,6 +391,9 @@ class TestPipesStyleModes:
         """Test that switching styles preserves the query content."""
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(300)
 
         # Enter a query
@@ -398,6 +431,9 @@ class TestPipesNodeInteraction:
         """Test that hovering over a node shows visual feedback."""
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(300)
 
         input_editor = playground_page.locator("#input-editor .CodeMirror")
