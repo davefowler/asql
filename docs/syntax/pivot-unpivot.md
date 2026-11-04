@@ -151,8 +151,8 @@ SELECT *, 'apr' AS month, apr AS value FROM monthly_metrics
 Unpivot:
 
 ```asql-play
-from quarterly_data
-  unpivot q1_sales, q2_sales, q3_sales, q4_sales into quarter, sales
+from quarterly_metrics
+  unpivot q1, q2, q3, q4 into quarter, value
 ```
 
 Result:

@@ -63,7 +63,7 @@ ASQL queries flow top-to-bottom in execution order:
 
 ```asql-play
 from sales
-  where extract(year from date) = 2024
+  where extract(year from sale_date) = 2024
   group by region ( sum(amount) as revenue )
   where revenue > 1000
   order by -revenue
@@ -114,15 +114,16 @@ from orders
 
 ```asql-play
 -- Previous period comparison
-from monthly_sales
-  select month, revenue, prior(revenue) as prev_revenue
+from sales
+  order by sale_date
+  select sale_date, revenue, prior(revenue) as prev_revenue
 ```
 
 ```asql-play
 -- Running totals (the running_sum accumulates in the query's order)
-from daily_sales
-  order by date
-  select date, revenue, running_sum(revenue) as cumulative
+from sales
+  order by sale_date
+  select sale_date, revenue, running_sum(revenue) as cumulative
 ```
 
 | ASQL | SQL Equivalent | dbt_utils Macro |

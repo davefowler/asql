@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import duckdb
+import pytest
 import sqlglot
 
 import asql
+from asql.errors import ASQLCompilationError
 from asql.schema import Column, Relationship, Schema, Table
 
 from .fixtures import transpile
@@ -211,3 +213,44 @@ def test_spine_bounds_ignore_a_subquery_where() -> None:
     )[0]
     # Bounds come from the data, not from the subquery's own filter
     assert "GENERATE_SERIES(CAST(DATE_TRUNC('MONTH', CAST(min_d" in sql
+
+
+def test_prior_and_next_take_the_query_ordering() -> None:
+    """LAG/LEAD only exist as window functions; a bare `prior(x)` was invalid SQL."""
+    sql = asql.transpile(
+        "from sales order by sale_date select sale_date, revenue, "
+        "prior(revenue) as prev, next(revenue, 2) as after",
+        write="duckdb",
+    )[0]
+    assert "LAG(revenue, 1) OVER (ORDER BY sale_date" in sql
+    assert "LEAD(revenue, 2) OVER (ORDER BY sale_date" in sql
+    con = duckdb.connect()
+    con.sql(
+        "create table sales as select * from (values (date '2024-01-01', 1), (date '2024-01-02', 2), (date '2024-01-03', 3)) t(sale_date, revenue)"
+    )
+    assert [r[2] for r in con.sql(sql).fetchall()] == [None, 1, 2]
+
+
+def test_prior_without_an_ordering_raises() -> None:
+    with pytest.raises(ASQLCompilationError, match="prior\\(\\) needs an ordering"):
+        asql.transpile(
+            "from sales select revenue, prior(revenue) as prev", write="duckdb"
+        )
+
+
+def test_prior_with_an_explicit_over_is_kept() -> None:
+    sql = asql.transpile(
+        "from sales select revenue, prior(revenue) over (partition by region order by sale_date) as prev",
+        write="duckdb",
+    )[0]
+    assert "LAG(revenue, 1) OVER (PARTITION BY region ORDER BY sale_date" in sql
+
+
+def test_non_aggregate_pivot_uses_max() -> None:
+    """Spec: a bare column pivots with MAX, which also works for strings."""
+    sql = asql.transpile(
+        "from user_settings pivot value by setting_name values ('theme', 'language') group by user_id",
+        write="duckdb",
+    )[0]
+    assert "MAX(value)" in sql
+    assert "SUM(" not in sql

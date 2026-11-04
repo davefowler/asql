@@ -358,12 +358,19 @@ GROUP BY region
 **ASQL:**
 ```asql-play
 from sales
-group by region, month ( sum(amount) as revenue )
+group by region, month(sale_date) as month ( sum(amount) as revenue )
 ```
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT region, month, SUM(amount) AS revenue FROM sales GROUP BY region, month
+SELECT
+  sales.region AS region,
+  DATE_TRUNC('MONTH', sales.sale_date) AS month,
+  SUM(sales.amount) AS revenue
+FROM sales
+GROUP BY
+  sales.region,
+  month
 ```
 
 ### GROUP BY with WHERE
@@ -371,16 +378,20 @@ SELECT region, month, SUM(amount) AS revenue FROM sales GROUP BY region, month
 **ASQL:**
 ```asql-play
 from sales
-where year = 2024
+where extract(year from sale_date) = 2024
 group by region ( sum(amount) as revenue )
 ```
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT region, SUM(amount) AS revenue
+SELECT
+  sales.region AS region,
+  SUM(sales.amount) AS revenue
 FROM sales
-WHERE year = 2024
-GROUP BY region
+WHERE
+  EXTRACT(YEAR FROM sales.sale_date) = 2024
+GROUP BY
+  sales.region
 ```
 
 ### All Aggregation Functions
@@ -432,12 +443,39 @@ SELECT * FROM users ORDER BY name ASC
 **ASQL:**
 ```asql-play
 from users
-order by -total_users
+order by -created_at
 ```
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT * FROM users ORDER BY total_users DESC
+SELECT
+  users.id AS id,
+  users.user_id AS user_id,
+  users.name AS name,
+  users.email AS email,
+  users.phone AS phone,
+  users.domain AS domain,
+  users.country AS country,
+  users.region AS region,
+  users.city AS city,
+  users.timezone AS timezone,
+  users.status AS status,
+  users.is_active AS is_active,
+  users.age AS age,
+  users.gender AS gender,
+  users.channel AS channel,
+  users.source AS source,
+  users.campaign AS campaign,
+  users.created_at AS created_at,
+  users.updated_at AS updated_at,
+  users.signup_date AS signup_date,
+  users.last_login AS last_login,
+  users.deleted_at AS deleted_at,
+  users.password_hash AS password_hash,
+  users.internal_notes AS internal_notes
+FROM users
+ORDER BY
+  users.created_at DESC NULLS LAST
 ```
 
 ### Multiple Sort Columns
@@ -445,12 +483,40 @@ SELECT * FROM users ORDER BY total_users DESC
 **ASQL:**
 ```asql-play
 from users
-order by -total_users, name
+order by -created_at, name
 ```
 
 **SQL (PostgreSQL):**
 ```sql
-SELECT * FROM users ORDER BY total_users DESC, name ASC
+SELECT
+  users.id AS id,
+  users.user_id AS user_id,
+  users.name AS name,
+  users.email AS email,
+  users.phone AS phone,
+  users.domain AS domain,
+  users.country AS country,
+  users.region AS region,
+  users.city AS city,
+  users.timezone AS timezone,
+  users.status AS status,
+  users.is_active AS is_active,
+  users.age AS age,
+  users.gender AS gender,
+  users.channel AS channel,
+  users.source AS source,
+  users.campaign AS campaign,
+  users.created_at AS created_at,
+  users.updated_at AS updated_at,
+  users.signup_date AS signup_date,
+  users.last_login AS last_login,
+  users.deleted_at AS deleted_at,
+  users.password_hash AS password_hash,
+  users.internal_notes AS internal_notes
+FROM users
+ORDER BY
+  users.created_at DESC NULLS LAST,
+  users.name NULLS FIRST
 ```
 
 ### TAKE/LIMIT
@@ -540,7 +606,7 @@ The `-` prefix makes it easy to order by by columns in descending order. It also
 ```asql-play
 from sales
 where status = "completed" and amount > 100
-group by region, month (
+group by region, month(sale_date) as month (
     sum(amount) as revenue,
     # as order_count,
     avg(amount) as avg_order
@@ -552,15 +618,19 @@ limit 20
 **SQL (PostgreSQL):**
 ```sql
 SELECT
-    region,
-    month,
-    SUM(amount) AS revenue,
-    COUNT(*) AS order_count,
-    AVG(amount) AS avg_order
+  sales.region AS region,
+  DATE_TRUNC('MONTH', sales.sale_date) AS month,
+  SUM(sales.amount) AS revenue,
+  COUNT(*) AS order_count,
+  AVG(sales.amount) AS avg_order
 FROM sales
-WHERE status = 'completed' AND amount > 100
-GROUP BY region, month
-ORDER BY revenue DESC
+WHERE
+  sales.status = 'completed' AND sales.amount > 100
+GROUP BY
+  sales.region,
+  month
+ORDER BY
+  revenue DESC NULLS LAST
 LIMIT 20
 ```
 
@@ -597,7 +667,7 @@ from sales
 where (status = "completed" or status = "pending")
     and amount >= 50
     and created_at is not null
-group by product_category (
+group by category (
     sum(amount) as total_revenue,
     # as total_orders,
     avg(amount) as avg_order_value,
@@ -610,17 +680,22 @@ limit 10
 **SQL (PostgreSQL):**
 ```sql
 SELECT
-    product_category,
-    SUM(amount) AS total_revenue,
-    COUNT(*) AS total_orders,
-    AVG(amount) AS avg_order_value,
-    MAX(amount) AS max_order_value
+  sales.category AS category,
+  SUM(sales.amount) AS total_revenue,
+  COUNT(*) AS total_orders,
+  AVG(sales.amount) AS avg_order_value,
+  MAX(sales.amount) AS max_order_value
 FROM sales
-WHERE (status = 'completed' OR status = 'pending')
-    AND amount >= 50
-    AND created_at IS NOT NULL
-GROUP BY product_category
-ORDER BY total_revenue DESC
+WHERE
+  (
+    sales.status = 'completed' OR sales.status = 'pending'
+  )
+  AND sales.amount >= 50
+  AND NOT sales.created_at IS NULL
+GROUP BY
+  sales.category
+ORDER BY
+  total_revenue DESC NULLS LAST
 LIMIT 10
 ```
 
