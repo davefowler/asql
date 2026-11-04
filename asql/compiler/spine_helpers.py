@@ -170,19 +170,36 @@ def extract_date_bounds_from_where(
     stmt: exp.Expr,
     column_expr: exp.Expr,
 ) -> tuple[str | None, str | None]:
-    """Extract date bounds from WHERE clause for a given column expression.
+    """The (min, max) bounds of ``date_bounds_from_where``."""
+    min_date, max_date, _ = date_bounds_from_where(stmt, column_expr)
+    return min_date, max_date
+
+
+def date_bounds_from_where(
+    stmt: exp.Expr,
+    column_expr: exp.Expr,
+    column_is_date: bool = False,
+) -> tuple[str | None, str | None, bool]:
+    """Extract date bounds from the query's own WHERE for a column expression.
 
     Looks for conditions like:
     - col >= '2024-01-01' (min bound)
     - col <= '2024-12-31' (max bound)
     - col BETWEEN '2024-01-01' AND '2024-12-31' (both bounds)
+
+    Returns (min, max, max_exclusive). A date-literal `<` bound is shifted a
+    day earlier here; a timestamp (or other non-date) `<` bound is returned as
+    written with ``max_exclusive`` True, for the series builder to end before.
+    A strict `>` shifts a day later only when the column is known to be a
+    DATE (``column_is_date``): a timestamp column has rows later that day.
     """
-    where = stmt.find(exp.Where)
+    where = stmt.args.get("where") if isinstance(stmt, exp.Select) else None
     if not where:
-        return None, None
+        return None, None, False
 
     min_date: str | None = None
     max_date: str | None = None
+    max_exclusive = False
 
     def bound(node: exp.Expr, day_offset: int = 0) -> str | None:
         """SQL for a date-literal bound, shifted by ``day_offset`` days; None when
@@ -203,7 +220,10 @@ def extract_date_bounds_from_where(
             )
         ):
             iso = node.this.this
-        elif not isinstance(node, (exp.Literal, exp.Cast)):
+        elif not (
+            isinstance(node, (exp.Literal, exp.Cast))
+            or (isinstance(node, exp.Timestamp) and isinstance(node.this, exp.Literal))
+        ):
             return None
         if iso is None or not _ISO_DATE.match(iso):
             return node.sql()
@@ -211,17 +231,18 @@ def extract_date_bounds_from_where(
         return f"CAST('{shifted.isoformat()}' AS DATE)"
 
     def check_condition(node: exp.Expr) -> None:
-        nonlocal min_date, max_date
+        nonlocal min_date, max_date, max_exclusive
 
         if isinstance(node, (exp.GTE, exp.GT)):
             if _columns_match(node.this, column_expr):
-                # Not shifted for strict `>`: on a timestamp column rows later on
-                # the bound's day still belong to its period.
-                min_date = bound(node.expression)
+                shift = 1 if isinstance(node, exp.GT) and column_is_date else 0
+                min_date = bound(node.expression, shift)
         elif isinstance(node, (exp.LTE, exp.LT)):
             if _columns_match(node.this, column_expr):
                 # A strict `<` ends the day before: `< @2024-04-01` has no April.
-                max_date = bound(node.expression, -1 if isinstance(node, exp.LT) else 0)
+                strict = isinstance(node, exp.LT)
+                max_date = bound(node.expression, -1 if strict else 0)
+                max_exclusive = strict and not _is_date_literal(node.expression)
         elif isinstance(node, exp.Between):
             if _columns_match(node.this, column_expr):
                 min_date = bound(node.args["low"])
@@ -231,7 +252,31 @@ def extract_date_bounds_from_where(
             check_condition(node.expression)
 
     check_condition(where.this)
-    return min_date, max_date
+    return min_date, max_date, max_exclusive
+
+
+def _is_date_literal(node: exp.Expr) -> bool:
+    """A literal DATE (`@2024-01-01`), as opposed to a timestamp or expression."""
+    if isinstance(node, exp.Date) and isinstance(node.this, exp.Literal):
+        return bool(_ISO_DATE.match(node.this.this))
+    return (
+        isinstance(node, exp.Cast)
+        and isinstance(node.this, exp.Literal)
+        and node.to.is_type(exp.DataType.Type.DATE)
+        and bool(_ISO_DATE.match(node.this.this))
+    )
+
+
+def _series_end(max_date: str, trunc_unit: str, dialect: str, exclusive: bool) -> str:
+    """The last value of the series: ``max_date`` itself, or for an exclusive
+    bound the period just before it (one second earlier, truncated)."""
+    if not exclusive:
+        return max_date
+    if dialect == "bigquery":
+        return f"TIMESTAMP_TRUNC(TIMESTAMP_SUB(TIMESTAMP({max_date}), INTERVAL 1 SECOND), {trunc_unit.upper()})"
+    if dialect == "snowflake":
+        return f"DATE_TRUNC('{trunc_unit}', DATEADD(second, -1, {max_date}))"
+    return f"DATE_TRUNC('{trunc_unit}', {max_date}::timestamp - INTERVAL '1 second')"
 
 
 def build_date_spine_sql(
@@ -242,41 +287,48 @@ def build_date_spine_sql(
     interval: str,
     dialect: str | None = None,
     include_null: bool = False,
+    max_exclusive: bool = False,
 ) -> str:
     """Build SQL for a date spine with explicit bounds.
 
     Uses generate_series (or equivalent) to create all date values
-    between min_date and max_date at the specified interval.
+    between min_date and max_date at the specified interval. An hour spine
+    is a timestamp series; the others are date series. ``max_exclusive``
+    ends the series in the period before ``max_date`` (see ``_series_end``).
     """
     dialect_lower = dialect.lower() if dialect else ""
     null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
+    end = _series_end(max_date, trunc_unit, dialect_lower, max_exclusive)
+    # Sub-day periods need a timestamp series; a date series has no hours.
+    t = "timestamp" if trunc_unit == "hour" else "date"
 
-    if dialect_lower in ("postgres", "postgresql", "redshift"):
-        return (
-            f"SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias} "
-            f"FROM generate_series(DATE_TRUNC('{trunc_unit}', {min_date}::date)::date, {max_date}::date, INTERVAL '{interval}') AS d"
-        ) + null_union
     if dialect_lower == "bigquery":
+        if trunc_unit == "hour":
+            return (
+                f"SELECT DISTINCT TIMESTAMP_TRUNC(d, HOUR) AS {alias} "
+                f"FROM UNNEST(GENERATE_TIMESTAMP_ARRAY(TIMESTAMP({min_date}), TIMESTAMP({end}), INTERVAL 1 HOUR)) AS d"
+            ) + null_union
         return (
             f"SELECT DISTINCT DATE_TRUNC(d, {trunc_unit.upper()}) AS {alias} "
-            f"FROM UNNEST(GENERATE_DATE_ARRAY({min_date}, {max_date})) AS d"
+            f"FROM UNNEST(GENERATE_DATE_ARRAY({min_date}, DATE({end}))) AS d"
         ) + null_union
     if dialect_lower == "snowflake":
+        start = f"{min_date}::{t}"
         return (
-            f"SELECT DISTINCT DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), {min_date})) AS {alias} "
+            f"SELECT DISTINCT DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), {start})) AS {alias} "
             f"FROM TABLE(GENERATOR(ROWCOUNT => 10000)) "
-            f"WHERE DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), {min_date})) <= {max_date}"
+            f"WHERE DATE_TRUNC('{trunc_unit}', DATEADD({trunc_unit}, SEQ4(), {start})) <= {end}"
         ) + null_union
     if dialect_lower == "duckdb":
         return (
             f"SELECT DATE_TRUNC('{trunc_unit}', d) AS {alias} "
-            f"FROM generate_series(DATE_TRUNC('{trunc_unit}', {min_date}::date)::date, {max_date}::date, INTERVAL '{interval}') AS t(d)"
+            f"FROM generate_series(DATE_TRUNC('{trunc_unit}', {min_date}::{t})::{t}, {end}::{t}, INTERVAL '{interval}') AS t(d)"
         ) + null_union
 
-    # Default (generic SQL)
+    # PostgreSQL, Redshift and generic SQL
     return (
-        f"SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias} "
-        f"FROM generate_series(DATE_TRUNC('{trunc_unit}', {min_date}::date)::date, {max_date}::date, INTERVAL '{interval}') AS d"
+        f"SELECT DATE_TRUNC('{trunc_unit}', d::{t}) AS {alias} "
+        f"FROM generate_series(DATE_TRUNC('{trunc_unit}', {min_date}::{t})::{t}, {end}::{t}, INTERVAL '{interval}') AS d"
     ) + null_union
 
 
@@ -298,23 +350,30 @@ def build_date_spine_from_data_sql(
     dialect_lower = dialect.lower() if dialect else ""
     null_union = f" UNION ALL SELECT NULL AS {alias}" if include_null else ""
 
+    t = "timestamp" if trunc_unit == "hour" else "date"
     if dialect_lower in ("postgres", "postgresql", "redshift"):
         return (
             f"WITH bounds AS (SELECT MIN({col_expr}) as min_d, MAX({col_expr}) as max_d FROM {source_table} {where_sql}) "
-            f"SELECT DATE_TRUNC('{trunc_unit}', d::date) AS {alias} "
-            f"FROM bounds, generate_series(DATE_TRUNC('{trunc_unit}', min_d::date)::date, max_d::date, INTERVAL '{interval}') AS d"
+            f"SELECT DATE_TRUNC('{trunc_unit}', d::{t}) AS {alias} "
+            f"FROM bounds, generate_series(DATE_TRUNC('{trunc_unit}', min_d::{t})::{t}, max_d::{t}, INTERVAL '{interval}') AS d"
         ) + null_union
     if dialect_lower == "duckdb":
         return (
             f"WITH bounds AS (SELECT MIN({col_expr}) as min_d, MAX({col_expr}) as max_d FROM {source_table} {where_sql}) "
             f"SELECT DATE_TRUNC('{trunc_unit}', d) AS {alias} "
-            f"FROM bounds, generate_series(DATE_TRUNC('{trunc_unit}', min_d::date)::date, max_d::date, INTERVAL '{interval}') AS t(d)"
+            f"FROM bounds, generate_series(DATE_TRUNC('{trunc_unit}', min_d::{t})::{t}, max_d::{t}, INTERVAL '{interval}') AS t(d)"
         ) + null_union
 
     # Every other dialect: the bounds are scalar subqueries over the data, and
     # the explicit-bounds builder spells the series for that dialect.
     bounds_from = f"FROM {source_table} {where_sql}".strip()
-    cast = "DATE({0})" if dialect_lower == "bigquery" else "{0}"
+    cast = (
+        "TIMESTAMP({0})"
+        if dialect_lower == "bigquery" and trunc_unit == "hour"
+        else "DATE({0})"
+        if dialect_lower == "bigquery"
+        else "{0}"
+    )
     lo = cast.format(f"(SELECT MIN({col_expr}) {bounds_from})")
     hi = cast.format(f"(SELECT MAX({col_expr}) {bounds_from})")
     return build_date_spine_sql(

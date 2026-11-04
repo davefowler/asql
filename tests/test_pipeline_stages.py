@@ -115,3 +115,14 @@ def test_order_and_limit_after_select_stay_on_the_same_stage() -> None:
     assert transpile("from t select a, b order by -a limit 5") == (
         "SELECT a, b FROM t ORDER BY a DESC LIMIT 5"
     )
+
+
+def test_select_after_except_reads_the_excluded_projection() -> None:
+    """`except email` fixes the projection as much as `rename` does: a later
+    `select *` reads that stage rather than replacing it (the exclusion was
+    silently dropped)."""
+    sql = transpile("from users except email select *, upper(name) as n")
+    assert sql == (
+        "WITH __tmp1 AS (SELECT * EXCLUDE (email) FROM users) "
+        "SELECT *, UPPER(name) AS n FROM __tmp1"
+    )

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - With a semantic graph loaded, `information_schema.columns` also lists each model's metrics (`data_type = 'METRIC'`) and reachable `relationship.attribute` columns, so schema exploration finds them beside physical columns
+- Playground tables `employees`, `departments`, `issue_custom_fields`, `user_settings` and `monthly_metrics`, used by the docs' recursion, FK-shorthand, pivot and unpivot examples
 - `just test <path>` runs only that path (the recipe used to run the whole suite as well); CI runs the execution tests against PostgreSQL 16 (`PostgresExecutor`, enabled by `ASQL_TEST_POSTGRES_URL`), executes every docs ` ```asql-play ` block on DuckDB (`tests/test_docs_execute.py`), and checks a corpus of malformed queries all raise (`tests/test_parse_strictness.py`)
 - `tests/test_visual_roundtrip.py` also runs every ` ```asql-play ` block in the docs (217 queries) through the round trip, with the docs build's schema and settings
 - Contributor setup: `AGENTS.md` (conventions, pointed to by `CLAUDE.md`), `just check` and `just review` recipes, a `/review` project command and a pull request template
@@ -27,6 +28,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- `prior()` / `next()` compile to `LAG` / `LEAD` with an `OVER` clause that takes the query's `order by` (they emitted a bare `LAG(x, 1)`, invalid everywhere); without an ordering they raise
+- A non-aggregate pivot (`pivot value by setting_name …`) uses `MAX` as the spec says, so string values work (it used `SUM`)
+- `spine by quarter(d) as quarter` keeps its alias outside the spine marker, so the aggregate block's projection is `quarter(d) AS quarter` and the Visual ASQL round trip holds
+- Every docs ` ```asql-play ` example now runs against the playground schema: 42 examples named tables or columns it lacked (`date`, `month`, `product`, `monthly_data`, …) and are rewritten on existing columns, with explicit aliases where they sorted by a date part
+- Fanout protection: a many-side join it skipped still gets the inflation warning (it was silenced along with the rewritten ones); a collapsed join no longer warns that it multiplies rows; stage-2 protection applies when a group key carries an alias (`group by orders.customer_id as cust`)
+- `except email` followed by `select *, …` keeps the exclusion (the select replaced the projection and the `except` was silently dropped); like `rename`, it now closes the stage
+- The alias-reuse CTE chain for non-DuckDB dialects no longer projects `SELECT *, *` nor re-selects every computed alias after `*` (duplicate output columns on PostgreSQL), and carries the star override (`select *, upper(name) as name`) on its base
+- A strict `>` bound on a DATE-typed column starts the spine the next day; spine bounds read only the query's own `where`, never a subquery's
+- `spine by year(d), month(d)` builds one spine at the finer grain and reads the year off it instead of cross-joining two spines (2 years × 5 months → 5 rows); units that do not nest (`week` with `month`) raise
+- `spine by hour(ts)` is a timestamp series (it fell back to the distinct values, filling no gaps); a timestamp `<` bound ends the spine in the period before it
+- A categorical spine counts the NULL group: `count(*)` counts a never-null row marker instead of the key column
+- `@2024-01-03T06:00:00` is `CAST(… AS TIMESTAMP)` on PostgreSQL, which has no `TIMESTAMP()` function
 - A `where` written before the first join qualifies its bare columns with the FROM table, so `from orders where status = "paid" & customers …` no longer fails as ambiguous when the joined table has the column too
 - `select`, `group by` and `except` with nothing after them, `a ??` with no right side, `when … then` with no result and `… as` with no name raise instead of silently compiling to something else
 - Docs examples that named columns the playground schema lacks (`ssn`, `salary`, `password`, `orders.date`, `orders.name`) and the cohort examples' ambiguous `count(distinct user_id)` after a join

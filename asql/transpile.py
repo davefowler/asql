@@ -319,6 +319,23 @@ def _resolve_running_window_order(ast: exp.Expr) -> exp.Expr:
             core.set("order", outer.args["order"].copy())
         outer.replace(inner)
 
+    # Pass 1.5: prior()/next() are LAG/LEAD, which only exist as window
+    # functions; give them the query's ordering (or an explicit `over`).
+    for shift in list(ast.find_all(exp.Lag, exp.Lead)):
+        if isinstance(shift.parent, exp.Window):
+            continue
+        select = shift.find_ancestor(exp.Select)
+        order = select.args.get("order") if select else None
+        if order is None or select is None:
+            name = "prior" if isinstance(shift, exp.Lag) else "next"
+            raise ASQLCompilationError(
+                f"{name}() needs an ordering: add `order by` to the query, or "
+                "write an explicit `over (order by ...)`"
+            )
+        window = exp.Window(this=shift.copy())
+        window.set("order", _order_without_aliases(order, select, window))
+        shift.replace(window)
+
     # Pass 2: inherit the query ORDER BY into any framed window still missing one.
     # After Pass 1 merges an explicit `over (partition by ...)`, the frame window may
     # now carry a partition but still no order — it must not slip through here.
@@ -391,10 +408,12 @@ def _transform_date_parts(
         transform_bigquery_calendar_intervals,
         transform_bigquery_relative_date_comparisons,
         transform_day_of_year,
+        transform_timestamp_literals,
         transform_timezone_source,
     )
 
     ast = transform_timezone_source(transform_day_of_year(ast, dialect), dialect)
+    ast = transform_timestamp_literals(ast, dialect)
     # Relative dates move to CURRENT_DATE first, so their intervals type as DATE.
     ast = transform_bigquery_relative_date_comparisons(ast, dialect, schema)
     return transform_bigquery_calendar_intervals(ast, dialect, schema)

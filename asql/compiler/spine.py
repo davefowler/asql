@@ -29,8 +29,8 @@ from asql.compiler.spine_helpers import (
     build_date_spine_from_data_sql,
     build_date_spine_sql,
     build_distinct_values_spine_sql,
+    date_bounds_from_where,
     detect_rollup_cube,
-    extract_date_bounds_from_where,
     generate_spine_comment,
 )
 from asql.config import CompileSettings
@@ -41,6 +41,72 @@ from asql.functions import week_trunc
 logger = logging.getLogger(__name__)
 
 _WHERE_PLACEHOLDER = "__asql_spine_where__"
+_ROW_MARKER = "__asql_row"
+
+# Which coarser units a finer unit's periods nest in exactly. Weeks straddle
+# months, so a week spine cannot derive a month key (nor the reverse).
+_NESTS_IN: dict[str, frozenset[str]] = {
+    "hour": frozenset({"day", "week", "month", "quarter", "year"}),
+    "day": frozenset({"week", "month", "quarter", "year"}),
+    "week": frozenset(),
+    "month": frozenset({"quarter", "year"}),
+    "quarter": frozenset({"year"}),
+    "year": frozenset(),
+}
+_UNIT_RANK = {u: i for i, u in enumerate(_NESTS_IN)}
+
+
+class _SpineKey:
+    """How a spined GROUP BY key is read once the spines drive the query.
+
+    ``ref`` is the expression the projection and GROUP BY use in place of the
+    key (a spine CTE column, or a truncation of a finer spine's column);
+    ``key`` is the source-side expression it joins on; ``cte`` names the CTE
+    this key owns, None when it is derived from another key's spine.
+    """
+
+    def __init__(
+        self, ref: exp.Expr, inner: exp.Expr, key: exp.Expr, cte: str | None
+    ) -> None:
+        self.ref = ref
+        self.inner = inner
+        self.key = key
+        self.cte = cte
+
+
+def _derived_date_keys(
+    spine_columns: list[tuple[str, exp.Expr, str | None, bool]],
+) -> dict[int, int]:
+    """Map the index of each date key to the index of the finest-grained date
+    key on the same source column, when they differ.
+
+    `spine by year(d), month(d)` wants every month with its year, not every
+    year crossed with every month: the month spine alone drives the query and
+    the year key is read off it. Raise when the units do not nest.
+    """
+    by_source: dict[str, list[int]] = {}
+    for index, (_, inner, unit, is_date) in enumerate(spine_columns):
+        source = _get_source_column_from_trunc(inner) if is_date and unit else None
+        if source is not None and unit in _UNIT_RANK:
+            by_source.setdefault(source.sql(), []).append(index)
+    derived: dict[int, int] = {}
+    for indexes in by_source.values():
+        if len(indexes) < 2:
+            continue
+        finest = min(indexes, key=lambda i: _UNIT_RANK[spine_columns[i][2] or ""])
+        fine_unit = spine_columns[finest][2] or ""
+        for index in indexes:
+            if index == finest:
+                continue
+            unit = spine_columns[index][2] or ""
+            if unit not in _NESTS_IN[fine_unit]:
+                raise ASQLCompilationError(
+                    f"spine by {unit} and {fine_unit} of the same column: "
+                    f"{fine_unit}s do not nest in {unit}s. Spine by one unit "
+                    "and derive the other in the projection."
+                )
+            derived[index] = finest
+    return derived
 
 
 def transform_spine_expressions(
@@ -76,6 +142,13 @@ def transform_spine_expressions(
             continue
         _apply_spine_transform(select, _find_spine_columns(select), dialect, settings)
     return stmt
+
+
+def _column_is_date(settings: CompileSettings, table: str, column: str) -> bool:
+    """True when the schema types ``table.column`` as a DATE (not a timestamp)."""
+    schema_table = settings.schema.get_table(table) if settings.schema else None
+    schema_column = schema_table.get_column(column) if schema_table else None
+    return bool(schema_column and (schema_column.type or "").upper() == "DATE")
 
 
 def _spine_of(group_expr: exp.Expr) -> Spine | None:
@@ -152,7 +225,7 @@ def _get_trunc_unit(expr: exp.Expr) -> str | None:
     if isinstance(expr, exp.TimestampTrunc):
         ts_unit = expr.args.get("unit")
         if (
-            isinstance(ts_unit, exp.Literal)
+            isinstance(ts_unit, (exp.Literal, exp.Var))
             and ts_unit.this.lower() in TRUNC_TO_INTERVAL
         ):
             return ts_unit.this.lower()
@@ -176,7 +249,7 @@ def _get_trunc_unit(expr: exp.Expr) -> str | None:
         dt_unit = expr.args.get("unit")
         if isinstance(dt_unit, exp.WeekStart):
             return "week"
-        if isinstance(dt_unit, exp.Literal):
+        if isinstance(dt_unit, (exp.Literal, exp.Var)):
             return dt_unit.this.lower()
 
     return None
@@ -224,7 +297,9 @@ def _apply_spine_transform(
         existing_ctes = list(with_clause.expressions)
 
     spine_ctes = []
-    spine_keys: list[tuple[str, str, exp.Expr, exp.Expr]] = []
+    spine_keys: list[_SpineKey] = []
+    derived = _derived_date_keys(spine_columns)
+    derived_pending: list[tuple[int, str, exp.Expr, exp.Expr]] = []
 
     # Get the source table for categorical spines
     from_clause = stmt.args.get("from_")
@@ -235,7 +310,7 @@ def _apply_spine_transform(
     # Extract WHERE bounds for date spines
     where_clause = stmt.args.get("where")
 
-    for alias, inner_expr, trunc_unit, is_date in spine_columns:
+    for index, (alias, inner_expr, trunc_unit, is_date) in enumerate(spine_columns):
         spine_alias = f"{alias}_spine"
         # Distinct from any source column so the join/ON conditions stay unambiguous.
         spine_col = f"{alias}_key"
@@ -259,24 +334,40 @@ def _apply_spine_transform(
             source_col_name = (
                 source_col.name if isinstance(source_col, exp.Column) else None
             )
+            if index in derived:
+                # Read off the finer spine on the same column, built below.
+                derived_pending.append(
+                    (derived[index], trunc_unit, inner_expr, key_expr)
+                )
+                continue
 
             # Get interval for this truncation unit
             interval = TRUNC_TO_INTERVAL.get(trunc_unit, "1 day")
 
             # Try to extract bounds from WHERE
-            min_date, max_date = None, None
+            min_date, max_date, max_exclusive = None, None, False
             if where_clause and source_col_name:
                 # Convert string column name to exp.Column for comparison
                 source_col_expr = exp.Column(this=exp.to_identifier(source_col_name))
-                min_date, max_date = extract_date_bounds_from_where(
-                    stmt, source_col_expr
+                min_date, max_date, max_exclusive = date_bounds_from_where(
+                    stmt,
+                    source_col_expr,
+                    column_is_date=_column_is_date(
+                        settings, source_table, source_col_name
+                    ),
                 )
 
             # Build date spine SQL
             # Note: signature is (alias, trunc_unit, min_date, max_date, interval, dialect)
             if min_date and max_date:
                 spine_sql = build_date_spine_sql(
-                    spine_col, trunc_unit, min_date, max_date, interval, dialect
+                    spine_col,
+                    trunc_unit,
+                    min_date,
+                    max_date,
+                    interval,
+                    dialect,
+                    max_exclusive=max_exclusive,
                 )
             else:
                 # Use data-based bounds
@@ -330,7 +421,14 @@ def _apply_spine_transform(
                     alias=exp.TableAlias(this=exp.to_identifier(spine_alias)),
                 )
                 spine_ctes.append(spine_cte)
-                spine_keys.append((spine_alias, spine_col, inner_expr, key_expr))
+                spine_keys.append(
+                    _SpineKey(
+                        exp.column(spine_col, table=spine_alias),
+                        inner_expr,
+                        key_expr,
+                        spine_alias,
+                    )
+                )
             except Exception as e:  # noqa: BLE001
                 # Log at ERROR level with context to help debugging
                 logger.error(
@@ -370,7 +468,14 @@ def _apply_spine_transform(
                     alias=exp.TableAlias(this=exp.to_identifier(spine_alias)),
                 )
                 spine_ctes.append(spine_cte)
-                spine_keys.append((spine_alias, spine_col, inner_expr, key_expr))
+                spine_keys.append(
+                    _SpineKey(
+                        exp.column(spine_col, table=spine_alias),
+                        inner_expr,
+                        key_expr,
+                        spine_alias,
+                    )
+                )
             except Exception as e:  # noqa: BLE001
                 # Log at ERROR level with context
                 logger.error(
@@ -382,10 +487,20 @@ def _apply_spine_transform(
 
     if not spine_ctes:
         return _unwrap_spine_expressions(stmt)
-    if len(spine_ctes) != len(spine_columns):
+    if len(spine_ctes) + len(derived_pending) != len(spine_columns):
         raise ASQLCompilationError(
             "could not build a spine for every spine column; see logged errors"
         )
+    built = {key.cte: key for key in spine_keys}
+    for finest_index, unit, inner_expr, key_expr in derived_pending:
+        finest = built[f"{spine_columns[finest_index][0]}_spine"]
+        week_start = week_start_of(inner_expr)
+        ref = (
+            week_trunc(finest.ref.copy(), week_start)
+            if week_start
+            else exp.func("DATE_TRUNC", exp.Literal.string(unit), finest.ref.copy())
+        )
+        spine_keys.append(_SpineKey(ref, inner_expr, key_expr, None))
 
     # Combine CTEs
     all_ctes = existing_ctes + spine_ctes
@@ -401,10 +516,7 @@ def _apply_spine_transform(
     return stmt
 
 
-def _rewire_to_spines(
-    stmt: exp.Select,
-    spine_keys: list[tuple[str, str, exp.Expr, exp.Expr]],
-) -> None:
+def _rewire_to_spines(stmt: exp.Select, spine_keys: list[_SpineKey]) -> None:
     """Make the spines drive the query so empty periods survive.
 
     FROM <spines, cross joined> LEFT JOIN <original source> ON <keys match AND WHERE>.
@@ -412,12 +524,7 @@ def _rewire_to_spines(
     rows the spine exists to produce. Spined keys in the projection and GROUP BY
     read from the spine column; COUNT(*) counts matched source rows only.
     """
-    refs = [
-        (inner.sql(), exp.column(spine_col, table=spine_alias), key)
-        for spine_alias, spine_col, inner, key in spine_keys
-    ]
-
-    ref_by_sql = {sql: ref for sql, ref, _ in refs}
+    ref_by_sql = {key.inner.sql(): key.ref for key in spine_keys}
 
     group = stmt.args["group"]
 
@@ -448,31 +555,44 @@ def _rewire_to_spines(
                 node.replace(ref.copy())
     stmt.set("expressions", projections)
     source = stmt.args["from_"].this
-    first_key = refs[0][2].copy()
-    if isinstance(source, exp.Table) and not stmt.args.get("joins"):
-        # Qualified: the projection may alias the same name (`... AS status`),
-        # and a bare `status` inside COUNT would read as that alias downstream.
-        qualifier = source.alias or source.name
-        for column in first_key.find_all(exp.Column):
-            if not column.table:
-                column.set("table", exp.to_identifier(qualifier))
-    for count in stmt.find_all(exp.Count):
-        if isinstance(count.this, exp.Star) and count.find_ancestor(exp.Select) is stmt:
-            count.set("this", first_key.copy())
     joins = stmt.args.get("joins") or []
+    counts = [
+        count
+        for count in stmt.find_all(exp.Count)
+        if isinstance(count.this, exp.Star) and count.find_ancestor(exp.Select) is stmt
+    ]
+    qualifier = source.alias_or_name if not joins else ""
+    if counts and qualifier:
+        # COUNT(*) would count the NULL-extended row of an empty period, and
+        # COUNT(<key>) misses a NULL categorical key; count a marker column
+        # that is never NULL on the source side instead.
+        marked = exp.select(
+            exp.Star(), exp.alias_(exp.Literal.number(1), _ROW_MARKER)
+        ).from_(source.copy())
+        source = exp.Subquery(
+            this=marked,
+            alias=exp.TableAlias(this=exp.to_identifier(qualifier)),
+        )
+        for count in counts:
+            count.set("this", exp.column(_ROW_MARKER, table=qualifier))
+    elif counts:
+        # Joined or unnamed sources: the first key is NULL only on the
+        # NULL-extended rows (and for a NULL categorical key).
+        for count in counts:
+            count.set("this", spine_keys[0].key.copy())
     if joins:
         source.set("joins", joins)
         source = exp.Subquery(this=source)
     # Null-safe so a NULL categorical key keeps its rows instead of vanishing.
     on: exp.Expr = exp.and_(
-        *[exp.NullSafeEQ(this=ref, expression=key) for _, ref, key in refs]
+        *[exp.NullSafeEQ(this=key.ref.copy(), expression=key.key) for key in spine_keys]
     )
     where = stmt.args.get("where")
     if where is not None:
         on = exp.and_(on, where.this)
         stmt.set("where", None)
 
-    spine_tables = [exp.to_table(spine_alias) for spine_alias, *_ in spine_keys]
+    spine_tables = [exp.to_table(key.cte) for key in spine_keys if key.cte]
     stmt.set("from_", exp.From(this=spine_tables[0]))
     stmt.set(
         "joins",

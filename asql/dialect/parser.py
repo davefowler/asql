@@ -52,6 +52,16 @@ if t.TYPE_CHECKING:
     pass
 
 
+def _unwrap_spine(key: exp.Expr) -> exp.Expr:
+    """The GROUP BY key without its spine() marker: `spine(x)` → x,
+    `spine(x) as m` → `x as m`."""
+    if isinstance(key, Spine):
+        return key.this
+    if isinstance(key, exp.Alias) and isinstance(key.this, Spine):
+        return exp.Alias(this=key.this.this, alias=key.args["alias"])
+    return key
+
+
 def _build_spine_expression(args: list[t.Any]) -> Spine:
     """Build a Spine expression from function arguments.
 
@@ -74,6 +84,16 @@ def _build_spine_expression(args: list[t.Any]) -> Spine:
 def _except_columns(names: set[tuple[str, str]]) -> list[exp.Column]:
     """EXCEPT list entries, qualified as written and in a stable order."""
     return [exp.column(name, table=table or None) for table, name in sorted(names)]
+
+
+def _is_plain_star_projection(query: exp.Query) -> bool:
+    """True when the query still projects a bare `*`: no columns chosen and no
+    column operator (`except`, `rename`, `replace`) applied to the star."""
+    expressions = query.expressions
+    if len(expressions) != 1 or not isinstance(expressions[0], exp.Star):
+        return False
+    star = expressions[0]
+    return not any(star.args.get(k) for k in ("except_", "except", "replace", "rename"))
 
 
 def _select_all(table: exp.Expr) -> exp.Select:
@@ -1044,9 +1064,10 @@ class ASQLParser(Parser):
             values = self._parse_csv(self._parse_primary)
             self._match_r_paren()
 
-        # Ensure agg_expr is wrapped in an aggregate function if it's just a column
+        # A bare column pivots its value as-is (spec: "non-aggregate pivot uses
+        # MAX"), which also works for strings; SUM would reject them.
         if isinstance(agg_expr, exp.Column):
-            agg_expr = exp.Sum(this=agg_expr)
+            agg_expr = exp.Max(this=agg_expr)
 
         # Build the Pivot expression matching SQLGlot's structure
         fields: list[exp.Expr] = (
@@ -2015,10 +2036,12 @@ class ASQLParser(Parser):
         ) and transform_name not in self._STEPS_ON_SAME_LIMITED_STAGE:
             # `limit 10 where x = 1` filters the ten rows, not the table.
             query = self._build_pipe_cte(query, [exp.Star()])
-        elif [type(e) for e in query.expressions] != [
-            exp.Star
-        ] and transform_name in self._STEPS_ON_GROUPED_OUTPUT:
-            # An earlier select fixed the projection; this step reads it.
+        elif (
+            not _is_plain_star_projection(query)
+            and transform_name in self._STEPS_ON_GROUPED_OUTPUT
+        ):
+            # An earlier select (or except/rename/replace) fixed the
+            # projection; this step reads it.
             query = self._build_pipe_cte(query, [exp.Star()])
         return self.TRANSFORM_PARSERS[transform_name](self, query)
 
@@ -2458,10 +2481,9 @@ class ASQLParser(Parser):
             # GROUP BY key only; the projection selects x itself.
             # Copies: a key shared by GROUP BY and the projection would only be
             # resolved (week start, ...) in one of them by node.replace().
-            select_exprs = [
-                t.cast(exp.Expr, e.this if isinstance(e, Spine) else e).copy()
-                for e in expressions
-            ] + list(aggregates)
+            select_exprs = [_unwrap_spine(e).copy() for e in expressions] + list(
+                aggregates
+            )
             query.select(*select_exprs, append=False, copy=False)
 
         return query
@@ -3395,8 +3417,15 @@ class ASQLParser(Parser):
             if not expr:
                 break
 
-            # Wrap in Spine
-            columns.append(Spine(this=expr))
+            # Wrap in Spine; `quarter(d) as quarter` keeps the alias outside the
+            # Spine so every later stage (and the visual form) sees a normal
+            # aliased key.
+            if isinstance(expr, exp.Alias):
+                columns.append(
+                    exp.Alias(this=Spine(this=expr.this), alias=expr.args["alias"])
+                )
+            else:
+                columns.append(Spine(this=expr))
 
             # After parsing expression, check for aggregate block
             if self._curr and self._curr.token_type == TokenType.L_PAREN:
@@ -3421,12 +3450,9 @@ class ASQLParser(Parser):
             if not self._match(TokenType.R_PAREN):
                 self.raise_error("Expected ) to close aggregate block")
 
-            # Replace SELECT * with spine columns + aggs
-            new_select = []
-            for spine_col in columns:
-                # Extract inner expression from Spine for SELECT
-                inner = spine_col.this
-                new_select.append(inner.copy())
+            # Replace SELECT * with spine columns + aggs; the projection selects
+            # the key itself (aliased as written), spine() only marks GROUP BY.
+            new_select = [_unwrap_spine(spine_col).copy() for spine_col in columns]
             new_select.extend(aggs)
             query.select(*new_select, append=False, copy=False)
 

@@ -354,6 +354,67 @@ PLAYGROUND_SCHEMA: dict[str, dict[str, str]] = {
         "created_at": "TIMESTAMP",
         "updated_at": "TIMESTAMP",
     },
+    "monthly_metrics": {
+        # Primary key
+        "id": "BIGINT",
+        # Dimensions
+        "metric_name": "VARCHAR",
+        "region": "VARCHAR",
+        "year": "INT",
+        # Monthly values (for unpivot examples)
+        "jan": "DOUBLE",
+        "feb": "DOUBLE",
+        "mar": "DOUBLE",
+        "apr": "DOUBLE",
+        "may": "DOUBLE",
+        "jun": "DOUBLE",
+        "jul": "DOUBLE",
+        "aug": "DOUBLE",
+        "sep": "DOUBLE",
+        "oct": "DOUBLE",
+        "nov": "DOUBLE",
+        "dec": "DOUBLE",
+        # Timestamps
+        "created_at": "TIMESTAMP",
+    },
+    # ==========================================================================
+    # ENTITY-ATTRIBUTE-VALUE TABLES (for pivot examples)
+    # ==========================================================================
+    "issue_custom_fields": {
+        "id": "BIGINT",
+        "issue_id": "BIGINT",
+        "field_name": "VARCHAR",
+        "field_value": "VARCHAR",
+        "created_at": "TIMESTAMP",
+    },
+    "user_settings": {
+        "id": "BIGINT",
+        "user_id": "BIGINT",
+        "setting_name": "VARCHAR",
+        "value": "VARCHAR",
+        "updated_at": "TIMESTAMP",
+    },
+    # ==========================================================================
+    # HR TABLES (for recursion and FK shorthand examples)
+    # ==========================================================================
+    "employees": {
+        "id": "BIGINT",
+        "employee_id": "BIGINT",
+        "name": "VARCHAR",
+        "email": "VARCHAR",
+        "title": "VARCHAR",
+        "department_id": "BIGINT",
+        "manager_id": "BIGINT",
+        "salary": "DOUBLE",
+        "hired_at": "DATE",
+        "created_at": "TIMESTAMP",
+    },
+    "departments": {
+        "id": "BIGINT",
+        "name": "VARCHAR",
+        "budget": "DOUBLE",
+        "created_at": "TIMESTAMP",
+    },
 }
 
 
@@ -460,6 +521,31 @@ SCHEMA_METADATA = {
         "description": "Quarterly business metrics",
         "primary_key": "id",
         "category": "analytics",
+    },
+    "monthly_metrics": {
+        "description": "Monthly business metrics, one column per month",
+        "primary_key": "id",
+        "category": "analytics",
+    },
+    "issue_custom_fields": {
+        "description": "Custom fields on issues, one row per field",
+        "primary_key": "id",
+        "category": "other",
+    },
+    "user_settings": {
+        "description": "User preferences, one row per setting",
+        "primary_key": "id",
+        "category": "other",
+    },
+    "employees": {
+        "description": "Employees with their manager and department",
+        "primary_key": "id",
+        "category": "other",
+    },
+    "departments": {
+        "description": "Departments",
+        "primary_key": "id",
+        "category": "other",
     },
 }
 

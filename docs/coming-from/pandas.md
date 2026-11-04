@@ -88,12 +88,12 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
 
 === "ASQL"
     ```asql-play
-    from orders
-    select *,
-        price * quantity as total,
-        year(date) as year,
-        amount > 1000 as is_large
-    ```
+    from order_items
+        select *,
+            price * quantity as line_total,
+            year(created_at) as year,
+            total > 1000 as is_large
+```
 
 ---
 
@@ -257,9 +257,9 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
 
 === "ASQL"
     ```asql-play
-    from orders
-    pivot sum(amount) by category values ('Electronics', 'Clothing', 'Home')
-    ```
+    from sales
+        pivot sum(amount) by category values ('Electronics', 'Clothing', 'Home')
+```
 
 ---
 
@@ -277,9 +277,9 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
 
 === "ASQL"
     ```asql-play
-    from monthly_data
-    unpivot jan, feb, mar into month, value
-    ```
+    from monthly_metrics
+        unpivot jan, feb, mar into month, value
+```
 
 ---
 
@@ -327,9 +327,9 @@ The big difference is execution model: **ASQL compiles to SQL and runs in your w
 === "ASQL"
     ```asql-play
     from orders
-    select *,
-        year(date) as year,
-        month(date) as month,
-        day of week date as day_of_week,
-        days_since_date as days_ago
-    ```
+        select *,
+            year(order_date) as year,
+            month(order_date) as month,
+            day of week order_date as day_of_week,
+            days_since_order_date as days_ago
+```

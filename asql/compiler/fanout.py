@@ -93,7 +93,10 @@ def _protect_select(query: exp.Select, settings: CompileSettings) -> None:
 
     diagnostics: list[str] = []
     forward_matches = _find_many_side_joins(query, alias_map, settings)
+    # Joins this pass reported on: rewritten ones can no longer multiply rows
+    # and need no risk warning; skipped ones still can, and get one.
     handled_aliases: set[str] = set()
+    rewritten_aliases: set[str] = set()
 
     for join_info in forward_matches:
         if _depends_on_many_side_shape(query, join_info.right_alias):
@@ -120,6 +123,7 @@ def _protect_select(query: exp.Select, settings: CompileSettings) -> None:
                     f"DISTINCT {join_info.fk_column} before joining (join used as filter)."
                 )
                 handled_aliases.add(join_info.right_alias)
+                rewritten_aliases.add(join_info.right_alias)
             continue
 
         subquery = _build_preagg_subquery(join_info, plans)
@@ -140,6 +144,7 @@ def _protect_select(query: exp.Select, settings: CompileSettings) -> None:
             f"{join_info.fk_column} before joining."
         )
         handled_aliases.add(join_info.right_alias)
+        rewritten_aliases.add(join_info.right_alias)
 
     if not forward_matches:
         stage2_diagnostic = _apply_reverse_stage2(query, alias_map, settings)
@@ -148,7 +153,7 @@ def _protect_select(query: exp.Select, settings: CompileSettings) -> None:
 
     diagnostics.extend(
         _fanout_risk_warnings(
-            query, alias_map, settings, forward_matches, handled_aliases
+            query, alias_map, settings, forward_matches, rewritten_aliases
         )
     )
 
@@ -261,9 +266,9 @@ def _fanout_risk_warnings(
     alias_map: dict[str, str],
     settings: CompileSettings,
     forward_matches: list[_ManySideJoin],
-    handled_aliases: set[str],
+    rewritten_aliases: set[str],
 ) -> list[str]:
-    """Warn on schema-provable fanout risk the rewrite pass did not handle."""
+    """Warn on schema-provable fanout risk the rewrite pass did not remove."""
     warnings: list[str] = []
 
     reverse_matches = _find_reverse_one_side_joins(query, alias_map, settings)
@@ -277,7 +282,7 @@ def _fanout_risk_warnings(
 
     for join_info in forward_matches:
         alias = join_info.right_alias
-        if alias in handled_aliases or _has_aggregate_reference(query, alias):
+        if alias in rewritten_aliases or _has_aggregate_reference(query, alias):
             continue
         if _query_has_aggregates(query):
             warnings.append(
@@ -286,7 +291,8 @@ def _fanout_risk_warnings(
             )
 
     # Only a joined many side multiplies rows; a reverse (N:1) join cannot,
-    # so bare COUNT(*) is already row-accurate there.
+    # so bare COUNT(*) is already row-accurate there. A rewritten join still
+    # warns: the rewrite changed what COUNT(*) counts.
     if forward_matches and _has_bare_count_star(query):
         warnings.append(
             "ASQL fanout warning: COUNT(*) counts joined rows at the current "
@@ -660,7 +666,11 @@ def _apply_reverse_stage2(
     group = query.args.get("group")
     if not isinstance(group, exp.Group):
         return None
-    group_cols = list(group.expressions)
+    # `group by orders.customer_id as cust`: the projection carries the alias,
+    # the key itself is the column.
+    group_cols = [
+        key.this if isinstance(key, exp.Alias) else key for key in group.expressions
+    ]
     if not all(isinstance(col, exp.Column) for col in group_cols):
         return None
     group_names = [col.name.lower() for col in group_cols]
