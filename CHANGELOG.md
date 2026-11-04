@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- `spine by year(d), month(d)` builds one spine at the finer grain and reads the year off it instead of cross-joining two spines (2 years × 5 months → 5 rows); units that do not nest (`week` with `month`) raise
+- `spine by hour(ts)` is a timestamp series (it fell back to the distinct values, filling no gaps); a timestamp `<` bound ends the spine in the period before it
+- A categorical spine counts the NULL group: `count(*)` counts a never-null row marker instead of the key column
+- `@2024-01-03T06:00:00` is `CAST(… AS TIMESTAMP)` on PostgreSQL, which has no `TIMESTAMP()` function
 - A `where` written before the first join qualifies its bare columns with the FROM table, so `from orders where status = "paid" & customers …` no longer fails as ambiguous when the joined table has the column too
 - `select`, `group by` and `except` with nothing after them, `a ??` with no right side, `when … then` with no result and `… as` with no name raise instead of silently compiling to something else
 - Docs examples that named columns the playground schema lacks (`ssn`, `salary`, `password`, `orders.date`, `orders.name`) and the cohort examples' ambiguous `count(distinct user_id)` after a join

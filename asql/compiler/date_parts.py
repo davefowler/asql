@@ -200,3 +200,17 @@ def retarget_spine_weeks(spine: exp.Expr, start: str) -> exp.Expr:
         if isinstance(unit, exp.WeekStart) or unit.name.upper() == "WEEK":
             node.replace(week_trunc(node.this, start))
     return spine
+
+
+_TIMESTAMP_FUNC_IS_INVALID = frozenset({"postgres", "postgresql", "redshift"})
+
+
+def transform_timestamp_literals(ast: exp.Expr, dialect: str) -> exp.Expr:
+    """Spell `@2024-01-03T06:00:00` as a cast where `TIMESTAMP('…')` is not a
+    function: PostgreSQL has the type but no such function."""
+    if dialect.lower() not in _TIMESTAMP_FUNC_IS_INVALID:
+        return ast
+    for node in list(ast.find_all(exp.Timestamp)):
+        if isinstance(node.this, exp.Literal) and node.args.get("zone") is None:
+            node.replace(exp.cast(node.this.copy(), exp.DataType.Type.TIMESTAMP))
+    return ast
