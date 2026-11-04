@@ -15,6 +15,14 @@ Thanks for helping. The short version:
 ## Repository settings (maintainers)
 
 `main` should be protected in **Settings → Branches**: require a pull
-request, require the `test`, `lint`, `docker` and `build` status checks, and
-squash merging only. These settings are not in the repo, so re-check them
-after any transfer or rename.
+request, require the `test`, `postgres`, `lint`, `docker`, `e2e` and `build`
+status checks, and squash merging only. These settings are not in the repo,
+so re-check them after any transfer or rename.
+
+Dependabot (`.github/dependabot.yml`) opens one grouped PR a week per
+ecosystem (uv, npm, GitHub Actions); merge them like any other PR once CI is
+green.
+
+Releases are git tags: bump `version` in `pyproject.toml`, move the
+`## [Unreleased]` entries in `CHANGELOG.md` under the new version, and tag
+the squash commit `vX.Y.Z` on `main`. Nothing publishes automatically.

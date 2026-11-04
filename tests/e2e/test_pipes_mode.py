@@ -88,13 +88,13 @@ class TestPipesStyleToggle:
         """Verify the pipes style toggle button exists in the input panel."""
         pipes_btn = playground_page.locator("#pipes-style-btn")
         expect(pipes_btn).to_be_attached()
-        expect(pipes_btn).to_have_attribute("title", "Yahoo Pipes Style")
+        expect(pipes_btn).to_have_attribute("title", "Flow/Pipes Style")
 
     def test_pipes_button_exists_in_output_panel(self, playground_page: Page):
         """Verify the pipes style toggle button exists in the output panel."""
         pipes_btn = playground_page.locator("#output-pipes-style-btn")
         expect(pipes_btn).to_be_attached()
-        expect(pipes_btn).to_have_attribute("title", "Yahoo Pipes Style")
+        expect(pipes_btn).to_have_attribute("title", "Flow/Pipes Style")
 
     def test_toggle_to_pipes_style(self, playground_page: Page):
         """Test switching to pipes style activates the button."""

@@ -1,0 +1,26 @@
+# Keeps the pinned toolchains current: uv.lock (Python), package-lock.json
+# (ESLint), and the SHA-pinned GitHub Actions. One PR per ecosystem per week,
+# grouped so a dozen patch bumps arrive as one review.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
