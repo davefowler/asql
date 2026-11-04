@@ -102,7 +102,7 @@ You can compute multiple aggregates in a single group by:
 
 ```asql-play
 from sales
-group by product (
+group by product_id (
     sum(amount) as revenue,
     avg(amount) as avg_order_value,
     min(amount) as min_order,
@@ -176,7 +176,7 @@ limit 10
 
 ```asql-play
 from events
-group by month(date) (
+group by month(event_date) (
     # as event_count
 )
 ```
@@ -195,7 +195,7 @@ To get a number instead of a date, use `month of year date` (1-12), `day of week
 
 ```asql-play
 from events
-group by date_trunc("month", date) (
+group by date_trunc("month", event_date) (
     # as events_per_month
 )
 ```
@@ -364,7 +364,7 @@ Find the top 5 products by revenue in each category:
 
 ```asql-play
 from sales
-group by category, product (
+group by category, product_id (
     sum(amount) as revenue
 )
 order by category, -revenue
@@ -376,12 +376,12 @@ Daily revenue for the last 30 days:
 
 ```asql-play
 from orders
-where date >= 30 days ago
-group by date_trunc("day", date) (
+where order_date >= 30 days ago
+group by date_trunc("day", order_date) as day (
     sum(amount) as daily_revenue,
     # as order_count
 )
-order by date
+order by day
 ```
 
 ### Cohort Analysis
@@ -390,7 +390,7 @@ User signups by month:
 
 ```asql-play
 from users
-group by year(created_at), month(created_at) (
+group by year(created_at) as year, month(created_at) as month (
     # as signups
 )
 order by year, month
@@ -415,7 +415,7 @@ Here's a complete query that demonstrates multiple features:
 
 ```asql-play
 from orders
-  where date >= @2024-01-01
+  where order_date >= @2024-01-01
     and status = "completed"
   & products on orders.product_id = products.id
   group by products.category (

@@ -113,7 +113,7 @@ Group by multiple columns separated by commas:
 
 ```asql-play
 from sales
-  group by region, year(date) (
+  group by region, year(sale_date) (
     sum(amount) as revenue,
     # as transactions
   )
@@ -159,7 +159,7 @@ from sales
 When you use functions without explicit `AS` aliases, ASQL automatically generates meaningful column names:
 
 ```asql-play
-from orders
+from sales
   group by region (
     sum(amount),         -- → column: sum_amount
     avg(price),          -- → column: avg_price
@@ -185,7 +185,7 @@ Natural language aliases map to SQL functions:
 
 ```asql-play
 from sales
-  group by product (
+  group by product_id (
     total amount as revenue,
     average price as avg_price
   )
@@ -314,7 +314,7 @@ from orders
 ```asql-play
 from orders
   where extract(year from created_at) = 2024
-  group by month(created_at) (
+  group by month(created_at) as month (
     sum(amount) as revenue,
     # as orders,
     avg(amount) as avg_order

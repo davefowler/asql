@@ -420,7 +420,7 @@ from tickets
 ```asql-play
 from sales
   where extract(year from sale_date) = 2024
-  spine by region, quarter(sale_date) (
+  spine by region, quarter(sale_date) as quarter (
     sum(amount) ?? 0 as revenue
   )
   order by region, quarter

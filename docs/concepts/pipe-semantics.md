@@ -28,7 +28,7 @@ ASQL puts operations in execution order:
 
 ```asql-play
 from sales                               -- 1st: start here
-  where extract(year from date) = 2024                -- 2nd: filter
+  where extract(year from sale_date) = 2024           -- 2nd: filter
   group by region (sum(amount) as revenue) -- 3rd: aggregate
   where revenue > 1000                   -- 4th: filter (HAVING)
   order by -revenue                      -- 5th: sort
@@ -64,7 +64,7 @@ from orders
   where status = "completed"
   & customers on orders.customer_id = customers.id
   where customers.country = "US"
-  group by customers.state (
+  group by customers.region (
     sum(orders.amount) as revenue
   )
 ```

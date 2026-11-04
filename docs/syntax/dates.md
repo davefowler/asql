@@ -324,7 +324,7 @@ from orders
 
 ```asql-play
 from users
-  group by month(created_at) (
+  group by month(created_at) as month (
     # as signups
   )
   order by month

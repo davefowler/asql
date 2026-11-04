@@ -148,7 +148,7 @@ from sales
 Transform columns into rows:
 
 ```asql-play
-from metrics
+from monthly_metrics
   unpivot jan, feb, mar into month, value
 ```
 
@@ -452,7 +452,7 @@ These words have special meaning and cannot be used as unquoted identifiers:
 
 To use a reserved word as an identifier, quote it:
 
-```asql-play
+```asql
 from `order`        -- Table named 'order'
 select `select`     -- Column named 'select'
 ```

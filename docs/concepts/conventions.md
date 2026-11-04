@@ -168,9 +168,9 @@ If your schema doesn't follow conventions:
 ### Non-Standard FK Names
 
 ```asql-play
--- accounts.primary_contact → contacts.id (non-standard)
-from accounts
-  &? contacts on accounts.primary_contact = contacts.id
+-- deals.owner_id → users.id (owner_id would otherwise look for an owners table)
+from deals
+  &? users on deals.owner_id = users.id
 ```
 
 ### Custom Relationships

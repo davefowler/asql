@@ -55,8 +55,8 @@ from orders ?&? customers on orders.customer_id = customers.id
 Every combination of rows (cartesian product):
 
 ```asql-play
-from products * colors
-  select products.name, colors.name as color
+from users * products
+  select users.name, products.name as product
 ```
 
 ## Table Aliasing

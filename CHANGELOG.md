@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Playground tables `employees`, `departments`, `issue_custom_fields`, `user_settings` and `monthly_metrics`, used by the docs' recursion, FK-shorthand, pivot and unpivot examples
 - `just test <path>` runs only that path (the recipe used to run the whole suite as well); CI runs the execution tests against PostgreSQL 16 (`PostgresExecutor`, enabled by `ASQL_TEST_POSTGRES_URL`), executes every docs ` ```asql-play ` block on DuckDB (`tests/test_docs_execute.py`), and checks a corpus of malformed queries all raise (`tests/test_parse_strictness.py`)
 - `tests/test_visual_roundtrip.py` also runs every ` ```asql-play ` block in the docs (217 queries) through the round trip, with the docs build's schema and settings
 - Contributor setup: `AGENTS.md` (conventions, pointed to by `CLAUDE.md`), `just check` and `just review` recipes, a `/review` project command and a pull request template
@@ -26,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- `prior()` / `next()` compile to `LAG` / `LEAD` with an `OVER` clause that takes the query's `order by` (they emitted a bare `LAG(x, 1)`, invalid everywhere); without an ordering they raise
+- A non-aggregate pivot (`pivot value by setting_name …`) uses `MAX` as the spec says, so string values work (it used `SUM`)
+- `spine by quarter(d) as quarter` keeps its alias outside the spine marker, so the aggregate block's projection is `quarter(d) AS quarter` and the Visual ASQL round trip holds
+- Every docs ` ```asql-play ` example now runs against the playground schema: 42 examples named tables or columns it lacked (`date`, `month`, `product`, `monthly_data`, …) and are rewritten on existing columns, with explicit aliases where they sorted by a date part
 - Fanout protection: a many-side join it skipped still gets the inflation warning (it was silenced along with the rewritten ones); a collapsed join no longer warns that it multiplies rows; stage-2 protection applies when a group key carries an alias (`group by orders.customer_id as cust`)
 - `except email` followed by `select *, …` keeps the exclusion (the select replaced the projection and the `except` was silently dropped); like `rename`, it now closes the stage
 - The alias-reuse CTE chain for non-DuckDB dialects no longer projects `SELECT *, *` nor re-selects every computed alias after `*` (duplicate output columns on PostgreSQL), and carries the star override (`select *, upper(name) as name`) on its base

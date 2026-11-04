@@ -124,7 +124,7 @@ pivot field_value by field_name values ('priority', 'status', 'assignee')
 And unpivoting (“pivot longer”) is equally direct:
 
 ```asql-play
-from monthly_data
+from monthly_metrics
 unpivot jan, feb, mar into month, value
 ```
 

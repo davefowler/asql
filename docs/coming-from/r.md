@@ -91,12 +91,12 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
 === "ASQL"
     ```asql-play
     from orders
-    group by region, month(date) (
-        sum(amount) as revenue,
-        # as orders,
-        count(distinct customer_id) as customers
-    )
-    ```
+        group by region, month(order_date) as month (
+            sum(amount) as revenue,
+            # as orders,
+            count(distinct customer_id) as customers
+        )
+```
 
 ---
 
@@ -111,8 +111,8 @@ In dplyr you usually start with a data frame; in ASQL you start with a table:
 === "ASQL"
     ```asql-play
     from orders
-    order by -date, customer_id
-    ```
+        order by -order_date, customer_id
+```
 
 ---
 
