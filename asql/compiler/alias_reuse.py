@@ -31,7 +31,7 @@ def _is_bare_column(expr: exp.Expr) -> bool:
 
     These are already included in SELECT * and should not be duplicated.
     """
-    return isinstance(expr, exp.Column)
+    return isinstance(expr, (exp.Column, exp.Star))
 
 
 def _find_column_references(expr: exp.Expr) -> list[str]:
@@ -240,12 +240,16 @@ def _generate_cte_chain_with_prefix(
     computed_exprs_0 = [e for e in expression_groups[0] if not _is_bare_column(e)]
     base_select = select.copy()
     grouped = select.args.get("group") is not None
+    # The user's own `*` (with any except/replace it carries, such as the star
+    # override for `select *, upper(name) as name`) is the base's star.
+    user_star = next((e for e in select.expressions if isinstance(e, exp.Star)), None)
     if grouped:
         # A grouped SELECT cannot project *: its base is the keys and the
         # first-step aggregates, exactly as written.
         base_select.set("expressions", [e.copy() for e in expression_groups[0]])
     else:
-        base_select.set("expressions", [exp.Star(), *computed_exprs_0])
+        base_star = user_star.copy() if user_star is not None else exp.Star()
+        base_select.set("expressions", [base_star, *computed_exprs_0])
 
     # WHERE filters rows before any window or aggregate is computed, so it
     # stays on the base unless it refers to an alias the chain computes.
@@ -311,7 +315,17 @@ def _generate_cte_chain_with_prefix(
     final_expressions: list[exp.Expr] = []
     for orig_expr in select.expressions:
         alias_name = _extract_alias_name(orig_expr)
-        if alias_name:
+        if (
+            user_star is not None
+            and not grouped
+            and not isinstance(orig_expr, exp.Star)
+        ):
+            # The chain's last step already holds every column, computed ones
+            # included: naming them again would duplicate them.
+            continue
+        if isinstance(orig_expr, exp.Star):
+            final_expressions.append(exp.Star())
+        elif alias_name:
             # Reference the computed alias from the CTE chain
             final_expressions.append(
                 exp.Column(this=exp.Identifier(this=alias_name, quoted=False))

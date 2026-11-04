@@ -76,6 +76,16 @@ def _except_columns(names: set[tuple[str, str]]) -> list[exp.Column]:
     return [exp.column(name, table=table or None) for table, name in sorted(names)]
 
 
+def _is_plain_star_projection(query: exp.Query) -> bool:
+    """True when the query still projects a bare `*`: no columns chosen and no
+    column operator (`except`, `rename`, `replace`) applied to the star."""
+    expressions = query.expressions
+    if len(expressions) != 1 or not isinstance(expressions[0], exp.Star):
+        return False
+    star = expressions[0]
+    return not any(star.args.get(k) for k in ("except_", "except", "replace", "rename"))
+
+
 def _select_all(table: exp.Expr) -> exp.Select:
     """Create SELECT * FROM table expression.
 
@@ -2015,10 +2025,12 @@ class ASQLParser(Parser):
         ) and transform_name not in self._STEPS_ON_SAME_LIMITED_STAGE:
             # `limit 10 where x = 1` filters the ten rows, not the table.
             query = self._build_pipe_cte(query, [exp.Star()])
-        elif [type(e) for e in query.expressions] != [
-            exp.Star
-        ] and transform_name in self._STEPS_ON_GROUPED_OUTPUT:
-            # An earlier select fixed the projection; this step reads it.
+        elif (
+            not _is_plain_star_projection(query)
+            and transform_name in self._STEPS_ON_GROUPED_OUTPUT
+        ):
+            # An earlier select (or except/rename/replace) fixed the
+            # projection; this step reads it.
             query = self._build_pipe_cte(query, [exp.Star()])
         return self.TRANSFORM_PARSERS[transform_name](self, query)
 

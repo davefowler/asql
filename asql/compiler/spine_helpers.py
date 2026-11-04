@@ -178,6 +178,7 @@ def extract_date_bounds_from_where(
 def date_bounds_from_where(
     stmt: exp.Expr,
     column_expr: exp.Expr,
+    column_is_date: bool = False,
 ) -> tuple[str | None, str | None, bool]:
     """Extract date bounds from the query's own WHERE for a column expression.
 
@@ -189,6 +190,8 @@ def date_bounds_from_where(
     Returns (min, max, max_exclusive). A date-literal `<` bound is shifted a
     day earlier here; a timestamp (or other non-date) `<` bound is returned as
     written with ``max_exclusive`` True, for the series builder to end before.
+    A strict `>` shifts a day later only when the column is known to be a
+    DATE (``column_is_date``): a timestamp column has rows later that day.
     """
     where = stmt.args.get("where") if isinstance(stmt, exp.Select) else None
     if not where:
@@ -232,9 +235,8 @@ def date_bounds_from_where(
 
         if isinstance(node, (exp.GTE, exp.GT)):
             if _columns_match(node.this, column_expr):
-                # Not shifted for strict `>`: on a timestamp column rows later on
-                # the bound's day still belong to its period.
-                min_date = bound(node.expression)
+                shift = 1 if isinstance(node, exp.GT) and column_is_date else 0
+                min_date = bound(node.expression, shift)
         elif isinstance(node, (exp.LTE, exp.LT)):
             if _columns_match(node.this, column_expr):
                 # A strict `<` ends the day before: `< @2024-04-01` has no April.
