@@ -9,6 +9,8 @@ points here; keep this file the single source of truth.
 |---|---|
 | `just install` | `uv sync --all-extras --locked` + `npm ci` + the pre-commit hook (`.githooks/`) |
 | `just test [args]` | pytest, excluding `slow` and `e2e` (`just test tests/test_x.py -k name`) |
+| `just coverage [args]` | `just test` with a line-coverage report for `asql/` (what CI's `test` job runs) |
+| `just e2e [args]` | Playwright tests of the playground in Chromium (`uv run --all-extras --locked playwright install chromium` once; `ASQL_E2E_CHROMIUM=/path/to/chrome` to use a browser you already have) |
 | `just lint` | ruff check, ruff format check, mypy (strict), ESLint |
 | `just fix` | ruff autofix + format |
 | `just check` | `lint` then `test`: everything CI's `test` and `lint` jobs run, minus `smoke` |
@@ -16,9 +18,11 @@ points here; keep this file the single source of truth.
 | `just smoke` | build the wheel, install it in a clean venv, transpile a query |
 | `just serve` | playground on :8011 and docs on :8012 with reload |
 
-CI (`.github/workflows/ci.yml`) runs `just test`, `just smoke`, `just lint`,
-the execution tests against PostgreSQL 16 (`postgres` job) and a Docker build
-on every PR. A PR is mergeable when all five are green.
+CI (`.github/workflows/ci.yml`) runs `just coverage`, `just smoke`, `just lint`,
+`just e2e`, the execution tests against PostgreSQL 16 (`postgres` job) and a
+Docker build on every PR; `.github/workflows/docs.yml` builds the docs. A PR
+is mergeable when all of them are green. Dependabot opens a grouped PR a week
+per ecosystem (uv, npm, GitHub Actions).
 
 `tests/execution/` runs compiled SQL on every database it can reach: DuckDB
 always, PostgreSQL when `ASQL_TEST_POSTGRES_URL` points at a server

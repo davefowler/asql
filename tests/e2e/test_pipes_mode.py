@@ -88,19 +88,22 @@ class TestPipesStyleToggle:
         """Verify the pipes style toggle button exists in the input panel."""
         pipes_btn = playground_page.locator("#pipes-style-btn")
         expect(pipes_btn).to_be_attached()
-        expect(pipes_btn).to_have_attribute("title", "Yahoo Pipes Style")
+        expect(pipes_btn).to_have_attribute("title", "Flow/Pipes Style")
 
     def test_pipes_button_exists_in_output_panel(self, playground_page: Page):
         """Verify the pipes style toggle button exists in the output panel."""
         pipes_btn = playground_page.locator("#output-pipes-style-btn")
         expect(pipes_btn).to_be_attached()
-        expect(pipes_btn).to_have_attribute("title", "Yahoo Pipes Style")
+        expect(pipes_btn).to_have_attribute("title", "Flow/Pipes Style")
 
     def test_toggle_to_pipes_style(self, playground_page: Page):
         """Test switching to pipes style activates the button."""
         # First need to switch to visual-asql mode to see style toggles
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(500)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Show the output visual toggle
         visual_toggle = playground_page.locator("#output-visual-style-toggle")
@@ -118,6 +121,9 @@ class TestPipesStyleToggle:
         # Switch to visual-asql to enable style toggles
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(500)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Click pipes style
         playground_page.locator("#output-pipes-style-btn").click()
@@ -139,6 +145,9 @@ class TestPipesVisualization:
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Enter a simple query in input
         input_editor = playground_page.locator("#input-editor .CodeMirror")
@@ -155,14 +164,19 @@ class TestPipesVisualization:
         playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(500)
 
-        # Check for pipes container
-        pipes_container = playground_page.locator(".pipes-nodes-container")
+        # Check for pipes container (scope to output panel)
+        pipes_container = playground_page.locator(
+            "#output-visual-editor-container .pipes-nodes-container"
+        )
         expect(pipes_container).to_be_visible()
 
     def test_pipe_node_rendered(self, playground_page: Page):
         """Test that pipe nodes are rendered for queries."""
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(300)
 
         # Enter query
@@ -179,18 +193,25 @@ class TestPipesVisualization:
         playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(500)
 
-        # Check for pipe node
-        pipe_node = playground_page.locator(".pipe-node")
+        # Check for pipe node (scope to output panel)
+        pipe_node = playground_page.locator(
+            "#output-visual-editor-container .pipe-node"
+        )
         expect(pipe_node).to_be_visible()
 
         # Check for node header
-        node_header = playground_page.locator(".pipe-node-header")
+        node_header = playground_page.locator(
+            "#output-visual-editor-container .pipe-node-header"
+        )
         expect(node_header).to_be_visible()
 
     def test_transform_steps_shown_in_node(self, playground_page: Page):
         """Test that transform steps are displayed within nodes."""
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(300)
 
         # Enter query with multiple transforms
@@ -212,12 +233,16 @@ LIMIT 10"""
         playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(500)
 
-        # Check for pipe steps within the node
-        pipe_steps = playground_page.locator(".pipe-step")
+        # Check for pipe steps within the node (scope to output panel)
+        pipe_steps = playground_page.locator(
+            "#output-visual-editor-container .pipe-step"
+        )
         expect(pipe_steps.first).to_be_visible()
 
         # Check for step type badges
-        step_types = playground_page.locator(".pipe-step-type")
+        step_types = playground_page.locator(
+            "#output-visual-editor-container .pipe-step-type"
+        )
         expect(step_types.first).to_be_visible()
 
 
@@ -233,6 +258,9 @@ class TestPipesWithCTEs:
         playground_page.select_option("#from-dialect", example["dialect"])
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Enter CTE query
         input_editor = playground_page.locator("#input-editor .CodeMirror")
@@ -247,7 +275,8 @@ class TestPipesWithCTEs:
         playground_page.wait_for_timeout(500)
 
         # Count nodes - should have at least one per CTE plus the final query
-        nodes = playground_page.locator(".pipe-node")
+        # Scope to output panel to avoid counting input panel nodes
+        nodes = playground_page.locator("#output-visual-editor-container .pipe-node")
         node_count = nodes.count()
 
         # We expect at least len(expected_ctes) nodes
@@ -263,34 +292,8 @@ class TestPipesWithCTEs:
         playground_page.select_option("#from-dialect", example["dialect"])
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
-
-        input_editor = playground_page.locator("#input-editor .CodeMirror")
-        input_editor.click()
-        playground_page.keyboard.press("Control+A")
-        playground_page.keyboard.type(example["query"])
-        playground_page.wait_for_timeout(1500)
-
-        # Switch to pipes mode
-        playground_page.locator("#output-pipes-style-btn").click()
+        # Style toggles only exist in the visual block view, not the JSON view
         playground_page.locator("#output-visual-view-btn").click()
-        playground_page.wait_for_timeout(500)
-
-        # Look for the CTE name in a node title
-        node_title = playground_page.locator(".pipe-node-title")
-        first_title_text = node_title.first.inner_text()
-
-        # Should contain one of the expected CTE names or the source table
-        assert any(
-            name in first_title_text.lower() or first_title_text.lower() in name
-            for name in example["expected_ctes"] + ["orders", "filtered"]
-        ), f"Expected CTE name in title, got: {first_title_text}"
-
-    def test_cte_reference_badge_shown(self, playground_page: Page):
-        """Test that nodes referencing other CTEs show a reference badge."""
-        example = CTE_EXAMPLES["multi_cte"]
-
-        playground_page.select_option("#from-dialect", example["dialect"])
-        playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
 
         input_editor = playground_page.locator("#input-editor .CodeMirror")
@@ -304,8 +307,51 @@ class TestPipesWithCTEs:
         playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(500)
 
-        # At least one node should show a reference badge
-        ref_badges = playground_page.locator(".pipe-ref-badge")
+        # Look for the CTE name in node titles (scope to output panel)
+        node_titles = playground_page.locator(
+            "#output-visual-editor-container .pipe-node-title"
+        )
+        title_texts = [
+            node_titles.nth(i).inner_text() for i in range(node_titles.count())
+        ]
+
+        # Should find one of the expected CTE names or the source table in some title
+        expected_names = example["expected_ctes"] + ["orders", "filtered"]
+        found = any(
+            any(
+                name in title.lower() or title.lower() in name
+                for name in expected_names
+            )
+            for title in title_texts
+        )
+        assert found, f"Expected a CTE name in titles, got: {title_texts}"
+
+    def test_cte_reference_badge_shown(self, playground_page: Page):
+        """Test that nodes referencing other CTEs show a reference badge."""
+        example = CTE_EXAMPLES["multi_cte"]
+
+        playground_page.select_option("#from-dialect", example["dialect"])
+        playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
+
+        input_editor = playground_page.locator("#input-editor .CodeMirror")
+        input_editor.click()
+        playground_page.keyboard.press("Control+A")
+        playground_page.keyboard.type(example["query"])
+        playground_page.wait_for_timeout(1500)
+
+        # Switch to pipes mode
+        playground_page.locator("#output-pipes-style-btn").click()
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(500)
+
+        # At least one node should show a reference badge (scope to output panel)
+        ref_badges = playground_page.locator(
+            "#output-visual-editor-container .pipe-ref-badge"
+        )
         # The step3 CTE references step1 and step2, so there should be a ref badge
         expect(ref_badges.first).to_be_visible()
 
@@ -316,6 +362,9 @@ class TestPipesStyleModes:
     def test_switch_between_all_styles(self, playground_page: Page):
         """Test switching between text, blocky, and pipes styles."""
         playground_page.select_option("#to-dialect", "visual-asql")
+        playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(300)
 
         # Get all style buttons
@@ -348,6 +397,9 @@ class TestPipesStyleModes:
         """Test that pipes style applies the correct CSS class."""
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Switch to pipes
         playground_page.locator("#output-pipes-style-btn").click()
@@ -362,6 +414,9 @@ class TestPipesStyleModes:
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         # Enter a query
         test_query = "SELECT * FROM users"
@@ -371,17 +426,27 @@ class TestPipesStyleModes:
         playground_page.keyboard.type(test_query)
         playground_page.wait_for_timeout(1000)
 
-        # Get the output JSON before switching
+        # Get the output JSON before switching styles
         playground_page.locator("#output-json-view-btn").click()
         playground_page.wait_for_timeout(200)
         output_before = playground_page.locator(
             "#output-editor .CodeMirror"
         ).inner_text()
 
-        # Switch to pipes and back to JSON
+        # Switch back to visual view (style toggles only exist there)
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(200)
+
+        # Switch to pipes style
         playground_page.locator("#output-pipes-style-btn").click()
         playground_page.wait_for_timeout(200)
+
+        # Switch to text style
         playground_page.locator("#output-text-style-btn").click()
+        playground_page.wait_for_timeout(200)
+
+        # Go back to JSON view and check the output is preserved
+        playground_page.locator("#output-json-view-btn").click()
         playground_page.wait_for_timeout(200)
 
         # Output should be the same
@@ -399,6 +464,9 @@ class TestPipesNodeInteraction:
         playground_page.select_option("#from-dialect", "postgres")
         playground_page.select_option("#to-dialect", "visual-asql")
         playground_page.wait_for_timeout(300)
+        # Style toggles only exist in the visual block view, not the JSON view
+        playground_page.locator("#output-visual-view-btn").click()
+        playground_page.wait_for_timeout(300)
 
         input_editor = playground_page.locator("#input-editor .CodeMirror")
         input_editor.click()
@@ -411,8 +479,10 @@ class TestPipesNodeInteraction:
         playground_page.locator("#output-visual-view-btn").click()
         playground_page.wait_for_timeout(500)
 
-        # Hover over the node
-        node = playground_page.locator(".pipe-node").first
+        # Hover over the node (scope to output panel)
+        node = playground_page.locator(
+            "#output-visual-editor-container .pipe-node"
+        ).first
         node.hover()
         playground_page.wait_for_timeout(100)
 

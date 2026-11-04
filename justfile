@@ -16,6 +16,14 @@ install:
 test *ARGS="tests":
     uv run --all-extras --locked pytest -q --tb=short -m "not slow and not e2e" {{ARGS}}
 
+# Browser tests of the playground (needs `uv run --all-extras --locked playwright install chromium` once)
+e2e *ARGS:
+    uv run --all-extras --locked pytest -q --tb=short tests/e2e {{ARGS}}
+
+# Test suite with a line-coverage report for asql/
+coverage *ARGS:
+    uv run --all-extras --locked pytest -q --tb=short -m "not slow and not e2e" --cov=asql --cov-report=term-missing:skip-covered tests {{ARGS}}
+
 # Ruff lint + format check, mypy, and ESLint
 lint:
     uv run --all-extras --locked ruff check .
