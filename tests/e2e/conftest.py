@@ -1,9 +1,9 @@
 """
 Pytest configuration for E2E tests using Playwright.
 
-These tests require playwright to be installed:
-    pip install playwright
-    playwright install chromium
+`just install` brings pytest-playwright in with the dev extra; the browser is
+a one-off download: `uv run --all-extras --locked playwright install chromium`.
+Run them with `just e2e`.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from contextlib import suppress
@@ -31,6 +32,9 @@ def is_port_in_use(port: int) -> bool:
 
 def check_playwright_browsers_installed() -> bool:
     """Check if Playwright browsers are installed."""
+    executable = os.environ.get("ASQL_E2E_CHROMIUM")
+    if executable:
+        return os.path.exists(executable)
     try:
         from playwright.sync_api import sync_playwright
 
@@ -46,13 +50,16 @@ def check_playwright_browsers_installed() -> bool:
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
-    """Skip E2E tests if Playwright browsers are not installed."""
-    if not check_playwright_browsers_installed():
-        skip_marker = pytest.mark.skip(
-            reason="Playwright browsers not installed. Run 'playwright install' to enable E2E tests."
-        )
-        for item in items:
-            if "e2e" in str(item.fspath):
+    """Mark every test here `e2e` (so `just test` deselects them) and skip
+    them when no Playwright browser is available."""
+    browsers = check_playwright_browsers_installed()
+    skip_marker = pytest.mark.skip(
+        reason="Playwright browsers not installed. Run 'playwright install' to enable E2E tests."
+    )
+    for item in items:
+        if "e2e" in str(item.fspath):
+            item.add_marker(pytest.mark.e2e)
+            if not browsers:
                 item.add_marker(skip_marker)
 
 
@@ -79,22 +86,17 @@ def playwright_server(server_url: str) -> Iterator[str]:
     # Start the server
     print(f"\nStarting playground server on port {port}...")
 
-    # Find the project root (where venv is)
     project_root = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
-    venv_python = os.path.join(project_root, "venv", "bin", "python")
 
-    if not os.path.exists(venv_python):
-        pytest.skip("Virtual environment not found. Run 'just install' first.")
-
-    # Start uvicorn server
+    # The interpreter running the tests has the playground's dependencies.
     process = subprocess.Popen(
         [
-            venv_python,
+            sys.executable,
             "-m",
             "uvicorn",
-            "playground:app",
+            "asql.playground.app:app",
             "--host",
             "0.0.0.0",
             "--port",
@@ -124,6 +126,16 @@ def playwright_server(server_url: str) -> Iterator[str]:
     print("\nShutting down playground server...")
     with suppress(ProcessLookupError):
         os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+
+
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args: dict) -> dict:
+    """Let ASQL_E2E_CHROMIUM point at a Chromium binary outside Playwright's
+    cache (a preinstalled browser) instead of downloading one."""
+    executable = os.environ.get("ASQL_E2E_CHROMIUM")
+    if executable:
+        return {**browser_type_launch_args, "executable_path": executable}
+    return browser_type_launch_args
 
 
 @pytest.fixture

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - With a semantic graph loaded, `information_schema.columns` also lists each model's metrics (`data_type = 'METRIC'`) and reachable `relationship.attribute` columns, so schema exploration finds them beside physical columns
+- CI runs the Playwright playground tests (`just e2e`) and reports line coverage (`just coverage`); Dependabot keeps `uv.lock`, `package-lock.json` and the pinned Actions current; CONTRIBUTING lists the branch-protection checks and how a release is tagged
 - Playground tables `employees`, `departments`, `issue_custom_fields`, `user_settings` and `monthly_metrics`, used by the docs' recursion, FK-shorthand, pivot and unpivot examples
 - `just test <path>` runs only that path (the recipe used to run the whole suite as well); CI runs the execution tests against PostgreSQL 16 (`PostgresExecutor`, enabled by `ASQL_TEST_POSTGRES_URL`), executes every docs ` ```asql-play ` block on DuckDB (`tests/test_docs_execute.py`), and checks a corpus of malformed queries all raise (`tests/test_parse_strictness.py`)
 - `tests/test_visual_roundtrip.py` also runs every ` ```asql-play ` block in the docs (217 queries) through the round trip, with the docs build's schema and settings
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- The e2e harness starts the playground from the test interpreter (`asql.playground.app:app`) instead of a `venv/` that `just install` never creates, and its assertions match the current UI
 - `prior()` / `next()` compile to `LAG` / `LEAD` with an `OVER` clause that takes the query's `order by` (they emitted a bare `LAG(x, 1)`, invalid everywhere); without an ordering they raise
 - A non-aggregate pivot (`pivot value by setting_name …`) uses `MAX` as the spec says, so string values work (it used `SUM`)
 - `spine by quarter(d) as quarter` keeps its alias outside the spine marker, so the aggregate block's projection is `quarter(d) AS quarter` and the Visual ASQL round trip holds
