@@ -111,3 +111,9 @@ def test_fanout_keeps_columns_a_later_join_needs() -> None:
         schema=_chain_schema(),
     )[0]
     assert sorted(con.sql(sql).fetchall()) == [("a", 5), ("b", 1)]
+
+
+def test_timestamp_literal_is_a_cast_on_postgres() -> None:
+    """PostgreSQL has no TIMESTAMP(...) function; the literal must be a cast."""
+    sql = asql.transpile("from t where ts < @2024-01-03T06:00:00", write="postgres")[0]
+    assert sql == "SELECT * FROM t WHERE ts < CAST('2024-01-03 06:00:00' AS TIMESTAMP)"
