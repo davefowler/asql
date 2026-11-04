@@ -550,11 +550,11 @@ def _rewire_to_spines(stmt: exp.Select, spine_keys: list[_SpineKey]) -> None:
         for count in stmt.find_all(exp.Count)
         if isinstance(count.this, exp.Star) and count.find_ancestor(exp.Select) is stmt
     ]
-    if counts and isinstance(source, exp.Table) and not joins:
+    qualifier = source.alias_or_name if not joins else ""
+    if counts and qualifier:
         # COUNT(*) would count the NULL-extended row of an empty period, and
         # COUNT(<key>) misses a NULL categorical key; count a marker column
         # that is never NULL on the source side instead.
-        qualifier = source.alias or source.name
         marked = exp.select(
             exp.Star(), exp.alias_(exp.Literal.number(1), _ROW_MARKER)
         ).from_(source.copy())
@@ -565,14 +565,10 @@ def _rewire_to_spines(stmt: exp.Select, spine_keys: list[_SpineKey]) -> None:
         for count in counts:
             count.set("this", exp.column(_ROW_MARKER, table=qualifier))
     elif counts:
-        first_key = spine_keys[0].key.copy()
-        if isinstance(source, exp.Table) and not joins:
-            qualifier = source.alias or source.name
-            for column in first_key.find_all(exp.Column):
-                if not column.table:
-                    column.set("table", exp.to_identifier(qualifier))
+        # Joined or unnamed sources: the first key is NULL only on the
+        # NULL-extended rows (and for a NULL categorical key).
         for count in counts:
-            count.set("this", first_key.copy())
+            count.set("this", spine_keys[0].key.copy())
     if joins:
         source.set("joins", joins)
         source = exp.Subquery(this=source)
