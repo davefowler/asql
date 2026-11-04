@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A join with no `on` now raises `ASQLResolutionError` when the schema declares several distinct explicit relationships between the two tables (for example buyer and seller both pointing at users), instead of silently using the first one
 
 ### Fixed
+- Fanout protection: a many-side join it skipped still gets the inflation warning (it was silenced along with the rewritten ones); a collapsed join no longer warns that it multiplies rows; stage-2 protection applies when a group key carries an alias (`group by orders.customer_id as cust`)
 - `except email` followed by `select *, …` keeps the exclusion (the select replaced the projection and the `except` was silently dropped); like `rename`, it now closes the stage
 - The alias-reuse CTE chain for non-DuckDB dialects no longer projects `SELECT *, *` nor re-selects every computed alias after `*` (duplicate output columns on PostgreSQL), and carries the star override (`select *, upper(name) as name`) on its base
 - A strict `>` bound on a DATE-typed column starts the spine the next day; spine bounds read only the query's own `where`, never a subquery's
