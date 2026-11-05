@@ -23,6 +23,8 @@ Dependabot (`.github/dependabot.yml`) opens one grouped PR a week per
 ecosystem (uv, npm, GitHub Actions); merge them like any other PR once CI is
 green.
 
-Releases are git tags: bump `version` in `pyproject.toml`, move the
-`## [Unreleased]` entries in `CHANGELOG.md` under the new version, and tag
-the squash commit `vX.Y.Z` on `main`. Nothing publishes automatically.
+Releases are git tags: bump `version` in `pyproject.toml` and `__version__` in
+`asql/__init__.py`, run `uv lock`, move the `## [Unreleased]` entries in
+`CHANGELOG.md` under the new version, and tag the squash commit `vX.Y.Z` on
+`main`. Nothing publishes automatically. The `asql` name on PyPI belongs to an
+unrelated project, so publishing there needs a different distribution name.

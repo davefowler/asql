@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-04
+
 ### Added
 - CI runs the Playwright playground tests (`just e2e`) and reports line coverage (`just coverage`); Dependabot keeps `uv.lock`, `package-lock.json` and the pinned Actions current; CONTRIBUTING lists the branch-protection checks and how a release is tagged
 - Playground tables `employees`, `departments`, `issue_custom_fields`, `user_settings` and `monthly_metrics`, used by the docs' recursion, FK-shorthand, pivot and unpivot examples
@@ -130,5 +132,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Trino
 - Spark SQL
 
-[Unreleased]: https://github.com/davefowler/asql/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/davefowler/asql/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/davefowler/asql/releases/tag/v0.2.0
 [0.1.0]: https://github.com/davefowler/asql/releases/tag/v0.1.0

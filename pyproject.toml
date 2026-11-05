@@ -7,7 +7,7 @@ packages = ["asql"]
 
 [project]
 name = "asql"
-version = "0.1.0"
+version = "0.2.0"
 description = "Analytic SQL - A modern, pipeline-based query language"
 readme = "README.md"
 requires-python = ">=3.11"
