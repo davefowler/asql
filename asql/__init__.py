@@ -31,7 +31,7 @@ from asql.expressions import Spine
 from asql.transpile import transpile, transpile_one
 from asql.visual_dialect import VisualASQL, register_visual_asql_dialect
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     # Main entry point
