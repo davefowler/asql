@@ -167,8 +167,10 @@ def _apply_dialect_transforms(
        whose COUNT rewrite must not look like an alias reference
     4. Column operators (* EXCEPT → explicit columns for unsupported dialects)
     5. List comprehension ([x FOR x] → ARRAY(SELECT) for non-DuckDB)
+    6. information_schema.columns gains the semantic graph's metrics and attributes
     """
     from asql.compiler.arg_max import transform_arg_max_min
+    from asql.compiler.catalog import expand_information_schema
     from asql.compiler.metrics import (
         check_metric_fanout,
         resolve_semantic_references,
@@ -216,6 +218,10 @@ def _apply_dialect_transforms(
 
     # 5. List comprehension (DuckDB native, others need ARRAY(SELECT))
     ast = _transform_list_comprehension(ast, dialect)
+
+    # 6. information_schema.columns gains the graph's metrics and attributes;
+    # last, so no earlier pass sees the plain SQL it injects
+    ast = expand_information_schema(ast, settings)
 
     return ast
 

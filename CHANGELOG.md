@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] - 2026-11-04
 
 ### Added
+- With a semantic graph loaded, `information_schema.columns` also lists each model's metrics (`data_type = 'METRIC'`) and reachable `relationship.attribute` columns, so schema exploration finds them beside physical columns
 - CI runs the Playwright playground tests (`just e2e`) and reports line coverage (`just coverage`); Dependabot keeps `uv.lock`, `package-lock.json` and the pinned Actions current; CONTRIBUTING lists the branch-protection checks and how a release is tagged
 - Playground tables `employees`, `departments`, `issue_custom_fields`, `user_settings` and `monthly_metrics`, used by the docs' recursion, FK-shorthand, pivot and unpivot examples
 - `just test <path>` runs only that path (the recipe used to run the whole suite as well); CI runs the execution tests against PostgreSQL 16 (`PostgresExecutor`, enabled by `ASQL_TEST_POSTGRES_URL`), executes every docs ` ```asql-play ` block on DuckDB (`tests/test_docs_execute.py`), and checks a corpus of malformed queries all raise (`tests/test_parse_strictness.py`)

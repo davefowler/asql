@@ -125,6 +125,32 @@ GROUP BY buyer.country
 - Attributes work in `where`, in projections, and inside metric filters.
 - A projected attribute is named `<relationship>_<attribute>` unless you alias it.
 
+## Discovering metrics and attributes
+
+With a graph loaded, `information_schema.columns` lists a model's metrics and the attributes it reaches, beside its physical columns, so anyone (or any agent) exploring the warehouse finds them where they already look:
+
+```asql
+from information_schema.columns
+where table_name == "transactions"
+select column_name, data_type
+```
+
+| column_name | data_type |
+|---|---|
+| `transaction_id` | `INTEGER` |
+| `amount` | `INTEGER` |
+| ... | ... |
+| `volume` | `METRIC` |
+| `aov` | `METRIC` |
+| `buyer.country` | `TEXT` |
+
+- A metric's `data_type` is `METRIC`: use it in a group-by block or a `select`, not in a `where` before the `group by`.
+- An attribute is listed as `relationship.attribute`, exactly as you write it, with its column's declared type (`UNKNOWN` for a computed attribute).
+- The extra rows take `table_catalog`, `table_schema` and the table name's casing from `information_schema.tables`, so they appear only for models that exist as tables, and filters on those columns work as usual.
+- `select *` returns the eight columns every warehouse shares: `table_catalog`, `table_schema`, `table_name`, `column_name`, `ordinal_position`, `column_default`, `is_nullable`, `data_type`. `ordinal_position` and `column_default` are `NULL` for the extra rows.
+
+`information_schema.tables` is unchanged: a model is its table.
+
 ## Why the numbers are right
 
 The target model's grain is exactly the joined entity, so every attribute join is many-to-one: it can never multiply rows of the `from` model. Every metric is computed in one grouped `SELECT` over those rows, so leaf aggregates are exact. Derived metrics are arithmetic over exact aggregates (parenthesized to keep precedence).
