@@ -1,8 +1,8 @@
-# ASQL: SQL with Analytics Built In
+# ASQL: SQL for Analysts
 
-Analytic SQL (ASQL) is a query language designed for analytics work. It's a **superset of SQL** — any standard SQL query is valid ASQL — with a **pipe syntax** that flows top-to-bottom, **built-in helpers** for common analytics patterns (like dbt_utils macros), and **cross-dialect** compilation handled automatically.
+Analytic SQL (ASQL) is SQL for data analysis and transformation. SQL and the databases behind it grew up around transactional workloads, so most of their defaults were chosen for applications that insert and update rows, not for people asking questions of data. ASQL makes those choices again as if analysts were the primary users of the database.
 
-Think of it as SQL with analytics superpowers. Write ASQL, get standard SQL for any dialect.
+It's a **superset of SQL** — any standard SQL query is valid ASQL — with a **pipe syntax** that flows top-to-bottom, **built-in helpers** for common analytics patterns (like dbt_utils macros), and **cross-dialect** compilation handled automatically. Write ASQL, get standard SQL for any dialect.
 
 **Status**: Experimental. [GitHub](https://github.com/davefowler/asql)
 

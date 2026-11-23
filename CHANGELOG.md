@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Docs home page pitches ASQL as "SQL for Analysts": SQL for analysis and transformation, designed for analysts rather than transactional use, replacing "SQL with Analytics Built In"
+
 ## [0.2.0] - 2026-11-04
 
 ### Added

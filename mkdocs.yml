@@ -1,5 +1,5 @@
 site_name: Analytic SQL
-site_description: A modern, pipeline-based query language designed for analytics
+site_description: SQL for analysts. A superset of SQL built for data analysis and transformation rather than transactional workloads
 site_author: Analytic SQL Contributors
 site_url: https://analyticsql.com
 
