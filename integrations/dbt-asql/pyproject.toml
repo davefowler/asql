@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dbt-asql"
 version = "0.1.0"
-description = "Write dbt models in ASQL - a modern, readable query language"
+description = "Write dbt models in ASQL - SQL for analysts"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [

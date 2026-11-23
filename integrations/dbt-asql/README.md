@@ -1,6 +1,6 @@
 # dbt-asql
 
-Write dbt models in [ASQL](https://analyticsql.com) — a modern, readable query language that compiles to SQL.
+Write dbt models in [ASQL](https://analyticsql.com) — SQL for analysts, a superset of SQL that compiles to standard SQL.
 
 > ⚠️ **Early Development** — Not yet published to PyPI
 

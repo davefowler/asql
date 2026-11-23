@@ -1,6 +1,7 @@
-"""ASQL: Analytic SQL - A modern, pipeline-based query language.
+"""ASQL: Analytic SQL - SQL for analysts.
 
-ASQL is a human-readable query language that transpiles to SQL via SQLGlot.
+ASQL is a superset of SQL for data analysis and transformation that
+transpiles to standard SQL via SQLGlot.
 
 Usage:
     >>> import asql

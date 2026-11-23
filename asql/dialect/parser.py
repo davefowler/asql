@@ -1,7 +1,7 @@
 """ASQL dialect implementation using SQLGlot's TRANSFORM_PARSERS pattern.
 
-ASQL (Analytic SQL) is a human-readable, pipeline-based query language that
-transpiles to SQL. This dialect implements the core ASQL parsing using SQLGlot's
+ASQL (Analytic SQL) is SQL for analysts: a superset of SQL for data analysis
+and transformation that transpiles to standard SQL. This dialect implements the core ASQL parsing using SQLGlot's
 built-in infrastructure.
 
 Key features:

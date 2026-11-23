@@ -20,7 +20,7 @@ This project is in active development and contains many known issues, bugs, and 
 
 ## 1. Overview
 
-ASQL (Analytic SQL, pronounced "Ask-el") is a modern, pipeline-based query language designed specifically for analytical workloads. It transpiles cleanly to standard SQL (via SQLGlot) and aims to be more human-readable, less verbose, and better suited for analytics than traditional SQL.
+ASQL (Analytic SQL, pronounced "Ask-el") is SQL for analysts: a superset of SQL for data analysis and transformation, designed as if analysts, not transactional applications, were the primary users of the database. It transpiles cleanly to standard SQL (via SQLGlot) and aims to be more human-readable, less verbose, and better suited to analytical work than traditional SQL.
 
 **Key Philosophy**: ASQL should feel like asking a natural question, not writing cryptic code. It reads like natural language while maintaining the power and precision of SQL.
 

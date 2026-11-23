@@ -13,7 +13,8 @@ from asql.dialect.tokenizer import ASQLTokenizer
 class ASQL(Dialect):
     """ASQL (Analytic SQL) dialect for SQLGlot.
 
-    ASQL is a human-readable, pipeline-based query language that transpiles to SQL.
+    ASQL is SQL for analysts: a superset of SQL for data analysis and
+    transformation that transpiles to standard SQL.
     This dialect uses SQLGlot's TRANSFORM_PARSERS pattern (like PRQL) for proper
     pipeline semantics.
 

@@ -1,10 +1,12 @@
-# ASQL: Analytic SQL
+# ASQL: SQL for Analysts
 
-A modern, pipe-based query language that transpiles to SQL. ASQL uses a FROM-first, pipeline syntax that makes complex analytics queries more readable and intuitive.
+Analytic SQL (ASQL) is SQL for data analysis and transformation. It is a superset of SQL, designed as if analysts were the primary users of the database, and it compiles to standard SQL for any dialect.
 
 ## What is ASQL?
 
-ASQL (Analytic SQL) transforms how you write SQL queries. Instead of the traditional nested, inside-out SQL syntax, ASQL lets you write queries as a pipeline of operations that flow top-to-bottom:
+SQL and the databases behind it grew up around transactional workloads, so most of their defaults were chosen for applications that insert and update rows, not for people asking questions of data. ASQL makes those choices again for analysis.
+
+Any SQL query is already valid ASQL. On top of that you get auto aliases, gap-free grouping with `spine by`, short window helpers, plain-language dates, convention-based joins, and a pipe syntax that reads top-to-bottom instead of inside-out:
 
 ```asql
 from orders
@@ -17,6 +19,8 @@ limit 10
 This compiles to standard SQL (PostgreSQL, BigQuery, Snowflake, etc.) with each step becoming a readable CTE.
 
 **Key Benefits:**
+- **SQL-compatible** - Start from the SQL you already have and adopt ASQL one feature at a time
+- **Built for analysis** - Defaults and helpers chosen for analytics and transformation work, not transactions
 - **Readable** - Queries flow top-to-bottom like natural thought
 - **Multi-dialect** - One query compiles to PostgreSQL, BigQuery, Snowflake, Redshift, MySQL, and more
 - **Debuggable** - Each pipeline step becomes a named CTE you can inspect

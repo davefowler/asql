@@ -2,7 +2,7 @@
 
 **Last Updated:** January 19, 2026
 
-This document describes the actual implementation of Analytic SQL (ASQL), a pipeline-based query language that transpiles to SQL.
+This document describes the actual implementation of Analytic SQL (ASQL), a superset of SQL for data analysis and transformation that transpiles to standard SQL.
 
 ## Overview
 
